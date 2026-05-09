@@ -24,6 +24,7 @@ from chip_tracker_v2 import (
     get_conn, init_db,
     get_market_rankings, load_stock_history,
     to_twse_date, update_stocks,
+    scan_market_today, clear_bad_cache,
 )
 
 BASE_DIR = Path(__file__).parent
@@ -160,6 +161,49 @@ def api_del_watchlist(stock_id: str):
     conn.close()
     return {"ok": True}
 
+@app.put("/api/watchlist/{stock_id}")
+def api_update_watchlist(stock_id: str, item: WatchlistItem):
+    """更新股票名稱"""
+    conn = get_conn()
+    conn.execute("UPDATE watchlist SET name=? WHERE stock_id=?",
+                 (item.name.strip() if item.name else "", stock_id))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+@app.get("/api/watchlist/summary")
+def api_watchlist_summary():
+    """取得觀察清單所有股票的最新資料摘要（最新一天 + 7日累計）"""
+    conn = get_conn()
+    rows = conn.execute("SELECT stock_id, name FROM watchlist ORDER BY added_at").fetchall()
+    conn.close()
+
+    result = []
+    for row in rows:
+        sid  = row["stock_id"]
+        name = row["name"] or ""
+        records = load_stock_history(sid)
+        item: dict = {"stock_id": sid, "name": name}
+        if records:
+            latest  = records[-1]
+            last7   = records[-7:]
+            cum7    = sum(r.get("whale_flow_lots", 0) for r in last7)
+            item.update({
+                "has_data":           True,
+                "date":               latest.get("date", ""),
+                "whale_flow_lots":    latest.get("whale_flow_lots", 0),
+                "retail_flow_lots":   latest.get("retail_flow_lots", 0),
+                "concentration_index": latest.get("concentration_index", 0),
+                "cum7_whale":         cum7,
+                "signal_emoji":       latest.get("signal_emoji", "⚪"),
+                "signal_title":       latest.get("signal_title", "—"),
+                "signal_level":       latest.get("signal_level", 0),
+            })
+        else:
+            item["has_data"] = False
+        result.append(item)
+    return result
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # Refresh API
@@ -200,13 +244,24 @@ async def api_refresh(body: RefreshBody):
 # ════════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/stock/{stock_id}")
-def api_stock(stock_id: str, days: int = 30):
+async def api_stock(stock_id: str, days: int = 30):
     records = load_stock_history(stock_id)
     if not records:
-        raise HTTPException(status_code=404, detail=f"{stock_id} 尚無資料，請先執行更新")
-    # 只取最近 days 筆
+        # 第一次查詢自動抓取
+        await update_stocks([stock_id], days=days)
+        records = load_stock_history(stock_id)
+    if not records:
+        raise HTTPException(status_code=404, detail=f"{stock_id} 尚無資料，可能非上市股票或當日無交易")
     records = records[-days:]
     return {"stock_id": stock_id, "data": records}
+
+
+@app.post("/api/stock/{stock_id}/refresh")
+async def api_refresh_stock(stock_id: str, days: int = 30):
+    """強制重新抓取個股資料（bypass cache 壞資料）"""
+    await update_stocks([stock_id], days=days)
+    records = load_stock_history(stock_id)
+    return {"ok": True, "stock_id": stock_id, "records": len(records)}
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -219,6 +274,26 @@ def api_market_rankings(date: str = None, top: int = 30):
         date = to_twse_date(datetime.today().date())
     rankings = get_market_rankings(dt=date, top=top)
     return {"date": date, "data": rankings}
+
+
+@app.get("/api/market/scan")
+async def api_market_scan(top: int = 50):
+    """掃描今日全市場上市股票大戶排行（直接從 TWSE bulk endpoint 取得全部股票）"""
+    dt   = to_twse_date(datetime.today().date())
+    data = await scan_market_today()
+    return {
+        "date":        dt,
+        "total":       len(data),
+        "top_buyers":  data[:top],
+        "top_sellers": list(reversed(data[-top:])) if len(data) >= top else list(reversed(data)),
+    }
+
+
+@app.delete("/api/cache")
+def api_clear_cache():
+    """清除 stat != OK 的快取資料（修復全部 +0 問題）"""
+    deleted = clear_bad_cache()
+    return {"ok": True, "deleted": deleted}
 
 
 # ════════════════════════════════════════════════════════════════════════════

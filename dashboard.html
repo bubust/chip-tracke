@@ -3,217 +3,269 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>大戶選股 — 籌碼追蹤儀表板</title>
+<title>大戶選股 — 籌碼追蹤</title>
 <style>
   :root {
-    --bg: #0f1117;
-    --card: #1a1d27;
+    --bg:     #0f1117;
+    --card:   #1a1d27;
+    --card2:  #1e2130;
     --border: #2a2d3a;
     --accent: #4f8ef7;
-    --green: #22c55e;
+    --green:  #22c55e;
     --yellow: #eab308;
     --orange: #f97316;
-    --red: #ef4444;
-    --text: #e2e8f0;
-    --muted: #64748b;
+    --red:    #ef4444;
+    --text:   #e2e8f0;
+    --muted:  #64748b;
     --radius: 10px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
 
-  /* ── Header ── */
-  header { background: var(--card); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; gap: 16px; }
-  header h1 { font-size: 1.3rem; font-weight: 700; letter-spacing: -.5px; }
-  header span.sub { font-size: .8rem; color: var(--muted); }
-  .status-pill { margin-left: auto; font-size: .75rem; background: #1e2535; border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; color: var(--muted); }
+  header { background: var(--card); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; gap: 14px; }
+  header h1 { font-size: 1.2rem; font-weight: 700; }
+  .sub { font-size: .8rem; color: var(--muted); }
+  .pill-status { margin-left: auto; font-size: .75rem; background: #1e2535; border: 1px solid var(--border); border-radius: 20px; padding: 4px 14px; color: var(--muted); cursor: pointer; }
+  .pill-status:hover { border-color: var(--accent); color: var(--text); }
 
-  /* ── Tab Nav ── */
-  nav { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--card); }
-  nav button { background: none; border: none; color: var(--muted); padding: 12px 24px; cursor: pointer; font-size: .9rem; border-bottom: 3px solid transparent; transition: .15s; }
+  nav { display: flex; background: var(--card); border-bottom: 1px solid var(--border); }
+  nav button { background: none; border: none; color: var(--muted); padding: 12px 24px; cursor: pointer; font-size: .88rem; border-bottom: 3px solid transparent; transition: .15s; }
   nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
   nav button:hover:not(.active) { color: var(--text); }
 
-  /* ── Layout ── */
-  main { padding: 24px; max-width: 1200px; margin: 0 auto; }
-  .tab-content { display: none; }
-  .tab-content.active { display: block; }
+  main { padding: 20px 24px; max-width: 1280px; margin: 0 auto; }
+  .tab { display: none; }
+  .tab.active { display: block; }
 
-  /* ── Card ── */
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
-  .card h3 { font-size: .9rem; color: var(--muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; margin-bottom: 14px; }
 
-  /* ── Form Row ── */
-  .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
-  .field { display: flex; flex-direction: column; gap: 5px; }
-  .field label { font-size: .8rem; color: var(--muted); }
-  input[type=text], input[type=password], input[type=number], select {
+  /* inputs */
+  input[type=text], input[type=password], input[type=number], select, textarea {
     background: #0f1117; border: 1px solid var(--border); border-radius: 6px;
-    color: var(--text); padding: 8px 12px; font-size: .9rem; outline: none;
-    transition: border-color .15s;
+    color: var(--text); padding: 7px 11px; font-size: .88rem; outline: none; transition: border-color .15s;
   }
-  input:focus, select:focus { border-color: var(--accent); }
-  input[type=text] { min-width: 120px; }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
-  /* ── Buttons ── */
-  .btn { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 8px 18px; cursor: pointer; font-size: .9rem; font-weight: 600; transition: opacity .15s; white-space: nowrap; }
-  .btn:hover { opacity: .85; }
-  .btn.sm { padding: 5px 12px; font-size: .8rem; }
+  /* buttons */
+  .btn { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 8px 18px; cursor: pointer; font-size: .88rem; font-weight: 600; transition: opacity .15s; white-space: nowrap; }
+  .btn:hover:not(:disabled) { opacity: .85; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn.sm { padding: 5px 13px; font-size: .8rem; }
   .btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
-  .btn.ghost:hover { border-color: var(--accent); color: var(--accent); }
-  .btn.danger { background: var(--red); }
+  .btn.ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
   .btn.green { background: var(--green); }
+  .btn.danger { background: var(--red); }
+  .btn.orange { background: var(--orange); }
 
-  /* ── Table ── */
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .fld { display: flex; flex-direction: column; gap: 4px; }
+  .fld label { font-size: .74rem; color: var(--muted); }
+
+  /* table */
   .tbl-wrap { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-size: .88rem; }
-  th { color: var(--muted); font-weight: 600; text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+  th { color: var(--muted); font-weight: 600; text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; font-size: .78rem; text-transform: uppercase; letter-spacing: .3px; }
   td { padding: 9px 10px; border-bottom: 1px solid #1e2230; white-space: nowrap; }
   tr:last-child td { border-bottom: none; }
-  tr:hover td { background: #1e2230; }
-
+  tr.clickable:hover td { background: #1e2230; cursor: pointer; }
   .pos { color: var(--green); }
   .neg { color: var(--red); }
-  .neu { color: var(--muted); }
+  .muted { color: var(--muted); }
 
-  /* ── Watchlist ── */
-  #watchlist-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-  .chip { background: #1e2535; border: 1px solid var(--border); border-radius: 20px; padding: 5px 14px; font-size: .85rem; display: flex; align-items: center; gap: 8px; }
-  .chip .del { cursor: pointer; color: var(--muted); font-size: .9rem; }
-  .chip .del:hover { color: var(--red); }
+  /* metrics */
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .metric { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 13px 15px; }
+  .metric .lbl { font-size: .71rem; color: var(--muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .3px; }
+  .metric .val { font-size: 1.4rem; font-weight: 700; }
+  .metric .val.md { font-size: 1rem; }
 
-  /* ── Stock Chart Area ── */
-  #stock-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
-  .metric { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
-  .metric .val { font-size: 1.6rem; font-weight: 700; margin-top: 6px; }
-  .metric .lbl { font-size: .75rem; color: var(--muted); }
+  /* inline edit */
+  .inline-edit { display: none; }
+  .editing .inline-edit { display: inline-block; }
+  .editing .view-name { display: none; }
 
-  /* ── Signal Badge ── */
-  .sig { display: inline-flex; align-items: center; gap: 5px; font-size: .82rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+  /* signal badge */
+  .sig-badge { display: inline-flex; align-items: center; gap: 4px; font-size: .82rem; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+  .sig-2 { background: #16301e; color: var(--green); }
+  .sig-1 { background: #2a2700; color: var(--yellow); }
+  .sig-0 { background: #1e2130; color: var(--muted); }
+  .sig--1 { background: #2a1a00; color: var(--orange); }
+  .sig--2, .sig--3 { background: #2a1010; color: var(--red); }
 
-  /* ── Toast ── */
-  #toast { position: fixed; bottom: 30px; right: 30px; background: #22c55e; color: #fff; padding: 12px 20px; border-radius: 8px; font-size: .9rem; opacity: 0; transform: translateY(20px); transition: .3s; pointer-events: none; z-index: 999; max-width: 320px; }
+  /* detail panel */
+  #detail-panel { border: 1px solid var(--accent); border-radius: var(--radius); margin-bottom: 14px; overflow: hidden; display: none; }
+  .detail-header { background: #1a2640; padding: 12px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); }
+  .detail-header h3 { font-size: 1rem; font-weight: 700; }
+  .detail-body { padding: 16px 20px; }
+
+  /* market filters */
+  .pills { display: flex; gap: 8px; }
+  .pill { background: #1e2535; border: 1px solid var(--border); border-radius: 20px; padding: 5px 16px; font-size: .82rem; cursor: pointer; color: var(--muted); transition: .15s; }
+  .pill.active { border-color: var(--accent); color: var(--accent); background: #1a2640; }
+
+  /* loading */
+  .loading { color: var(--muted); display: flex; align-items: center; gap: 10px; padding: 20px 0; }
+  .spinner { width: 18px; height: 18px; border: 2.5px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: .9rem; }
+
+  /* toast */
+  #toast { position: fixed; bottom: 26px; right: 26px; background: var(--green); color: #fff; padding: 10px 18px; border-radius: 8px; font-size: .88rem; opacity: 0; transform: translateY(14px); transition: .25s; pointer-events: none; z-index: 999; max-width: 300px; }
   #toast.show { opacity: 1; transform: translateY(0); }
   #toast.err { background: var(--red); }
 
-  /* ── Loading ── */
-  .loading { text-align: center; color: var(--muted); padding: 40px; }
-  .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; margin-bottom: 10px; }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  /* settings */
+  .sg { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 600px) { .sg { grid-template-columns: 1fr; } }
+  .log-row { display: flex; gap: 12px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: .83rem; }
+  .log-row:last-child { border-bottom: none; }
+  code { font-family: monospace; font-size: .8rem; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 
-  /* ── Settings ── */
-  .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  @media (max-width: 600px) { .settings-grid { grid-template-columns: 1fr; } }
+  .section-title { font-size: .78rem; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 600; margin-bottom: 12px; }
 
-  /* ── Push Log ── */
-  .log-item { display: flex; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: .85rem; }
-  .log-item:last-child { border-bottom: none; }
-
-  hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+  /* scan header */
+  .scan-hdr { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .scan-hdr .info { flex: 1; }
+  .scan-hdr .info strong { font-size: .97rem; }
+  .scan-hdr .info small { display: block; color: var(--muted); font-size: .79rem; margin-top: 2px; }
 </style>
 </head>
 <body>
 
 <header>
   <h1>📈 大戶選股</h1>
-  <span class="sub">台股籌碼追蹤儀表板</span>
-  <div class="status-pill" id="status-pill">載入中...</div>
+  <span class="sub">台股籌碼追蹤</span>
+  <div class="pill-status" id="status-pill" onclick="loadPill()">載入中...</div>
 </header>
 
 <nav>
-  <button class="active" onclick="switchTab('stock')">個股分析</button>
+  <button class="active" onclick="switchTab('watchlist')">觀察清單</button>
   <button onclick="switchTab('market')">全市場排行</button>
-  <button onclick="switchTab('settings')">設定 / 推播</button>
+  <button onclick="switchTab('settings')">設定</button>
 </nav>
 
 <main>
 
-<!-- ═══════════════════════════════════════════════ 個股 ═══ -->
-<div id="tab-stock" class="tab-content active">
+<!-- ═══════════════════════ 觀察清單 ═══════════════════════ -->
+<div id="tab-watchlist" class="tab active">
 
+  <!-- 新增 bar -->
   <div class="card">
-    <h3>觀察清單</h3>
+    <div class="section-title">新增股票</div>
     <div class="row">
-      <div class="field">
+      <div class="fld">
         <label>股票代號</label>
-        <input type="text" id="new-stock-id" placeholder="例：2330" maxlength="6" style="width:110px" />
+        <input type="text" id="add-sid" placeholder="ex. 2330" maxlength="6" style="width:110px"
+               onkeydown="if(event.key==='Enter') addToWatchlist()" />
       </div>
-      <div class="field">
+      <div class="fld">
         <label>名稱（選填）</label>
-        <input type="text" id="new-stock-name" placeholder="台積電" style="width:120px" />
+        <input type="text" id="add-name" placeholder="台積電" style="width:120px"
+               onkeydown="if(event.key==='Enter') addToWatchlist()" />
       </div>
-      <button class="btn sm" onclick="addStock()">+ 新增</button>
-      <button class="btn sm ghost" onclick="triggerRefresh()" id="btn-refresh">🔄 更新資料</button>
-      <div class="field">
+      <button class="btn" onclick="addToWatchlist()" style="margin-top:18px">+ 新增</button>
+      <div style="flex:1"></div>
+      <div class="fld">
         <label>回填天數</label>
-        <input type="number" id="backfill-days" value="30" min="1" max="90" style="width:70px" />
+        <select id="backfill-days" style="width:85px;margin-top:0">
+          <option value="20">20 天</option>
+          <option value="30" selected>30 天</option>
+          <option value="60">60 天</option>
+          <option value="90">90 天</option>
+        </select>
       </div>
-    </div>
-    <div id="watchlist-chips"></div>
-  </div>
-
-  <div class="card">
-    <h3>個股查詢</h3>
-    <div class="row">
-      <div class="field">
-        <label>股票代號</label>
-        <input type="text" id="query-stock-id" placeholder="2330" style="width:110px" />
-      </div>
-      <div class="field">
-        <label>顯示天數</label>
-        <input type="number" id="query-days" value="30" min="1" max="90" style="width:70px" />
-      </div>
-      <button class="btn sm" onclick="queryStock()">查詢</button>
-      <button class="btn sm ghost" id="btn-push-stock" onclick="pushStock()" style="margin-left:auto">✈️ 推播</button>
+      <button class="btn green" onclick="refreshAll()" id="btn-refresh-all" style="margin-top:18px">🔄 全部更新</button>
     </div>
   </div>
 
-  <div id="stock-summary"></div>
-  <div class="card" id="stock-table-card" style="display:none">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-      <h3 style="margin:0">歷史紀錄</h3>
-      <span id="stock-title" style="font-size:.85rem;color:var(--muted)"></span>
-    </div>
-    <div class="tbl-wrap">
+  <!-- 觀察清單表格 -->
+  <div class="card" id="watchlist-card">
+    <div class="section-title">我的選股清單</div>
+    <div id="wl-loading" class="loading" style="display:none"><span class="spinner"></span>載入中...</div>
+    <div id="wl-empty" class="empty" style="display:none">尚無股票，請從上方新增</div>
+    <div class="tbl-wrap" id="wl-table-wrap" style="display:none">
       <table>
         <thead>
           <tr>
-            <th>日期</th>
-            <th>大戶流向(張)</th>
-            <th>散戶流向(張)</th>
+            <th>代號</th>
+            <th>名稱</th>
+            <th>最新訊號</th>
+            <th>大戶今日 (張)</th>
+            <th>7日累計 (張)</th>
             <th>集中度</th>
-            <th>7日累計(張)</th>
-            <th>訊號</th>
+            <th>最新日期</th>
+            <th>操作</th>
           </tr>
         </thead>
-        <tbody id="stock-tbody"></tbody>
+        <tbody id="wl-tbody"></tbody>
       </table>
     </div>
   </div>
 
-</div><!-- /tab-stock -->
-
-
-<!-- ═══════════════════════════════════════════════ 全市場 ═══ -->
-<div id="tab-market" class="tab-content">
-
-  <div class="card">
-    <h3>全市場大戶排行</h3>
-    <div class="row">
-      <div class="field">
-        <label>查詢日期 (YYYYMMDD)</label>
-        <input type="text" id="market-date" placeholder="今日" style="width:140px" />
+  <!-- 個股詳細（點擊後展開） -->
+  <div id="detail-panel">
+    <div class="detail-header">
+      <h3 id="detail-title">—</h3>
+      <span id="detail-signal" style="font-size:.9rem"></span>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn sm ghost" onclick="refreshSingle()" id="btn-detail-refresh">更新資料</button>
+        <button class="btn sm ghost" onclick="pushSingle()">✈️ 推播</button>
+        <button class="btn sm ghost" onclick="closeDetail()">✕ 關閉</button>
       </div>
-      <div class="field">
-        <label>排名前 N</label>
-        <input type="number" id="market-top" value="30" min="5" max="100" style="width:70px" />
+    </div>
+    <div class="detail-body">
+      <div class="metrics" id="detail-metrics"></div>
+      <div class="card" style="margin:0;background:var(--card2)">
+        <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px">
+          歷史紀錄 <span id="detail-meta" style="text-transform:none;letter-spacing:0;font-weight:400"></span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>大戶流向 (張)</th>
+                <th>散戶流向 (張)</th>
+                <th>集中度</th>
+                <th>7日累計大戶</th>
+                <th>訊號</th>
+              </tr>
+            </thead>
+            <tbody id="detail-tbody"></tbody>
+          </table>
+        </div>
       </div>
-      <button class="btn sm" onclick="queryMarket()">查詢</button>
-      <button class="btn sm ghost" onclick="pushMarket()" style="margin-left:auto">📡 推播排行</button>
     </div>
   </div>
 
-  <div class="card" id="market-table-card">
-    <h3>排行榜</h3>
+</div><!-- /tab-watchlist -->
+
+
+<!-- ═══════════════════════ 全市場排行 ═══════════════════════ -->
+<div id="tab-market" class="tab">
+
+  <div class="card">
+    <div class="scan-hdr">
+      <div class="info">
+        <strong>上市股票今日大戶排行</strong>
+        <small id="scan-meta">尚未掃描 — 從 TWSE 直接取得全市場資料，無需設定觀察清單</small>
+      </div>
+      <button class="btn" onclick="scanMarket()" id="btn-scan">🔍 掃描今日全市場</button>
+      <button class="btn ghost" onclick="pushMarket()">📡 推播排行</button>
+    </div>
+    <hr />
+    <div class="row" style="gap:16px">
+      <div class="pills">
+        <div class="pill active" id="pill-buy" onclick="setView('buyers')">大戶買超 Top 50</div>
+        <div class="pill" id="pill-sell" onclick="setView('sellers')">大戶賣超 Top 50</div>
+      </div>
+      <span id="mkt-count" style="font-size:.8rem;color:var(--muted)"></span>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="tbl-wrap">
       <table>
         <thead>
@@ -221,14 +273,15 @@
             <th>#</th>
             <th>代號</th>
             <th>訊號</th>
-            <th>大戶流向(張)</th>
-            <th>散戶流向(張)</th>
+            <th>大戶流向 (張)</th>
+            <th>散戶流向 (張)</th>
             <th>集中度</th>
-            <th>7日累計(張)</th>
             <th>操作</th>
           </tr>
         </thead>
-        <tbody id="market-tbody"></tbody>
+        <tbody id="mkt-tbody">
+          <tr><td colspan="7" class="empty">點擊「掃描今日全市場」開始，約需 10~30 秒</td></tr>
+        </tbody>
       </table>
     </div>
   </div>
@@ -236,90 +289,67 @@
 </div><!-- /tab-market -->
 
 
-<!-- ═══════════════════════════════════════════════ 設定 ═══ -->
-<div id="tab-settings" class="tab-content">
+<!-- ═══════════════════════ 設定 ═══════════════════════ -->
+<div id="tab-settings" class="tab">
 
-  <div class="settings-grid">
-
+  <div class="sg">
     <div class="card">
-      <h3>Telegram 推播設定</h3>
-      <div class="field" style="margin-bottom:12px">
+      <div class="section-title">Telegram 推播設定</div>
+      <div class="fld" style="margin-bottom:10px">
         <label>Bot Token</label>
         <input type="password" id="tg-token" placeholder="1234567890:ABCDEF..." style="width:100%" />
       </div>
-      <div class="field" style="margin-bottom:16px">
+      <div class="fld" style="margin-bottom:14px">
         <label>Chat ID</label>
-        <input type="text" id="tg-chatid" placeholder="例：-100xxxxxxx 或您的 user_id" style="width:100%" />
+        <input type="text" id="tg-chatid" placeholder="1002700617" style="width:100%" />
       </div>
       <div class="row">
-        <button class="btn sm" onclick="saveTelegram()">💾 儲存</button>
-        <button class="btn sm ghost" onclick="testTelegram()">📨 發送測試</button>
+        <button class="btn sm" onclick="saveTG()">💾 儲存</button>
+        <button class="btn sm ghost" onclick="testTG()">📨 測試</button>
       </div>
-      <div id="tg-status" style="margin-top:10px;font-size:.82rem;color:var(--muted)"></div>
+      <div id="tg-status" style="margin-top:10px;font-size:.81rem;color:var(--muted)"></div>
     </div>
 
     <div class="card">
-      <h3>自訂推播訊息</h3>
-      <div class="field" style="margin-bottom:12px">
-        <label>訊息內容</label>
-        <textarea id="custom-msg" rows="4" placeholder="輸入要推播的訊息..." style="width:100%;background:#0f1117;border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 12px;font-size:.9rem;resize:vertical;outline:none"></textarea>
-      </div>
+      <div class="section-title">自訂推播訊息</div>
+      <textarea id="custom-msg" rows="5" placeholder="輸入要推播的文字..." style="width:100%;resize:vertical;margin-bottom:10px"></textarea>
       <button class="btn sm" onclick="pushCustom()">✈️ 推播</button>
     </div>
-
   </div>
 
   <div class="card">
-    <h3>系統狀態</h3>
-    <div id="sys-status-content" style="font-size:.85rem;line-height:1.8;color:var(--muted)">
-      載入中...
+    <div class="section-title">系統狀態</div>
+    <div id="sys-status" style="font-size:.85rem;line-height:1.9;color:var(--muted)">載入中...</div>
+    <div class="row" style="margin-top:14px;gap:8px">
+      <button class="btn sm ghost" onclick="loadSysStatus()">🔃 重新整理</button>
+      <button class="btn sm danger" onclick="clearBadCache()">🗑️ 清除壞快取（修復全+0）</button>
     </div>
-    <button class="btn sm ghost" onclick="loadStatus()" style="margin-top:12px">🔃 重新整理</button>
   </div>
 
   <div class="card">
-    <h3>推播紀錄</h3>
-    <div id="push-log-content"><div class="loading">載入中...</div></div>
+    <div class="section-title">推播紀錄</div>
+    <div id="push-log"><div class="loading"><span class="spinner"></span>載入中...</div></div>
   </div>
 
 </div><!-- /tab-settings -->
 
 </main>
-
 <div id="toast"></div>
 
 <script>
-// ════════════════════════════════════════════════
-// Toast
-// ════════════════════════════════════════════════
-let toastTimer;
-function toast(msg, err=false) {
+// ───── Toast ─────
+let _tt;
+function toast(msg, err = false) {
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.className = 'show' + (err ? ' err' : '');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.className = '', 3000);
+  clearTimeout(_tt);
+  _tt = setTimeout(() => { el.className = ''; }, 3000);
 }
 
-// ════════════════════════════════════════════════
-// Tab switch
-// ════════════════════════════════════════════════
-function switchTab(name) {
-  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  const btns = document.querySelectorAll('nav button');
-  const tabMap = {stock: 0, market: 1, settings: 2};
-  btns[tabMap[name]].classList.add('active');
-  if (name === 'settings') { loadStatus(); loadPushLog(); loadTgSettings(); }
-  if (name === 'market') { queryMarket(); }
-}
-
-// ════════════════════════════════════════════════
-// API helpers
-// ════════════════════════════════════════════════
-async function api(method, path, body=null) {
-  const opts = { method, headers: {'Content-Type': 'application/json'} };
+// ───── API ─────
+async function api(method, path, body = null) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(path, opts);
   const data = await r.json();
@@ -327,123 +357,195 @@ async function api(method, path, body=null) {
   return data;
 }
 
-// ════════════════════════════════════════════════
-// Status pill
-// ════════════════════════════════════════════════
-async function loadStatusPill() {
+// ───── Tab ─────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  const idx = { watchlist: 0, market: 1, settings: 2 };
+  document.querySelectorAll('nav button')[idx[name]].classList.add('active');
+  if (name === 'settings') { loadSysStatus(); loadPushLog(); loadTGSettings(); }
+}
+
+// ───── Status pill ─────
+async function loadPill() {
   try {
     const s = await api('GET', '/api/status');
     document.getElementById('status-pill').textContent =
-      `cache ${s.cache_count} 筆 · ${s.watchlist_count} 支股票 · CSV ${s.csv_count} 個`;
-  } catch(e) {}
+      `${s.watchlist_count} 支股票 · CSV ${s.csv_count} 個`;
+  } catch (e) {}
 }
 
-// ════════════════════════════════════════════════
-// Watchlist
-// ════════════════════════════════════════════════
-let watchlist = [];
+// ═════════════════════════════ WATCHLIST ═════════════════════════════
+let _detailSid = '';
+let _wlData    = [];  // cached summary
 
+// ── 載入 watchlist summary ──
 async function loadWatchlist() {
-  watchlist = await api('GET', '/api/watchlist');
-  const container = document.getElementById('watchlist-chips');
-  if (!watchlist.length) {
-    container.innerHTML = '<span style="color:var(--muted);font-size:.85rem">尚無股票，請新增</span>';
+  document.getElementById('wl-loading').style.display = 'flex';
+  document.getElementById('wl-empty').style.display = 'none';
+  document.getElementById('wl-table-wrap').style.display = 'none';
+  try {
+    _wlData = await api('GET', '/api/watchlist/summary');
+    renderWatchlist();
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    document.getElementById('wl-loading').style.display = 'none';
+  }
+}
+
+function renderWatchlist() {
+  const tbody = document.getElementById('wl-tbody');
+  if (!_wlData.length) {
+    document.getElementById('wl-empty').style.display = 'block';
+    document.getElementById('wl-table-wrap').style.display = 'none';
     return;
   }
-  container.innerHTML = watchlist.map(w => `
-    <div class="chip">
-      <span>${w.stock_id}${w.name ? ' ' + w.name : ''}</span>
-      <span class="del" onclick="delStock('${w.stock_id}')">✕</span>
-    </div>
-  `).join('');
+  document.getElementById('wl-table-wrap').style.display = 'block';
+  document.getElementById('wl-empty').style.display = 'none';
+
+  tbody.innerHTML = _wlData.map(s => {
+    if (!s.has_data) {
+      return `<tr>
+        <td><b>${s.stock_id}</b></td>
+        <td>${nameCell(s)}</td>
+        <td colspan="5" style="color:var(--muted);font-size:.82rem">尚無資料，請點全部更新</td>
+        <td>
+          <button class="btn sm ghost" onclick="openDetail('${s.stock_id}')">查詢</button>
+          <button class="btn sm danger" style="margin-left:4px" onclick="delStock('${s.stock_id}')">刪除</button>
+        </td>
+      </tr>`;
+    }
+    const level = s.signal_level || 0;
+    const w  = s.whale_flow_lots  || 0;
+    const c7 = s.cum7_whale       || 0;
+    const c  = s.concentration_index || 0;
+    return `<tr class="clickable" onclick="openDetail('${s.stock_id}')">
+      <td><b>${s.stock_id}</b></td>
+      <td>${nameCell(s)}</td>
+      <td><span class="sig-badge sig-${level}">${s.signal_emoji} ${s.signal_title}</span></td>
+      <td class="${w  >= 0 ? 'pos' : 'neg'}">${fmtNum(w)}</td>
+      <td class="${c7 >= 0 ? 'pos' : 'neg'}">${fmtNum(c7)}</td>
+      <td class="${c  >= 0 ? 'pos' : 'neg'}">${c.toFixed(3)}</td>
+      <td class="muted">${s.date || '—'}</td>
+      <td onclick="event.stopPropagation()">
+        <button class="btn sm ghost" onclick="openDetail('${s.stock_id}')">詳細</button>
+        <button class="btn sm danger" style="margin-left:4px" onclick="delStock('${s.stock_id}')">刪除</button>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
-async function addStock() {
-  const sid  = document.getElementById('new-stock-id').value.trim();
-  const name = document.getElementById('new-stock-name').value.trim();
+function nameCell(s) {
+  return `<span class="view-name">${s.name || '<span style="color:var(--muted)">—</span>'}</span>
+    <input class="inline-edit" type="text" value="${s.name || ''}"
+      style="width:90px" onblur="saveName('${s.stock_id}', this.value)"
+      onkeydown="if(event.key==='Enter') this.blur(); if(event.key==='Escape') this.parentElement.classList.remove('editing');"
+      onclick="event.stopPropagation()" />`;
+}
+
+async function addToWatchlist() {
+  const sid  = document.getElementById('add-sid').value.trim().toUpperCase();
+  const name = document.getElementById('add-name').value.trim();
   if (!sid) { toast('請輸入股票代號', true); return; }
   try {
-    await api('POST', '/api/watchlist', {stock_id: sid, name});
-    document.getElementById('new-stock-id').value = '';
-    document.getElementById('new-stock-name').value = '';
+    await api('POST', '/api/watchlist', { stock_id: sid, name });
+    document.getElementById('add-sid').value  = '';
+    document.getElementById('add-name').value = '';
     toast(`已新增 ${sid}`);
     await loadWatchlist();
-  } catch(e) { toast(e.message, true); }
+    await loadPill();
+  } catch (e) { toast(e.message, true); }
 }
 
 async function delStock(sid) {
+  if (!confirm(`確定要刪除 ${sid}？`)) return;
   try {
     await api('DELETE', `/api/watchlist/${sid}`);
     toast(`已刪除 ${sid}`);
+    if (_detailSid === sid) closeDetail();
     await loadWatchlist();
-  } catch(e) { toast(e.message, true); }
+    await loadPill();
+  } catch (e) { toast(e.message, true); }
 }
 
-// ════════════════════════════════════════════════
-// Refresh
-// ════════════════════════════════════════════════
-async function triggerRefresh() {
-  const btn  = document.getElementById('btn-refresh');
+async function saveName(sid, name) {
+  try {
+    await api('PUT', `/api/watchlist/${sid}`, { stock_id: sid, name });
+    const item = _wlData.find(x => x.stock_id === sid);
+    if (item) item.name = name;
+    // remove editing class from all
+    document.querySelectorAll('.editing').forEach(el => el.classList.remove('editing'));
+  } catch (e) { toast(e.message, true); }
+}
+
+// ── 全部更新 ──
+async function refreshAll() {
+  const btn  = document.getElementById('btn-refresh-all');
   const days = parseInt(document.getElementById('backfill-days').value) || 30;
   btn.disabled = true;
   btn.textContent = '⏳ 更新中...';
   try {
-    const r = await api('POST', '/api/refresh', {backfill: days});
-    toast(`更新完成：${r.updated.join(', ')}（${r.days} 天）`);
-    await loadStatusPill();
-  } catch(e) {
+    const r = await api('POST', '/api/refresh', { backfill: days });
+    toast(`✅ 更新完成：${r.updated.join(', ')}（${r.days} 天）`);
+    await loadWatchlist();
+    await loadPill();
+  } catch (e) {
     toast(e.message, true);
   } finally {
     btn.disabled = false;
-    btn.textContent = '🔄 更新資料';
+    btn.textContent = '🔄 全部更新';
   }
 }
 
-// ════════════════════════════════════════════════
-// Stock Query
-// ════════════════════════════════════════════════
-let currentStockRecords = [];
-let currentStockId = '';
-
-async function queryStock() {
-  const sid  = document.getElementById('query-stock-id').value.trim();
-  const days = parseInt(document.getElementById('query-days').value) || 30;
-  if (!sid) { toast('請輸入股票代號', true); return; }
+// ── 個股詳細 ──
+async function openDetail(sid) {
+  _detailSid = sid;
+  const panel = document.getElementById('detail-panel');
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('detail-title').textContent = `${sid} 詳細分析`;
+  document.getElementById('detail-signal').textContent = '';
+  document.getElementById('detail-metrics').innerHTML =
+    '<div class="loading" style="grid-column:1/-1"><span class="spinner"></span>載入中...</div>';
+  document.getElementById('detail-tbody').innerHTML = '';
   try {
-    const r = await api('GET', `/api/stock/${sid}?days=${days}`);
-    currentStockRecords = r.data;
-    currentStockId = sid;
-    renderStockTable(sid, r.data);
-  } catch(e) {
+    const r = await api('GET', `/api/stock/${sid}?days=30`);
+    renderDetail(sid, r.data);
+  } catch (e) {
     toast(e.message, true);
+    document.getElementById('detail-metrics').innerHTML =
+      `<div style="color:var(--red)">${e.message}</div>`;
   }
 }
 
-function renderStockTable(sid, data) {
+function renderDetail(sid, data) {
   if (!data || !data.length) {
-    document.getElementById('stock-summary').innerHTML = '';
-    document.getElementById('stock-table-card').style.display = 'none';
-    toast('查無資料，請先更新', true);
+    document.getElementById('detail-metrics').innerHTML =
+      '<div style="color:var(--muted)">查無資料，請點「更新資料」</div>';
     return;
   }
-
   const latest = data[data.length - 1];
-  const recent7 = data.slice(-7);
-  const cum7 = recent7.reduce((s, r) => s + (r.whale_flow_lots || 0), 0);
+  const cum7   = data.slice(-7).reduce((s, r) => s + (r.whale_flow_lots || 0), 0);
+  const wl     = latest.whale_flow_lots    || 0;
+  const rl     = latest.retail_flow_lots   || 0;
+  const ci     = latest.concentration_index || 0;
 
-  // Summary cards
-  document.getElementById('stock-summary').innerHTML = `
-    <div class="metric">
-      <div class="lbl">最新訊號</div>
-      <div class="val" style="font-size:1.2rem">${latest.signal_emoji} ${latest.signal_title}</div>
-    </div>
+  const level = latest.signal_level || 0;
+  document.getElementById('detail-title').textContent  = `${sid} 詳細分析`;
+  document.getElementById('detail-signal').innerHTML   =
+    `<span class="sig-badge sig-${level}">${latest.signal_emoji} ${latest.signal_title}</span>`;
+  document.getElementById('detail-meta').textContent   = `· ${data.length} 筆 · 最新 ${latest.date}`;
+
+  document.getElementById('detail-metrics').innerHTML = `
     <div class="metric">
       <div class="lbl">大戶流向（今日）</div>
-      <div class="val ${latest.whale_flow_lots >= 0 ? 'pos' : 'neg'}">${fmtNum(latest.whale_flow_lots)} 張</div>
+      <div class="val ${wl >= 0 ? 'pos' : 'neg'}">${fmtNum(wl)} 張</div>
     </div>
     <div class="metric">
       <div class="lbl">散戶流向（今日）</div>
-      <div class="val ${latest.retail_flow_lots >= 0 ? 'pos' : 'neg'}">${fmtNum(latest.retail_flow_lots)} 張</div>
+      <div class="val ${rl >= 0 ? 'pos' : 'neg'}">${fmtNum(rl)} 張</div>
     </div>
     <div class="metric">
       <div class="lbl">7日累計大戶</div>
@@ -451,172 +553,232 @@ function renderStockTable(sid, data) {
     </div>
     <div class="metric">
       <div class="lbl">集中度</div>
-      <div class="val">${(latest.concentration_index || 0).toFixed(3)}</div>
+      <div class="val ${ci >= 0 ? 'pos' : 'neg'}">${ci.toFixed(3)}</div>
     </div>
   `;
 
-  document.getElementById('stock-title').textContent = `${sid} · ${data.length} 筆`;
-  const tbody = document.getElementById('stock-tbody');
-  const rows = [...data].reverse();
-  tbody.innerHTML = rows.map(r => `
-    <tr>
+  document.getElementById('detail-tbody').innerHTML = [...data].reverse().map(r => {
+    const w = r.whale_flow_lots  || 0;
+    const re = r.retail_flow_lots || 0;
+    const c  = r.concentration_index || 0;
+    const c7 = r.cum7_whale || 0;
+    const lv = r.signal_level || 0;
+    return `<tr>
       <td>${r.date}</td>
-      <td class="${r.whale_flow_lots >= 0 ? 'pos' : 'neg'}">${fmtNum(r.whale_flow_lots)}</td>
-      <td class="${r.retail_flow_lots >= 0 ? 'pos' : 'neg'}">${fmtNum(r.retail_flow_lots)}</td>
-      <td class="${r.concentration_index >= 0 ? 'pos' : 'neg'}">${(r.concentration_index || 0).toFixed(3)}</td>
-      <td class="${(r.cum7_whale || 0) >= 0 ? 'pos' : 'neg'}">${fmtNum(r.cum7_whale)}</td>
-      <td>${r.signal_emoji} ${r.signal_title}</td>
-    </tr>
-  `).join('');
-  document.getElementById('stock-table-card').style.display = 'block';
+      <td class="${w  >= 0 ? 'pos' : 'neg'}">${fmtNum(w)}</td>
+      <td class="${re >= 0 ? 'pos' : 'neg'}">${fmtNum(re)}</td>
+      <td class="${c  >= 0 ? 'pos' : 'neg'}">${c.toFixed(3)}</td>
+      <td class="${c7 >= 0 ? 'pos' : 'neg'}">${fmtNum(c7)}</td>
+      <td><span class="sig-badge sig-${lv}">${r.signal_emoji || '⚪'} ${r.signal_title || '—'}</span></td>
+    </tr>`;
+  }).join('');
 }
 
-async function pushStock() {
-  const sid = currentStockId || document.getElementById('query-stock-id').value.trim();
-  if (!sid) { toast('請先查詢個股', true); return; }
+async function refreshSingle() {
+  if (!_detailSid) return;
+  const btn = document.getElementById('btn-detail-refresh');
+  btn.disabled = true;
+  btn.textContent = '更新中...';
   try {
-    await api('POST', `/api/telegram/push/${sid}`);
-    toast(`✅ ${sid} 推播成功`);
-  } catch(e) { toast(e.message, true); }
+    await api('POST', `/api/stock/${_detailSid}/refresh?days=30`);
+    toast(`✅ ${_detailSid} 更新完成`);
+    await openDetail(_detailSid);
+    await loadWatchlist();
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '更新資料';
+  }
 }
 
-// ════════════════════════════════════════════════
-// Market Rankings
-// ════════════════════════════════════════════════
-async function queryMarket() {
-  const dt  = document.getElementById('market-date').value.trim();
-  const top = parseInt(document.getElementById('market-top').value) || 30;
+async function pushSingle() {
+  if (!_detailSid) return;
   try {
-    const r = await api('GET', `/api/market/rankings?date=${dt}&top=${top}`);
-    renderMarketTable(r.data, r.date);
-  } catch(e) { toast(e.message, true); }
+    await api('POST', `/api/telegram/push/${_detailSid}`);
+    toast(`✅ ${_detailSid} 推播成功`);
+  } catch (e) { toast(e.message, true); }
 }
 
-function renderMarketTable(data, dt) {
-  const tbody = document.getElementById('market-tbody');
-  if (!data || !data.length) {
-    tbody.innerHTML = `<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:30px">無資料（請先在個股頁更新）</td></tr>`;
+function closeDetail() {
+  document.getElementById('detail-panel').style.display = 'none';
+  _detailSid = '';
+}
+
+// ═════════════════════════════ MARKET SCAN ═════════════════════════════
+let _mkt = { buyers: [], sellers: [] };
+let _mktView = 'buyers';
+
+async function scanMarket() {
+  const btn = document.getElementById('btn-scan');
+  btn.disabled = true;
+  btn.textContent = '⏳ 掃描中...';
+  document.getElementById('mkt-tbody').innerHTML =
+    `<tr><td colspan="7" class="empty"><span class="spinner" style="display:inline-block;vertical-align:middle;margin-right:8px"></span>正在抓取 TWSE 資料...</td></tr>`;
+  try {
+    const r = await api('GET', '/api/market/scan?top=50');
+    _mkt.buyers  = r.top_buyers  || [];
+    _mkt.sellers = r.top_sellers || [];
+    const now = new Date().toLocaleTimeString('zh-TW');
+    document.getElementById('scan-meta').textContent =
+      `${r.date} · 共 ${r.total} 支上市股票 · 掃描完成 ${now}`;
+    renderMarket();
+  } catch (e) {
+    toast(e.message, true);
+    document.getElementById('mkt-tbody').innerHTML =
+      `<tr><td colspan="7" class="empty" style="color:var(--red)">掃描失敗：${e.message}</td></tr>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔍 掃描今日全市場';
+  }
+}
+
+function setView(v) {
+  _mktView = v;
+  document.getElementById('pill-buy').classList.toggle('active', v === 'buyers');
+  document.getElementById('pill-sell').classList.toggle('active', v === 'sellers');
+  renderMarket();
+}
+
+function renderMarket() {
+  const data  = _mkt[_mktView] || [];
+  const tbody = document.getElementById('mkt-tbody');
+  document.getElementById('mkt-count').textContent = data.length ? `顯示 ${data.length} 支` : '';
+
+  if (!data.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty">點擊「掃描今日全市場」取得資料</td></tr>`;
     return;
   }
-  tbody.innerHTML = data.map((r, i) => `
-    <tr>
-      <td>${i+1}</td>
+  tbody.innerHTML = data.map((r, i) => {
+    const w  = r.whale_flow_lots  || 0;
+    const re = r.retail_flow_lots || 0;
+    const c  = r.concentration_index || 0;
+    const lv = r.signal_level || 0;
+    return `<tr class="clickable" onclick="addFromMarket('${r.stock_id}')">
+      <td class="muted">${i + 1}</td>
       <td><b>${r.stock_id}</b></td>
-      <td>${r.signal_emoji} ${r.signal_title}</td>
-      <td class="${r.whale_flow_lots >= 0 ? 'pos' : 'neg'}">${fmtNum(r.whale_flow_lots)}</td>
-      <td class="${r.retail_flow_lots >= 0 ? 'pos' : 'neg'}">${fmtNum(r.retail_flow_lots)}</td>
-      <td class="${r.concentration_index >= 0 ? 'pos' : 'neg'}">${(r.concentration_index || 0).toFixed(3)}</td>
-      <td class="${(r.cum7_whale || 0) >= 0 ? 'pos' : 'neg'}">${fmtNum(r.cum7_whale)}</td>
-      <td>
-        <button class="btn sm ghost" onclick="pushSingleFromMarket('${r.stock_id}')">✈️</button>
+      <td><span class="sig-badge sig-${lv}">${r.signal_emoji} ${r.signal_title}</span></td>
+      <td class="${w  >= 0 ? 'pos' : 'neg'}">${fmtNum(w)}</td>
+      <td class="${re >= 0 ? 'pos' : 'neg'}">${fmtNum(re)}</td>
+      <td class="${c  >= 0 ? 'pos' : 'neg'}">${c.toFixed(3)}</td>
+      <td onclick="event.stopPropagation()">
+        <button class="btn sm ghost" onclick="addFromMarket('${r.stock_id}')">+ 加入清單</button>
       </td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
 }
 
-async function pushSingleFromMarket(sid) {
+async function addFromMarket(sid) {
   try {
-    await api('POST', `/api/telegram/push/${sid}`);
-    toast(`✅ ${sid} 推播成功`);
-  } catch(e) { toast(e.message, true); }
+    await api('POST', '/api/watchlist', { stock_id: sid, name: '' });
+    toast(`已加入觀察清單：${sid}`);
+  } catch (e) { toast(e.message, true); }
 }
 
 async function pushMarket() {
-  const dt  = document.getElementById('market-date').value.trim();
-  const top = parseInt(document.getElementById('market-top').value) || 30;
+  const data = _mkt.buyers.slice(0, 20);
+  if (!data.length) { toast('請先掃描市場', true); return; }
+  const meta = document.getElementById('scan-meta').textContent.slice(0, 8);
+  const lines = [`<b>📊 大戶買超排行 — ${meta}</b>`, ''];
+  data.forEach((r, i) => {
+    lines.push(`${String(i + 1).padStart(2)}. ${r.signal_emoji} <b>${r.stock_id}</b>  ${fmtNum(r.whale_flow_lots)} 張`);
+  });
   try {
-    await api('POST', '/api/telegram/push-market', {date: dt || null, top});
-    toast('📡 全市場排行推播成功');
-  } catch(e) { toast(e.message, true); }
+    await api('POST', '/api/telegram/push-custom', { text: lines.join('\n') });
+    toast('📡 市場排行推播成功');
+  } catch (e) { toast(e.message, true); }
 }
 
-// ════════════════════════════════════════════════
-// Settings
-// ════════════════════════════════════════════════
-async function loadTgSettings() {
+// ═════════════════════════════ SETTINGS ═════════════════════════════
+async function loadTGSettings() {
   try {
     const s = await api('GET', '/api/settings');
     document.getElementById('tg-status').textContent =
-      s.has_token ? `Token: ${s.telegram_token_masked}  Chat ID: ${s.telegram_chat_id}` : '尚未設定';
-  } catch(e) {}
+      s.has_token ? `Token: ${s.telegram_token_masked}  Chat: ${s.telegram_chat_id}` : '尚未設定';
+  } catch (e) {}
 }
 
-async function saveTelegram() {
+async function saveTG() {
   const token   = document.getElementById('tg-token').value.trim();
   const chat_id = document.getElementById('tg-chatid').value.trim();
   if (!token || !chat_id) { toast('請填寫 Token 與 Chat ID', true); return; }
   try {
-    await api('POST', '/api/settings/telegram', {token, chat_id});
+    await api('POST', '/api/settings/telegram', { token, chat_id });
     toast('✅ Telegram 設定已儲存');
-    loadTgSettings();
+    loadTGSettings();
     document.getElementById('tg-token').value = '';
-  } catch(e) { toast(e.message, true); }
+  } catch (e) { toast(e.message, true); }
 }
 
-async function testTelegram() {
+async function testTG() {
   try {
     await api('POST', '/api/telegram/test');
-    toast('✅ 測試訊息發送成功，請查看手機');
-  } catch(e) { toast(e.message, true); }
+    toast('✅ 測試訊息發送成功');
+  } catch (e) { toast(e.message, true); }
 }
 
 async function pushCustom() {
   const text = document.getElementById('custom-msg').value.trim();
   if (!text) { toast('請輸入訊息', true); return; }
   try {
-    await api('POST', '/api/telegram/push-custom', {text});
-    toast('✅ 自訂訊息推播成功');
+    await api('POST', '/api/telegram/push-custom', { text });
+    toast('✅ 推播成功');
     document.getElementById('custom-msg').value = '';
-  } catch(e) { toast(e.message, true); }
+  } catch (e) { toast(e.message, true); }
 }
 
-async function loadStatus() {
+async function loadSysStatus() {
   try {
     const s = await api('GET', '/api/status');
-    document.getElementById('sys-status-content').innerHTML = `
-      Cache 筆數：<b>${s.cache_count}</b><br>
-      觀察清單：<b>${s.watchlist_count}</b> 支<br>
-      CSV 檔案：<b>${s.csv_count}</b> 個<br>
+    document.getElementById('sys-status').innerHTML = `
+      觀察清單：<b>${s.watchlist_count}</b> 支 ·
+      Cache：<b>${s.cache_count}</b> 筆 ·
+      CSV：<b>${s.csv_count}</b> 個<br>
       最後更新：<b>${s.last_refresh || '從未'}</b><br>
-      資料目錄：<code style="font-size:.8rem">${s.data_dir}</code>
+      資料目錄：<code>${s.data_dir}</code>
     `;
-  } catch(e) { document.getElementById('sys-status-content').textContent = '無法取得狀態'; }
+  } catch (e) { document.getElementById('sys-status').textContent = '無法取得狀態'; }
+}
+
+async function clearBadCache() {
+  if (!confirm('清除所有 stat ≠ OK 的快取？（下次查詢會重新從 TWSE 抓取）')) return;
+  try {
+    const r = await api('DELETE', '/api/cache');
+    toast(`✅ 已清除 ${r.deleted} 筆壞快取`);
+    loadSysStatus();
+    loadPill();
+  } catch (e) { toast(e.message, true); }
 }
 
 async function loadPushLog() {
   try {
     const logs = await api('GET', '/api/push-log?limit=20');
-    const container = document.getElementById('push-log-content');
-    if (!logs.length) { container.innerHTML = '<div style="color:var(--muted);font-size:.85rem">尚無推播紀錄</div>'; return; }
-    container.innerHTML = logs.map(l => `
-      <div class="log-item">
+    const el   = document.getElementById('push-log');
+    if (!logs.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.84rem">尚無推播紀錄</div>'; return; }
+    el.innerHTML = logs.map(l => `
+      <div class="log-row">
         <span>${l.ok ? '✅' : '❌'}</span>
-        <span style="color:var(--muted)">${(l.pushed_at||'').slice(0,16)}</span>
-        <span><b>${l.stock_id || '-'}</b></span>
+        <span class="muted">${(l.pushed_at || '').slice(0, 16)}</span>
+        <span><b>${l.stock_id || '—'}</b></span>
         <span>${l.signal_emoji || ''} ${l.signal_title || ''}</span>
       </div>
     `).join('');
-  } catch(e) {}
+  } catch (e) {}
 }
 
-// ════════════════════════════════════════════════
-// Helpers
-// ════════════════════════════════════════════════
+// ═════════════════════════════ UTILS ═════════════════════════════
 function fmtNum(n) {
-  if (n == null || n === '') return '-';
+  if (n == null || n === '') return '—';
   const num = parseFloat(n);
-  if (isNaN(num)) return '-';
+  if (isNaN(num)) return '—';
   return (num >= 0 ? '+' : '') + num.toLocaleString('zh-TW');
 }
 
-// ════════════════════════════════════════════════
-// Init
-// ════════════════════════════════════════════════
+// ═════════════════════════════ INIT ═════════════════════════════
 (async function init() {
   await loadWatchlist();
-  await loadStatusPill();
+  await loadPill();
 })();
 </script>
-
 </body>
 </html>

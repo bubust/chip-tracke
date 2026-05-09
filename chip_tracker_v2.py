@@ -28,8 +28,8 @@ TWSE_BASE = "https://www.twse.com.tw/rwd/zh"
 ENDPOINTS = {
     "t86":       f"{TWSE_BASE}/fund/T86",
     "margin":    f"{TWSE_BASE}/marginTrading/MI_MARGN",
-    "sbl":       f"{TWSE_BASE}/SBL/TWT93U",
-    "day_trade": f"{TWSE_BASE}/trading/TWTB4U",
+    "sbl":       f"{TWSE_BASE}/SBL/TWT93U",           # 備用（目前 TWSE 有時重導向）
+    "day_trade": f"{TWSE_BASE}/dayTrading/TWTB4U",    # 2026 新路徑
 }
 
 HEADERS = {
@@ -183,11 +183,14 @@ def last_n_trading_dates(n: int, end: date = None) -> list[date]:
 
 async def _fetch_json(client: httpx.AsyncClient, url: str, params: dict) -> dict:
     try:
-        resp = await client.get(url, params=params, headers=HEADERS, timeout=30)
-        resp.raise_for_status()
+        resp = await client.get(url, params=params, headers=HEADERS, timeout=30,
+                                follow_redirects=True)
+        if resp.status_code != 200:
+            print(f"[WARN] HTTP {resp.status_code} {url}")
+            return {}
         return resp.json()
     except Exception as e:
-        print(f"[WARN] fetch failed {url} {params}: {e}")
+        print(f"[WARN] fetch failed {url} {params}: {type(e).__name__}: {str(e)[:80]}")
         return {}
 
 
@@ -197,7 +200,8 @@ async def fetch_t86(client: httpx.AsyncClient, dt: str) -> dict:
     if cached is not None:
         return cached
     data = await _fetch_json(client, ENDPOINTS["t86"], {"response": "json", "date": dt, "selectType": "ALL"})
-    cache.put(dt, "t86", data)
+    if data.get("stat") == "OK":  # 只 cache 成功的回應，避免壞資料永久留存
+        cache.put(dt, "t86", data)
     return data
 
 
@@ -207,7 +211,8 @@ async def fetch_margin(client: httpx.AsyncClient, dt: str) -> dict:
     if cached is not None:
         return cached
     data = await _fetch_json(client, ENDPOINTS["margin"], {"response": "json", "date": dt, "selectType": "ALL"})
-    cache.put(dt, "margin", data)
+    if data.get("stat") == "OK":
+        cache.put(dt, "margin", data)
     return data
 
 
@@ -217,7 +222,8 @@ async def fetch_sbl(client: httpx.AsyncClient, dt: str) -> dict:
     if cached is not None:
         return cached
     data = await _fetch_json(client, ENDPOINTS["sbl"], {"response": "json", "date": dt})
-    cache.put(dt, "sbl", data)
+    if data.get("stat") == "OK":
+        cache.put(dt, "sbl", data)
     return data
 
 
@@ -227,7 +233,8 @@ async def fetch_day_trade(client: httpx.AsyncClient, dt: str) -> dict:
     if cached is not None:
         return cached
     data = await _fetch_json(client, ENDPOINTS["day_trade"], {"response": "json", "date": dt, "selectType": "ALL"})
-    cache.put(dt, "day_trade", data)
+    if data.get("stat") == "OK":
+        cache.put(dt, "day_trade", data)
     return data
 
 
@@ -569,6 +576,166 @@ def get_market_rankings(dt: str = None, top: int = 30) -> list[dict]:
 
     rankings.sort(key=lambda x: x.get("cum7_whale", 0), reverse=True)
     return rankings[:top]
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 全市場批量解析
+# ════════════════════════════════════════════════════════════════════════════
+
+def parse_t86_all(data: dict) -> dict[str, dict]:
+    """批量解析 T86，回傳 {stock_id: {foreign, trust, ...}}"""
+    result = {}
+    if not data or data.get("stat") != "OK":
+        return result
+    for row in data.get("data", []):
+        if not row or len(row) < 18:
+            continue
+        sid = str(row[0]).strip()
+        if not sid:
+            continue
+        result[sid] = {
+            "foreign":        _to_float(row[4]),
+            "foreign_dealer": _to_float(row[7]),
+            "trust":          _to_float(row[10]),
+            "dealer_self":    _to_float(row[14]),
+            "dealer_hedge":   _to_float(row[17]),
+        }
+    return result
+
+
+def parse_margin_all(data: dict) -> dict[str, dict]:
+    """批量解析融資餘額，回傳 {stock_id: {margin_chg}}"""
+    result = {}
+    if not data or data.get("stat") != "OK":
+        return result
+    tables = data.get("tables", [])
+    candidates = ([tables[1], tables[0]] if len(tables) >= 2
+                  else [tables[0]] if tables else [data])
+    seen: set[str] = set()
+    for tbl in candidates:
+        for row in tbl.get("data", []):
+            if not row or len(row) < 7:
+                continue
+            sid = str(row[0]).strip()
+            if not sid or sid in seen:
+                continue
+            seen.add(sid)
+            result[sid] = {"margin_chg": _to_float(row[5]) - _to_float(row[6])}
+    return result
+
+
+def parse_sbl_all(today_data: dict, prev_data: dict) -> dict[str, dict]:
+    """批量解析借券賣出，回傳 {stock_id: {sbl_chg}}"""
+    def _build_map(data: dict) -> dict[str, float]:
+        m: dict[str, float] = {}
+        if not data or data.get("stat") != "OK":
+            return m
+        fields = data.get("fields", [])
+        col = next((i for i, f in enumerate(fields)
+                    if "借券賣出餘額" in f or "借券賣出數量" in f), None)
+        if col is None:
+            return m
+        for row in data.get("data", []):
+            if not row or len(row) <= col:
+                continue
+            m[str(row[0]).strip()] = _to_float(row[col])
+        return m
+
+    t_map = _build_map(today_data)
+    p_map = _build_map(prev_data)
+    sids  = set(t_map) | set(p_map)
+    return {sid: {"sbl_chg": t_map.get(sid, 0.0) - p_map.get(sid, 0.0)} for sid in sids}
+
+
+def parse_day_trade_all(data: dict) -> dict[str, dict]:
+    """批量解析當沖，回傳 {stock_id: {day_trade_est}}"""
+    result = {}
+    if not data or data.get("stat") != "OK":
+        return result
+    fields = data.get("fields", [])
+    col = next((i for i, f in enumerate(fields)
+                if "當沖買入成交股數" in f or "當沖成交股數" in f), None)
+    if col is None:
+        return result
+    for row in data.get("data", []):
+        if not row or len(row) <= col:
+            continue
+        result[str(row[0]).strip()] = {"day_trade_est": _to_float(row[col])}
+    return result
+
+
+async def scan_market_today(dt: date = None) -> list[dict]:
+    """掃描今日全市場上市股票，從 T86 bulk 一次取得所有股票並計算大戶流向"""
+    if dt is None:
+        dt = date.today()
+    dt_str  = to_twse_date(dt)
+    prev_dt = dt - timedelta(days=1)
+    while not is_trading_day(prev_dt):
+        prev_dt -= timedelta(days=1)
+
+    print(f"[SCAN] 全市場掃描 {dt_str}")
+    async with httpx.AsyncClient() as client:
+        t86_data, margin_data, sbl_today, sbl_prev, day_trade_data = await asyncio.gather(
+            fetch_t86(client, dt_str),
+            fetch_margin(client, dt_str),
+            fetch_sbl(client, dt_str),
+            fetch_sbl(client, to_twse_date(prev_dt)),
+            fetch_day_trade(client, dt_str),
+        )
+
+    if not t86_data or t86_data.get("stat") != "OK":
+        print(f"[SCAN] T86 stat={t86_data.get('stat') if t86_data else 'empty'} — 無資料")
+        return []
+
+    t86_map  = parse_t86_all(t86_data)
+    marg_map = parse_margin_all(margin_data)
+    sbl_map  = parse_sbl_all(sbl_today, sbl_prev)
+    dt_map   = parse_day_trade_all(day_trade_data)
+
+    print(f"[SCAN] T86 股票數={len(t86_map)}")
+    results = []
+    for sid, t86 in t86_map.items():
+        margin  = marg_map.get(sid, {"margin_chg": 0.0})
+        sbl     = sbl_map.get(sid,  {"sbl_chg": 0.0})
+        dt_item = dt_map.get(sid,   {"day_trade_est": 0.0})
+        est     = estimate(t86, margin, sbl, dt_item)
+        sig     = classify_signal(est["whale_flow_lots"], est["concentration_index"],
+                                  est["retail_flow_lots"])
+        results.append({
+            "stock_id":            sid,
+            "date":                dt_str,
+            "whale_flow_lots":     est["whale_flow_lots"],
+            "retail_flow_lots":    est["retail_flow_lots"],
+            "concentration_index": est["concentration_index"],
+            "signal_emoji":        sig["emoji"],
+            "signal_title":        sig["title"],
+            "signal_level":        sig["level"],
+        })
+
+    results.sort(key=lambda x: x["whale_flow_lots"], reverse=True)
+    print(f"[SCAN] 完成，共 {len(results)} 支")
+    return results
+
+
+def clear_bad_cache() -> int:
+    """刪除 stat != OK 的快取資料，回傳刪除筆數"""
+    conn = get_conn()
+    rows = conn.execute("SELECT date, dataset, payload FROM market_raw").fetchall()
+    deleted = 0
+    for row in rows:
+        try:
+            d = json.loads(row["payload"])
+            if d.get("stat") != "OK":
+                conn.execute("DELETE FROM market_raw WHERE date=? AND dataset=?",
+                             (row["date"], row["dataset"]))
+                deleted += 1
+        except Exception:
+            conn.execute("DELETE FROM market_raw WHERE date=? AND dataset=?",
+                         (row["date"], row["dataset"]))
+            deleted += 1
+    conn.commit()
+    conn.close()
+    return deleted
 
 
 # ════════════════════════════════════════════════════════════════════════════
