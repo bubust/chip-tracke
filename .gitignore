@@ -1,0 +1,17 @@
+# SQLite database (contains settings & Telegram token)
+chip_data/cache.db
+
+# CSV data files (generated, can re-fetch)
+chip_data/*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
