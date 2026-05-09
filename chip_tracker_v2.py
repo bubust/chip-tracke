@@ -248,56 +248,78 @@ def find_field(row: list, fields: list, headers: list) -> Optional[float]:
     return None
 
 
+def _to_float(val: str) -> float:
+    """將帶逗號的數字字串轉 float，失敗回傳 0"""
+    try:
+        return float(str(val).replace(",", "").strip())
+    except Exception:
+        return 0.0
+
+
 def parse_t86(data: dict, stock_id: str) -> dict:
-    """解析三大法人資料，回傳各機構買賣超（股）"""
+    """
+    解析三大法人資料，使用固定欄位索引（TWSE T86 格式穩定）
+    Col: 0=代號 1=名稱
+         2=外資買  3=外資賣  4=外資淨(foreign)
+         5=外資自營買 6=外資自營賣 7=外資自營淨(foreign_dealer)
+         8=投信買  9=投信賣  10=投信淨(trust)
+         11=自營合計
+         12=自營自行買 13=自營自行賣 14=自營自行淨(dealer_self)
+         15=自營避險買 16=自營避險賣 17=自營避險淨(dealer_hedge)
+    """
     result = {k: 0.0 for k in ["foreign", "foreign_dealer", "trust", "dealer_self", "dealer_hedge"]}
     if not data or data.get("stat") != "OK":
         return result
 
-    fields = data.get("fields", [])
-    rows = data.get("data", [])
-
-    for row in rows:
+    for row in data.get("data", []):
         if not row or row[0] != stock_id:
             continue
-        # 欄位順序：證券代號, 證券名稱, 外資買, 外資賣, 外資淨, 外資自營買, ...投信..., 自營商自行..., 自營商避險...
-        result["foreign"]        = find_field(row, ["外資及陸資(不含外資自營商)-買賣超股數", "外資及陸資買賣超股數", "外資-買賣超股數"], fields) or 0.0
-        result["foreign_dealer"] = find_field(row, ["外資自營商-買賣超股數", "外資自營商買賣超股數"], fields) or 0.0
-        result["trust"]          = find_field(row, ["投信-買賣超股數", "投信買賣超股數"], fields) or 0.0
-        result["dealer_self"]    = find_field(row, ["自營商(自行買賣)-買賣超股數", "自營商自行買賣買賣超股數"], fields) or 0.0
-        result["dealer_hedge"]   = find_field(row, ["自營商(避險)-買賣超股數", "自營商避險買賣超股數"], fields) or 0.0
-
-        # 若外資欄位找不到，試第 4 欄（通常是外資淨買賣超）
-        if result["foreign"] == 0.0 and len(row) > 4:
-            try:
-                result["foreign"] = float(row[4].replace(",", ""))
-            except Exception:
-                pass
+        if len(row) >= 18:
+            result["foreign"]        = _to_float(row[4])
+            result["foreign_dealer"] = _to_float(row[7])
+            result["trust"]          = _to_float(row[10])
+            result["dealer_self"]    = _to_float(row[14])
+            result["dealer_hedge"]   = _to_float(row[17])
         break
 
     return result
 
 
 def parse_margin(data: dict, stock_id: str) -> dict:
-    """解析融資融券，回傳融資餘額變化（張）"""
+    """
+    解析融資融券，回傳融資餘額變化（張）
+    MI_MARGN 回傳 tables 陣列，融資表在 tables[1]（tables[0] 是融券）
+    Col: 0=代號 1=名稱 2=融資買進 3=融資賣出 4=現金償還
+         5=融資餘額(今日) 6=前日融資餘額 → 增減 = row[5] - row[6]
+    """
     result = {"margin_chg": 0.0}
     if not data or data.get("stat") != "OK":
         return result
 
-    # MI_MARGN 可能有多個 table
     tables = data.get("tables", [])
-    if not tables:
-        rows = data.get("data", [])
-        fields = data.get("fields", [])
-    else:
-        rows = tables[0].get("data", [])
-        fields = tables[0].get("fields", [])
+    # 優先找 tables[1]（融資表），其次 tables[0]，最後直接 data
+    candidates = []
+    if len(tables) >= 2:
+        candidates = [tables[1], tables[0]]
+    elif len(tables) == 1:
+        candidates = [tables[0]]
 
-    for row in rows:
+    for tbl in candidates:
+        for row in tbl.get("data", []):
+            if not row or row[0] != stock_id:
+                continue
+            if len(row) >= 7:
+                today = _to_float(row[5])
+                prev  = _to_float(row[6])
+                result["margin_chg"] = today - prev
+            return result
+
+    # fallback：直接 data
+    for row in data.get("data", []):
         if not row or row[0] != stock_id:
             continue
-        chg = find_field(row, ["融資增減", "融資-增減", "融資餘額增減"], fields)
-        result["margin_chg"] = chg or 0.0
+        if len(row) >= 7:
+            result["margin_chg"] = _to_float(row[5]) - _to_float(row[6])
         break
 
     return result
