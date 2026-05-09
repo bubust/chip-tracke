@@ -323,6 +323,16 @@
   </div>
 
   <div class="card">
+    <div class="section-title">觀察清單備份</div>
+    <p style="font-size:.83rem;color:var(--muted);margin:0 0 12px">伺服器重啟後觀察清單會消失，請先匯出備份，重啟後再匯入還原。</p>
+    <div class="row" style="gap:8px;flex-wrap:wrap">
+      <button class="btn sm ghost" onclick="exportWatchlist()">📥 匯出清單（JSON）</button>
+      <button class="btn sm ghost" onclick="document.getElementById('import-file').click()">📤 匯入清單</button>
+      <input type="file" id="import-file" accept=".json" style="display:none" onchange="importWatchlist(this)">
+    </div>
+  </div>
+
+  <div class="card">
     <div class="section-title">系統狀態</div>
     <div id="sys-status" style="font-size:.85rem;line-height:1.9;color:var(--muted)">載入中...</div>
     <div class="row" style="margin-top:14px;gap:8px">
@@ -785,6 +795,37 @@ async function loadSysStatus() {
       資料目錄：<code>${s.data_dir}</code>
     `;
   } catch (e) { document.getElementById('sys-status').textContent = '無法取得狀態'; }
+}
+
+async function exportWatchlist() {
+  try {
+    const list = await api('GET', '/api/watchlist');
+    const blob = new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `watchlist_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    toast(`✅ 已匯出 ${list.length} 支股票`);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function importWatchlist(input) {
+  const file = input.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const list = JSON.parse(text);
+    if (!Array.isArray(list)) throw new Error('格式錯誤');
+    let ok = 0;
+    for (const item of list) {
+      if (!item.stock_id) continue;
+      await api('POST', '/api/watchlist', { stock_id: item.stock_id, name: item.name || '' });
+      ok++;
+    }
+    toast(`✅ 已匯入 ${ok} 支股票`);
+    loadWatchlist();
+  } catch (e) { toast('匯入失敗：' + e.message, true); }
+  input.value = '';
 }
 
 async function clearBadCache() {

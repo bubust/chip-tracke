@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+chip_data/
+.git/
+.gitignore
+render.yaml
