@@ -200,7 +200,8 @@ async def fetch_t86(client: httpx.AsyncClient, dt: str) -> dict:
     if cached is not None:
         return cached
     data = await _fetch_json(client, ENDPOINTS["t86"], {"response": "json", "date": dt, "selectType": "ALL"})
-    if data.get("stat") == "OK":  # 只 cache 成功的回應，避免壞資料永久留存
+    # 只 cache stat=OK 且 data 陣列非空的回應（3:30pm 前可能回傳 stat=OK 但 data=[]）
+    if data.get("stat") == "OK" and data.get("data"):
         cache.put(dt, "t86", data)
     return data
 
@@ -557,6 +558,10 @@ async def update_stocks(
             dt_str = to_twse_date(dt)
             raw = raw_by_date.get(dt_str, {})
 
+            # T86 是主要資料來源；stat != OK 表示 API 封鎖或無資料，跳過此日不寫零
+            if raw.get("t86", {}).get("stat") != "OK":
+                continue
+
             t86_parsed   = parse_t86(raw.get("t86", {}), stock_id)
             margin_parsed = parse_margin(raw.get("margin", {}), stock_id)
             sbl_parsed   = parse_sbl_day(raw.get("sbl_today", {}), raw.get("sbl_prev", {}), stock_id)
@@ -566,8 +571,30 @@ async def update_stocks(
             rec = {"date": dt_str, **est}
             records.append(rec)
 
-        # 計算 7 日累計 + 連續買超天數
-        df = pd.DataFrame(records).sort_values("date").reset_index(drop=True)
+        # 沒有任何有效日期（全部 API 封鎖）→ 保留現有 CSV，不覆蓋
+        csv_path = DATA_DIR / f"{stock_id}.csv"
+        if not records:
+            print(f"  [SKIP] {stock_id} — 無有效 T86 資料（API 封鎖或非交易日），保留現有資料")
+            results[stock_id] = load_stock_history(stock_id)
+            continue
+
+        # 新資料的日期集合
+        df_new = pd.DataFrame(records).sort_values("date").reset_index(drop=True)
+        new_dates = set(df_new["date"].astype(str))
+
+        # 與現有 CSV 合併：保留舊有日期、用新資料覆蓋重疊日期
+        if csv_path.exists():
+            try:
+                existing_df = pd.read_csv(csv_path, encoding="utf-8-sig")
+                keep_cols = [c for c in df_new.columns if c in existing_df.columns]
+                old_rows = existing_df[~existing_df["date"].astype(str).isin(new_dates)][keep_cols]
+                df = pd.concat([old_rows, df_new[keep_cols]], ignore_index=True).sort_values("date").reset_index(drop=True)
+            except Exception:
+                df = df_new
+        else:
+            df = df_new
+
+        # 計算 7 日累計 + 連續買超天數（在合併後的完整序列上計算）
         df["cum7_whale"]   = df["whale_flow_lots"].rolling(7, min_periods=1).sum()
         df["cum7_retail"]  = df["retail_flow_lots"].rolling(7, min_periods=1).sum()
         df["cum7_foreign"] = df["foreign_lots"].rolling(7, min_periods=1).sum()
@@ -597,11 +624,10 @@ async def update_stocks(
         df["signal_level"] = [s["level"] for s in signals]
 
         # 存 CSV
-        csv_path = DATA_DIR / f"{stock_id}.csv"
         df.to_csv(csv_path, index=False, encoding="utf-8-sig")
 
         results[stock_id] = df.to_dict(orient="records")
-        print(f"  [DONE] {stock_id} → {len(records)} 筆，最新訊號: {signals[-1]['emoji']} {signals[-1]['title']}")
+        print(f"  [DONE] {stock_id} → {len(df)} 筆（新增 {len(records)} 筆），最新訊號: {signals[-1]['emoji']} {signals[-1]['title']}")
 
     return results
 
@@ -743,7 +769,8 @@ async def scan_market_today(dt: date = None) -> tuple[list[dict], str]:
             dt_str = to_twse_date(dt)
             print(f"[SCAN] 嘗試 {dt_str}")
             t86_data = await fetch_t86(client, dt_str)
-            if t86_data and t86_data.get("stat") == "OK":
+            # stat=OK 且 data 有內容才算找到
+            if t86_data and t86_data.get("stat") == "OK" and t86_data.get("data"):
                 break
             dt -= timedelta(days=1)
         else:
@@ -806,14 +833,18 @@ async def scan_market_today(dt: date = None) -> tuple[list[dict], str]:
 
 
 def clear_bad_cache() -> int:
-    """刪除 stat != OK 的快取資料，回傳刪除筆數"""
+    """刪除 stat != OK 或 data=[] 的快取資料，回傳刪除筆數"""
     conn = get_conn()
     rows = conn.execute("SELECT date, dataset, payload FROM market_raw").fetchall()
     deleted = 0
     for row in rows:
         try:
             d = json.loads(row["payload"])
-            if d.get("stat") != "OK":
+            # 清除 stat!=OK，或 stat=OK 但 data 陣列為空（收盤前被 cache 的空回應）
+            bad = d.get("stat") != "OK" or (
+                "data" in d and not d.get("data")
+            )
+            if bad:
                 conn.execute("DELETE FROM market_raw WHERE date=? AND dataset=?",
                              (row["date"], row["dataset"]))
                 deleted += 1
