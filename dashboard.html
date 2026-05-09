@@ -226,10 +226,14 @@
             <thead>
               <tr>
                 <th>日期</th>
-                <th>大戶流向 (張)</th>
-                <th>散戶流向 (張)</th>
-                <th>集中度</th>
-                <th>7日累計大戶</th>
+                <th>外資 (張)</th>
+                <th>投信 (張)</th>
+                <th>自營自行 (張)</th>
+                <th>法人合計 (張)</th>
+                <th>融資增減 (張)</th>
+                <th>背離</th>
+                <th>連續買</th>
+                <th>7日累計</th>
                 <th>訊號</th>
               </tr>
             </thead>
@@ -273,14 +277,15 @@
             <th>#</th>
             <th>代號</th>
             <th>訊號</th>
-            <th>大戶流向 (張)</th>
-            <th>散戶流向 (張)</th>
-            <th>集中度</th>
+            <th>法人合計 (張)</th>
+            <th>外資 (張)</th>
+            <th>投信 (張)</th>
+            <th>融資增減 (張)</th>
             <th>操作</th>
           </tr>
         </thead>
         <tbody id="mkt-tbody">
-          <tr><td colspan="7" class="empty">點擊「掃描今日全市場」開始，約需 10~30 秒</td></tr>
+          <tr><td colspan="8" class="empty">點擊「掃描今日全市場」開始，約需 10~30 秒</td></tr>
         </tbody>
       </table>
     </div>
@@ -520,6 +525,13 @@ async function openDetail(sid) {
   }
 }
 
+function divergenceTag(whale, retail) {
+  if (whale < 0 && retail > 0) return '<span style="color:var(--red);font-size:.78rem;font-weight:700">⚠️接盤</span>';
+  if (whale > 0 && retail < 0) return '<span style="color:var(--green);font-size:.78rem;font-weight:700">✓建倉</span>';
+  if (whale > 0 && retail > 0) return '<span style="color:var(--yellow);font-size:.78rem">跟進</span>';
+  return '<span style="color:var(--muted);font-size:.78rem">—</span>';
+}
+
 function renderDetail(sid, data) {
   if (!data || !data.length) {
     document.getElementById('detail-metrics').innerHTML =
@@ -527,47 +539,80 @@ function renderDetail(sid, data) {
     return;
   }
   const latest = data[data.length - 1];
-  const cum7   = data.slice(-7).reduce((s, r) => s + (r.whale_flow_lots || 0), 0);
-  const wl     = latest.whale_flow_lots    || 0;
-  const rl     = latest.retail_flow_lots   || 0;
-  const ci     = latest.concentration_index || 0;
+  const wl  = latest.whale_flow_lots    || 0;
+  const rl  = latest.retail_flow_lots   || 0;
+  const ci  = latest.concentration_index || 0;
+  const fl  = latest.foreign_lots       || 0;
+  const tl  = latest.trust_lots         || 0;
+  const dl  = latest.dealer_self_lots   || 0;
+  const c7w = latest.cum7_whale         || 0;
+  const c7f = latest.cum7_foreign       || 0;
+  const c7t = latest.cum7_trust         || 0;
+  const cb  = latest.consecutive_buy    || 0;
+  const lv  = latest.signal_level       || 0;
 
-  const level = latest.signal_level || 0;
-  document.getElementById('detail-title').textContent  = `${sid} 詳細分析`;
-  document.getElementById('detail-signal').innerHTML   =
-    `<span class="sig-badge sig-${level}">${latest.signal_emoji} ${latest.signal_title}</span>`;
-  document.getElementById('detail-meta').textContent   = `· ${data.length} 筆 · 最新 ${latest.date}`;
+  document.getElementById('detail-title').textContent = `${sid} 詳細分析`;
+  document.getElementById('detail-signal').innerHTML  =
+    `<span class="sig-badge sig-${lv}">${latest.signal_emoji} ${latest.signal_title}</span>`;
+  document.getElementById('detail-meta').textContent  = `· ${data.length} 筆 · 最新 ${latest.date}`;
 
   document.getElementById('detail-metrics').innerHTML = `
     <div class="metric">
-      <div class="lbl">大戶流向（今日）</div>
+      <div class="lbl">外資（今日）</div>
+      <div class="val ${fl >= 0 ? 'pos' : 'neg'}">${fmtNum(fl)} 張</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">投信（今日）</div>
+      <div class="val ${tl >= 0 ? 'pos' : 'neg'}">${fmtNum(tl)} 張</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">自營自行（今日）</div>
+      <div class="val ${dl >= 0 ? 'pos' : 'neg'}">${fmtNum(dl)} 張</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">法人合計（今日）</div>
       <div class="val ${wl >= 0 ? 'pos' : 'neg'}">${fmtNum(wl)} 張</div>
     </div>
     <div class="metric">
-      <div class="lbl">散戶流向（今日）</div>
+      <div class="lbl">融資增減（今日）</div>
       <div class="val ${rl >= 0 ? 'pos' : 'neg'}">${fmtNum(rl)} 張</div>
     </div>
     <div class="metric">
-      <div class="lbl">7日累計大戶</div>
-      <div class="val ${cum7 >= 0 ? 'pos' : 'neg'}">${fmtNum(cum7)} 張</div>
+      <div class="lbl">7日外資累計</div>
+      <div class="val ${c7f >= 0 ? 'pos' : 'neg'}">${fmtNum(c7f)} 張</div>
     </div>
     <div class="metric">
-      <div class="lbl">集中度</div>
-      <div class="val ${ci >= 0 ? 'pos' : 'neg'}">${ci.toFixed(3)}</div>
+      <div class="lbl">7日投信累計</div>
+      <div class="val ${c7t >= 0 ? 'pos' : 'neg'}">${fmtNum(c7t)} 張</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">7日法人累計</div>
+      <div class="val ${c7w >= 0 ? 'pos' : 'neg'}">${fmtNum(c7w)} 張</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">連續買超天數</div>
+      <div class="val ${cb > 0 ? 'pos' : 'muted'}">${cb > 0 ? cb + ' 天' : '—'}</div>
     </div>
   `;
 
   document.getElementById('detail-tbody').innerHTML = [...data].reverse().map(r => {
-    const w = r.whale_flow_lots  || 0;
-    const re = r.retail_flow_lots || 0;
-    const c  = r.concentration_index || 0;
-    const c7 = r.cum7_whale || 0;
-    const lv = r.signal_level || 0;
+    const f  = r.foreign_lots      || 0;
+    const t  = r.trust_lots        || 0;
+    const d  = r.dealer_self_lots  || 0;
+    const w  = r.whale_flow_lots   || 0;
+    const re = r.retail_flow_lots  || 0;
+    const c7 = r.cum7_whale        || 0;
+    const lv = r.signal_level      || 0;
+    const cb = r.consecutive_buy   || 0;
     return `<tr>
       <td>${r.date}</td>
+      <td class="${f  >= 0 ? 'pos' : 'neg'}">${fmtNum(f)}</td>
+      <td class="${t  >= 0 ? 'pos' : 'neg'}">${fmtNum(t)}</td>
+      <td class="${d  >= 0 ? 'pos' : 'neg'}">${fmtNum(d)}</td>
       <td class="${w  >= 0 ? 'pos' : 'neg'}">${fmtNum(w)}</td>
       <td class="${re >= 0 ? 'pos' : 'neg'}">${fmtNum(re)}</td>
-      <td class="${c  >= 0 ? 'pos' : 'neg'}">${c.toFixed(3)}</td>
+      <td>${divergenceTag(w, re)}</td>
+      <td class="muted">${cb > 0 ? cb + 'd' : '—'}</td>
       <td class="${c7 >= 0 ? 'pos' : 'neg'}">${fmtNum(c7)}</td>
       <td><span class="sig-badge sig-${lv}">${r.signal_emoji || '⚪'} ${r.signal_title || '—'}</span></td>
     </tr>`;
@@ -646,21 +691,23 @@ function renderMarket() {
   document.getElementById('mkt-count').textContent = data.length ? `顯示 ${data.length} 支` : '';
 
   if (!data.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="empty">點擊「掃描今日全市場」取得資料</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="empty">點擊「掃描今日全市場」取得資料</td></tr>`;
     return;
   }
   tbody.innerHTML = data.map((r, i) => {
     const w  = r.whale_flow_lots  || 0;
     const re = r.retail_flow_lots || 0;
-    const c  = r.concentration_index || 0;
-    const lv = r.signal_level || 0;
+    const fl = r.foreign_lots     || 0;
+    const tl = r.trust_lots       || 0;
+    const lv = r.signal_level     || 0;
     return `<tr class="clickable" onclick="addFromMarket('${r.stock_id}')">
       <td class="muted">${i + 1}</td>
       <td><b>${r.stock_id}</b></td>
       <td><span class="sig-badge sig-${lv}">${r.signal_emoji} ${r.signal_title}</span></td>
       <td class="${w  >= 0 ? 'pos' : 'neg'}">${fmtNum(w)}</td>
+      <td class="${fl >= 0 ? 'pos' : 'neg'}">${fmtNum(fl)}</td>
+      <td class="${tl >= 0 ? 'pos' : 'neg'}">${fmtNum(tl)}</td>
       <td class="${re >= 0 ? 'pos' : 'neg'}">${fmtNum(re)}</td>
-      <td class="${c  >= 0 ? 'pos' : 'neg'}">${c.toFixed(3)}</td>
       <td onclick="event.stopPropagation()">
         <button class="btn sm ghost" onclick="addFromMarket('${r.stock_id}')">+ 加入清單</button>
       </td>

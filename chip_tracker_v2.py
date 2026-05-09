@@ -379,14 +379,15 @@ def parse_day_trade(data: dict, stock_id: str) -> dict:
 
 def estimate(t86: dict, margin: dict, sbl: dict, day_trade: dict) -> dict:
     """
-    加權計算大戶/散戶流向
-    回傳 dict with: whale_flow_lots, retail_flow_lots, concentration_index
+    加權計算法人/散戶流向（v2）
+    重要改動：移除自營避險（dealer_hedge）
+    — 自營避險是發行認購權證的對沖買盤，與主動看多無關，納入計算會高估買進訊號
     """
     foreign        = t86.get("foreign",        0.0)
     foreign_dealer = t86.get("foreign_dealer", 0.0)
     trust          = t86.get("trust",          0.0)
     dealer_self    = t86.get("dealer_self",    0.0)
-    dealer_hedge   = t86.get("dealer_hedge",   0.0)
+    # dealer_hedge 刻意不納入計算
     sbl_chg        = sbl.get("sbl_chg",        0.0)
     day_trade_est  = day_trade.get("day_trade_est", 0.0)
     margin_chg     = margin.get("margin_chg",   0.0)
@@ -395,14 +396,19 @@ def estimate(t86: dict, margin: dict, sbl: dict, day_trade: dict) -> dict:
         foreign        * WEIGHTS["foreign"]        +
         foreign_dealer * WEIGHTS["foreign_dealer"] +
         trust          * WEIGHTS["trust"]          +
-        dealer_self    * WEIGHTS["dealer_self"]    +
-        dealer_hedge   * WEIGHTS["dealer_hedge"]   +
-        sbl_chg        * WEIGHTS["sbl"]            +
-        day_trade_est  * WEIGHTS["day_trade"]
+        dealer_self    * WEIGHTS["dealer_self"]
+        # dealer_hedge 排除
+        + sbl_chg      * WEIGHTS["sbl"]
+        + day_trade_est * WEIGHTS["day_trade"]
     )
 
     whale_flow_lots  = round(whale_shares / 1000)
-    retail_flow_lots = margin_chg  # 融資餘額變化（張）
+    retail_flow_lots = round(margin_chg)   # 融資餘額變化（張）
+
+    # 各法人分拆（股 → 張）
+    foreign_lots     = round(foreign / 1000)
+    trust_lots       = round(trust / 1000)
+    dealer_self_lots = round(dealer_self / 1000)
 
     denom = abs(whale_flow_lots) + abs(retail_flow_lots) + 1
     concentration_index = whale_flow_lots / denom
@@ -411,12 +417,9 @@ def estimate(t86: dict, margin: dict, sbl: dict, day_trade: dict) -> dict:
         "whale_flow_lots":     whale_flow_lots,
         "retail_flow_lots":    retail_flow_lots,
         "concentration_index": round(concentration_index, 4),
-        # 原始分項（供除錯）
-        "_foreign":        round(foreign / 1000),
-        "_trust":          round(trust / 1000),
-        "_dealer_self":    round(dealer_self / 1000),
-        "_sbl_chg":        round(sbl_chg / 1000),
-        "_day_trade_est":  round(day_trade_est / 1000),
+        "foreign_lots":        foreign_lots,
+        "trust_lots":          trust_lots,
+        "dealer_self_lots":    dealer_self_lots,
     }
 
 
@@ -424,24 +427,65 @@ def estimate(t86: dict, margin: dict, sbl: dict, day_trade: dict) -> dict:
 # 訊號判讀
 # ════════════════════════════════════════════════════════════════════════════
 
-def classify_signal(cum7_whale: float, concentration: float, cum7_retail: float) -> dict:
+def classify_signal(
+    cum7_whale:   float,
+    concentration: float,
+    cum7_retail:  float,
+    cum7_foreign: float = 0.0,
+    cum7_trust:   float = 0.0,
+    consecutive_buy: int = 0,
+) -> dict:
     """
-    依 7 日累計大戶流向 + 集中度 判斷訊號
-    """
-    divergence = cum7_whale < -1500 and cum7_retail > 500  # 大戶賣 + 散戶買
+    三層訊號判讀（v2）
 
-    if divergence:
-        return {"emoji": "🔴⚠️", "title": "派發強警訊", "level": -3}
-    elif cum7_whale > 1500 and concentration > 0.30:
-        return {"emoji": "🟢", "title": "強勢吸籌", "level": 2}
-    elif cum7_whale > 500:
-        return {"emoji": "🟡", "title": "溫和買超", "level": 1}
-    elif cum7_whale < -1500 and concentration < -0.30:
-        return {"emoji": "🔴", "title": "主力出貨", "level": -2}
-    elif cum7_whale < -500:
-        return {"emoji": "🟠", "title": "溫和賣壓", "level": -1}
-    else:
-        return {"emoji": "⚪", "title": "盤整", "level": 0}
+    層一：外資+投信方向 — 同向為強訊號
+    層二：法人 vs 散戶背離 — 最高優先
+    層三：連續性 — consecutive_buy 天數
+
+    訊號矩陣：
+    -3  🔴⚠️  散戶接盤警示（法人賣 + 融資增）
+    -2  🔴    法人出貨
+    -1  🟠    法人溫和賣出
+     0  ⚪    盤整觀望
+     1  🟡    法人溫和買進 / 法人買散戶跟進
+     2  🟢    法人建倉散戶退 / 外資投信同步買
+     3  🟢🟢  外資投信同步建倉（連續4日+）
+    """
+    # ── 層二：背離（最高優先）──────────────────
+    # 法人賣超 + 融資增加 → 法人出貨、散戶接盤（最危險）
+    if cum7_whale < -1000 and cum7_retail > 300:
+        return {"emoji": "🔴⚠️", "title": "散戶接盤警示", "level": -3}
+
+    # ── 層一+三：外資投信同步 + 連續性 ───────────
+    # 外資+投信同步買 + 連續4天以上 → 最強建倉訊號
+    if cum7_foreign > 500 and cum7_trust > 100 and consecutive_buy >= 4:
+        return {"emoji": "🟢🟢", "title": "外資投信同步建倉", "level": 3}
+
+    # ── 層一+二：法人買 + 散戶退場 ───────────────
+    # 法人進、融資減 → 散戶放棄、法人悄悄買（最佳進場信號）
+    if cum7_whale > 500 and cum7_retail < -200:
+        return {"emoji": "🟢", "title": "法人建倉散戶退", "level": 2}
+
+    # 外資+投信同向買（無連續性門檻）
+    if cum7_foreign > 300 and cum7_trust > 50:
+        return {"emoji": "🟢", "title": "外資投信同步買", "level": 2}
+
+    # 法人買 + 散戶也跟（注意後段出貨風險）
+    if cum7_whale > 500 and cum7_retail > 200:
+        return {"emoji": "🟡", "title": "法人買散戶跟進", "level": 1}
+
+    # 法人溫和買進
+    if cum7_whale > 300:
+        return {"emoji": "🟡", "title": "法人溫和買進", "level": 1}
+
+    # ── 賣出訊號 ─────────────────────────────
+    if cum7_whale < -1000:
+        return {"emoji": "🔴", "title": "法人出貨", "level": -2}
+
+    if cum7_whale < -300:
+        return {"emoji": "🟠", "title": "法人溫和賣出", "level": -1}
+
+    return {"emoji": "⚪", "title": "盤整觀望", "level": 0}
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -522,14 +566,31 @@ async def update_stocks(
             rec = {"date": dt_str, **est}
             records.append(rec)
 
-        # 計算 7 日累計訊號
+        # 計算 7 日累計 + 連續買超天數
         df = pd.DataFrame(records).sort_values("date").reset_index(drop=True)
-        df["cum7_whale"]  = df["whale_flow_lots"].rolling(7, min_periods=1).sum()
-        df["cum7_retail"] = df["retail_flow_lots"].rolling(7, min_periods=1).sum()
+        df["cum7_whale"]   = df["whale_flow_lots"].rolling(7, min_periods=1).sum()
+        df["cum7_retail"]  = df["retail_flow_lots"].rolling(7, min_periods=1).sum()
+        df["cum7_foreign"] = df["foreign_lots"].rolling(7, min_periods=1).sum()
+        df["cum7_trust"]   = df["trust_lots"].rolling(7, min_periods=1).sum()
+
+        # 連續買超天數（whale_flow_lots > 0 即算，碰到負值歸零）
+        consec = []
+        cnt = 0
+        for v in df["whale_flow_lots"]:
+            cnt = cnt + 1 if v > 0 else 0
+            consec.append(cnt)
+        df["consecutive_buy"] = consec
 
         signals = []
         for _, row in df.iterrows():
-            sig = classify_signal(row["cum7_whale"], row["concentration_index"], row["cum7_retail"])
+            sig = classify_signal(
+                row["cum7_whale"],
+                row["concentration_index"],
+                row["cum7_retail"],
+                row["cum7_foreign"],
+                row["cum7_trust"],
+                int(row["consecutive_buy"]),
+            )
             signals.append(sig)
         df["signal_emoji"] = [s["emoji"] for s in signals]
         df["signal_title"] = [s["title"] for s in signals]
@@ -715,15 +776,25 @@ async def scan_market_today(dt: date = None) -> tuple[list[dict], str]:
         margin  = marg_map.get(sid, {"margin_chg": 0.0})
         sbl     = sbl_map.get(sid,  {"sbl_chg": 0.0})
         dt_item = dt_map.get(sid,   {"day_trade_est": 0.0})
-        est     = estimate(t86, margin, sbl, dt_item)
-        sig     = classify_signal(est["whale_flow_lots"], est["concentration_index"],
-                                  est["retail_flow_lots"])
+        est = estimate(t86, margin, sbl, dt_item)
+        # 全市場掃描為單日資料，用日線值代替 7 日累計（近似）
+        sig = classify_signal(
+            est["whale_flow_lots"],
+            est["concentration_index"],
+            est["retail_flow_lots"],
+            est["foreign_lots"],
+            est["trust_lots"],
+            0,   # 無歷史資料，不計算連續性
+        )
         results.append({
             "stock_id":            sid,
             "date":                dt_str,
             "whale_flow_lots":     est["whale_flow_lots"],
             "retail_flow_lots":    est["retail_flow_lots"],
             "concentration_index": est["concentration_index"],
+            "foreign_lots":        est["foreign_lots"],
+            "trust_lots":          est["trust_lots"],
+            "dealer_self_lots":    est["dealer_self_lots"],
             "signal_emoji":        sig["emoji"],
             "signal_title":        sig["title"],
             "signal_level":        sig["level"],
