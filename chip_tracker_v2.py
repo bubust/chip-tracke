@@ -664,19 +664,36 @@ def parse_day_trade_all(data: dict) -> dict[str, dict]:
     return result
 
 
-async def scan_market_today(dt: date = None) -> list[dict]:
-    """掃描今日全市場上市股票，從 T86 bulk 一次取得所有股票並計算大戶流向"""
+async def scan_market_today(dt: date = None) -> tuple[list[dict], str]:
+    """
+    掃描全市場上市股票，從 T86 bulk 一次取得所有股票並計算大戶流向。
+    自動往前找最近有資料的交易日（T86 資料約在收盤後 3:30pm 發布）。
+    回傳 (results, actual_date_str)
+    """
     if dt is None:
         dt = date.today()
-    dt_str  = to_twse_date(dt)
-    prev_dt = dt - timedelta(days=1)
-    while not is_trading_day(prev_dt):
-        prev_dt -= timedelta(days=1)
 
-    print(f"[SCAN] 全市場掃描 {dt_str}")
+    # 往前找最多 5 個交易日，找到有資料的日期
     async with httpx.AsyncClient() as client:
-        t86_data, margin_data, sbl_today, sbl_prev, day_trade_data = await asyncio.gather(
-            fetch_t86(client, dt_str),
+        for _ in range(5):
+            if not is_trading_day(dt):
+                dt -= timedelta(days=1)
+                continue
+            dt_str = to_twse_date(dt)
+            print(f"[SCAN] 嘗試 {dt_str}")
+            t86_data = await fetch_t86(client, dt_str)
+            if t86_data and t86_data.get("stat") == "OK":
+                break
+            dt -= timedelta(days=1)
+        else:
+            print("[SCAN] 找不到有資料的日期")
+            return [], ""
+
+        prev_dt = dt - timedelta(days=1)
+        while not is_trading_day(prev_dt):
+            prev_dt -= timedelta(days=1)
+
+        margin_data, sbl_today, sbl_prev, day_trade_data = await asyncio.gather(
             fetch_margin(client, dt_str),
             fetch_sbl(client, dt_str),
             fetch_sbl(client, to_twse_date(prev_dt)),
@@ -685,7 +702,7 @@ async def scan_market_today(dt: date = None) -> list[dict]:
 
     if not t86_data or t86_data.get("stat") != "OK":
         print(f"[SCAN] T86 stat={t86_data.get('stat') if t86_data else 'empty'} — 無資料")
-        return []
+        return [], ""
 
     t86_map  = parse_t86_all(t86_data)
     marg_map = parse_margin_all(margin_data)
@@ -713,8 +730,8 @@ async def scan_market_today(dt: date = None) -> list[dict]:
         })
 
     results.sort(key=lambda x: x["whale_flow_lots"], reverse=True)
-    print(f"[SCAN] 完成，共 {len(results)} 支")
-    return results
+    print(f"[SCAN] 完成，共 {len(results)} 支，日期={dt_str}")
+    return results, dt_str
 
 
 def clear_bad_cache() -> int:

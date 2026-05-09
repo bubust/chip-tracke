@@ -278,11 +278,10 @@ def api_market_rankings(date: str = None, top: int = 30):
 
 @app.get("/api/market/scan")
 async def api_market_scan(top: int = 50):
-    """掃描今日全市場上市股票大戶排行（直接從 TWSE bulk endpoint 取得全部股票）"""
-    dt   = to_twse_date(datetime.today().date())
-    data = await scan_market_today()
+    """掃描全市場上市股票大戶排行（自動找最近有資料的交易日）"""
+    data, actual_dt = await scan_market_today()
     return {
-        "date":        dt,
+        "date":        actual_dt or to_twse_date(datetime.today().date()),
         "total":       len(data),
         "top_buyers":  data[:top],
         "top_sellers": list(reversed(data[-top:])) if len(data) >= top else list(reversed(data)),
