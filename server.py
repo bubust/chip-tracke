@@ -25,6 +25,9 @@ from chip_tracker_v2 import (
     get_market_rankings, load_stock_history,
     to_twse_date, update_stocks,
     scan_market_today, clear_bad_cache,
+    DEFAULT_WEIGHTS, DEFAULT_THRESHOLDS,
+    get_weights, get_thresholds, save_params,
+    lookup_stock_name,
 )
 
 BASE_DIR = Path(__file__).parent
@@ -65,6 +68,10 @@ class CustomMessage(BaseModel):
 class MarketRankingBody(BaseModel):
     date: Optional[str] = None
     top: Optional[int] = 30
+
+class ParamsBody(BaseModel):
+    weights: dict
+    thresholds: dict
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -298,6 +305,46 @@ def api_clear_cache():
 # ════════════════════════════════════════════════════════════════════════════
 # Settings API
 # ════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/lookup/{stock_id}")
+def api_lookup_stock(stock_id: str):
+    """從快取 T86 查股票名稱"""
+    name = lookup_stock_name(stock_id.upper().strip())
+    return {"stock_id": stock_id, "name": name}
+
+
+@app.get("/api/params")
+def api_get_params():
+    """取得目前生效的估算權重與訊號門檻"""
+    return {
+        "weights":    get_weights(),
+        "thresholds": get_thresholds(),
+        "defaults": {
+            "weights":    DEFAULT_WEIGHTS,
+            "thresholds": DEFAULT_THRESHOLDS,
+        }
+    }
+
+
+@app.post("/api/params")
+def api_save_params(body: ParamsBody):
+    """儲存自訂估算權重與訊號門檻"""
+    # 只允許已知的 key
+    w = {k: float(v) for k, v in body.weights.items()    if k in DEFAULT_WEIGHTS}
+    t = {k: float(v) for k, v in body.thresholds.items() if k in DEFAULT_THRESHOLDS}
+    save_params(w, t)
+    return {"ok": True, "saved_weights": len(w), "saved_thresholds": len(t)}
+
+
+@app.post("/api/params/reset")
+def api_reset_params():
+    """重置所有參數為預設值"""
+    conn = get_conn()
+    conn.execute("DELETE FROM settings WHERE key LIKE 'w_%' OR key LIKE 't_%'")
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
 
 @app.get("/api/settings")
 def api_get_settings():

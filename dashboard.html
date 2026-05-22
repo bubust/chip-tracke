@@ -158,11 +158,13 @@
       <div class="fld">
         <label>股票代號</label>
         <input type="text" id="add-sid" placeholder="ex. 2330" maxlength="6" style="width:110px"
-               onkeydown="if(event.key==='Enter') addToWatchlist()" />
+               onkeydown="if(event.key==='Enter') addToWatchlist()"
+               oninput="schedLookup(this.value)"
+               onblur="lookupName(this.value)" />
       </div>
       <div class="fld">
-        <label>名稱（選填）</label>
-        <input type="text" id="add-name" placeholder="台積電" style="width:120px"
+        <label>名稱 <span id="name-hint" style="color:var(--muted);font-weight:400"></span></label>
+        <input type="text" id="add-name" placeholder="輸入代號後自動填入" style="width:140px"
                onkeydown="if(event.key==='Enter') addToWatchlist()" />
       </div>
       <button class="btn" onclick="addToWatchlist()" style="margin-top:18px">+ 新增</button>
@@ -346,6 +348,33 @@
     <div id="push-log"><div class="loading"><span class="spinner"></span>載入中...</div></div>
   </div>
 
+  <!-- ── 參數調整 ── -->
+  <div class="card" id="params-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div class="section-title" style="margin:0">估算參數調整</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn sm ghost" onclick="resetParams()">🔄 還原預設</button>
+        <button class="btn sm green" onclick="saveParams()">💾 套用儲存</button>
+      </div>
+    </div>
+
+    <!-- 權重 -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:.78rem;color:var(--accent);font-weight:600;margin-bottom:10px;text-transform:uppercase;letter-spacing:.4px">
+        估算權重（大戶流向 = 各項 × 權重 加總）
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px" id="weight-fields"></div>
+    </div>
+
+    <!-- 訊號門檻 -->
+    <div>
+      <div style="font-size:.78rem;color:var(--accent);font-weight:600;margin-bottom:10px;text-transform:uppercase;letter-spacing:.4px">
+        訊號門檻（7日累計張數）
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px" id="threshold-fields"></div>
+    </div>
+  </div>
+
 </div><!-- /tab-settings -->
 
 </main>
@@ -379,7 +408,7 @@ function switchTab(name) {
   document.getElementById('tab-' + name).classList.add('active');
   const idx = { watchlist: 0, market: 1, settings: 2 };
   document.querySelectorAll('nav button')[idx[name]].classList.add('active');
-  if (name === 'settings') { loadSysStatus(); loadPushLog(); loadTGSettings(); }
+  if (name === 'settings') { loadSysStatus(); loadPushLog(); loadTGSettings(); loadParams(); }
 }
 
 // ───── Status pill ─────
@@ -852,6 +881,129 @@ async function loadPushLog() {
       </div>
     `).join('');
   } catch (e) {}
+}
+
+// ═════════════════════════════ 股票名稱自動查詢 ═════════════════════════════
+let _lookupTimer = null;
+let _lastLookupSid = '';
+
+function schedLookup(sid) {
+  clearTimeout(_lookupTimer);
+  sid = sid.trim().toUpperCase();
+  if (sid.length < 4) return;
+  _lookupTimer = setTimeout(() => lookupName(sid), 600);
+}
+
+async function lookupName(sid) {
+  sid = (sid || '').trim().toUpperCase();
+  if (!sid || sid === _lastLookupSid) return;
+  _lastLookupSid = sid;
+  const hint = document.getElementById('name-hint');
+  hint.textContent = '查詢中...';
+  try {
+    const r = await api('GET', `/api/lookup/${sid}`);
+    const nameEl = document.getElementById('add-name');
+    if (r.name) {
+      nameEl.value = r.name;
+      hint.textContent = '✓ 自動填入';
+      setTimeout(() => { hint.textContent = ''; }, 2000);
+    } else {
+      hint.textContent = '（找不到，請手動輸入）';
+    }
+  } catch (e) {
+    hint.textContent = '';
+  }
+}
+
+// ═════════════════════════════ 參數調整 ═════════════════════════════
+const WEIGHT_LABELS = {
+  foreign:        '外資',
+  foreign_dealer: '外資自營',
+  trust:          '投信',
+  dealer_self:    '自營自行',
+  dealer_hedge:   '自營避險（已排除）',
+  sbl:            '借券 SBL（負值=空壓）',
+  day_trade:      '當沖（負值=噪訊）',
+};
+const THRESHOLD_LABELS = {
+  alert_whale:   '散戶接盤警示：大戶7日累計 <',
+  alert_retail:  '散戶接盤警示：散戶7日累計 >',
+  lvl3_foreign:  '外資投信同步建倉：外資7日累計 >',
+  lvl3_trust:    '外資投信同步建倉：投信7日累計 >',
+  lvl3_consec:   '外資投信同步建倉：連續買超天數 ≥',
+  lvl2a_whale:   '法人建倉散戶退：大戶7日累計 >',
+  lvl2a_retail:  '法人建倉散戶退：散戶7日累計 <',
+  lvl2b_foreign: '外資投信同步買：外資7日累計 >',
+  lvl2b_trust:   '外資投信同步買：投信7日累計 >',
+  lvl1a_whale:   '法人買散戶跟進：大戶7日累計 >',
+  lvl1a_retail:  '法人買散戶跟進：散戶7日累計 >',
+  lvl1b_whale:   '法人溫和買進：大戶7日累計 >',
+  sell_strong:   '法人出貨：大戶7日累計 <',
+  sell_mild:     '法人溫和賣出：大戶7日累計 <',
+};
+
+let _paramsDefaults = {};
+
+async function loadParams() {
+  try {
+    const r = await api('GET', '/api/params');
+    _paramsDefaults = r.defaults;
+    renderParamFields('weight-fields',    r.weights,    r.defaults.weights,    WEIGHT_LABELS,    'w_', 0.01);
+    renderParamFields('threshold-fields', r.thresholds, r.defaults.thresholds, THRESHOLD_LABELS, 't_', 1);
+  } catch (e) { console.warn('loadParams', e); }
+}
+
+function renderParamFields(containerId, current, defaults, labels, prefix, step) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = Object.entries(current).map(([k, v]) => {
+    const def = defaults[k];
+    const changed = Math.abs(v - def) > 0.0001;
+    return `<div class="fld" style="background:var(--card2);padding:10px 12px;border-radius:8px;border:1px solid ${changed ? 'var(--accent)' : 'var(--border)'}">
+      <label style="font-size:.75rem;color:${changed ? 'var(--accent)' : 'var(--muted)'}">
+        ${labels[k] || k}
+        ${changed ? '<span style="font-size:.7rem;opacity:.7">（已調整）</span>' : ''}
+      </label>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
+        <input type="number" id="${prefix}${k}" value="${v}" step="${step}"
+          style="flex:1;min-width:0"
+          oninput="highlightChanged(this,'${def}')" />
+        <span style="font-size:.75rem;color:var(--muted);white-space:nowrap">預設 ${def}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function highlightChanged(input, def) {
+  const changed = Math.abs(parseFloat(input.value) - parseFloat(def)) > 0.0001;
+  input.parentElement.parentElement.style.borderColor = changed ? 'var(--accent)' : 'var(--border)';
+  input.parentElement.parentElement.querySelector('label').style.color = changed ? 'var(--accent)' : 'var(--muted)';
+}
+
+async function saveParams() {
+  const weights = {};
+  const thresholds = {};
+  Object.keys(WEIGHT_LABELS).forEach(k => {
+    const el = document.getElementById('w_' + k);
+    if (el) weights[k] = parseFloat(el.value) || 0;
+  });
+  Object.keys(THRESHOLD_LABELS).forEach(k => {
+    const el = document.getElementById('t_' + k);
+    if (el) thresholds[k] = parseFloat(el.value) || 0;
+  });
+  try {
+    await api('POST', '/api/params', { weights, thresholds });
+    toast('✅ 參數已套用儲存');
+    loadParams();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function resetParams() {
+  if (!confirm('確定要重置所有參數為預設值？')) return;
+  try {
+    await api('POST', '/api/params/reset');
+    toast('✅ 已還原預設參數');
+    loadParams();
+  } catch (e) { toast(e.message, true); }
 }
 
 // ═════════════════════════════ UTILS ═════════════════════════════

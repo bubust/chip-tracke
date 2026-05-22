@@ -39,8 +39,8 @@ HEADERS = {
     "Referer": "https://www.twse.com.tw/",
 }
 
-# ── 估算權重 ──────────────────────────────────────────────────────────────────
-WEIGHTS = {
+# ── 估算權重（預設值）────────────────────────────────────────────────────────
+DEFAULT_WEIGHTS = {
     "foreign":        1.00,
     "foreign_dealer": 0.85,
     "trust":          0.95,
@@ -49,6 +49,91 @@ WEIGHTS = {
     "sbl":           -0.80,
     "day_trade":     -0.50,
 }
+
+# ── 訊號門檻（預設值）────────────────────────────────────────────────────────
+DEFAULT_THRESHOLDS = {
+    "alert_whale":   -1000,  # 散戶接盤警示：大戶7日累計
+    "alert_retail":    300,  # 散戶接盤警示：散戶7日累計
+    "lvl3_foreign":    500,  # 外資投信同步建倉：外資7日累計
+    "lvl3_trust":      100,  # 外資投信同步建倉：投信7日累計
+    "lvl3_consec":       4,  # 外資投信同步建倉：連續買超天數
+    "lvl2a_whale":     500,  # 法人建倉散戶退：大戶7日累計
+    "lvl2a_retail":   -200,  # 法人建倉散戶退：散戶7日累計（負=散戶減）
+    "lvl2b_foreign":   300,  # 外資投信同步買：外資7日累計
+    "lvl2b_trust":      50,  # 外資投信同步買：投信7日累計
+    "lvl1a_whale":     500,  # 法人買散戶跟進：大戶7日累計
+    "lvl1a_retail":    200,  # 法人買散戶跟進：散戶7日累計（正=散戶增）
+    "lvl1b_whale":     300,  # 法人溫和買進：大戶7日累計
+    "sell_strong":   -1000,  # 法人出貨：大戶7日累計
+    "sell_mild":      -300,  # 法人溫和賣出：大戶7日累計
+}
+
+# 向後相容的舊名稱（供 estimate() 直接參考用）
+WEIGHTS = DEFAULT_WEIGHTS
+
+
+def get_weights() -> dict:
+    """從 settings 讀取可覆寫的權重，無設定則用預設值"""
+    try:
+        conn = get_conn()
+        rows = conn.execute("SELECT key, value FROM settings WHERE key LIKE 'w_%'").fetchall()
+        conn.close()
+        result = dict(DEFAULT_WEIGHTS)
+        for row in rows:
+            k = row["key"][2:]  # 去掉 "w_" 前綴
+            if k in result:
+                result[k] = float(row["value"])
+        return result
+    except Exception:
+        return dict(DEFAULT_WEIGHTS)
+
+
+def get_thresholds() -> dict:
+    """從 settings 讀取可覆寫的訊號門檻，無設定則用預設值"""
+    try:
+        conn = get_conn()
+        rows = conn.execute("SELECT key, value FROM settings WHERE key LIKE 't_%'").fetchall()
+        conn.close()
+        result = dict(DEFAULT_THRESHOLDS)
+        for row in rows:
+            k = row["key"][2:]  # 去掉 "t_" 前綴
+            if k in result:
+                result[k] = float(row["value"])
+        return result
+    except Exception:
+        return dict(DEFAULT_THRESHOLDS)
+
+
+def save_params(weights: dict, thresholds: dict):
+    """儲存自訂參數到 settings 表"""
+    conn = get_conn()
+    for k, v in weights.items():
+        conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)",
+                     (f"w_{k}", str(v)))
+    for k, v in thresholds.items():
+        conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)",
+                     (f"t_{k}", str(v)))
+    conn.commit()
+    conn.close()
+
+
+def lookup_stock_name(stock_id: str) -> str:
+    """從最近快取的 T86 資料查股票名稱，找不到回傳空字串"""
+    try:
+        conn = get_conn()
+        row = conn.execute(
+            "SELECT payload FROM market_raw WHERE dataset='t86' ORDER BY date DESC LIMIT 1"
+        ).fetchone()
+        conn.close()
+        if not row:
+            return ""
+        payload = json.loads(row["payload"])
+        for item in payload.get("data", []):
+            if len(item) >= 2 and str(item[0]).strip() == str(stock_id).strip():
+                return str(item[1]).strip()
+    except Exception:
+        pass
+    return ""
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -384,6 +469,7 @@ def estimate(t86: dict, margin: dict, sbl: dict, day_trade: dict) -> dict:
     重要改動：移除自營避險（dealer_hedge）
     — 自營避險是發行認購權證的對沖買盤，與主動看多無關，納入計算會高估買進訊號
     """
+    W = get_weights()  # 動態讀取（支援使用者調整）
     foreign        = t86.get("foreign",        0.0)
     foreign_dealer = t86.get("foreign_dealer", 0.0)
     trust          = t86.get("trust",          0.0)
@@ -394,13 +480,13 @@ def estimate(t86: dict, margin: dict, sbl: dict, day_trade: dict) -> dict:
     margin_chg     = margin.get("margin_chg",   0.0)
 
     whale_shares = (
-        foreign        * WEIGHTS["foreign"]        +
-        foreign_dealer * WEIGHTS["foreign_dealer"] +
-        trust          * WEIGHTS["trust"]          +
-        dealer_self    * WEIGHTS["dealer_self"]
+        foreign        * W["foreign"]        +
+        foreign_dealer * W["foreign_dealer"] +
+        trust          * W["trust"]          +
+        dealer_self    * W["dealer_self"]
         # dealer_hedge 排除
-        + sbl_chg      * WEIGHTS["sbl"]
-        + day_trade_est * WEIGHTS["day_trade"]
+        + sbl_chg      * W["sbl"]
+        + day_trade_est * W["day_trade"]
     )
 
     whale_flow_lots  = round(whale_shares / 1000)
@@ -452,38 +538,37 @@ def classify_signal(
      2  🟢    法人建倉散戶退 / 外資投信同步買
      3  🟢🟢  外資投信同步建倉（連續4日+）
     """
+    T = get_thresholds()  # 動態讀取門檻
+
     # ── 層二：背離（最高優先）──────────────────
-    # 法人賣超 + 融資增加 → 法人出貨、散戶接盤（最危險）
-    if cum7_whale < -1000 and cum7_retail > 300:
+    if cum7_whale < T["alert_whale"] and cum7_retail > T["alert_retail"]:
         return {"emoji": "🔴⚠️", "title": "散戶接盤警示", "level": -3}
 
     # ── 層一+三：外資投信同步 + 連續性 ───────────
-    # 外資+投信同步買 + 連續4天以上 → 最強建倉訊號
-    if cum7_foreign > 500 and cum7_trust > 100 and consecutive_buy >= 4:
+    if cum7_foreign > T["lvl3_foreign"] and cum7_trust > T["lvl3_trust"] and consecutive_buy >= T["lvl3_consec"]:
         return {"emoji": "🟢🟢", "title": "外資投信同步建倉", "level": 3}
 
     # ── 層一+二：法人買 + 散戶退場 ───────────────
-    # 法人進、融資減 → 散戶放棄、法人悄悄買（最佳進場信號）
-    if cum7_whale > 500 and cum7_retail < -200:
+    if cum7_whale > T["lvl2a_whale"] and cum7_retail < T["lvl2a_retail"]:
         return {"emoji": "🟢", "title": "法人建倉散戶退", "level": 2}
 
     # 外資+投信同向買（無連續性門檻）
-    if cum7_foreign > 300 and cum7_trust > 50:
+    if cum7_foreign > T["lvl2b_foreign"] and cum7_trust > T["lvl2b_trust"]:
         return {"emoji": "🟢", "title": "外資投信同步買", "level": 2}
 
-    # 法人買 + 散戶也跟（注意後段出貨風險）
-    if cum7_whale > 500 and cum7_retail > 200:
+    # 法人買 + 散戶也跟
+    if cum7_whale > T["lvl1a_whale"] and cum7_retail > T["lvl1a_retail"]:
         return {"emoji": "🟡", "title": "法人買散戶跟進", "level": 1}
 
     # 法人溫和買進
-    if cum7_whale > 300:
+    if cum7_whale > T["lvl1b_whale"]:
         return {"emoji": "🟡", "title": "法人溫和買進", "level": 1}
 
     # ── 賣出訊號 ─────────────────────────────
-    if cum7_whale < -1000:
+    if cum7_whale < T["sell_strong"]:
         return {"emoji": "🔴", "title": "法人出貨", "level": -2}
 
-    if cum7_whale < -300:
+    if cum7_whale < T["sell_mild"]:
         return {"emoji": "🟠", "title": "法人溫和賣出", "level": -1}
 
     return {"emoji": "⚪", "title": "盤整觀望", "level": 0}
