@@ -407,10 +407,9 @@ function toast(msg, err = false) {
 }
 
 // ───── API ─────
-// 若從 GitHub Pages 開啟，API 打到 Render；否則用相對路徑（本機/Render 自身）
-const API_BASE = location.hostname.includes('github.io')
-  ? 'https://chip-tracker.onrender.com'
-  : '';
+// 若從 GitHub Pages 開啟，API 打到後端；否則用相對路徑（本機/伺服器自身）
+const BACKEND_URL = ''; // TODO: 填入後端網址，例如 'https://your-app.zeabur.app'
+const API_BASE = location.hostname.includes('github.io') ? BACKEND_URL : '';
 
 async function api(method, path, body = null) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
