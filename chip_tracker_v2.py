@@ -118,19 +118,16 @@ def save_params(weights: dict, thresholds: dict):
 
 
 def lookup_stock_name(stock_id: str) -> str:
-    """從最近快取的 T86 資料查股票名稱，找不到回傳空字串"""
+    """從 TWSE OpenAPI 查股票名稱（免 IP 限制），找不到回傳空字串"""
     try:
-        conn = get_conn()
-        row = conn.execute(
-            "SELECT payload FROM market_raw WHERE dataset='t86' ORDER BY date DESC LIMIT 1"
-        ).fetchone()
-        conn.close()
-        if not row:
-            return ""
-        payload = json.loads(row["payload"])
-        for item in payload.get("data", []):
-            if len(item) >= 2 and str(item[0]).strip() == str(stock_id).strip():
-                return str(item[1]).strip()
+        import httpx as _httpx
+        resp = _httpx.get(
+            "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_AVG_ALL",
+            timeout=10
+        )
+        for row in resp.json():
+            if row.get("Code") == stock_id:
+                return row.get("Name", "").strip()
     except Exception:
         pass
     return ""
@@ -263,65 +260,67 @@ def last_n_trading_dates(n: int, end: date = None) -> list[date]:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# TWSE 抓取函式
+# Finmind API 抓取函式（取代 TWSE，支援海外 IP）
 # ════════════════════════════════════════════════════════════════════════════
 
-async def _fetch_json(client: httpx.AsyncClient, url: str, params: dict) -> dict:
+FINMIND_BASE = "https://api.finmindtrade.com/api/v4/data"
+
+async def _fetch_finmind(client: httpx.AsyncClient, dataset: str, stock_id: str,
+                          start_date: str, end_date: str = None) -> list:
+    """抓取 Finmind 單一 dataset，回傳 data 陣列"""
+    params = {"dataset": dataset, "data_id": stock_id, "start_date": start_date}
+    if end_date:
+        params["end_date"] = end_date
     try:
-        resp = await client.get(url, params=params, headers=HEADERS, timeout=30,
-                                follow_redirects=True)
-        if resp.status_code != 200:
-            print(f"[WARN] HTTP {resp.status_code} {url}")
-            return {}
-        return resp.json()
+        resp = await client.get(FINMIND_BASE, params=params, timeout=30)
+        d = resp.json()
+        if d.get("status") == 200:
+            return d.get("data", [])
+        print(f"[WARN] Finmind {dataset} {stock_id}: {d.get('msg','unknown error')}")
+        return []
     except Exception as e:
-        print(f"[WARN] fetch failed {url} {params}: {type(e).__name__}: {str(e)[:80]}")
-        return {}
+        print(f"[WARN] Finmind fetch failed {dataset} {stock_id}: {type(e).__name__}: {str(e)[:80]}")
+        return []
 
 
-async def fetch_t86(client: httpx.AsyncClient, dt: str) -> dict:
-    """三大法人個股買賣超 (T86)"""
-    cached = cache.get(dt, "t86")
-    if cached is not None:
-        return cached
-    data = await _fetch_json(client, ENDPOINTS["t86"], {"response": "json", "date": dt, "selectType": "ALL"})
-    # 只 cache stat=OK 且 data 陣列非空的回應（3:30pm 前可能回傳 stat=OK 但 data=[]）
-    if data.get("stat") == "OK" and data.get("data"):
-        cache.put(dt, "t86", data)
-    return data
+def _parse_institutional(rows: list) -> dict[str, dict]:
+    """
+    解析 Finmind TaiwanStockInstitutionalInvestorsBuySell
+    → {date_str: {foreign, foreign_dealer, trust, dealer_self, dealer_hedge}}
+    """
+    NAME_MAP = {
+        "Foreign_Investor":    "foreign",
+        "Foreign_Dealer_Self": "foreign_dealer",
+        "Investment_Trust":    "trust",
+        "Dealer_Self":         "dealer_self",
+        "Dealer_Hedging":      "dealer_hedge",
+    }
+    result: dict[str, dict] = {}
+    for row in rows:
+        dt = row.get("date", "")[:10].replace("-", "")  # YYYYMMDD
+        key = NAME_MAP.get(row.get("name", ""))
+        if not dt or not key:
+            continue
+        if dt not in result:
+            result[dt] = {k: 0.0 for k in ["foreign", "foreign_dealer", "trust", "dealer_self", "dealer_hedge"]}
+        result[dt][key] = float(row.get("buy", 0)) - float(row.get("sell", 0))
+    return result
 
 
-async def fetch_margin(client: httpx.AsyncClient, dt: str) -> dict:
-    """融資融券餘額 (MI_MARGN)"""
-    cached = cache.get(dt, "margin")
-    if cached is not None:
-        return cached
-    data = await _fetch_json(client, ENDPOINTS["margin"], {"response": "json", "date": dt, "selectType": "ALL"})
-    if data.get("stat") == "OK":
-        cache.put(dt, "margin", data)
-    return data
-
-
-async def fetch_sbl(client: httpx.AsyncClient, dt: str) -> dict:
-    """借券賣出餘額 (TWT93U)"""
-    cached = cache.get(dt, "sbl")
-    if cached is not None:
-        return cached
-    data = await _fetch_json(client, ENDPOINTS["sbl"], {"response": "json", "date": dt})
-    if data.get("stat") == "OK":
-        cache.put(dt, "sbl", data)
-    return data
-
-
-async def fetch_day_trade(client: httpx.AsyncClient, dt: str) -> dict:
-    """當沖統計 (TWTB4U)"""
-    cached = cache.get(dt, "day_trade")
-    if cached is not None:
-        return cached
-    data = await _fetch_json(client, ENDPOINTS["day_trade"], {"response": "json", "date": dt, "selectType": "ALL"})
-    if data.get("stat") == "OK":
-        cache.put(dt, "day_trade", data)
-    return data
+def _parse_margin_finmind(rows: list) -> dict[str, dict]:
+    """
+    解析 Finmind TaiwanStockMarginPurchaseShortSale
+    → {date_str: {margin_chg}}
+    """
+    result: dict[str, dict] = {}
+    for row in rows:
+        dt = row.get("date", "")[:10].replace("-", "")
+        if not dt:
+            continue
+        today  = float(row.get("MarginPurchaseTodayBalance",     0) or 0)
+        prev   = float(row.get("MarginPurchaseYesterdayBalance", 0) or 0)
+        result[dt] = {"margin_chg": today - prev}
+    return result
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -578,37 +577,14 @@ def classify_signal(
 # 主要公開 API
 # ════════════════════════════════════════════════════════════════════════════
 
-async def fetch_one_date(client: httpx.AsyncClient, dt: date, prev_dt: date) -> dict:
-    """並行抓取單一日期的所有 endpoints"""
-    dt_str   = to_twse_date(dt)
-    prev_str = to_twse_date(prev_dt)
-
-    t86_data, margin_data, sbl_today, sbl_prev, day_trade_data = await asyncio.gather(
-        fetch_t86(client, dt_str),
-        fetch_margin(client, dt_str),
-        fetch_sbl(client, dt_str),
-        fetch_sbl(client, prev_str),
-        fetch_day_trade(client, dt_str),
-    )
-
-    return {
-        "date":       dt_str,
-        "t86":        t86_data,
-        "margin":     margin_data,
-        "sbl_today":  sbl_today,
-        "sbl_prev":   sbl_prev,
-        "day_trade":  day_trade_data,
-    }
-
-
 async def update_stocks(
     stock_ids: list[str],
     days: int = 30,
     end_date: date = None,
 ) -> dict[str, list[dict]]:
     """
-    更新指定股票清單，回傳每檔的每日估算紀錄
-    同時寫入 chip_data/{stock_id}.csv
+    更新指定股票清單（透過 Finmind API，支援海外 IP）
+    回傳每檔的每日估算紀錄，同時寫入 chip_data/{stock_id}.csv
     """
     if end_date is None:
         end_date = date.today()
@@ -617,102 +593,96 @@ async def update_stocks(
     if not dates:
         return {}
 
-    # 補一個前一天（給 SBL lag 用）
-    prev_date = dates[0] - timedelta(days=1)
-    while not is_trading_day(prev_date):
-        prev_date -= timedelta(days=1)
-    all_dates = [prev_date] + dates
+    start_str = dates[0].strftime("%Y-%m-%d")
+    end_str   = end_date.strftime("%Y-%m-%d")
+    print(f"[INFO] Finmind 抓取 {start_str}~{end_str}，{len(stock_ids)} 支股票")
 
-    print(f"[INFO] 抓取 {len(dates)} 個交易日，{len(stock_ids)} 支股票")
+    results: dict[str, list[dict]] = {}
 
     async with httpx.AsyncClient() as client:
-        # 按日期逐日抓（避免同時大量請求）
-        raw_by_date: dict[str, dict] = {}
-        for i, dt in enumerate(all_dates):
-            prev = all_dates[i - 1] if i > 0 else dt - timedelta(days=1)
-            await asyncio.sleep(0.3)  # 避免 429
-            raw = await fetch_one_date(client, dt, prev)
-            raw_by_date[to_twse_date(dt)] = raw
-            print(f"  [{i+1}/{len(all_dates)}] {to_twse_date(dt)} 完成")
+        for stock_id in stock_ids:
+            await asyncio.sleep(0.5)  # 避免 429
+            inst_rows, margin_rows = await asyncio.gather(
+                _fetch_finmind(client, "TaiwanStockInstitutionalInvestorsBuySell",
+                               stock_id, start_str, end_str),
+                _fetch_finmind(client, "TaiwanStockMarginPurchaseShortSale",
+                               stock_id, start_str, end_str),
+            )
+            inst_by_date   = _parse_institutional(inst_rows)
+            margin_by_date = _parse_margin_finmind(margin_rows)
 
-    # 計算每檔股票
-    results: dict[str, list[dict]] = {}
-    for stock_id in stock_ids:
-        records = []
-        for i, dt in enumerate(dates):
-            dt_str = to_twse_date(dt)
-            raw = raw_by_date.get(dt_str, {})
+            records = []
+            for dt in dates:
+                dt_str = to_twse_date(dt)
+                if dt_str not in inst_by_date:
+                    continue  # 非交易日或無資料，跳過
 
-            # T86 是主要資料來源；stat != OK 表示 API 封鎖或無資料，跳過此日不寫零
-            if raw.get("t86", {}).get("stat") != "OK":
+                t86_parsed    = inst_by_date[dt_str]
+                margin_parsed = margin_by_date.get(dt_str, {"margin_chg": 0.0})
+                sbl_parsed    = {"sbl_chg": 0.0}        # Finmind 借券格式不相容，暫設 0
+                dt_parsed     = {"day_trade_est": 0.0}   # 當沖資料暫不納入
+
+                est = estimate(t86_parsed, margin_parsed, sbl_parsed, dt_parsed)
+                rec = {"date": dt_str, **est}
+                records.append(rec)
+
+            # 沒有任何有效日期 → 保留現有 CSV，不覆蓋
+            csv_path = DATA_DIR / f"{stock_id}.csv"
+            if not records:
+                print(f"  [SKIP] {stock_id} — Finmind 無資料，保留現有資料")
+                results[stock_id] = load_stock_history(stock_id)
                 continue
 
-            t86_parsed   = parse_t86(raw.get("t86", {}), stock_id)
-            margin_parsed = parse_margin(raw.get("margin", {}), stock_id)
-            sbl_parsed   = parse_sbl_day(raw.get("sbl_today", {}), raw.get("sbl_prev", {}), stock_id)
-            dt_parsed    = parse_day_trade(raw.get("day_trade", {}), stock_id)
+            # 新資料的日期集合
+            df_new = pd.DataFrame(records).sort_values("date").reset_index(drop=True)
+            new_dates = set(df_new["date"].astype(str))
 
-            est = estimate(t86_parsed, margin_parsed, sbl_parsed, dt_parsed)
-            rec = {"date": dt_str, **est}
-            records.append(rec)
-
-        # 沒有任何有效日期（全部 API 封鎖）→ 保留現有 CSV，不覆蓋
-        csv_path = DATA_DIR / f"{stock_id}.csv"
-        if not records:
-            print(f"  [SKIP] {stock_id} — 無有效 T86 資料（API 封鎖或非交易日），保留現有資料")
-            results[stock_id] = load_stock_history(stock_id)
-            continue
-
-        # 新資料的日期集合
-        df_new = pd.DataFrame(records).sort_values("date").reset_index(drop=True)
-        new_dates = set(df_new["date"].astype(str))
-
-        # 與現有 CSV 合併：保留舊有日期、用新資料覆蓋重疊日期
-        if csv_path.exists():
-            try:
-                existing_df = pd.read_csv(csv_path, encoding="utf-8-sig")
-                keep_cols = [c for c in df_new.columns if c in existing_df.columns]
-                old_rows = existing_df[~existing_df["date"].astype(str).isin(new_dates)][keep_cols]
-                df = pd.concat([old_rows, df_new[keep_cols]], ignore_index=True).sort_values("date").reset_index(drop=True)
-            except Exception:
+            # 與現有 CSV 合併：保留舊有日期、用新資料覆蓋重疊日期
+            if csv_path.exists():
+                try:
+                    existing_df = pd.read_csv(csv_path, encoding="utf-8-sig")
+                    keep_cols = [c for c in df_new.columns if c in existing_df.columns]
+                    old_rows = existing_df[~existing_df["date"].astype(str).isin(new_dates)][keep_cols]
+                    df = pd.concat([old_rows, df_new[keep_cols]], ignore_index=True).sort_values("date").reset_index(drop=True)
+                except Exception:
+                    df = df_new
+            else:
                 df = df_new
-        else:
-            df = df_new
 
-        # 計算 7 日累計 + 連續買超天數（在合併後的完整序列上計算）
-        df["cum7_whale"]   = df["whale_flow_lots"].rolling(7, min_periods=1).sum()
-        df["cum7_retail"]  = df["retail_flow_lots"].rolling(7, min_periods=1).sum()
-        df["cum7_foreign"] = df["foreign_lots"].rolling(7, min_periods=1).sum()
-        df["cum7_trust"]   = df["trust_lots"].rolling(7, min_periods=1).sum()
+            # 計算 7 日累計 + 連續買超天數（在合併後的完整序列上計算）
+            df["cum7_whale"]   = df["whale_flow_lots"].rolling(7, min_periods=1).sum()
+            df["cum7_retail"]  = df["retail_flow_lots"].rolling(7, min_periods=1).sum()
+            df["cum7_foreign"] = df["foreign_lots"].rolling(7, min_periods=1).sum()
+            df["cum7_trust"]   = df["trust_lots"].rolling(7, min_periods=1).sum()
 
-        # 連續買超天數（whale_flow_lots > 0 即算，碰到負值歸零）
-        consec = []
-        cnt = 0
-        for v in df["whale_flow_lots"]:
-            cnt = cnt + 1 if v > 0 else 0
-            consec.append(cnt)
-        df["consecutive_buy"] = consec
+            # 連續買超天數（whale_flow_lots > 0 即算，碰到負值歸零）
+            consec = []
+            cnt = 0
+            for v in df["whale_flow_lots"]:
+                cnt = cnt + 1 if v > 0 else 0
+                consec.append(cnt)
+            df["consecutive_buy"] = consec
 
-        signals = []
-        for _, row in df.iterrows():
-            sig = classify_signal(
-                row["cum7_whale"],
-                row["concentration_index"],
-                row["cum7_retail"],
-                row["cum7_foreign"],
-                row["cum7_trust"],
-                int(row["consecutive_buy"]),
-            )
-            signals.append(sig)
-        df["signal_emoji"] = [s["emoji"] for s in signals]
-        df["signal_title"] = [s["title"] for s in signals]
-        df["signal_level"] = [s["level"] for s in signals]
+            signals = []
+            for _, row in df.iterrows():
+                sig = classify_signal(
+                    row["cum7_whale"],
+                    row["concentration_index"],
+                    row["cum7_retail"],
+                    row["cum7_foreign"],
+                    row["cum7_trust"],
+                    int(row["consecutive_buy"]),
+                )
+                signals.append(sig)
+            df["signal_emoji"] = [s["emoji"] for s in signals]
+            df["signal_title"] = [s["title"] for s in signals]
+            df["signal_level"] = [s["level"] for s in signals]
 
-        # 存 CSV
-        df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+            # 存 CSV
+            df.to_csv(csv_path, index=False, encoding="utf-8-sig")
 
-        results[stock_id] = df.to_dict(orient="records")
-        print(f"  [DONE] {stock_id} → {len(df)} 筆（新增 {len(records)} 筆），最新訊號: {signals[-1]['emoji']} {signals[-1]['title']}")
+            results[stock_id] = df.to_dict(orient="records")
+            print(f"  [DONE] {stock_id} → {len(df)} 筆（新增 {len(records)} 筆），最新訊號: {signals[-1]['emoji']} {signals[-1]['title']}")
 
     return results
 
@@ -838,14 +808,24 @@ def parse_day_trade_all(data: dict) -> dict[str, dict]:
 
 async def scan_market_today(dt: date = None) -> tuple[list[dict], str]:
     """
-    掃描全市場上市股票，從 T86 bulk 一次取得所有股票並計算大戶流向。
-    自動往前找最近有資料的交易日（T86 資料約在收盤後 3:30pm 發布）。
-    回傳 (results, actual_date_str)
+    掃描全市場上市股票。
+    優先透過 TWSE rwd endpoint，若被封鎖（海外 IP）則回傳空結果。
     """
     if dt is None:
         dt = date.today()
 
-    # 往前找最多 5 個交易日，找到有資料的日期
+    TWSE_HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://www.twse.com.tw/",
+    }
+
+    t86_data = {}
+    margin_data = {}
+    sbl_today = {}
+    sbl_prev = {}
+    day_trade_data = {}
+    dt_str = ""
+
     async with httpx.AsyncClient() as client:
         for _ in range(5):
             if not is_trading_day(dt):
@@ -853,29 +833,48 @@ async def scan_market_today(dt: date = None) -> tuple[list[dict], str]:
                 continue
             dt_str = to_twse_date(dt)
             print(f"[SCAN] 嘗試 {dt_str}")
-            t86_data = await fetch_t86(client, dt_str)
-            # stat=OK 且 data 有內容才算找到
-            if t86_data and t86_data.get("stat") == "OK" and t86_data.get("data"):
-                break
+            try:
+                resp = await client.get(
+                    "https://www.twse.com.tw/rwd/zh/fund/T86",
+                    params={"response": "json", "date": dt_str, "selectType": "ALL"},
+                    headers=TWSE_HEADERS,
+                    timeout=20,
+                )
+                if resp.status_code == 200:
+                    t86_data = resp.json()
+                    if t86_data.get("stat") == "OK" and t86_data.get("data"):
+                        break
+            except Exception as e:
+                print(f"[SCAN] TWSE 連線失敗（可能為海外 IP 封鎖）: {e}")
+                return [], ""
             dt -= timedelta(days=1)
         else:
             print("[SCAN] 找不到有資料的日期")
             return [], ""
 
+        if not t86_data or t86_data.get("stat") != "OK":
+            return [], ""
+
         prev_dt = dt - timedelta(days=1)
         while not is_trading_day(prev_dt):
             prev_dt -= timedelta(days=1)
+        prev_str = to_twse_date(prev_dt)
+
+        async def _get(url, params):
+            try:
+                r = await client.get(url, params=params, headers=TWSE_HEADERS, timeout=20)
+                return r.json() if r.status_code == 200 else {}
+            except Exception:
+                return {}
 
         margin_data, sbl_today, sbl_prev, day_trade_data = await asyncio.gather(
-            fetch_margin(client, dt_str),
-            fetch_sbl(client, dt_str),
-            fetch_sbl(client, to_twse_date(prev_dt)),
-            fetch_day_trade(client, dt_str),
+            _get("https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN",
+                 {"response": "json", "date": dt_str, "selectType": "ALL"}),
+            _get("https://www.twse.com.tw/rwd/zh/SBL/TWT93U", {"response": "json", "date": dt_str}),
+            _get("https://www.twse.com.tw/rwd/zh/SBL/TWT93U", {"response": "json", "date": prev_str}),
+            _get("https://www.twse.com.tw/rwd/zh/dayTrading/TWTB4U",
+                 {"response": "json", "date": dt_str, "selectType": "ALL"}),
         )
-
-    if not t86_data or t86_data.get("stat") != "OK":
-        print(f"[SCAN] T86 stat={t86_data.get('stat') if t86_data else 'empty'} — 無資料")
-        return [], ""
 
     t86_map  = parse_t86_all(t86_data)
     marg_map = parse_margin_all(margin_data)
