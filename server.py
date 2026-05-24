@@ -362,50 +362,25 @@ def api_lookup_stock(stock_id: str):
     return {"stock_id": stock_id, "name": name}
 
 
-# ─── 股票清單快取（用於名稱搜尋）────────────────────────────────────────
-_stock_list: list[dict] = []
-_stock_list_fetched: Optional[str] = None
-
-def _get_stock_list() -> list[dict]:
-    """從 TWSE OpenAPI 取上市股票清單（每日快取一次）"""
-    global _stock_list, _stock_list_fetched
-    today = str(date.today())
-    if _stock_list and _stock_list_fetched == today:
-        return _stock_list
-    try:
-        r = httpx.get(
-            "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL",
-            timeout=15
-        )
-        if r.status_code == 200:
-            data = r.json()
-            _stock_list = [
-                {"stock_id": row["Code"], "name": row["Name"].strip()}
-                for row in data
-                if row.get("Code") and row.get("Name")
-            ]
-            _stock_list_fetched = today
-    except Exception as e:
-        print(f"[WARN] fetch stock list failed: {e}")
-    return _stock_list
-
 @app.get("/api/search")
 def api_search_stocks(q: str = ""):
-    """以代號或名稱模糊搜尋上市股票，回傳最多 10 筆"""
+    """以代號或名稱模糊搜尋上市股票（從 Supabase stock_names 查詢），回傳最多 10 筆"""
     q = q.strip()
     if not q:
         return []
-    stocks = _get_stock_list()
-    q_lower = q.lower()
-    results = []
-    for s in stocks:
-        sid  = s["stock_id"]
-        name = s["name"]
-        if sid.startswith(q) or q_lower in name.lower():
-            results.append(s)
-        if len(results) >= 10:
-            break
-    return results
+    try:
+        import supabase_store as sb
+        # 先試代號前綴匹配
+        rows = sb._get(f"stock_names?stock_id=ilike.{q}*&limit=10")
+        # 再試名稱包含匹配（補足 10 筆）
+        if len(rows) < 10:
+            name_rows = sb._get(f"stock_names?name=ilike.*{q}*&limit={10 - len(rows)}")
+            existing = {r["stock_id"] for r in rows}
+            rows += [r for r in name_rows if r["stock_id"] not in existing]
+        return [{"stock_id": r["stock_id"], "name": r["name"]} for r in rows[:10]]
+    except Exception as e:
+        print(f"[WARN] search failed: {e}")
+        return []
 
 
 @app.get("/api/params")
