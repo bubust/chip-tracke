@@ -678,17 +678,33 @@ async def update_stocks(
             df["signal_title"] = [s["title"] for s in signals]
             df["signal_level"] = [s["level"] for s in signals]
 
-            # 存 CSV
+            # 存 CSV（本機備份）
             df.to_csv(csv_path, index=False, encoding="utf-8-sig")
 
-            results[stock_id] = df.to_dict(orient="records")
+            # 存 Supabase（持久化）
+            all_records = df.to_dict(orient="records")
+            try:
+                import supabase_store as sb
+                sb.cd_upsert(stock_id, all_records)
+            except Exception as e:
+                print(f"  [WARN] Supabase upsert failed for {stock_id}: {e}")
+
+            results[stock_id] = all_records
             print(f"  [DONE] {stock_id} → {len(df)} 筆（新增 {len(records)} 筆），最新訊號: {signals[-1]['emoji']} {signals[-1]['title']}")
 
     return results
 
 
 def load_stock_history(stock_id: str) -> list[dict]:
-    """從 CSV 讀取個股歷史（無需重新計算）"""
+    """從 Supabase 或 CSV 讀取個股歷史"""
+    try:
+        import supabase_store as sb
+        rows = sb.cd_load(stock_id)
+        if rows is not None:
+            return rows
+    except Exception:
+        pass
+    # fallback: CSV
     csv_path = DATA_DIR / f"{stock_id}.csv"
     if not csv_path.exists():
         return []

@@ -30,6 +30,7 @@ from chip_tracker_v2 import (
     get_weights, get_thresholds, save_params,
     lookup_stock_name,
 )
+import supabase_store as sb
 
 BASE_DIR = Path(__file__).parent
 
@@ -152,6 +153,9 @@ def format_stock_message(stock_id: str, records: list[dict]) -> str:
 
 @app.get("/api/watchlist")
 def api_get_watchlist():
+    rows = sb.wl_list()
+    if rows is not None:
+        return rows
     conn = get_conn()
     rows = conn.execute("SELECT stock_id, name, added_at FROM watchlist ORDER BY added_at").fetchall()
     conn.close()
@@ -159,17 +163,20 @@ def api_get_watchlist():
 
 @app.post("/api/watchlist")
 def api_add_watchlist(item: WatchlistItem):
+    sid  = item.stock_id.strip()
+    name = (item.name or "").strip()
+    now  = datetime.now().isoformat()
+    sb.wl_add(sid, name, now)
     conn = get_conn()
-    conn.execute(
-        "INSERT OR IGNORE INTO watchlist (stock_id, name, added_at) VALUES (?,?,?)",
-        (item.stock_id.strip(), item.name.strip(), datetime.now().isoformat())
-    )
+    conn.execute("INSERT OR IGNORE INTO watchlist (stock_id, name, added_at) VALUES (?,?,?)", (sid, name, now))
     conn.commit()
     conn.close()
     return {"ok": True}
 
 @app.delete("/api/watchlist/{stock_id}")
 def api_del_watchlist(stock_id: str):
+    sb.wl_delete(stock_id)
+    sb.cd_delete_stock(stock_id)
     conn = get_conn()
     conn.execute("DELETE FROM watchlist WHERE stock_id=?", (stock_id,))
     conn.commit()
@@ -179,9 +186,10 @@ def api_del_watchlist(stock_id: str):
 @app.put("/api/watchlist/{stock_id}")
 def api_update_watchlist(stock_id: str, item: WatchlistItem):
     """更新股票名稱"""
+    name = (item.name or "").strip()
+    sb.wl_update_name(stock_id, name)
     conn = get_conn()
-    conn.execute("UPDATE watchlist SET name=? WHERE stock_id=?",
-                 (item.name.strip() if item.name else "", stock_id))
+    conn.execute("UPDATE watchlist SET name=? WHERE stock_id=?", (name, stock_id))
     conn.commit()
     conn.close()
     return {"ok": True}
@@ -226,11 +234,15 @@ def api_watchlist_summary():
 
 @app.post("/api/refresh")
 async def api_refresh(body: RefreshBody):
-    # 取觀察清單
-    conn = get_conn()
-    rows = conn.execute("SELECT stock_id FROM watchlist").fetchall()
-    conn.close()
-    stock_ids = [r["stock_id"] for r in rows]
+    # 取觀察清單（優先 Supabase）
+    sb_ids = sb.wl_get_ids()
+    if sb_ids is not None:
+        stock_ids = sb_ids
+    else:
+        conn = get_conn()
+        rows = conn.execute("SELECT stock_id FROM watchlist").fetchall()
+        conn.close()
+        stock_ids = [r["stock_id"] for r in rows]
     if body.extra_stocks:
         for s in body.extra_stocks:
             s = s.strip()
