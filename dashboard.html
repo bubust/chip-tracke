@@ -161,16 +161,19 @@
   <div class="card">
     <div class="section-title">新增股票</div>
     <div class="row">
-      <div class="fld">
-        <label>股票代號</label>
-        <input type="text" id="add-sid" placeholder="ex. 2330" maxlength="6" style="width:110px"
-               onkeydown="if(event.key==='Enter') addToWatchlist()"
-               oninput="schedLookup(this.value)"
-               onblur="lookupName(this.value)" />
+      <div class="fld" style="position:relative">
+        <label>代號 / 股名</label>
+        <input type="text" id="add-sid" placeholder="ex. 2330 或 台積電" maxlength="20" style="width:160px"
+               onkeydown="searchKeydown(event)"
+               oninput="schedSearch(this.value)"
+               onblur="setTimeout(hideSearchDrop, 200)" />
+        <div id="search-drop" style="display:none;position:absolute;top:100%;left:0;z-index:999;
+             background:var(--card);border:1px solid var(--border);border-radius:6px;
+             min-width:220px;box-shadow:0 4px 12px rgba(0,0,0,.4);max-height:240px;overflow-y:auto"></div>
       </div>
       <div class="fld">
         <label>名稱 <span id="name-hint" style="color:var(--muted);font-weight:400"></span></label>
-        <input type="text" id="add-name" placeholder="輸入代號後自動填入" style="width:140px"
+        <input type="text" id="add-name" placeholder="選擇後自動填入" style="width:130px"
                onkeydown="if(event.key==='Enter') addToWatchlist()" />
       </div>
       <button class="btn" onclick="addToWatchlist()" style="margin-top:18px">+ 新增</button>
@@ -933,20 +936,91 @@ async function loadPushLog() {
   } catch (e) {}
 }
 
-// ═════════════════════════════ 股票名稱自動查詢 ═════════════════════════════
-let _lookupTimer = null;
-let _lastLookupSid = '';
+// ═════════════════════════════ 股票搜尋（代號 + 名稱）═════════════════════════
+let _searchTimer = null;
+let _searchDrop  = null;
+let _dropItems   = [];
+let _dropIdx     = -1;
 
-function schedLookup(sid) {
-  clearTimeout(_lookupTimer);
-  sid = sid.trim().toUpperCase();
-  if (sid.length < 4) return;
-  _lookupTimer = setTimeout(() => lookupName(sid), 600);
+function schedSearch(val) {
+  clearTimeout(_searchTimer);
+  val = val.trim();
+  if (!val) { hideSearchDrop(); return; }
+  _searchTimer = setTimeout(() => doSearch(val), 300);
 }
 
+async function doSearch(q) {
+  try {
+    const results = await api('GET', `/api/search?q=${encodeURIComponent(q)}`);
+    showSearchDrop(results);
+  } catch(e) { hideSearchDrop(); }
+}
+
+function showSearchDrop(items) {
+  _dropItems = items || [];
+  _dropIdx   = -1;
+  const drop = document.getElementById('search-drop');
+  if (!_dropItems.length) { drop.style.display = 'none'; return; }
+  drop.innerHTML = _dropItems.map((s, i) =>
+    `<div class="sdrop-item" data-i="${i}"
+          style="padding:7px 12px;cursor:pointer;display:flex;gap:10px;align-items:center;font-size:13px"
+          onmousedown="pickDrop(${i})">
+       <span style="font-weight:700;color:var(--accent);min-width:44px">${s.stock_id}</span>
+       <span>${s.name}</span>
+     </div>`
+  ).join('');
+  drop.style.display = 'block';
+}
+
+function hideSearchDrop() {
+  const drop = document.getElementById('search-drop');
+  if (drop) drop.style.display = 'none';
+  _dropIdx = -1;
+}
+
+function pickDrop(i) {
+  const s = _dropItems[i];
+  if (!s) return;
+  document.getElementById('add-sid').value  = s.stock_id;
+  document.getElementById('add-name').value = s.name;
+  hideSearchDrop();
+}
+
+function searchKeydown(e) {
+  const drop = document.getElementById('search-drop');
+  const visible = drop && drop.style.display !== 'none';
+  if (e.key === 'ArrowDown') {
+    if (!visible) return;
+    _dropIdx = Math.min(_dropIdx + 1, _dropItems.length - 1);
+    highlightDrop();
+    e.preventDefault();
+  } else if (e.key === 'ArrowUp') {
+    _dropIdx = Math.max(_dropIdx - 1, -1);
+    highlightDrop();
+    e.preventDefault();
+  } else if (e.key === 'Enter') {
+    if (visible && _dropIdx >= 0) {
+      pickDrop(_dropIdx);
+      e.preventDefault();
+    } else {
+      addToWatchlist();
+    }
+  } else if (e.key === 'Escape') {
+    hideSearchDrop();
+  }
+}
+
+function highlightDrop() {
+  document.querySelectorAll('.sdrop-item').forEach((el, i) => {
+    el.style.background = i === _dropIdx ? 'var(--accent-dim,rgba(82,166,255,.15))' : '';
+  });
+}
+
+// ─── 原有 lookupName 保留供代號直接查名稱 ───
+let _lastLookupSid = '';
 async function lookupName(sid) {
   sid = (sid || '').trim().toUpperCase();
-  if (!sid || sid === _lastLookupSid) return;
+  if (!sid || sid === _lastLookupSid || !/^\d+[A-Z]?$/.test(sid)) return;
   _lastLookupSid = sid;
   const hint = document.getElementById('name-hint');
   hint.textContent = '查詢中...';
