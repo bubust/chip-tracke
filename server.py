@@ -280,6 +280,34 @@ async def api_refresh_stock(stock_id: str, days: int = 30):
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# Debug API
+# ════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/debug/twse")
+async def api_debug_twse(date: str = "20260521"):
+    """測試 Render 能否存取 TWSE API"""
+    import httpx
+    url = "https://www.twse.com.tw/rwd/zh/fund/T86"
+    params = {"response": "json", "date": date, "selectType": "ALL"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://www.twse.com.tw/",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.get(url, params=params, headers=headers)
+            d = r.json()
+            return {
+                "status_code": r.status_code,
+                "stat": d.get("stat"),
+                "rows": len(d.get("data", [])),
+                "sample": d.get("data", [[]])[0][:3] if d.get("data") else None,
+            }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # Market Rankings API
 # ════════════════════════════════════════════════════════════════════════════
 
