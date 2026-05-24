@@ -15,6 +15,7 @@ from typing import Optional
 import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -43,6 +44,13 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="籌碼追蹤系統", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://bubust.github.io", "http://localhost:8000", "http://127.0.0.1:8000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ════════════════════════════════════════════════════════════════════════════
