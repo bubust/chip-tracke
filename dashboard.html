@@ -408,7 +408,7 @@ function toast(msg, err = false) {
 
 // ───── API ─────
 // 若從 GitHub Pages 開啟，API 打到後端；否則用相對路徑（本機/伺服器自身）
-const BACKEND_URL = ''; // TODO: 填入後端網址，例如 'https://your-app.zeabur.app'
+const BACKEND_URL = 'https://chip-tracker-ikxn.onrender.com';
 const API_BASE = location.hostname.includes('github.io') ? BACKEND_URL : '';
 
 async function api(method, path, body = null) {
