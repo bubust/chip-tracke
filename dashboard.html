@@ -512,14 +512,41 @@ function nameCell(s) {
 }
 
 async function addToWatchlist() {
-  const sid  = document.getElementById('add-sid').value.trim().toUpperCase();
-  const name = document.getElementById('add-name').value.trim();
-  if (!sid) { toast('請輸入股票代號', true); return; }
+  let sid  = document.getElementById('add-sid').value.trim();
+  let name = document.getElementById('add-name').value.trim();
+  if (!sid) { toast('請輸入股票代號或名稱', true); return; }
+
+  // 若輸入非純數字（含英文字母代號如00878），嘗試從名稱搜尋轉換
+  if (!/^\d+[A-Za-z]?$/.test(sid)) {
+    try {
+      const results = await api('GET', `/api/search?q=${encodeURIComponent(sid)}`);
+      if (!results || results.length === 0) {
+        toast(`找不到「${sid}」，請從下拉選單選取`, true); return;
+      }
+      if (results.length === 1) {
+        // 唯一結果，自動套用
+        name = name || results[0].name;
+        sid  = results[0].stock_id;
+      } else {
+        // 多個結果，看有沒有完全符合的名稱
+        const exact = results.find(r => r.name === sid);
+        if (exact) {
+          name = name || exact.name;
+          sid  = exact.stock_id;
+        } else {
+          toast(`「${sid}」有多個符合，請從下拉選單選取`, true); return;
+        }
+      }
+    } catch(e) { toast('搜尋失敗，請直接輸入代號', true); return; }
+  }
+
+  sid = sid.toUpperCase();
   try {
     await api('POST', '/api/watchlist', { stock_id: sid, name });
     document.getElementById('add-sid').value  = '';
     document.getElementById('add-name').value = '';
-    toast(`已新增 ${sid}`);
+    hideSearchDrop();
+    toast(`已新增 ${sid} ${name}`);
     await loadWatchlist();
     await loadPill();
   } catch (e) { toast(e.message, true); }
