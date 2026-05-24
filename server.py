@@ -297,26 +297,27 @@ async def api_refresh_stock(stock_id: str, days: int = 30):
 
 @app.get("/api/debug/twse")
 async def api_debug_twse(date: str = "20260521"):
-    """測試 Render 能否存取 TWSE API"""
-    import httpx
-    url = "https://www.twse.com.tw/rwd/zh/fund/T86"
-    params = {"response": "json", "date": date, "selectType": "ALL"}
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Referer": "https://www.twse.com.tw/",
-    }
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.get(url, params=params, headers=headers)
+    """測試 Render 能否存取 TWSE 及 OpenAPI"""
+    results = {}
+    async with httpx.AsyncClient(timeout=30) as client:
+        # 1. TWSE rwd T86
+        try:
+            r = await client.get("https://www.twse.com.tw/rwd/zh/fund/T86",
+                params={"response": "json", "date": date, "selectType": "ALL"},
+                headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.twse.com.tw/"})
             d = r.json()
-            return {
-                "status_code": r.status_code,
-                "stat": d.get("stat"),
-                "rows": len(d.get("data", [])),
-                "sample": d.get("data", [[]])[0][:3] if d.get("data") else None,
-            }
-    except Exception as e:
-        return {"error": str(e)}
+            results["twse_t86"] = {"status": r.status_code, "stat": d.get("stat"), "rows": len(d.get("data", []))}
+        except Exception as e:
+            results["twse_t86"] = {"error": str(e)[:80]}
+        # 2. TWSE OpenAPI BWIBBU_ALL
+        try:
+            r = await client.get("https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL")
+            d = r.json()
+            sample = next((x for x in d if x.get("Code") == "2330"), None) if isinstance(d, list) else None
+            results["openapi_bwibbu"] = {"status": r.status_code, "rows": len(d) if isinstance(d, list) else 0, "sample_2330": sample}
+        except Exception as e:
+            results["openapi_bwibbu"] = {"error": str(e)[:80]}
+    return results
 
 
 # ════════════════════════════════════════════════════════════════════════════
