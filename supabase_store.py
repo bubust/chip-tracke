@@ -119,3 +119,38 @@ def cd_all_latest(date_str: str):
     if not _enabled():
         return None
     return _get("chip_data", {"date": f"eq.{date_str}"})
+
+
+# ── Price Daily ──────────────────────────────────────────────────────────────
+
+def pd_upsert(records: list) -> bool:
+    """批量寫入 price_daily（merge-duplicates），每批 500 筆"""
+    if not _enabled() or not records:
+        return False
+    ok = True
+    for i in range(0, len(records), 500):
+        ok = ok and _post("price_daily", records[i:i+500],
+                          prefer="resolution=merge-duplicates,return=minimal")
+    return ok
+
+def pd_count() -> int:
+    """回傳 price_daily 總筆數（透過 Prefer: count=exact header）"""
+    if not _enabled():
+        return 0
+    try:
+        r = httpx.get(
+            f"{SUPABASE_URL}/rest/v1/price_daily",
+            headers={**_h(), "Prefer": "count=exact"},
+            params={"select": "date", "limit": "1"},
+            timeout=10,
+        )
+        cr = r.headers.get("content-range", "0/0")
+        return int(cr.split("/")[-1]) if "/" in cr else 0
+    except Exception:
+        return 0
+
+def pd_restore_page(limit: int = 1000, offset: int = 0) -> list:
+    """讀取 price_daily 一頁（用於冷啟動恢復）"""
+    if not _enabled():
+        return []
+    return _get(f"price_daily?order=date,stock_id&limit={limit}&offset={offset}") or []

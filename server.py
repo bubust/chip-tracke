@@ -42,6 +42,16 @@ BASE_DIR = Path(__file__).parent
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # 冷啟動：若 price_daily 為空，自動從 Supabase 恢復
+    try:
+        from price_cache import init_price_db, get_price_cache_status, restore_from_supabase
+        init_price_db()
+        if get_price_cache_status().get("days_cached", 0) == 0:
+            print("[STARTUP] price_daily 空，從 Supabase 恢復...")
+            restored = await restore_from_supabase()
+            print(f"[STARTUP] 恢復 {restored} 筆")
+    except Exception as e:
+        print(f"[STARTUP] price restore failed: {e}")
     yield
 
 app = FastAPI(title="籌碼追蹤系統", lifespan=lifespan)
@@ -335,7 +345,14 @@ def api_market_rankings(date: str = None, top: int = 30):
 @app.get("/api/market/scan")
 async def api_market_scan(top: int = 50):
     """掃描全市場上市股票大戶排行（自動找最近有資料的交易日）"""
+    from price_cache import get_latest_prices
     data, actual_dt = await scan_market_today()
+    latest = get_latest_prices()
+    for r in data:
+        sid = r['stock_id']
+        p = latest.get(sid, {})
+        r['name']  = p.get('name', '')
+        r['close'] = p.get('close')
     return {
         "date":        actual_dt or to_twse_date(datetime.today().date()),
         "total":       len(data),
@@ -349,6 +366,48 @@ def api_clear_cache():
     """清除 stat != OK 的快取資料（修復全部 +0 問題）"""
     deleted = clear_bad_cache()
     return {"ok": True, "deleted": deleted}
+
+
+@app.post("/api/price/update")
+async def api_price_update(days: int = 260):
+    """更新股價快取（TWSE STOCK_DAY_ALL，每次補充缺少的交易日）"""
+    from price_cache import update_price_cache
+    result = await update_price_cache(days=days)
+    return result
+
+@app.get("/api/price/status")
+def api_price_status():
+    """股價快取狀態"""
+    from price_cache import get_price_cache_status
+    return get_price_cache_status()
+
+@app.get("/api/market/screen")
+async def api_market_screen(strategy: str = "S5"):
+    """執行策略選股（需先 POST /api/price/update）"""
+    from price_cache import get_all_prices, get_latest_prices
+    from scanner import run_strategy, STRATEGIES
+    strategy_upper = strategy.upper()
+    if strategy_upper not in STRATEGIES:
+        raise HTTPException(status_code=400, detail=f"未知策略：{strategy}，可用：{list(STRATEGIES.keys())}")
+    prices = get_all_prices(min_days=20)
+    if not prices:
+        raise HTTPException(status_code=400, detail="尚無價格資料，請先執行 POST /api/price/update")
+    latest = get_latest_prices()
+    names = {sid: info.get('name', '') for sid, info in latest.items()}
+    chip_data, stock_info = [], {}
+    if strategy_upper == "CHIP":
+        chip_scan, _ = await scan_market_today()
+        chip_data = chip_scan
+        stock_info = {sid: {"name": info.get("name", ""), "industry": ""}
+                      for sid, info in latest.items()}
+    from scanner import run_strategy as _run
+    results = _run(strategy_upper, prices, names, chip_data, stock_info)
+    return {
+        "strategy":      strategy_upper,
+        "strategy_name": STRATEGIES.get(strategy_upper, strategy_upper),
+        "count":         len(results),
+        "data":          results,
+    }
 
 
 # ════════════════════════════════════════════════════════════════════════════
