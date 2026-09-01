@@ -1238,13 +1238,36 @@ function selectStrategy(s) {
   document.getElementById('btn-screen').disabled = false;
 }
 
+let _priceUpdateTimer = null;
+
 async function loadPriceStatus() {
   try {
     const s = await api('GET', '/api/price/status');
-    const text = s.days_cached > 0
-      ? `已快取 ${s.days_cached} 個交易日（${s.from} ～ ${s.to}），${s.stocks} 支股票`
-      : '尚無資料，請點「更新股價資料」';
-    document.getElementById('price-status-text').textContent = text;
+    const btn = document.getElementById('btn-price-update');
+    if (s.is_updating) {
+      const cached = s.days_cached || 0;
+      document.getElementById('price-status-text').textContent =
+        `⏳ 更新中... 已存 ${cached} 天，請稍候`;
+      btn.disabled = true;
+      btn.textContent = '⏳ 更新中...';
+      // 繼續輪詢
+      if (!_priceUpdateTimer)
+        _priceUpdateTimer = setInterval(loadPriceStatus, 6000);
+    } else {
+      clearInterval(_priceUpdateTimer);
+      _priceUpdateTimer = null;
+      btn.disabled = false;
+      btn.textContent = '⬇️ 更新股價資料';
+      if (s.days_cached > 0) {
+        document.getElementById('price-status-text').textContent =
+          `已快取 ${s.days_cached} 個交易日（${s.from} ～ ${s.to}），${s.stocks} 支股票`;
+        if (s.last_result && s.last_result.updated > 0)
+          toast(`✅ 股價資料更新完成：新增 ${s.last_result.updated} 天`);
+      } else {
+        document.getElementById('price-status-text').textContent =
+          '尚無資料，請點「更新股價資料」';
+      }
+    }
   } catch (e) {
     document.getElementById('price-status-text').textContent = '取得狀態失敗';
   }
@@ -1253,16 +1276,18 @@ async function loadPriceStatus() {
 async function updatePriceCache() {
   const btn = document.getElementById('btn-price-update');
   btn.disabled = true;
-  btn.textContent = '⏳ 更新中（約 2 分鐘）...';
+  btn.textContent = '⏳ 啟動中...';
   try {
-    const r = await api('POST', '/api/price/update?days=260');
-    toast(`✅ 股價資料更新完成：新增 ${r.updated} 天`);
+    await api('POST', '/api/price/update?days=260');
+    toast('✅ 更新已啟動，每 6 秒自動更新進度');
+    // 開始輪詢
+    if (!_priceUpdateTimer)
+      _priceUpdateTimer = setInterval(loadPriceStatus, 6000);
     loadPriceStatus();
   } catch (e) {
-    toast('更新失敗：' + e.message, true);
-  } finally {
     btn.disabled = false;
-    btn.textContent = '⬇️ 更新股價資料（約2分鐘）';
+    btn.textContent = '⬇️ 更新股價資料';
+    toast('啟動失敗：' + e.message, true);
   }
 }
 

@@ -14,7 +14,7 @@ from typing import Optional
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -368,18 +368,35 @@ def api_clear_cache():
     return {"ok": True, "deleted": deleted}
 
 
+_price_update_status: dict = {"running": False, "last_result": None}
+
+async def _run_price_update(days: int):
+    _price_update_status["running"] = True
+    try:
+        from price_cache import update_price_cache
+        result = await update_price_cache(days=days)
+        _price_update_status["last_result"] = result
+    except Exception as e:
+        _price_update_status["last_result"] = {"error": str(e)}
+    finally:
+        _price_update_status["running"] = False
+
 @app.post("/api/price/update")
-async def api_price_update(days: int = 260):
-    """更新股價快取（TWSE STOCK_DAY_ALL，每次補充缺少的交易日）"""
-    from price_cache import update_price_cache
-    result = await update_price_cache(days=days)
-    return result
+async def api_price_update(background_tasks: BackgroundTasks, days: int = 260):
+    """啟動後台股價快取更新（立即返回，前端輪詢 /api/price/status）"""
+    if _price_update_status["running"]:
+        return {"ok": False, "message": "已在更新中，請稍候"}
+    background_tasks.add_task(_run_price_update, days)
+    return {"ok": True, "message": "更新已啟動，請輪詢 /api/price/status"}
 
 @app.get("/api/price/status")
 def api_price_status():
-    """股價快取狀態"""
+    """股價快取狀態（含更新進度）"""
     from price_cache import get_price_cache_status
-    return get_price_cache_status()
+    status = get_price_cache_status()
+    status["is_updating"] = _price_update_status["running"]
+    status["last_result"] = _price_update_status["last_result"]
+    return status
 
 @app.get("/api/market/screen")
 async def api_market_screen(strategy: str = "S5"):
