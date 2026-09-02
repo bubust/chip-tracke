@@ -321,8 +321,8 @@
         <div id="screen-progress-bar" style="height:100%;background:var(--accent);transition:width .3s;width:0%"></div>
       </div>
     </div>
-    <!-- 策略快篩（掃描後顯示各策略命中數，點擊切換顯示） -->
-    <div id="screen-strat-bar" style="display:none;flex-wrap:wrap;gap:6px">
+    <!-- 策略快篩（掃描前後都顯示；掃描完後顯示各策略命中數） -->
+    <div id="screen-strat-bar" style="display:flex;flex-wrap:wrap;gap:6px">
       <button class="btn ghost screen-strat-btn" data-s="S1"       onclick="viewStrategy('S1')">S1 雙MACD多 <span class="strat-cnt" id="cnt-S1"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S1_SHORT" onclick="viewStrategy('S1_SHORT')">S1空 雙MACD空 <span class="strat-cnt" id="cnt-S1_SHORT"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S1_2"     onclick="viewStrategy('S1_2')">S1.2 創新高拉回 <span class="strat-cnt" id="cnt-S1_2"></span></button>
@@ -478,7 +478,7 @@ async function loadPill() {
   try {
     const s = await api('GET', '/api/status');
     document.getElementById('status-pill').textContent =
-      `${s.watchlist_count} 支股票 · CSV ${s.csv_count} 個`;
+      `${s.watchlist_count} 支股票`;
   } catch (e) {}
 }
 
