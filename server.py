@@ -450,22 +450,6 @@ def _scan_status_ts():
     return get_scan_status()["finished_at"]
 
 
-@app.get("/api/debug/import")
-def api_debug_import():
-    """暫時 debug 用：測試 yahoo_price import 是否正常"""
-    import sys, traceback
-    results = {"python": sys.version}
-    try:
-        import yahoo_price
-        results["yahoo_price"] = "OK"
-    except Exception as e:
-        results["yahoo_price"] = f"FAIL: {traceback.format_exc()}"
-    try:
-        from scanner import scan_one_stock
-        results["scanner"] = "OK"
-    except Exception as e:
-        results["scanner"] = f"FAIL: {traceback.format_exc()}"
-    return results
 
 
 # ════════════════════════════════════════════════════════════════════════════
