@@ -74,10 +74,10 @@ def wl_list():
         print(f"[SB] wl_list failed: {e}")
         return None  # 讓呼叫端 fallback 到 SQLite
 
-def wl_add(stock_id: str, name: str = "", added_at: str = ""):
+def wl_add(stock_id: str, name: str = "", added_at: str = "", note: str = ""):
     if not _enabled():
         return False
-    return _post("chip_watchlist", {"stock_id": stock_id, "name": name, "added_at": added_at})
+    return _post("chip_watchlist", {"stock_id": stock_id, "name": name, "added_at": added_at, "note": note})
 
 def wl_delete(stock_id: str):
     if not _enabled():

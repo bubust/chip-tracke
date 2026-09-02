@@ -57,6 +57,7 @@ app.add_middleware(
 class WatchlistItem(BaseModel):
     stock_id: str
     name: Optional[str] = ""
+    note: Optional[str] = ""   # 來源策略標注，例如 "S10 漲停"
 
 class RefreshBody(BaseModel):
     date: Optional[str] = None
@@ -155,10 +156,14 @@ def api_get_watchlist():
 def api_add_watchlist(item: WatchlistItem):
     sid  = item.stock_id.strip()
     name = (item.name or "").strip()
+    note = (item.note or "").strip()
     now  = datetime.now().isoformat()
-    sb.wl_add(sid, name, now)
+    sb.wl_add(sid, name, now, note)
     conn = get_conn()
-    conn.execute("INSERT OR IGNORE INTO watchlist (stock_id, name, added_at) VALUES (?,?,?)", (sid, name, now))
+    conn.execute(
+        "INSERT OR IGNORE INTO watchlist (stock_id, name, added_at, note) VALUES (?,?,?,?)",
+        (sid, name, now, note)
+    )
     conn.commit()
     conn.close()
     return {"ok": True}
@@ -193,7 +198,7 @@ async def api_watchlist_summary():
     mkt_map    = dict(zip(stocks_df["stock_id"], stocks_df["type"]))
 
     conn = get_conn()
-    rows = conn.execute("SELECT stock_id, name FROM watchlist ORDER BY added_at").fetchall()
+    rows = conn.execute("SELECT stock_id, name, note FROM watchlist ORDER BY added_at").fetchall()
     conn.close()
 
     stock_ids = [r["stock_id"] for r in rows]
@@ -230,6 +235,7 @@ async def api_watchlist_summary():
         item: dict = {
             "stock_id":   sid,
             "name":       name,
+            "note":       (r["note"] or "").strip() if "note" in r.keys() else "",
             "close":      price_info.get("close"),
             "change_pct": price_info.get("change_pct"),
         }

@@ -167,7 +167,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS watchlist (
             stock_id TEXT PRIMARY KEY,
             name     TEXT,
-            added_at TEXT
+            added_at TEXT,
+            note     TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS settings (
@@ -185,6 +186,12 @@ def init_db():
         );
     """)
     conn.commit()
+    # 舊資料庫補欄位（已存在時 ignore）
+    try:
+        conn.execute("ALTER TABLE watchlist ADD COLUMN note TEXT DEFAULT ''")
+        conn.commit()
+    except Exception:
+        pass
     conn.close()
 
 

@@ -553,7 +553,10 @@ function renderWatchlist() {
 }
 
 function nameCell(s) {
-  return `<span class="view-name">${s.name || '<span style="color:var(--muted)">—</span>'}</span>
+  const noteBadge = s.note
+    ? `<span style="font-size:.7rem;padding:1px 5px;border-radius:8px;background:var(--accent);color:#fff;margin-left:5px;opacity:.85">${s.note}</span>`
+    : '';
+  return `<span class="view-name">${s.name || '<span style="color:var(--muted)">—</span>'}${noteBadge}</span>
     <input class="inline-edit" type="text" value="${s.name || ''}"
       style="width:90px" onblur="saveName('${s.stock_id}', this.value)"
       onkeydown="if(event.key==='Enter') this.blur(); if(event.key==='Escape') this.parentElement.classList.remove('editing');"
@@ -886,10 +889,10 @@ function renderMarket() {
   }).join('');
 }
 
-async function addFromMarket(sid) {
+async function addFromMarket(sid, note = '') {
   try {
-    await api('POST', '/api/watchlist', { stock_id: sid, name: '' });
-    toast(`已加入觀察清單：${sid}`);
+    await api('POST', '/api/watchlist', { stock_id: sid, name: '', note });
+    toast(`已加入觀察清單：${sid}${note ? '（' + note + '）' : ''}`);
   } catch (e) { toast(e.message, true); }
 }
 
@@ -1360,7 +1363,7 @@ function renderScreenTable(strategy, data) {
       <td style="max-width:80px;overflow:hidden;text-overflow:ellipsis">${row.name || '—'}</td>
       <td>${row.close != null ? row.close : '—'}</td>
       ${extraTd}
-      <td><button class="btn sm ghost" onclick="addFromMarket('${row.stock_id}')">+ 加入清單</button></td>
+      <td><button class="btn sm ghost" onclick="addFromMarket('${row.stock_id}','${STRATEGY_LABELS[strategy]||strategy}')">+ 加入清單</button></td>
     </tr>`;
   }).join('');
 }
