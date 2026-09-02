@@ -241,6 +241,8 @@ _scan_status: dict = {
     "running":     False,
     "progress":    0,
     "total":       0,
+    "yahoo_ok":    0,   # 成功取得 Yahoo 資料的股票數
+    "yahoo_fail":  0,   # Yahoo 回傳空/失敗的股票數
     "results":     {},
     "finished_at": None,
     "error":       None,
@@ -253,6 +255,8 @@ def get_scan_status() -> dict:
         "running":     _scan_status["running"],
         "progress":    _scan_status["progress"],
         "total":       _scan_status["total"],
+        "yahoo_ok":    _scan_status["yahoo_ok"],
+        "yahoo_fail":  _scan_status["yahoo_fail"],
         "counts":      counts,
         "finished_at": _scan_status["finished_at"],
         "error":       _scan_status["error"],
@@ -273,6 +277,8 @@ async def run_market_scan(concurrency: int = 50):
 
     _scan_status["running"]     = True
     _scan_status["progress"]    = 0
+    _scan_status["yahoo_ok"]    = 0
+    _scan_status["yahoo_fail"]  = 0
     _scan_status["results"]     = {}
     _scan_status["error"]       = None
     _scan_status["finished_at"] = None
@@ -317,7 +323,9 @@ async def run_market_scan(concurrency: int = 50):
                 df = await _fetch_yahoo_async(client, sem, sid, mkt, range_="1y")
                 _scan_status["progress"] += 1
                 if df.empty or len(df) < 5:
+                    _scan_status["yahoo_fail"] += 1
                     return {}
+                _scan_status["yahoo_ok"] += 1
                 return scan_one_stock(df, sid, names.get(sid, ""))
 
             coros   = [_fetch_scan(sid, mkt) for sid, mkt in tasks]

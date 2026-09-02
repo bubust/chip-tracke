@@ -1227,7 +1227,6 @@ async function runScreen() {
   btn.disabled = true;
   btn.textContent = '⏳ 啟動中...';
   document.getElementById('screen-result-card').style.display = 'none';
-  document.getElementById('screen-strat-bar').style.display = 'none';
   document.getElementById('screen-progress-bar-wrap').style.display = 'block';
   document.getElementById('screen-progress-bar').style.width = '0%';
   document.getElementById('screen-progress-text').textContent = '';
@@ -1251,8 +1250,10 @@ async function pollScreenStatus() {
     if (s.running) {
       const pct = s.total > 0 ? Math.round(s.progress / s.total * 100) : 0;
       document.getElementById('screen-progress-bar').style.width = pct + '%';
+      const okInfo = (s.yahoo_ok !== undefined)
+        ? `  ✅${s.yahoo_ok} ❌${s.yahoo_fail}` : '';
       document.getElementById('screen-progress-text').textContent =
-        `掃描中 ${s.progress} / ${s.total} 支...`;
+        `掃描中 ${s.progress} / ${s.total} 支${okInfo}`;
       btn.textContent = `⏳ 掃描中 ${pct}%`;
     } else {
       clearInterval(_screenPollTimer);
@@ -1271,7 +1272,9 @@ async function pollScreenStatus() {
         const first = Object.keys(STRATEGY_LABELS).find(k => (_screenAllResults[k] || []).length > 0);
         if (first) viewStrategy(first);
         const total = Object.values(_screenAllResults).reduce((s, a) => s + a.length, 0);
-        toast(`✅ 掃描完成，共找到 ${total} 支`);
+        const diagMsg = (s.yahoo_ok !== undefined)
+          ? `（Yahoo成功 ${s.yahoo_ok}／失敗 ${s.yahoo_fail} 支）` : '';
+        toast(`✅ 掃描完成，共找到 ${total} 支 ${diagMsg}`);
       }
     }
   } catch(e) {
