@@ -86,7 +86,17 @@ def _name(sid, names):
     return (names or {}).get(sid, "")
 
 def screen_s1(prices: dict, names: dict = None) -> list:
-    """S1 雙MACD選股（多）"""
+    """
+    S1 雙MACD選股（多）
+    條件：
+    1. 收盤 > 10
+    2. 今日紅K（close > open）
+    3. 小MACD(12,26,9)：DIF > 0、DEA > 0、OSC < 0
+    4. 昨日 OSC1 為近5~20天局部谷底（前一天比昨天大 OR 昨天是近10天最低）
+    5. 今日 |OSC1| < 昨日 |OSC1|（柱子開始縮短，從谷底反轉）
+    6. 大MACD(108,216,18)：DIF2 > 0、DEA2 > 0、OSC2 > 0（需 2y 資料才可靠）
+    7. 收盤 ≥ 近10天最低收盤
+    """
     results = []
     for sid, df in prices.items():
         if len(df) < 235:
@@ -105,10 +115,14 @@ def screen_s1(prices: dict, names: dict = None) -> list:
             continue
         if len(osc1) < 22:
             continue
-        recent20 = osc1.iloc[-22:-1]
-        if osc1.iloc[-2] > recent20.min() + 1e-9:
+        # 昨日是局部谷底：昨天比前天低（或昨天是近10天最低）
+        osc_prev2 = osc1.iloc[-3]   # 前天
+        osc_prev1 = osc1.iloc[-2]   # 昨天
+        is_local_min = (osc_prev1 < osc_prev2) or (osc_prev1 <= osc1.iloc[-12:-1].min() + 1e-9)
+        if not is_local_min:
             continue
-        if abs(osc1.iloc[-1]) >= abs(osc1.iloc[-2]):
+        # 今日 OSC 絕對值比昨日小（柱子縮短，確認反轉）
+        if abs(osc1.iloc[-1]) >= abs(osc_prev1):
             continue
         if dif2.iloc[-1] <= 0 or dea2.iloc[-1] <= 0 or osc2.iloc[-1] <= 0:
             continue
@@ -138,10 +152,13 @@ def screen_s1_short(prices: dict, names: dict = None) -> list:
             continue
         if len(osc1) < 22:
             continue
-        recent20 = osc1.iloc[-22:-1]
-        if osc1.iloc[-2] < recent20.max() - 1e-9:
+        osc_prev2 = osc1.iloc[-3]
+        osc_prev1 = osc1.iloc[-2]
+        # 昨日是局部頂部：昨天比前天高（或昨天是近10天最高）
+        is_local_max = (osc_prev1 > osc_prev2) or (osc_prev1 >= osc1.iloc[-12:-1].max() - 1e-9)
+        if not is_local_max:
             continue
-        if abs(osc1.iloc[-1]) >= abs(osc1.iloc[-2]):
+        if abs(osc1.iloc[-1]) >= abs(osc_prev1):
             continue
         if dif2.iloc[-1] >= 0 or dea2.iloc[-1] >= 0 or osc2.iloc[-1] >= 0:
             continue

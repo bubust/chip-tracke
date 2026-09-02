@@ -303,7 +303,7 @@ async def run_market_scan(concurrency: int = 50):
         ) as client:
 
             async def _fetch_scan(sid, mkt):
-                df = await _fetch_yahoo_async(client, sem, sid, mkt, range_="1y")
+                df = await _fetch_yahoo_async(client, sem, sid, mkt, range_="2y")
                 _scan_status["progress"] += 1
                 if df.empty or len(df) < 5:
                     _scan_status["yahoo_fail"] += 1
