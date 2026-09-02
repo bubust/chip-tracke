@@ -1345,7 +1345,25 @@ function fmtNum(n) {
 }
 
 // ═════════════════════════════ INIT ═════════════════════════════
+
+// Render free tier 冷啟動預熱：
+// 先打一次 /api/status，如果 server 還在 spin-up 就重試，最多等 90 秒
+async function warmupServer() {
+  const pill = document.getElementById('status-pill');
+  for (let i = 0; i < 18; i++) {
+    try {
+      const r = await fetch(API_BASE + '/api/status');
+      if (r.ok) return true;  // server 已就緒
+    } catch (e) {
+      if (i === 0) pill.textContent = '伺服器啟動中，請稍候…';
+    }
+    await new Promise(res => setTimeout(res, 5000));
+  }
+  return false;
+}
+
 (async function init() {
+  await warmupServer();
   await loadWatchlist();
   await loadPill();
   renderQueryHistory();
