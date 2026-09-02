@@ -151,6 +151,7 @@
 
 <nav>
   <button class="active" onclick="switchTab('watchlist')">觀察清單</button>
+  <button onclick="switchTab('market')">全市場排行</button>
   <button onclick="switchTab('screen')">策略篩選</button>
   <button onclick="switchTab('settings')">設定</button>
 </nav>
@@ -271,6 +272,40 @@
 </div><!-- /tab-watchlist -->
 
 
+
+
+<!-- ═══════════════════════ 全市場排行 ═══════════════════════ -->
+<div id="tab-market" class="tab">
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <div>
+        <div class="section-title" style="margin:0">上市股票今日大戶排行</div>
+        <div id="scan-meta" class="muted" style="font-size:.8rem;margin-top:2px">尚未掃描 — 從 TWSE 直接取得全市場資料，無需設定觀察清單</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn green" id="btn-scan" onclick="scanMarket()">🔍 掃描今日全市場</button>
+        <button class="btn ghost" onclick="pushMarketRank()">📨 推播排行</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button id="pill-buy"  class="btn active" onclick="setView('buyers')">大戶買超 Top 50</button>
+      <button id="pill-sell" class="btn ghost"  onclick="setView('sellers')">大戶賣超 Top 50</button>
+      <span id="mkt-count" class="muted" style="font-size:.82rem;margin-left:auto;align-self:center"></span>
+    </div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th>#</th><th>代號</th><th>股名</th><th>股價</th><th>訊號</th><th>法人合計 (張)</th><th>外資 (張)</th><th>投信 (張)</th><th>融資增減 (張)</th><th>操作</th></tr>
+        </thead>
+        <tbody id="mkt-tbody">
+          <tr><td colspan="10" class="empty">點擊「掃描今日全市場」取得資料</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div><!-- /tab-market -->
 
 
 <!-- ═══════════════════════ 策略篩選 ═══════════════════════ -->
@@ -433,7 +468,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  const idx = { watchlist: 0, screen: 1, settings: 2 };
+  const idx = { watchlist: 0, market: 1, screen: 2, settings: 3 };
   document.querySelectorAll('nav button')[idx[name]].classList.add('active');
   if (name === 'settings') { loadSysStatus(); loadPushLog(); loadTGSettings(); loadParams(); }
 }

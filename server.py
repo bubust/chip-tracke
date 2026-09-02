@@ -288,6 +288,114 @@ async def api_refresh(body: RefreshBody):
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# 全市場大戶排行 API（TWSE T86 + STOCK_DAY_ALL，單日一次拿全部）
+# ════════════════════════════════════════════════════════════════════════════
+
+_UA_TWSE = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+
+@app.get("/api/market/scan")
+async def api_market_scan(top: int = 50):
+    """全市場今日法人買賣超排行（TWSE 上市，T86 三大法人 + STOCK_DAY_ALL 股價）"""
+    today_str = datetime.now().strftime("%Y%m%d")
+
+    timeout_cfg = httpx.Timeout(20.0, connect=8.0)
+    async with httpx.AsyncClient(
+        headers={"User-Agent": _UA_TWSE, "Referer": "https://www.twse.com.tw/"},
+        timeout=timeout_cfg,
+        verify=False,
+        follow_redirects=True,
+    ) as client:
+        # 同時抓：股價清單 + T86 三大法人
+        price_task = client.get(
+            "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
+        )
+        t86_task = client.get(
+            "https://www.twse.com.tw/rwd/zh/fund/T86",
+            params={"date": today_str, "selectType": "ALL", "response": "json"},
+        )
+        price_r, t86_r = await asyncio.gather(price_task, t86_task, return_exceptions=True)
+
+    # 解析股價
+    price_map: dict = {}
+    if not isinstance(price_r, Exception) and price_r.status_code == 200:
+        for item in price_r.json():
+            sid = str(item.get("Code", "")).strip()
+            if not sid:
+                continue
+            try:
+                close_s = str(item.get("ClosingPrice", "0")).replace(",", "")
+                price_map[sid] = {
+                    "name":  item.get("Name", ""),
+                    "close": float(close_s) if close_s not in ("", "--", "-") else None,
+                }
+            except Exception:
+                pass
+
+    # 解析 T86 三大法人
+    # Col: 0=代號 1=名稱 2=外資買 3=外資賣 4=外資淨
+    #       8=投信買 9=投信賣 10=投信淨
+    #      12=自營自行買 13=自營自行賣 14=自營自行淨
+    chip_map: dict = {}
+    if not isinstance(t86_r, Exception) and t86_r.status_code == 200:
+        t86 = t86_r.json()
+        if t86.get("stat") == "OK":
+            for row in t86.get("data", []):
+                try:
+                    sid = str(row[0]).strip()
+
+                    def _f(v):
+                        return float(str(v).replace(",", "")) / 1000  # 股 → 張
+
+                    foreign = _f(row[4])
+                    trust   = _f(row[10])
+                    dealer  = _f(row[14])
+                    whale   = foreign * 1.0 + trust * 0.95 + dealer * 0.70
+                    chip_map[sid] = {
+                        "foreign_lots":    round(foreign),
+                        "trust_lots":      round(trust),
+                        "whale_flow_lots": round(whale),
+                    }
+                except Exception:
+                    pass
+
+    if not chip_map:
+        raise HTTPException(status_code=503, detail="無法取得今日 T86 法人資料（TWSE 尚未公布或 IP 封鎖），請稍後再試")
+
+    # 合併結果
+    from yahoo_price import get_stock_list
+    stocks_df = get_stock_list()
+    csv_names = dict(zip(stocks_df["stock_id"], stocks_df["stock_name"]))
+
+    merged = []
+    for sid, chip in chip_map.items():
+        price_info = price_map.get(sid, {})
+        name = price_info.get("name") or csv_names.get(sid, "")
+        merged.append({
+            "stock_id":        sid,
+            "name":            name,
+            "close":           price_info.get("close"),
+            "foreign_lots":    chip["foreign_lots"],
+            "trust_lots":      chip["trust_lots"],
+            "whale_flow_lots": chip["whale_flow_lots"],
+            "retail_flow_lots": 0,
+            "signal_emoji":    "⚪",
+            "signal_level":    0,
+        })
+
+    merged.sort(key=lambda x: x["whale_flow_lots"], reverse=True)
+    return {
+        "date":        today_str,
+        "total":       len(merged),
+        "top_buyers":  merged[:top],
+        "top_sellers": list(reversed(merged))[:top],
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # Stock Query API
 # ════════════════════════════════════════════════════════════════════════════
 
