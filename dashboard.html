@@ -521,7 +521,7 @@ function renderWatchlist() {
     })();
     if (!s.has_data) {
       return `<tr>
-        <td><b>${s.stock_id}</b></td>
+        <td><b class="link" onclick="openChart('${s.stock_id}')" style="cursor:pointer;color:var(--accent)">${s.stock_id}</b></td>
         <td>${nameCell(s)}</td>
         ${priceCell}
         <td colspan="5" style="color:var(--muted);font-size:.82rem">尚無籌碼資料，請點全部更新</td>
@@ -536,7 +536,7 @@ function renderWatchlist() {
     const c7 = s.cum7_whale       || 0;
     const c  = s.concentration_index || 0;
     return `<tr class="clickable" onclick="openDetail('${s.stock_id}')">
-      <td><b>${s.stock_id}</b></td>
+      <td onclick="event.stopPropagation();openChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
       <td>${nameCell(s)}</td>
       ${priceCell}
       <td><span class="sig-badge sig-${level}">${s.signal_emoji} ${s.signal_title}</span></td>
@@ -1359,8 +1359,8 @@ function renderScreenTable(strategy, data) {
       extraTd = `<td>${row.neckline != null ? row.neckline : '—'}</td>`;
     return `<tr>
       <td class="muted">${i + 1}</td>
-      <td><b>${row.stock_id}</b></td>
-      <td style="max-width:80px;overflow:hidden;text-overflow:ellipsis">${row.name || '—'}</td>
+      <td><b class="link" onclick="openChart('${row.stock_id}')" style="cursor:pointer;color:var(--accent)">${row.stock_id}</b></td>
+      <td style="max-width:80px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openChart('${row.stock_id}')">${row.name || '—'}</td>
       <td>${row.close != null ? row.close : '—'}</td>
       ${extraTd}
       <td><button class="btn sm ghost" onclick="addFromMarket('${row.stock_id}','${STRATEGY_LABELS[strategy]||strategy}')">+ 加入清單</button></td>
@@ -1412,6 +1412,73 @@ async function warmupServer() {
     }
   } catch(e) {}
 })();
+
+// ═════════════════════════════ K 線圖 Modal ═════════════════════════════
+
+async function openChart(stockId) {
+  const modal = document.getElementById('chart-modal');
+  const title = document.getElementById('chart-modal-title');
+  const container = document.getElementById('chart-tv-container');
+
+  title.textContent = `${stockId} — 載入中...`;
+  container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:520px;color:var(--muted)"><span class="spinner"></span> 載入圖表...</div>';
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+
+  // 查市場類型
+  let market = 'twse';
+  try {
+    const r = await api('GET', `/api/stock-market/${stockId}`);
+    market = r.market || 'twse';
+  } catch(e) {}
+
+  const tvMarket = market === 'tpex' ? 'TPEX' : 'TWSE';
+  const symbol   = `${tvMarket}:${stockId}`;
+  title.textContent = `${stockId} K 線圖（${tvMarket}）`;
+
+  // TradingView widget
+  container.innerHTML = `<div id="tv_chart_${stockId}"></div>`;
+  const script = document.createElement('script');
+  script.src = 'https://s3.tradingview.com/tv.js';
+  script.onload = () => {
+    new TradingView.widget({
+      autosize:         true,
+      symbol:           symbol,
+      interval:         'D',
+      timezone:         'Asia/Taipei',
+      theme:            'dark',
+      style:            '1',
+      locale:           'zh_TW',
+      enable_publishing: false,
+      allow_symbol_change: false,
+      container_id:     `tv_chart_${stockId}`,
+      height:           520,
+    });
+  };
+  // 若已載入過 tv.js，直接建立
+  if (window.TradingView) {
+    script.onload();
+  } else {
+    document.head.appendChild(script);
+  }
+}
+
+function closeChart() {
+  document.getElementById('chart-modal').style.display = 'none';
+  document.body.style.overflow = '';
+}
 </script>
+
+<!-- K 線圖 Modal -->
+<div id="chart-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closeChart()">
+  <div style="background:var(--card);border-radius:var(--radius);width:min(95vw,1000px);max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 40px #000a">
+    <div style="display:flex;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border)">
+      <strong id="chart-modal-title" style="font-size:1rem;flex:1"></strong>
+      <button class="btn sm ghost" onclick="closeChart()">✕ 關閉</button>
+    </div>
+    <div id="chart-tv-container" style="flex:1;min-height:520px;padding:0"></div>
+  </div>
+</div>
+
 </body>
 </html>

@@ -462,6 +462,19 @@ def _scan_status_ts():
 # 股票搜尋（從 stocks.csv）
 # ════════════════════════════════════════════════════════════════════════════
 
+@app.get("/api/stock-market/{stock_id}")
+def api_stock_market(stock_id: str):
+    """回傳單支股票的市場類型 twse/tpex"""
+    try:
+        from yahoo_price import get_stock_list
+        stocks = get_stock_list()
+        row = stocks[stocks["stock_id"] == stock_id]
+        if row.empty:
+            return {"market": "twse"}   # 預設上市
+        return {"market": str(row.iloc[0]["type"])}
+    except Exception:
+        return {"market": "twse"}
+
 @app.get("/api/search")
 def api_search_stocks(q: str = ""):
     q = q.strip()
@@ -472,7 +485,7 @@ def api_search_stocks(q: str = ""):
         stocks = get_stock_list()
         mask = (stocks["stock_id"].str.startswith(q) |
                 stocks["stock_name"].str.contains(q, na=False))
-        return stocks[mask].head(10)[["stock_id","stock_name"]].rename(
+        return stocks[mask].head(10)[["stock_id","stock_name","type"]].rename(
             columns={"stock_name": "name"}
         ).to_dict(orient="records")
     except Exception:
