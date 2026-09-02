@@ -53,6 +53,9 @@
   .btn.sm { padding: 5px 13px; font-size: .8rem; }
   .btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
   .btn.ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .strat-cnt { display:inline-block;min-width:18px;padding:0 4px;background:var(--accent);color:#fff;border-radius:8px;font-size:.72rem;font-weight:700;margin-left:4px;text-align:center; }
+  .strat-cnt:empty { display:none; }
+  .screen-strat-btn.active { border-color:var(--accent);color:var(--accent); }
   .btn.green { background: var(--green); }
   .btn.danger { background: var(--red); }
   .btn.orange { background: var(--orange); }
@@ -148,7 +151,6 @@
 
 <nav>
   <button class="active" onclick="switchTab('watchlist')">觀察清單</button>
-  <button onclick="switchTab('market')">全市場排行</button>
   <button onclick="switchTab('screen')">策略篩選</button>
   <button onclick="switchTab('settings')">設定</button>
 </nav>
@@ -203,6 +205,7 @@
           <tr>
             <th>代號</th>
             <th>名稱</th>
+            <th>股價</th>
             <th>最新訊號</th>
             <th>大戶今日 (張)</th>
             <th>7日累計 (張)</th>
@@ -268,85 +271,31 @@
 </div><!-- /tab-watchlist -->
 
 
-<!-- ═══════════════════════ 全市場排行 ═══════════════════════ -->
-<div id="tab-market" class="tab">
-
-  <div class="card">
-    <div class="scan-hdr">
-      <div class="info">
-        <strong>上市股票今日大戶排行</strong>
-        <small id="scan-meta">尚未掃描 — 從 TWSE 直接取得全市場資料，無需設定觀察清單</small>
-      </div>
-      <button class="btn" onclick="scanMarket()" id="btn-scan">🔍 掃描今日全市場</button>
-      <button class="btn ghost" onclick="pushMarket()">📡 推播排行</button>
-    </div>
-    <hr />
-    <div class="row" style="gap:16px">
-      <div class="pills">
-        <div class="pill active" id="pill-buy" onclick="setView('buyers')">大戶買超 Top 50</div>
-        <div class="pill" id="pill-sell" onclick="setView('sellers')">大戶賣超 Top 50</div>
-      </div>
-      <span id="mkt-count" style="font-size:.8rem;color:var(--muted)"></span>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>代號</th>
-            <th>股名</th>
-            <th>股價</th>
-            <th>訊號</th>
-            <th>法人合計 (張)</th>
-            <th>外資 (張)</th>
-            <th>投信 (張)</th>
-            <th>融資增減 (張)</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody id="mkt-tbody">
-          <tr><td colspan="10" class="empty">點擊「掃描今日全市場」開始，約需 10~30 秒</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-</div><!-- /tab-market -->
 
 
 <!-- ═══════════════════════ 策略篩選 ═══════════════════════ -->
 <div id="tab-screen" class="tab">
 
   <div class="card">
-    <div class="scan-hdr">
-      <div class="info">
-        <strong>股價資料庫</strong>
-        <small id="price-status-text">載入中...</small>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <button class="btn green" id="btn-screen" onclick="runScreen()">🔍 掃描全市場（所有策略）</button>
+      <span id="screen-progress-text" style="color:var(--muted);font-size:.82rem"></span>
+    </div>
+    <div id="screen-progress-bar-wrap" style="display:none;margin-bottom:10px">
+      <div style="background:var(--border);border-radius:4px;height:6px;overflow:hidden">
+        <div id="screen-progress-bar" style="height:100%;background:var(--accent);transition:width .3s;width:0%"></div>
       </div>
-      <button class="btn ghost sm" onclick="loadPriceStatus()" style="margin-top:0">🔃 重整</button>
-      <button class="btn orange" id="btn-price-update" onclick="updatePriceCache()">⬇️ 更新股價資料（約2分鐘）</button>
     </div>
-  </div>
-
-  <div class="card">
-    <div class="section-title">選擇策略</div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
-      <button class="btn ghost screen-strat-btn" data-s="S1"       onclick="selectStrategy('S1')">S1 雙MACD多</button>
-      <button class="btn ghost screen-strat-btn" data-s="S1_SHORT" onclick="selectStrategy('S1_SHORT')">S1空 雙MACD空</button>
-      <button class="btn ghost screen-strat-btn" data-s="S1_2"     onclick="selectStrategy('S1_2')">S1.2 MACD創新高拉回</button>
-      <button class="btn ghost screen-strat-btn" data-s="S2"       onclick="selectStrategy('S2')">S2 W底</button>
-      <button class="btn ghost screen-strat-btn" data-s="S5"       onclick="selectStrategy('S5')">S5 站上均線</button>
-      <button class="btn ghost screen-strat-btn" data-s="S17A"     onclick="selectStrategy('S17A')">S17a 底部破底翻</button>
-      <button class="btn ghost screen-strat-btn" data-s="S17B"     onclick="selectStrategy('S17B')">S17b 撈底加碼</button>
-      <button class="btn ghost screen-strat-btn" data-s="S10"      onclick="selectStrategy('S10')">S10 漲停</button>
-      <button class="btn ghost screen-strat-btn" data-s="CHIP"     onclick="selectStrategy('CHIP')">主力籌碼</button>
-    </div>
-    <div style="display:flex;align-items:center;gap:12px">
-      <button class="btn green" id="btn-screen" onclick="runScreen()" disabled>🔍 執行篩選</button>
-      <span id="screen-strategy-label" style="color:var(--muted);font-size:.88rem">請選擇策略</span>
+    <!-- 策略快篩（掃描後顯示各策略命中數，點擊切換顯示） -->
+    <div id="screen-strat-bar" style="display:none;flex-wrap:wrap;gap:6px">
+      <button class="btn ghost screen-strat-btn" data-s="S1"       onclick="viewStrategy('S1')">S1 雙MACD多 <span class="strat-cnt" id="cnt-S1"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S1_SHORT" onclick="viewStrategy('S1_SHORT')">S1空 雙MACD空 <span class="strat-cnt" id="cnt-S1_SHORT"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S1_2"     onclick="viewStrategy('S1_2')">S1.2 創新高拉回 <span class="strat-cnt" id="cnt-S1_2"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S2"       onclick="viewStrategy('S2')">S2 W底 <span class="strat-cnt" id="cnt-S2"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S5"       onclick="viewStrategy('S5')">S5 站上均線 <span class="strat-cnt" id="cnt-S5"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S17A"     onclick="viewStrategy('S17A')">S17a 破底翻 <span class="strat-cnt" id="cnt-S17A"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S17B"     onclick="viewStrategy('S17B')">S17b 撈底加碼 <span class="strat-cnt" id="cnt-S17B"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S10"      onclick="viewStrategy('S10')">S10 漲停 <span class="strat-cnt" id="cnt-S10"></span></button>
     </div>
   </div>
 
@@ -484,10 +433,9 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  const idx = { watchlist: 0, market: 1, screen: 2, settings: 3 };
+  const idx = { watchlist: 0, screen: 1, settings: 2 };
   document.querySelectorAll('nav button')[idx[name]].classList.add('active');
   if (name === 'settings') { loadSysStatus(); loadPushLog(); loadTGSettings(); loadParams(); }
-  if (name === 'screen') { loadPriceStatus(); }
 }
 
 // ───── Status pill ─────
@@ -529,11 +477,19 @@ function renderWatchlist() {
   document.getElementById('wl-empty').style.display = 'none';
 
   tbody.innerHTML = _wlData.map(s => {
+    const priceCell = (() => {
+      if (s.close == null) return '<td class="muted">—</td>';
+      const pct = s.change_pct ?? 0;
+      const cls = pct > 0 ? 'pos' : pct < 0 ? 'neg' : '';
+      const sign = pct > 0 ? '+' : '';
+      return `<td class="${cls}">${s.close} <small style="opacity:.7">${sign}${pct.toFixed(2)}%</small></td>`;
+    })();
     if (!s.has_data) {
       return `<tr>
         <td><b>${s.stock_id}</b></td>
         <td>${nameCell(s)}</td>
-        <td colspan="5" style="color:var(--muted);font-size:.82rem">尚無資料，請點全部更新</td>
+        ${priceCell}
+        <td colspan="5" style="color:var(--muted);font-size:.82rem">尚無籌碼資料，請點全部更新</td>
         <td>
           <button class="btn sm ghost" onclick="openDetail('${s.stock_id}')">查詢</button>
           <button class="btn sm danger" style="margin-left:4px" onclick="delStock('${s.stock_id}')">刪除</button>
@@ -547,6 +503,7 @@ function renderWatchlist() {
     return `<tr class="clickable" onclick="openDetail('${s.stock_id}')">
       <td><b>${s.stock_id}</b></td>
       <td>${nameCell(s)}</td>
+      ${priceCell}
       <td><span class="sig-badge sig-${level}">${s.signal_emoji} ${s.signal_title}</span></td>
       <td class="${w  >= 0 ? 'pos' : 'neg'}">${fmtNum(w)}</td>
       <td class="${c7 >= 0 ? 'pos' : 'neg'}">${fmtNum(c7)}</td>
@@ -1217,124 +1174,121 @@ async function resetParams() {
   } catch (e) { toast(e.message, true); }
 }
 
-// ═════════════════════════════ STRATEGY SCREEN ═════════════════════════════
-let _selectedStrategy = '';
+// ═════════════════════════ 全市場掃描（所有策略一次搞定）═══════════════════════
 
-function selectStrategy(s) {
-  _selectedStrategy = s;
-  document.querySelectorAll('.screen-strat-btn').forEach(btn => {
-    const active = btn.dataset.s === s;
-    btn.style.borderColor = active ? 'var(--accent)' : '';
-    btn.style.color = active ? 'var(--accent)' : '';
-  });
-  const labels = {
-    S1: 'S1 雙MACD選股（多）', S1_SHORT: 'S1空 雙MACD選股（空）',
-    S1_2: 'S1.2 MACD延伸（創新高拉回）', S2: 'S2 二次確認買進（W底）',
-    S5: 'S5 站上均線做多', S17A: 'S17a 底部破底翻試單',
-    S17B: 'S17b 突破確認加碼（撈底）', S10: 'S10 漲停',
-    CHIP: '主力籌碼選股（法人+族群+MA）',
-  };
-  document.getElementById('screen-strategy-label').textContent = labels[s] || s;
-  document.getElementById('btn-screen').disabled = false;
-}
+let _screenPollTimer = null;
+let _screenAllResults = {};   // {S1: [...], S5: [...], ...}
+let _viewingStrategy  = '';
 
-let _priceUpdateTimer = null;
+const STRATEGY_LABELS = {
+  S1: 'S1 雙MACD選股（多）', S1_SHORT: 'S1空 雙MACD選股（空）',
+  S1_2: 'S1.2 MACD延伸（創新高拉回）', S2: 'S2 二次確認買進（W底）',
+  S5: 'S5 站上均線做多', S17A: 'S17a 底部破底翻試單',
+  S17B: 'S17b 突破確認加碼（撈底）', S10: 'S10 漲停',
+};
 
-async function loadPriceStatus() {
-  try {
-    const s = await api('GET', '/api/price/status');
-    const btn = document.getElementById('btn-price-update');
-    if (s.is_updating) {
-      const cached = s.days_cached || 0;
-      document.getElementById('price-status-text').textContent =
-        `⏳ 更新中... 已存 ${cached} 天，請稍候`;
-      btn.disabled = true;
-      btn.textContent = '⏳ 更新中...';
-      // 繼續輪詢
-      if (!_priceUpdateTimer)
-        _priceUpdateTimer = setInterval(loadPriceStatus, 6000);
-    } else {
-      clearInterval(_priceUpdateTimer);
-      _priceUpdateTimer = null;
-      btn.disabled = false;
-      btn.textContent = '⬇️ 更新股價資料';
-      if (s.days_cached > 0) {
-        document.getElementById('price-status-text').textContent =
-          `已快取 ${s.days_cached} 個交易日（${s.from} ～ ${s.to}），${s.stocks} 支股票`;
-        if (s.last_result && s.last_result.updated > 0)
-          toast(`✅ 股價資料更新完成：新增 ${s.last_result.updated} 天`);
-      } else {
-        document.getElementById('price-status-text').textContent =
-          '尚無資料，請點「更新股價資料」';
-      }
-    }
-  } catch (e) {
-    document.getElementById('price-status-text').textContent = '取得狀態失敗';
-  }
-}
-
-async function updatePriceCache() {
-  const btn = document.getElementById('btn-price-update');
+async function runScreen() {
+  const btn = document.getElementById('btn-screen');
   btn.disabled = true;
   btn.textContent = '⏳ 啟動中...';
+  document.getElementById('screen-result-card').style.display = 'none';
+  document.getElementById('screen-strat-bar').style.display = 'none';
+  document.getElementById('screen-progress-bar-wrap').style.display = 'block';
+  document.getElementById('screen-progress-bar').style.width = '0%';
+  document.getElementById('screen-progress-text').textContent = '';
   try {
-    await api('POST', '/api/price/update?days=260');
-    toast('✅ 更新已啟動，每 6 秒自動更新進度');
-    // 開始輪詢
-    if (!_priceUpdateTimer)
-      _priceUpdateTimer = setInterval(loadPriceStatus, 6000);
-    loadPriceStatus();
+    const res = await api('POST', '/api/screen/run');
+    if (res.ok === false) { toast(res.message, true); btn.disabled = false; btn.textContent = '🔍 掃描全市場（所有策略）'; return; }
+    if (!_screenPollTimer)
+      _screenPollTimer = setInterval(pollScreenStatus, 3000);
   } catch (e) {
     btn.disabled = false;
-    btn.textContent = '⬇️ 更新股價資料';
+    btn.textContent = '🔍 掃描全市場（所有策略）';
+    document.getElementById('screen-progress-bar-wrap').style.display = 'none';
     toast('啟動失敗：' + e.message, true);
   }
 }
 
-async function runScreen() {
-  if (!_selectedStrategy) { toast('請先選擇策略', true); return; }
-  const btn = document.getElementById('btn-screen');
-  btn.disabled = true;
-  btn.textContent = '⏳ 篩選中...';
-  document.getElementById('screen-result-card').style.display = 'none';
+async function pollScreenStatus() {
   try {
-    const r = await api('GET', `/api/market/screen?strategy=${_selectedStrategy}`);
-    renderScreenResult(r);
-  } catch (e) {
-    toast('篩選失敗：' + e.message, true);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '🔍 執行篩選';
+    const s = await api('GET', '/api/screen/status');
+    const btn = document.getElementById('btn-screen');
+    if (s.running) {
+      const pct = s.total > 0 ? Math.round(s.progress / s.total * 100) : 0;
+      document.getElementById('screen-progress-bar').style.width = pct + '%';
+      document.getElementById('screen-progress-text').textContent =
+        `掃描中 ${s.progress} / ${s.total} 支...`;
+      btn.textContent = `⏳ 掃描中 ${pct}%`;
+    } else {
+      clearInterval(_screenPollTimer);
+      _screenPollTimer = null;
+      btn.disabled = false;
+      btn.textContent = '🔍 掃描全市場（所有策略）';
+      document.getElementById('screen-progress-bar-wrap').style.display = 'none';
+      document.getElementById('screen-progress-text').textContent = '';
+      if (s.error) {
+        toast('掃描失敗：' + s.error, true);
+      } else {
+        const r = await api('GET', '/api/screen/results');
+        _screenAllResults = r.results || {};
+        renderStratBar();
+        // 自動顯示第一個有資料的策略
+        const first = Object.keys(STRATEGY_LABELS).find(k => (_screenAllResults[k] || []).length > 0);
+        if (first) viewStrategy(first);
+        const total = Object.values(_screenAllResults).reduce((s, a) => s + a.length, 0);
+        toast(`✅ 掃描完成，共找到 ${total} 支`);
+      }
+    }
+  } catch(e) {
+    clearInterval(_screenPollTimer);
+    _screenPollTimer = null;
+    document.getElementById('btn-screen').disabled = false;
+    document.getElementById('btn-screen').textContent = '🔍 掃描全市場（所有策略）';
+    document.getElementById('screen-progress-bar-wrap').style.display = 'none';
   }
 }
 
-function renderScreenResult(r) {
+function renderStratBar() {
+  const bar = document.getElementById('screen-strat-bar');
+  bar.style.display = 'flex';
+  Object.keys(STRATEGY_LABELS).forEach(k => {
+    const cnt = (_screenAllResults[k] || []).length;
+    const el = document.getElementById('cnt-' + k);
+    if (el) el.textContent = cnt > 0 ? cnt : '';
+  });
+}
+
+function viewStrategy(s) {
+  _viewingStrategy = s;
+  document.querySelectorAll('.screen-strat-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.s === s);
+  });
+  const data = _screenAllResults[s] || [];
+  renderScreenTable(s, data);
+}
+
+function renderScreenTable(strategy, data) {
   const card = document.getElementById('screen-result-card');
   card.style.display = 'block';
-  document.getElementById('screen-result-title').textContent = r.strategy_name || r.strategy;
-  document.getElementById('screen-result-count').textContent = `共 ${r.count} 支`;
+  document.getElementById('screen-result-title').textContent = STRATEGY_LABELS[strategy] || strategy;
+  document.getElementById('screen-result-count').textContent = `共 ${data.length} 支`;
   const extraH = {
     S10:  '<th>漲幅%</th><th>連續漲停</th>',
-    CHIP: '<th>法人(張)</th><th>族群</th><th>族群漲比%</th>',
     S17B: '<th>頸線</th>',
   };
-  const extra = extraH[r.strategy] || '';
+  const extra = extraH[strategy] || '';
   document.getElementById('screen-thead').innerHTML =
     `<tr><th>#</th><th>代號</th><th>股名</th><th>股價</th>${extra}<th>操作</th></tr>`;
   const tbody = document.getElementById('screen-tbody');
-  if (!r.data || !r.data.length) {
+  if (!data.length) {
     tbody.innerHTML = `<tr><td colspan="8" class="empty">本日無符合條件的股票</td></tr>`;
     return;
   }
-  tbody.innerHTML = r.data.map((row, i) => {
+  tbody.innerHTML = data.map((row, i) => {
     let extraTd = '';
-    if (r.strategy === 'S10')
-      extraTd = `<td class="pos">${row.change_pct}%</td><td>${row.consec_limit_up} 天</td>`;
-    else if (r.strategy === 'CHIP')
-      extraTd = `<td class="pos">${fmtNum(row.whale_flow_lots)}</td>
-                 <td style="font-size:.8rem">${row.industry || '—'}</td>
-                 <td>${row.sector_up_ratio != null ? row.sector_up_ratio : '—'}%</td>`;
-    else if (r.strategy === 'S17B')
+    if (strategy === 'S10')
+      extraTd = `<td class="pos">${row.change_pct != null ? row.change_pct : '—'}%</td><td>${row.consec_limit_up != null ? row.consec_limit_up : '—'} 天</td>`;
+    else if (strategy === 'S17B')
       extraTd = `<td>${row.neckline != null ? row.neckline : '—'}</td>`;
     return `<tr>
       <td class="muted">${i + 1}</td>

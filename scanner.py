@@ -2,7 +2,29 @@
 scanner.py - 策略選股引擎
 S1多、S1空、S1.2、S2(W底)、S5(站上均線)、S17a、S17b、S10(漲停)、CHIP(主力)
 """
+import math
+
 import pandas as pd
+
+
+def _tick_size(price: float) -> float:
+    """台股最小升降單位"""
+    if price < 10:    return 0.01
+    if price < 50:    return 0.05
+    if price < 100:   return 0.10
+    if price < 500:   return 0.50
+    if price < 1000:  return 1.00
+    return 5.00
+
+
+def _limit_up_price(prev_close: float) -> float:
+    """
+    計算台股漲停價：前收 × 1.1，依 tick 向下取整。
+    例：前收 10.25 → 11.275 → floor(11.275/0.05)*0.05 = 11.25
+    """
+    tick = _tick_size(prev_close)
+    raw  = prev_close * 1.10
+    return round(math.floor(raw / tick) * tick, 6)
 
 STRATEGIES = {
     "S1":       "雙MACD選股（多）",
@@ -288,29 +310,39 @@ def screen_s17b(prices: dict, names: dict = None) -> list:
                         "neckline": round(neckline, 2)})
     return results
 
+def _is_limit_up(close: float, prev_close: float) -> bool:
+    """
+    判斷是否漲停：收盤 >= 漲停價（允許一個 tick 誤差，處理浮點問題）。
+    """
+    if prev_close <= 0:
+        return False
+    limit = _limit_up_price(prev_close)
+    tick  = _tick_size(prev_close)
+    return close >= limit - tick * 0.1
+
+
 def screen_s10(prices: dict, names: dict = None) -> list:
-    """S10 漲停（漲幅 >= 9.8%，顯示連續天數）"""
+    """S10 漲停（收盤達漲停價，依台股 tick 規則計算，顯示連續天數）"""
     results = []
     for sid, df in prices.items():
         if len(df) < 2:
             continue
         prev_c = float(df.iloc[-2]['close'])
-        if prev_c <= 0:
+        c      = float(df.iloc[-1]['close'])
+        if not _is_limit_up(c, prev_c):
             continue
-        c = float(df.iloc[-1]['close'])
         change_pct = (c - prev_c) / prev_c * 100
-        if change_pct < 9.8:
-            continue
+
+        # 連續漲停天數（向前回溯）
         consec = 1
         for i in range(len(df) - 2, 0, -1):
             c_i   = float(df.iloc[i]['close'])
             c_pre = float(df.iloc[i - 1]['close'])
-            if c_pre <= 0:
-                break
-            if (c_i - c_pre) / c_pre * 100 >= 9.8:
+            if _is_limit_up(c_i, c_pre):
                 consec += 1
             else:
                 break
+
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(c, 2),
                         "change_pct": round(change_pct, 2),
@@ -370,6 +402,29 @@ def screen_chip(prices: dict, chip_data: list, stock_info: dict = None) -> list:
         })
     results.sort(key=lambda x: x['whale_flow_lots'], reverse=True)
     return results
+
+def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "") -> dict:
+    """
+    檢查單支股票的所有策略，回傳 {strategy_key: result_dict or None}。
+    供全市場掃描使用：一次抓取 → 同時跑所有策略，避免重複請求。
+    """
+    prices_single = {sid: df}
+    names_single  = {sid: name}
+    out = {}
+    for key, fn in [
+        ("S1",       screen_s1),
+        ("S1_SHORT", screen_s1_short),
+        ("S1_2",     screen_s1_2),
+        ("S2",       screen_s2),
+        ("S5",       screen_s5),
+        ("S17A",     screen_s17a),
+        ("S17B",     screen_s17b),
+        ("S10",      screen_s10),
+    ]:
+        results = fn(prices_single, names_single)
+        out[key] = results[0] if results else None
+    return out
+
 
 def run_strategy(strategy: str, prices: dict, names: dict = None,
                  chip_data: list = None, stock_info: dict = None) -> list:

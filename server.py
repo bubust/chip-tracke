@@ -1,14 +1,14 @@
 """
 server.py — FastAPI 後端
-- REST API (watchlist / refresh / stock / market / telegram / settings)
-- 靜態伺服 dashboard.html
+資料來源：Yahoo Finance（同 tw-macd-scan，不受 TWSE 封鎖）
+功能：觀察清單 / 策略篩選（全市場）/ 個股資料 / Telegram 推播
 """
 
-import json
+import asyncio
 import os
 import sqlite3
 from contextlib import asynccontextmanager
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -17,18 +17,14 @@ import uvicorn
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from chip_tracker_v2 import (
     DATA_DIR, DB_PATH,
     get_conn, init_db,
-    get_market_rankings, load_stock_history,
-    to_twse_date, update_stocks,
-    scan_market_today, clear_bad_cache,
+    load_stock_history, update_stocks,
     DEFAULT_WEIGHTS, DEFAULT_THRESHOLDS,
     get_weights, get_thresholds, save_params,
-    lookup_stock_name,
 )
 import supabase_store as sb
 
@@ -42,23 +38,13 @@ BASE_DIR = Path(__file__).parent
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    # 冷啟動：若 price_daily 為空，自動從 Supabase 恢復
-    try:
-        from price_cache import init_price_db, get_price_cache_status, restore_from_supabase
-        init_price_db()
-        if get_price_cache_status().get("days_cached", 0) == 0:
-            print("[STARTUP] price_daily 空，從 Supabase 恢復...")
-            restored = await restore_from_supabase()
-            print(f"[STARTUP] 恢復 {restored} 筆")
-    except Exception as e:
-        print(f"[STARTUP] price restore failed: {e}")
     yield
 
 app = FastAPI(title="籌碼追蹤系統", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://bubust.github.io", "http://localhost:8000", "http://127.0.0.1:8000"],
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -83,10 +69,6 @@ class TelegramSettings(BaseModel):
 
 class CustomMessage(BaseModel):
     text: str
-
-class MarketRankingBody(BaseModel):
-    date: Optional[str] = None
-    top: Optional[int] = 30
 
 class ParamsBody(BaseModel):
     weights: dict
@@ -141,11 +123,9 @@ def format_stock_message(stock_id: str, records: list[dict]) -> str:
         return f"<b>{stock_id}</b>\n無資料"
     latest = records[-1]
     recent = records[-7:] if len(records) >= 7 else records
-
     cum7 = sum(r.get("whale_flow_lots", 0) for r in recent)
     sig_emoji = latest.get("signal_emoji", "⚪")
     sig_title = latest.get("signal_title", "盤整")
-
     lines = [
         f"<b>{sig_emoji} {stock_id} — {sig_title}</b>",
         f"日期：{latest.get('date', '?')}",
@@ -195,7 +175,6 @@ def api_del_watchlist(stock_id: str):
 
 @app.put("/api/watchlist/{stock_id}")
 def api_update_watchlist(stock_id: str, item: WatchlistItem):
-    """更新股票名稱"""
     name = (item.name or "").strip()
     sb.wl_update_name(stock_id, name)
     conn = get_conn()
@@ -205,32 +184,69 @@ def api_update_watchlist(stock_id: str, item: WatchlistItem):
     return {"ok": True}
 
 @app.get("/api/watchlist/summary")
-def api_watchlist_summary():
-    """取得觀察清單所有股票的最新資料摘要（最新一天 + 7日累計）"""
+async def api_watchlist_summary():
+    from yahoo_price import get_stock_list, fetch_prices_for_stocks
+
+    # stocks.csv → 備用股名 + 市場類型
+    stocks_df  = get_stock_list()
+    csv_names  = dict(zip(stocks_df["stock_id"], stocks_df["stock_name"]))
+    mkt_map    = dict(zip(stocks_df["stock_id"], stocks_df["type"]))
+
     conn = get_conn()
     rows = conn.execute("SELECT stock_id, name FROM watchlist ORDER BY added_at").fetchall()
     conn.close()
 
+    stock_ids = [r["stock_id"] for r in rows]
+
+    # 補空白名稱：DB 有就用 DB，否則從 stocks.csv 補
+    names: dict[str, str] = {}
+    to_update: list[tuple[str, str]] = []
+    for r in rows:
+        sid   = r["stock_id"]
+        db_n  = (r["name"] or "").strip()
+        csv_n = csv_names.get(sid, "")
+        resolved = db_n or csv_n
+        names[sid] = resolved
+        if not db_n and csv_n:
+            to_update.append((csv_n, sid))
+
+    # 把補到的名稱同步回 DB
+    if to_update:
+        conn = get_conn()
+        conn.executemany("UPDATE watchlist SET name=? WHERE stock_id=?", to_update)
+        conn.commit()
+        conn.close()
+
+    # 批次抓最新收盤價
+    stock_list   = [(sid, mkt_map.get(sid, "twse")) for sid in stock_ids]
+    latest_prices = await fetch_prices_for_stocks(stock_list)
+
     result = []
-    for row in rows:
-        sid  = row["stock_id"]
-        name = row["name"] or ""
+    for r in rows:
+        sid  = r["stock_id"]
+        name = names.get(sid, "")
         records = load_stock_history(sid)
-        item: dict = {"stock_id": sid, "name": name}
+        price_info = latest_prices.get(sid, {})
+        item: dict = {
+            "stock_id":   sid,
+            "name":       name,
+            "close":      price_info.get("close"),
+            "change_pct": price_info.get("change_pct"),
+        }
         if records:
-            latest  = records[-1]
-            last7   = records[-7:]
-            cum7    = sum(r.get("whale_flow_lots", 0) for r in last7)
+            latest = records[-1]
+            last7  = records[-7:]
+            cum7   = sum(r2.get("whale_flow_lots", 0) for r2 in last7)
             item.update({
-                "has_data":           True,
-                "date":               latest.get("date", ""),
-                "whale_flow_lots":    latest.get("whale_flow_lots", 0),
-                "retail_flow_lots":   latest.get("retail_flow_lots", 0),
+                "has_data":            True,
+                "date":                latest.get("date", ""),
+                "whale_flow_lots":     latest.get("whale_flow_lots", 0),
+                "retail_flow_lots":    latest.get("retail_flow_lots", 0),
                 "concentration_index": latest.get("concentration_index", 0),
-                "cum7_whale":         cum7,
-                "signal_emoji":       latest.get("signal_emoji", "⚪"),
-                "signal_title":       latest.get("signal_title", "—"),
-                "signal_level":       latest.get("signal_level", 0),
+                "cum7_whale":          cum7,
+                "signal_emoji":        latest.get("signal_emoji", "⚪"),
+                "signal_title":        latest.get("signal_title", "—"),
+                "signal_level":        latest.get("signal_level", 0),
             })
         else:
             item["has_data"] = False
@@ -239,12 +255,11 @@ def api_watchlist_summary():
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Refresh API
+# Refresh API（觀察清單個股籌碼更新）
 # ════════════════════════════════════════════════════════════════════════════
 
 @app.post("/api/refresh")
 async def api_refresh(body: RefreshBody):
-    # 取觀察清單（優先 Supabase）
     sb_ids = sb.wl_get_ids()
     if sb_ids is not None:
         stock_ids = sb_ids
@@ -258,20 +273,16 @@ async def api_refresh(body: RefreshBody):
             s = s.strip()
             if s and s not in stock_ids:
                 stock_ids.append(s)
-
     if not stock_ids:
         raise HTTPException(status_code=400, detail="觀察清單為空，請先新增股票")
-
     end_dt = None
     if body.date:
         try:
             end_dt = datetime.strptime(body.date, "%Y%m%d").date()
         except ValueError:
             raise HTTPException(status_code=400, detail="date 格式錯誤，應為 YYYYMMDD")
-
     days = body.backfill or 30
     results = await update_stocks(stock_ids, days=days, end_date=end_dt)
-
     settings_set("last_refresh", datetime.now().isoformat())
     return {"ok": True, "updated": list(results.keys()), "days": days}
 
@@ -284,184 +295,80 @@ async def api_refresh(body: RefreshBody):
 async def api_stock(stock_id: str, days: int = 30):
     records = load_stock_history(stock_id)
     if not records:
-        # 第一次查詢自動抓取
         await update_stocks([stock_id], days=days)
         records = load_stock_history(stock_id)
     if not records:
-        raise HTTPException(status_code=404, detail=f"{stock_id} 尚無資料，可能非上市股票或當日無交易")
-    records = records[-days:]
-    return {"stock_id": stock_id, "data": records}
-
+        raise HTTPException(status_code=404, detail=f"{stock_id} 尚無資料")
+    return {"stock_id": stock_id, "data": records[-days:]}
 
 @app.post("/api/stock/{stock_id}/refresh")
 async def api_refresh_stock(stock_id: str, days: int = 30):
-    """強制重新抓取個股資料（bypass cache 壞資料）"""
     await update_stocks([stock_id], days=days)
     records = load_stock_history(stock_id)
     return {"ok": True, "stock_id": stock_id, "records": len(records)}
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Debug API
+# 全市場策略掃描 API（Yahoo Finance）
 # ════════════════════════════════════════════════════════════════════════════
 
-@app.get("/api/debug/twse")
-async def api_debug_twse(date: str = "20260521"):
-    """測試 Render 能否存取 TWSE 及 OpenAPI"""
-    results = {}
-    async with httpx.AsyncClient(timeout=30) as client:
-        # 1. TWSE rwd T86
-        try:
-            r = await client.get("https://www.twse.com.tw/rwd/zh/fund/T86",
-                params={"response": "json", "date": date, "selectType": "ALL"},
-                headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.twse.com.tw/"})
-            d = r.json()
-            results["twse_t86"] = {"status": r.status_code, "stat": d.get("stat"), "rows": len(d.get("data", []))}
-        except Exception as e:
-            results["twse_t86"] = {"error": str(e)[:80]}
-        # 2. TWSE OpenAPI BWIBBU_ALL
-        try:
-            r = await client.get("https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL")
-            d = r.json()
-            sample = next((x for x in d if x.get("Code") == "2330"), None) if isinstance(d, list) else None
-            results["openapi_bwibbu"] = {"status": r.status_code, "rows": len(d) if isinstance(d, list) else 0, "sample_2330": sample}
-        except Exception as e:
-            results["openapi_bwibbu"] = {"error": str(e)[:80]}
-    return results
+@app.post("/api/screen/run")
+async def api_screen_run(background_tasks: BackgroundTasks):
+    from yahoo_price import get_scan_status, run_market_scan
+    status = get_scan_status()
+    if status["running"]:
+        return {"ok": False, "message": "掃描中，請稍候"}
+    background_tasks.add_task(run_market_scan)
+    return {"ok": True, "message": "全市場掃描已啟動（所有策略）..."}
 
+@app.get("/api/screen/status")
+def api_screen_status():
+    from yahoo_price import get_scan_status
+    return get_scan_status()
 
-# ════════════════════════════════════════════════════════════════════════════
-# Market Rankings API
-# ════════════════════════════════════════════════════════════════════════════
-
-@app.get("/api/market/rankings")
-def api_market_rankings(date: str = None, top: int = 30):
-    if date is None:
-        date = to_twse_date(datetime.today().date())
-    rankings = get_market_rankings(dt=date, top=top)
-    return {"date": date, "data": rankings}
-
-
-@app.get("/api/market/scan")
-async def api_market_scan(top: int = 50):
-    """掃描全市場上市股票大戶排行（自動找最近有資料的交易日）"""
-    from price_cache import get_latest_prices
-    data, actual_dt = await scan_market_today()
-    latest = get_latest_prices()
-    for r in data:
-        sid = r['stock_id']
-        p = latest.get(sid, {})
-        r['name']  = p.get('name', '')
-        r['close'] = p.get('close')
+@app.get("/api/screen/results")
+def api_screen_results():
+    from yahoo_price import get_scan_results
+    from scanner import STRATEGIES
+    raw = get_scan_results()   # {strategy_key: [result_dict, ...]}
     return {
-        "date":        actual_dt or to_twse_date(datetime.today().date()),
-        "total":       len(data),
-        "top_buyers":  data[:top],
-        "top_sellers": list(reversed(data[-top:])) if len(data) >= top else list(reversed(data)),
+        "finished_at": _scan_status_ts(),
+        "strategies":  STRATEGIES,
+        "results":     raw,
     }
 
-
-@app.delete("/api/cache")
-def api_clear_cache():
-    """清除 stat != OK 的快取資料（修復全部 +0 問題）"""
-    deleted = clear_bad_cache()
-    return {"ok": True, "deleted": deleted}
-
-
-_price_update_status: dict = {"running": False, "last_result": None}
-
-async def _run_price_update(days: int):
-    _price_update_status["running"] = True
-    try:
-        from price_cache import update_price_cache
-        result = await update_price_cache(days=days)
-        _price_update_status["last_result"] = result
-    except Exception as e:
-        _price_update_status["last_result"] = {"error": str(e)}
-    finally:
-        _price_update_status["running"] = False
-
-@app.post("/api/price/update")
-async def api_price_update(background_tasks: BackgroundTasks, days: int = 260):
-    """啟動後台股價快取更新（立即返回，前端輪詢 /api/price/status）"""
-    if _price_update_status["running"]:
-        return {"ok": False, "message": "已在更新中，請稍候"}
-    background_tasks.add_task(_run_price_update, days)
-    return {"ok": True, "message": "更新已啟動，請輪詢 /api/price/status"}
-
-@app.get("/api/price/status")
-def api_price_status():
-    """股價快取狀態（含更新進度）"""
-    from price_cache import get_price_cache_status
-    status = get_price_cache_status()
-    status["is_updating"] = _price_update_status["running"]
-    status["last_result"] = _price_update_status["last_result"]
-    return status
-
-@app.get("/api/market/screen")
-async def api_market_screen(strategy: str = "S5"):
-    """執行策略選股（需先 POST /api/price/update）"""
-    from price_cache import get_all_prices, get_latest_prices
-    from scanner import run_strategy, STRATEGIES
-    strategy_upper = strategy.upper()
-    if strategy_upper not in STRATEGIES:
-        raise HTTPException(status_code=400, detail=f"未知策略：{strategy}，可用：{list(STRATEGIES.keys())}")
-    prices = get_all_prices(min_days=20)
-    if not prices:
-        raise HTTPException(status_code=400, detail="尚無價格資料，請先執行 POST /api/price/update")
-    latest = get_latest_prices()
-    names = {sid: info.get('name', '') for sid, info in latest.items()}
-    chip_data, stock_info = [], {}
-    if strategy_upper == "CHIP":
-        chip_scan, _ = await scan_market_today()
-        chip_data = chip_scan
-        stock_info = {sid: {"name": info.get("name", ""), "industry": ""}
-                      for sid, info in latest.items()}
-    from scanner import run_strategy as _run
-    results = _run(strategy_upper, prices, names, chip_data, stock_info)
-    return {
-        "strategy":      strategy_upper,
-        "strategy_name": STRATEGIES.get(strategy_upper, strategy_upper),
-        "count":         len(results),
-        "data":          results,
-    }
+def _scan_status_ts():
+    from yahoo_price import get_scan_status
+    return get_scan_status()["finished_at"]
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Settings API
+# 股票搜尋（從 stocks.csv）
 # ════════════════════════════════════════════════════════════════════════════
-
-@app.get("/api/lookup/{stock_id}")
-def api_lookup_stock(stock_id: str):
-    """從快取 T86 查股票名稱"""
-    name = lookup_stock_name(stock_id.upper().strip())
-    return {"stock_id": stock_id, "name": name}
-
 
 @app.get("/api/search")
 def api_search_stocks(q: str = ""):
-    """以代號或名稱模糊搜尋上市股票（從 Supabase stock_names 查詢），回傳最多 10 筆"""
     q = q.strip()
     if not q:
         return []
     try:
-        import supabase_store as sb
-        # 先試代號前綴匹配
-        rows = sb._get(f"stock_names?stock_id=ilike.{q}*&limit=10")
-        # 再試名稱包含匹配（補足 10 筆）
-        if len(rows) < 10:
-            name_rows = sb._get(f"stock_names?name=ilike.*{q}*&limit={10 - len(rows)}")
-            existing = {r["stock_id"] for r in rows}
-            rows += [r for r in name_rows if r["stock_id"] not in existing]
-        return [{"stock_id": r["stock_id"], "name": r["name"]} for r in rows[:10]]
-    except Exception as e:
-        print(f"[WARN] search failed: {e}")
+        from yahoo_price import get_stock_list
+        stocks = get_stock_list()
+        mask = (stocks["stock_id"].str.startswith(q) |
+                stocks["stock_name"].str.contains(q, na=False))
+        return stocks[mask].head(10)[["stock_id","stock_name"]].rename(
+            columns={"stock_name": "name"}
+        ).to_dict(orient="records")
+    except Exception:
         return []
 
 
+# ════════════════════════════════════════════════════════════════════════════
+# Settings / Params API
+# ════════════════════════════════════════════════════════════════════════════
+
 @app.get("/api/params")
 def api_get_params():
-    """取得目前生效的估算權重與訊號門檻"""
     return {
         "weights":    get_weights(),
         "thresholds": get_thresholds(),
@@ -471,26 +378,20 @@ def api_get_params():
         }
     }
 
-
 @app.post("/api/params")
 def api_save_params(body: ParamsBody):
-    """儲存自訂估算權重與訊號門檻"""
-    # 只允許已知的 key
     w = {k: float(v) for k, v in body.weights.items()    if k in DEFAULT_WEIGHTS}
     t = {k: float(v) for k, v in body.thresholds.items() if k in DEFAULT_THRESHOLDS}
     save_params(w, t)
     return {"ok": True, "saved_weights": len(w), "saved_thresholds": len(t)}
 
-
 @app.post("/api/params/reset")
 def api_reset_params():
-    """重置所有參數為預設值"""
     conn = get_conn()
     conn.execute("DELETE FROM settings WHERE key LIKE 'w_%' OR key LIKE 't_%'")
     conn.commit()
     conn.close()
     return {"ok": True}
-
 
 @app.get("/api/settings")
 def api_get_settings():
@@ -528,10 +429,8 @@ async def api_tg_push_stock(stock_id: str):
         raise HTTPException(status_code=404, detail=f"{stock_id} 尚無資料")
     msg = format_stock_message(stock_id, records)
     ok  = await tg_send(msg)
-
     latest = records[-1]
     log_push(stock_id, latest.get("signal_emoji","⚪"), latest.get("signal_title","?"), ok)
-
     if not ok:
         raise HTTPException(status_code=400, detail="Telegram 推播失敗")
     return {"ok": True}
@@ -543,31 +442,24 @@ async def api_tg_push_custom(body: CustomMessage):
         raise HTTPException(status_code=400, detail="Telegram 推播失敗")
     return {"ok": True}
 
-@app.post("/api/telegram/push-market")
-async def api_tg_push_market(body: MarketRankingBody):
-    dt  = body.date or to_twse_date(datetime.today().date())
-    top = body.top or 30
-    rankings = get_market_rankings(dt=dt, top=top)
-
-    if not rankings:
-        raise HTTPException(status_code=404, detail="無排行資料")
-
-    lines = [f"<b>📊 大戶排行 — {dt}</b>", ""]
-    for i, r in enumerate(rankings[:20], 1):
-        emoji = r.get("signal_emoji", "⚪")
-        sid   = r.get("stock_id", "?")
-        cum7  = r.get("cum7_whale", 0)
-        lines.append(f"{i:2}. {emoji} <b>{sid}</b>  {cum7:+,} 張")
-
-    ok = await tg_send("\n".join(lines))
-    if not ok:
-        raise HTTPException(status_code=400, detail="Telegram 推播失敗")
-    return {"ok": True}
-
 
 # ════════════════════════════════════════════════════════════════════════════
-# Push Log API
+# Status / Push Log
 # ════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/status")
+def api_status():
+    conn = get_conn()
+    cache_count    = conn.execute("SELECT COUNT(*) FROM market_raw").fetchone()[0]
+    watchlist_count = conn.execute("SELECT COUNT(*) FROM watchlist").fetchone()[0]
+    conn.close()
+    last_refresh = settings_get("last_refresh")
+    return {
+        "cache_count":      cache_count,
+        "watchlist_count":  watchlist_count,
+        "last_refresh":     last_refresh,
+        "db_path":          str(DB_PATH),
+    }
 
 @app.get("/api/push-log")
 def api_push_log(limit: int = 20):
@@ -578,31 +470,15 @@ def api_push_log(limit: int = 20):
     conn.close()
     return [dict(r) for r in rows]
 
-
-# ════════════════════════════════════════════════════════════════════════════
-# Status API
-# ════════════════════════════════════════════════════════════════════════════
-
-@app.get("/api/status")
-def api_status():
-    conn = get_conn()
-    cache_count = conn.execute("SELECT COUNT(*) FROM market_raw").fetchone()[0]
-    watchlist_count = conn.execute("SELECT COUNT(*) FROM watchlist").fetchone()[0]
-    conn.close()
-    csv_count = len(list(DATA_DIR.glob("*.csv")))
-    last_refresh = settings_get("last_refresh")
-    return {
-        "cache_count": cache_count,
-        "watchlist_count": watchlist_count,
-        "csv_count": csv_count,
-        "last_refresh": last_refresh,
-        "db_path": str(DB_PATH),
-        "data_dir": str(DATA_DIR),
-    }
+@app.delete("/api/cache")
+def api_clear_cache():
+    from chip_tracker_v2 import clear_bad_cache
+    deleted = clear_bad_cache()
+    return {"ok": True, "deleted": deleted}
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 靜態檔 / 首頁
+# 首頁
 # ════════════════════════════════════════════════════════════════════════════
 
 @app.get("/")
@@ -612,10 +488,6 @@ def root():
         return FileResponse(html_path)
     return JSONResponse({"error": "dashboard.html not found"}, status_code=404)
 
-
-# ════════════════════════════════════════════════════════════════════════════
-# 啟動
-# ════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
