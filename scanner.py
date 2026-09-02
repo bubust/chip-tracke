@@ -322,10 +322,18 @@ def _is_limit_up(close: float, prev_close: float) -> bool:
 
 
 def screen_s10(prices: dict, names: dict = None) -> list:
-    """S10 漲停（收盤達漲停價，依台股 tick 規則計算，顯示連續天數）"""
+    """
+    S10 漲停（收盤達漲停價，依台股 tick 規則計算，顯示連續天數）。
+    僅取最新一筆：最後一根 K 棒必須與倒數第二根日期不同（確認是獨立交易日）。
+    """
     results = []
     for sid, df in prices.items():
         if len(df) < 2:
+            continue
+        # 確保最後兩根是不同交易日（避免 Yahoo 重複回傳同一天資料）
+        last_date = str(df.iloc[-1].get('date', ''))
+        prev_date = str(df.iloc[-2].get('date', ''))
+        if last_date == prev_date:
             continue
         prev_c = float(df.iloc[-2]['close'])
         c      = float(df.iloc[-1]['close'])
@@ -348,7 +356,7 @@ def screen_s10(prices: dict, names: dict = None) -> list:
                         "change_pct": round(change_pct, 2),
                         "consec_limit_up": consec,
                         "strategy": "S10"})
-    results.sort(key=lambda x: x['change_pct'], reverse=True)
+    results.sort(key=lambda x: x['consec_limit_up'], reverse=True)
     return results
 
 def screen_chip(prices: dict, chip_data: list, stock_info: dict = None) -> list:

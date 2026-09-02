@@ -1214,6 +1214,7 @@ async function resetParams() {
 let _screenPollTimer = null;
 let _screenAllResults = {};   // {S1: [...], S5: [...], ...}
 let _viewingStrategy  = '';
+let _screenSort = { col: null, dir: 1 };  // 排序狀態
 
 const STRATEGY_LABELS = {
   S1: 'S1 雙MACD選股（多）', S1_SHORT: 'S1空 雙MACD選股（空）',
@@ -1298,11 +1299,21 @@ function renderStratBar() {
 
 function viewStrategy(s) {
   _viewingStrategy = s;
+  _screenSort = { col: null, dir: 1 };  // 切換策略時重置排序
   document.querySelectorAll('.screen-strat-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.s === s);
   });
-  const data = _screenAllResults[s] || [];
-  renderScreenTable(s, data);
+  renderScreenTable(s, _screenAllResults[s] || []);
+}
+
+function sortScreenBy(col) {
+  if (_screenSort.col === col) {
+    _screenSort.dir *= -1;
+  } else {
+    _screenSort.col = col;
+    _screenSort.dir = 1;
+  }
+  renderScreenTable(_viewingStrategy, _screenAllResults[_viewingStrategy] || []);
 }
 
 function renderScreenTable(strategy, data) {
@@ -1310,19 +1321,34 @@ function renderScreenTable(strategy, data) {
   card.style.display = 'block';
   document.getElementById('screen-result-title').textContent = STRATEGY_LABELS[strategy] || strategy;
   document.getElementById('screen-result-count').textContent = `共 ${data.length} 支`;
-  const extraH = {
-    S10:  '<th>漲幅%</th><th>連續漲停</th>',
-    S17B: '<th>頸線</th>',
-  };
-  const extra = extraH[strategy] || '';
-  document.getElementById('screen-thead').innerHTML =
-    `<tr><th>#</th><th>代號</th><th>股名</th><th>股價</th>${extra}<th>操作</th></tr>`;
+
+  // 排序
+  let sorted = [...data];
+  if (_screenSort.col) {
+    const col = _screenSort.col, dir = _screenSort.dir;
+    sorted.sort((a, b) => {
+      const av = a[col] ?? -Infinity, bv = b[col] ?? -Infinity;
+      return typeof av === 'string' ? av.localeCompare(bv) * dir : (av - bv) * dir;
+    });
+  }
+
+  // 表頭（可點擊排序）
+  function th(label, col) {
+    const arrow = _screenSort.col === col ? (_screenSort.dir === 1 ? ' ▲' : ' ▼') : '';
+    return `<th style="cursor:pointer;user-select:none" onclick="sortScreenBy('${col}')">${label}${arrow}</th>`;
+  }
+  let headRow = `<tr><th>#</th>${th('代號','stock_id')}${th('股名','name')}${th('股價','close')}`;
+  if (strategy === 'S10')  headRow += `${th('漲幅%','change_pct')}${th('連續漲停','consec_limit_up')}`;
+  if (strategy === 'S17B') headRow += `${th('頸線','neckline')}`;
+  headRow += `<th>操作</th></tr>`;
+  document.getElementById('screen-thead').innerHTML = headRow;
+
   const tbody = document.getElementById('screen-tbody');
-  if (!data.length) {
+  if (!sorted.length) {
     tbody.innerHTML = `<tr><td colspan="8" class="empty">本日無符合條件的股票</td></tr>`;
     return;
   }
-  tbody.innerHTML = data.map((row, i) => {
+  tbody.innerHTML = sorted.map((row, i) => {
     let extraTd = '';
     if (strategy === 'S10')
       extraTd = `<td class="pos">${row.change_pct != null ? row.change_pct : '—'}%</td><td>${row.consec_limit_up != null ? row.consec_limit_up : '—'} 天</td>`;
