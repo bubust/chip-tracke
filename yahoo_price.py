@@ -36,7 +36,7 @@ def _next_host() -> str:
 
 
 _STOCKS_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stocks.csv")
-_stocks_df: pd.DataFrame | None = None
+_stocks_df = None  # pd.DataFrame
 
 
 def get_stock_list() -> pd.DataFrame:
