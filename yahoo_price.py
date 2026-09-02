@@ -15,10 +15,6 @@ from itertools import cycle
 
 import httpx
 import pandas as pd
-import requests
-import urllib3
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -135,12 +131,13 @@ def fetch_yahoo(stock_id: str, market: str = "twse") -> pd.DataFrame:
     host = _next_host()
     url  = f"https://{host}.finance.yahoo.com/v8/finance/chart/{stock_id}{suffix}"
     try:
-        r = requests.get(
+        r = httpx.get(
             url,
             params={"interval": "1d", "range": "2y"},
             headers={"User-Agent": _UA, "Accept": "application/json"},
-            timeout=(5, 8),
+            timeout=8.0,
             verify=False,
+            follow_redirects=True,
         )
         r.raise_for_status()
         return _parse_yahoo_json(r.json())
@@ -156,10 +153,11 @@ def _get_twse_active_today() -> set[str]:
     失敗時回傳空 set（代表不過濾）。
     """
     try:
-        r = requests.get(
+        r = httpx.get(
             "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL",
             headers={"User-Agent": _UA},
             timeout=15,
+            follow_redirects=True,
         )
         r.raise_for_status()
         data = r.json()
@@ -194,12 +192,12 @@ def _get_tpex_active_today() -> set[str]:
 
     for url in _TPEX_ENDPOINTS:
         try:
-            r = requests.get(
+            r = httpx.get(
                 url,
                 headers={"User-Agent": _UA, "Accept": "application/json"},
                 timeout=15,
                 verify=False,
-                allow_redirects=True,
+                follow_redirects=True,
             )
             if r.status_code != 200:
                 continue
