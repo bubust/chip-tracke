@@ -1416,12 +1416,12 @@ async function warmupServer() {
 // ═════════════════════════════ K 線圖 Modal ═════════════════════════════
 
 async function openChart(stockId) {
-  const modal = document.getElementById('chart-modal');
-  const title = document.getElementById('chart-modal-title');
+  const modal     = document.getElementById('chart-modal');
+  const title     = document.getElementById('chart-modal-title');
   const container = document.getElementById('chart-tv-container');
 
   title.textContent = `${stockId} — 載入中...`;
-  container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:520px;color:var(--muted)"><span class="spinner"></span> 載入圖表...</div>';
+  container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted)"><span class="spinner"></span>&nbsp;載入圖表...</div>';
   modal.style.display = 'flex';
   document.body.style.overflow = 'hidden';
 
@@ -1436,47 +1436,45 @@ async function openChart(stockId) {
   const symbol   = `${tvMarket}:${stockId}`;
   title.textContent = `${stockId} K 線圖（${tvMarket}）`;
 
-  // TradingView widget
-  container.innerHTML = `<div id="tv_chart_${stockId}"></div>`;
-  const script = document.createElement('script');
-  script.src = 'https://s3.tradingview.com/tv.js';
-  script.onload = () => {
-    new TradingView.widget({
-      autosize:         true,
-      symbol:           symbol,
-      interval:         'D',
-      timezone:         'Asia/Taipei',
-      theme:            'dark',
-      style:            '1',
-      locale:           'zh_TW',
-      enable_publishing: false,
-      allow_symbol_change: false,
-      container_id:     `tv_chart_${stockId}`,
-      height:           520,
-    });
-  };
-  // 若已載入過 tv.js，直接建立
-  if (window.TradingView) {
-    script.onload();
-  } else {
-    document.head.appendChild(script);
-  }
+  // 用 iframe 方式嵌入（比 widget API 更穩定，symbol 確定正確）
+  const p = new URLSearchParams({
+    symbol,
+    interval:          'D',
+    theme:             'dark',
+    style:             '1',
+    locale:            'zh_TW',
+    timezone:          'Asia/Taipei',
+    toolbar_bg:        '%23131722',
+    enable_publishing: 'false',
+    allow_symbol_change: 'false',
+    hide_side_toolbar: 'false',
+    withdateranges:    'true',
+    range:             '12M',
+    // 預載 MACD 技術指標
+    studies:           'MACD%40tv-basicstudies',
+  });
+  container.innerHTML =
+    `<iframe src="https://www.tradingview.com/widgetembed/?${p}"
+       style="width:100%;height:100%;border:none;display:block"
+       allowtransparency="true" allowfullscreen></iframe>`;
 }
 
 function closeChart() {
   document.getElementById('chart-modal').style.display = 'none';
+  document.getElementById('chart-tv-container').innerHTML = '';
   document.body.style.overflow = '';
 }
 </script>
 
 <!-- K 線圖 Modal -->
-<div id="chart-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closeChart()">
-  <div style="background:var(--card);border-radius:var(--radius);width:min(95vw,1000px);max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 40px #000a">
-    <div style="display:flex;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border)">
-      <strong id="chart-modal-title" style="font-size:1rem;flex:1"></strong>
+<div id="chart-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeChart()">
+  <div style="background:#131722;border-radius:var(--radius);width:min(98vw,1300px);height:85vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 60px #000c">
+    <div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid #2a2e39;flex-shrink:0">
+      <strong id="chart-modal-title" style="font-size:.95rem;flex:1;color:#d1d4dc"></strong>
+      <span style="font-size:.75rem;color:#6b7280;margin-right:12px">可點「技術指標」加入 RSI / MA 等</span>
       <button class="btn sm ghost" onclick="closeChart()">✕ 關閉</button>
     </div>
-    <div id="chart-tv-container" style="flex:1;min-height:520px;padding:0"></div>
+    <div id="chart-tv-container" style="flex:1;overflow:hidden"></div>
   </div>
 </div>
 
