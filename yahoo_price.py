@@ -269,9 +269,9 @@ def get_scan_results() -> dict:
 
 async def run_market_scan(concurrency: int = 50):
     """
-    背景執行全市場策略掃描（上市 + 上櫃）。
-    - TWSE + TPEX openapi 分別過濾今日有量股票（大幅縮減請求數）
-    - Semaphore(50) 提升並發，range=1y 資料量只有 2y 一半
+    背景執行全市場策略掃描（上市 + 上櫃，全部 stocks.csv 股票）。
+    - 不做今日有量過濾，直接掃全部，確保不遺漏
+    - Semaphore(50) 控制並發，range=1y 資料量只有 2y 一半
     """
     from scanner import scan_one_stock
 
@@ -284,27 +284,10 @@ async def run_market_scan(concurrency: int = 50):
     _scan_status["finished_at"] = None
 
     try:
-        stocks    = get_stock_list()
-        names     = dict(zip(stocks["stock_id"], stocks["stock_name"]))
-        all_tasks = list(stocks[["stock_id", "type"]].itertuples(index=False, name=None))
-
-        # 上市 + 上櫃各自過濾今日有量（非交易日 / 失敗時全包）
-        loop = asyncio.get_event_loop()
-        twse_active, tpex_active = await asyncio.gather(
-            loop.run_in_executor(None, _get_twse_active_today),
-            loop.run_in_executor(None, _get_tpex_active_today),
-        )
-
-        if twse_active or tpex_active:
-            tasks = []
-            for sid, mkt in all_tasks:
-                if mkt == "twse" and (not twse_active or sid in twse_active):
-                    tasks.append((sid, mkt))
-                elif mkt == "tpex" and (not tpex_active or sid in tpex_active):
-                    tasks.append((sid, mkt))
-            print(f"[SCAN] 過濾後剩 {len(tasks)} 支（原 {len(all_tasks)} 支）")
-        else:
-            tasks = all_tasks
+        stocks = get_stock_list()
+        names  = dict(zip(stocks["stock_id"], stocks["stock_name"]))
+        tasks  = list(stocks[["stock_id", "type"]].itertuples(index=False, name=None))
+        print(f"[SCAN] 全市場掃描：共 {len(tasks)} 支")
 
         _scan_status["total"] = len(tasks)
 
