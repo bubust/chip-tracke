@@ -1370,6 +1370,18 @@ async function warmupServer() {
   await loadWatchlist();
   await loadPill();
   renderQueryHistory();
+  // 頁面重整後自動恢復掃描進度（如果伺服器掃描仍在跑）
+  try {
+    const s = await api('GET', '/api/screen/status');
+    if (s.running) {
+      document.getElementById('screen-progress-bar-wrap').style.display = 'block';
+      const btn = document.getElementById('btn-screen');
+      btn.disabled = true;
+      btn.textContent = '⏳ 掃描中...';
+      if (!_screenPollTimer)
+        _screenPollTimer = setInterval(pollScreenStatus, 3000);
+    }
+  } catch(e) {}
 })();
 </script>
 </body>

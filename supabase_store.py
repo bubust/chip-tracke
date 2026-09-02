@@ -58,10 +58,21 @@ def _delete(path):
 # ── Watchlist ──────────────────────────────────────────────────────────────
 
 def wl_list():
-    """回傳 [{stock_id, name, added_at}, ...]"""
+    """回傳 [{stock_id, name, added_at}, ...]；出錯時回傳 None 讓呼叫端 fallback 到 SQLite"""
     if not _enabled():
-        return None  # 呼叫端自行處理 fallback
-    return _get("chip_watchlist", {"order": "added_at"})
+        return None
+    try:
+        r = httpx.get(
+            f"{SUPABASE_URL}/rest/v1/chip_watchlist",
+            headers=_h(), params={"order": "added_at"}, timeout=15,
+        )
+        if r.status_code == 200:
+            return r.json()
+        print(f"[SB] wl_list HTTP {r.status_code}: {r.text[:200]}")
+        return None  # 讓呼叫端 fallback 到 SQLite
+    except Exception as e:
+        print(f"[SB] wl_list failed: {e}")
+        return None  # 讓呼叫端 fallback 到 SQLite
 
 def wl_add(stock_id: str, name: str = "", added_at: str = ""):
     if not _enabled():
