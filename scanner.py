@@ -129,7 +129,9 @@ def screen_s1(prices: dict, names: dict = None) -> list:
         if float(today['close']) < float(closes.iloc[-11:-1].min()):
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
-                        "close": round(float(today['close']), 2), "strategy": "S1"})
+                        "close": round(float(today['close']), 2),
+                        "volume": round(float(today.get('volume', 0) or 0)),
+                        "strategy": "S1"})
     return results
 
 def screen_s1_short(prices: dict, names: dict = None) -> list:
@@ -165,7 +167,9 @@ def screen_s1_short(prices: dict, names: dict = None) -> list:
         if float(today['close']) > float(closes.iloc[-11:-1].max()):
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
-                        "close": round(float(today['close']), 2), "strategy": "S1_SHORT"})
+                        "close": round(float(today['close']), 2),
+                        "volume": round(float(today.get('volume', 0) or 0)),
+                        "strategy": "S1_SHORT"})
     return results
 
 def screen_s1_2(prices: dict, names: dict = None) -> list:
@@ -192,7 +196,9 @@ def screen_s1_2(prices: dict, names: dict = None) -> list:
         if recent_20_high <= prior_60_high:
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
-                        "close": round(float(today['close']), 2), "strategy": "S1_2"})
+                        "close": round(float(today['close']), 2),
+                        "volume": round(float(today.get('volume', 0) or 0)),
+                        "strategy": "S1_2"})
     return results
 
 def screen_s2(prices: dict, names: dict = None) -> list:
@@ -228,7 +234,9 @@ def screen_s2(prices: dict, names: dict = None) -> list:
         if db is None:
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
-                        "close": round(float(today['close']), 2), "strategy": "S2"})
+                        "close": round(float(today['close']), 2),
+                        "volume": round(float(today.get('volume', 0) or 0)),
+                        "strategy": "S2"})
     return results
 
 def screen_s5(prices: dict, names: dict = None) -> list:
@@ -259,7 +267,9 @@ def screen_s5(prices: dict, names: dict = None) -> list:
         if prev_all:
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
-                        "close": round(c, 2), "strategy": "S5"})
+                        "close": round(c, 2),
+                        "volume": round(float(today.get('volume', 0) or 0)),
+                        "strategy": "S5"})
     return results
 
 def screen_s17a(prices: dict, names: dict = None) -> list:
@@ -293,7 +303,9 @@ def screen_s17a(prices: dict, names: dict = None) -> list:
             if float(today['close']) <= float(df.iloc[-2]['open']):
                 continue
         results.append({"stock_id": sid, "name": _name(sid, names),
-                        "close": round(float(today['close']), 2), "strategy": "S17A"})
+                        "close": round(float(today['close']), 2),
+                        "volume": round(float(today.get('volume', 0) or 0)),
+                        "strategy": "S17A"})
     return results
 
 def screen_s17b(prices: dict, names: dict = None) -> list:
@@ -324,7 +336,8 @@ def screen_s17b(prices: dict, names: dict = None) -> list:
                 continue
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(c, 2), "strategy": "S17B",
-                        "neckline": round(neckline, 2)})
+                        "neckline": round(neckline, 2),
+                        "volume": round(float(today.get('volume', 0) or 0))})
     return results
 
 def _is_limit_up(close: float, prev_close: float) -> bool:
@@ -372,6 +385,7 @@ def screen_s10(prices: dict, names: dict = None) -> list:
                         "close": round(c, 2),
                         "change_pct": round(change_pct, 2),
                         "consec_limit_up": consec,
+                        "volume": round(float(df.iloc[-1].get('volume', 0) or 0)),
                         "strategy": "S10"})
     results.sort(key=lambda x: x['consec_limit_up'], reverse=True)
     return results
@@ -423,6 +437,7 @@ def screen_chip(prices: dict, chip_data: list, stock_info: dict = None) -> list:
             "retail_flow_lots": chip.get('retail_flow_lots', 0),
             "industry": ind,
             "sector_up_ratio": round(ratio * 100, 1),
+            "volume": round(float(today.get('volume', 0) or 0)),
             "strategy": "CHIP",
         })
     results.sort(key=lambda x: x['whale_flow_lots'], reverse=True)
