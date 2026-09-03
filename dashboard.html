@@ -1446,27 +1446,39 @@ async function openChart(stockId) {
   const symbol   = `${tvMarket}:${stockId}`;
   title.textContent = `${stockId} K 線圖（${tvMarket}）`;
 
-  // 用 iframe 方式嵌入（比 widget API 更穩定，symbol 確定正確）
-  const p = new URLSearchParams({
-    symbol,
-    interval:          'D',
-    theme:             'dark',
-    style:             '1',
-    locale:            'zh_TW',
-    timezone:          'Asia/Taipei',
-    toolbar_bg:        '%23131722',
-    enable_publishing: 'false',
-    allow_symbol_change: 'false',
-    hide_side_toolbar: 'false',
-    withdateranges:    'true',
-    range:             '12M',
-    // 預載 MACD + 成交量指標
-    studies:           'MACD%40tv-basicstudies,Volume%40tv-basicstudies',
-  });
-  container.innerHTML =
-    `<iframe src="https://www.tradingview.com/widgetembed/?${p}"
-       style="width:100%;height:100%;border:none;display:block"
-       allowtransparency="true" allowfullscreen></iframe>`;
+  // 用 TradingView JS Widget API（studies 用陣列才正確，不會被 URLSearchParams 二次編碼）
+  const containerId = 'tv-widget-' + stockId + '-' + Date.now();
+  container.innerHTML = `<div id="${containerId}" style="width:100%;height:100%"></div>`;
+
+  const initWidget = () => {
+    new TradingView.widget({
+      container_id:      containerId,
+      width:             '100%',
+      height:            '100%',
+      symbol,
+      interval:          'D',
+      timezone:          'Asia/Taipei',
+      theme:             'dark',
+      style:             '1',
+      locale:            'zh_TW',
+      toolbar_bg:        '#131722',
+      enable_publishing: false,
+      allow_symbol_change: false,
+      hide_side_toolbar: false,
+      withdateranges:    true,
+      range:             '12M',
+      studies:           ['MACD@tv-basicstudies', 'Volume@tv-basicstudies'],
+    });
+  };
+
+  if (window.TradingView) {
+    initWidget();
+  } else {
+    const script = document.createElement('script');
+    script.src = 'https://s3.tradingview.com/tv.js';
+    script.onload = initWidget;
+    document.head.appendChild(script);
+  }
 }
 
 function closeChart() {
