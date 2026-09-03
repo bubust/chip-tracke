@@ -1361,8 +1361,8 @@ function renderScreenTable(strategy, data) {
     const arrow = _screenSort.col === col ? (_screenSort.dir === 1 ? ' ▲' : ' ▼') : '';
     return `<th style="cursor:pointer;user-select:none" onclick="sortScreenBy('${col}')">${label}${arrow}</th>`;
   }
-  let headRow = `<tr><th>#</th>${th('代號','stock_id')}${th('股名','name')}${th('股價','close')}`;
-  if (strategy === 'S10')  headRow += `${th('漲幅%','change_pct')}${th('連續漲停','consec_limit_up')}`;
+  let headRow = `<tr><th>#</th>${th('代號','stock_id')}${th('股名','name')}${th('股價','close')}${th('漲跌%','change_pct')}`;
+  if (strategy === 'S10')  headRow += `${th('連續漲停','consec_limit_up')}`;
   if (strategy === 'S17B') headRow += `${th('頸線','neckline')}`;
   headRow += `${th('成交量(張)','volume')}${th('BB位置','bb_score')}<th>操作</th></tr>`;
   document.getElementById('screen-thead').innerHTML = headRow;
@@ -1373,9 +1373,13 @@ function renderScreenTable(strategy, data) {
     return;
   }
   tbody.innerHTML = sorted.map((row, i) => {
+    const pct = row.change_pct != null ? row.change_pct : null;
+    const pctTd = pct != null
+      ? `<td class="${pct > 0 ? 'pos' : pct < 0 ? 'neg' : 'muted'}">${pct > 0 ? '+' : ''}${pct}%</td>`
+      : `<td class="muted">—</td>`;
     let extraTd = '';
     if (strategy === 'S10')
-      extraTd = `<td class="pos">${row.change_pct != null ? row.change_pct : '—'}%</td><td>${row.consec_limit_up != null ? row.consec_limit_up : '—'} 天</td>`;
+      extraTd = `<td>${row.consec_limit_up != null ? row.consec_limit_up : '—'} 天</td>`;
     else if (strategy === 'S17B')
       extraTd = `<td>${row.neckline != null ? row.neckline : '—'}</td>`;
     return `<tr>
@@ -1383,6 +1387,7 @@ function renderScreenTable(strategy, data) {
       <td><b class="link" onclick="openChart('${row.stock_id}')" style="cursor:pointer;color:var(--accent)">${row.stock_id}</b></td>
       <td style="max-width:80px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openChart('${row.stock_id}')">${row.name || '—'}</td>
       <td>${row.close != null ? row.close : '—'}</td>
+      ${pctTd}
       ${extraTd}
       <td class="muted">${(() => { if (!row.volume) return '—'; const lots = Math.round(row.volume / 1000); return lots >= 10000 ? (lots/10000).toFixed(1)+'萬' : lots.toLocaleString('zh-TW'); })()}</td>
       <td class="${(row.bb_score??0)>0?'pos':(row.bb_score??0)<0?'neg':'muted'}" title="上軌=+10 中軌=0 下軌=-10">${row.bb_score!=null ? ((row.bb_score>0?'+':'')+row.bb_score) : '—'}</td>

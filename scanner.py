@@ -101,6 +101,14 @@ def find_double_bottom(df: pd.DataFrame, lookback: int = 60, tol: float = 0.08):
 def _name(sid, names):
     return (names or {}).get(sid, "")
 
+def _change_pct(df: pd.DataFrame) -> float:
+    if len(df) < 2:
+        return 0.0
+    prev = float(df.iloc[-2]['close'])
+    if prev <= 0:
+        return 0.0
+    return round((float(df.iloc[-1]['close']) - prev) / prev * 100, 2)
+
 def screen_s1(prices: dict, names: dict = None) -> list:
     """
     S1 雙MACD選股（多）
@@ -146,6 +154,7 @@ def screen_s1(prices: dict, names: dict = None) -> list:
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(float(today['close']), 2),
+                        "change_pct": _change_pct(df),
                         "volume": round(float(today.get('volume', 0) or 0)),
                         "bb_score": calc_bb_score(df),
                         "strategy": "S1"})
@@ -185,6 +194,7 @@ def screen_s1_short(prices: dict, names: dict = None) -> list:
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(float(today['close']), 2),
+                        "change_pct": _change_pct(df),
                         "volume": round(float(today.get('volume', 0) or 0)),
                         "bb_score": calc_bb_score(df),
                         "strategy": "S1_SHORT"})
@@ -215,6 +225,7 @@ def screen_s1_2(prices: dict, names: dict = None) -> list:
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(float(today['close']), 2),
+                        "change_pct": _change_pct(df),
                         "volume": round(float(today.get('volume', 0) or 0)),
                         "bb_score": calc_bb_score(df),
                         "strategy": "S1_2"})
@@ -254,6 +265,7 @@ def screen_s2(prices: dict, names: dict = None) -> list:
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(float(today['close']), 2),
+                        "change_pct": _change_pct(df),
                         "volume": round(float(today.get('volume', 0) or 0)),
                         "bb_score": calc_bb_score(df),
                         "strategy": "S2"})
@@ -288,6 +300,7 @@ def screen_s5(prices: dict, names: dict = None) -> list:
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(c, 2),
+                        "change_pct": _change_pct(df),
                         "volume": round(float(today.get('volume', 0) or 0)),
                         "bb_score": calc_bb_score(df),
                         "strategy": "S5"})
@@ -325,6 +338,7 @@ def screen_s17a(prices: dict, names: dict = None) -> list:
                 continue
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(float(today['close']), 2),
+                        "change_pct": _change_pct(df),
                         "volume": round(float(today.get('volume', 0) or 0)),
                         "bb_score": calc_bb_score(df),
                         "strategy": "S17A"})
@@ -358,6 +372,7 @@ def screen_s17b(prices: dict, names: dict = None) -> list:
                 continue
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(c, 2), "strategy": "S17B",
+                        "change_pct": _change_pct(df),
                         "neckline": round(neckline, 2),
                         "volume": round(float(today.get('volume', 0) or 0)),
                         "bb_score": calc_bb_score(df)})
