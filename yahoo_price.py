@@ -126,7 +126,7 @@ async def fetch_prices_for_stocks(stock_list: list) -> dict:
                 ma  = closes.rolling(20).mean().iloc[-1]
                 std = closes.rolling(20).std().iloc[-1]
                 if not pd.isna(ma) and not pd.isna(std) and std > 0:
-                    bb_score = round(max(-10.0, min(10.0, (close - float(ma)) / (2 * float(std)) * 10)), 1)
+                    bb_score = round((close - float(ma)) / (2 * float(std)) * 10)
             result[sid] = {"close": round(close, 2), "change_pct": pct, "bb_score": bb_score}
         except Exception:
             pass

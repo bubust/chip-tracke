@@ -62,7 +62,7 @@ def calc_bb_score(df: pd.DataFrame, period: int = 20) -> float:
     if pd.isna(ma) or pd.isna(std) or std == 0:
         return 0.0
     score = (float(closes.iloc[-1]) - float(ma)) / (2 * float(std)) * 10
-    return round(max(-10.0, min(10.0, score)), 1)
+    return round(score)
 
 def find_local_minima(arr, window: int = 3) -> list:
     mins = []
