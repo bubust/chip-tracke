@@ -1297,6 +1297,9 @@ async function pollScreenStatus() {
         const diagMsg = (s.yahoo_ok !== undefined)
           ? `（Yahoo成功 ${s.yahoo_ok}／失敗 ${s.yahoo_fail} 支）` : '';
         toast(`✅ 掃描完成，共找到 ${total} 支 ${diagMsg}`);
+        if (s.failed_stocks && s.failed_stocks.length > 0) {
+          console.warn('[掃描失敗清單]', s.failed_stocks.join(', '));
+        }
       }
     }
   } catch(e) {
@@ -1381,7 +1384,7 @@ function renderScreenTable(strategy, data) {
       <td style="max-width:80px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openChart('${row.stock_id}')">${row.name || '—'}</td>
       <td>${row.close != null ? row.close : '—'}</td>
       ${extraTd}
-      <td class="muted">${row.volume ? (row.volume >= 10000 ? (row.volume/10000).toFixed(1)+'萬' : row.volume.toLocaleString('zh-TW')) : '—'}</td>
+      <td class="muted">${(() => { if (!row.volume) return '—'; const lots = Math.round(row.volume / 1000); return lots >= 10000 ? (lots/10000).toFixed(1)+'萬' : lots.toLocaleString('zh-TW'); })()}</td>
       <td class="${(row.bb_score??0)>0?'pos':(row.bb_score??0)<0?'neg':'muted'}" title="上軌=+10 中軌=0 下軌=-10">${row.bb_score!=null ? ((row.bb_score>0?'+':'')+row.bb_score) : '—'}</td>
       <td><button class="btn sm ghost" onclick="addFromMarket('${row.stock_id}','${STRATEGY_LABELS[strategy]||strategy}')">+ 加入清單</button></td>
     </tr>`;

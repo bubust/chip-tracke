@@ -79,19 +79,23 @@ async def _fetch_yahoo_async(
     避免 Yahoo Finance 用慢速傳輸繞過 per-phase timeout。
     range_ 預設 1y（約 248 根）：S1 最低需求 235 根，仍足夠，資料量只有 2y 一半。
     """
-    suffix = ".TW" if market == "twse" else ".TWO"
-    host   = _next_host()
-    url    = f"https://{host}.finance.yahoo.com/v8/finance/chart/{stock_id}{suffix}"
+    suffixes = [".TW"] if market == "twse" else [".TWO", ".TW"]
     async with sem:
-        try:
-            r = await asyncio.wait_for(
-                client.get(url, params={"interval": "1d", "range": range_}),
-                timeout=total_timeout,
-            )
-            r.raise_for_status()
-            return _parse_yahoo_json(r.json())
-        except Exception:
-            return pd.DataFrame()
+        for suffix in suffixes:
+            host = _next_host()
+            url  = f"https://{host}.finance.yahoo.com/v8/finance/chart/{stock_id}{suffix}"
+            try:
+                r = await asyncio.wait_for(
+                    client.get(url, params={"interval": "1d", "range": range_}),
+                    timeout=total_timeout,
+                )
+                r.raise_for_status()
+                df = _parse_yahoo_json(r.json())
+                if not df.empty and len(df) >= 5:
+                    return df
+            except Exception:
+                pass
+        return pd.DataFrame()
 
 
 async def fetch_prices_for_stocks(stock_list: list) -> dict:
@@ -246,28 +250,30 @@ def _get_tpex_active_today() -> set[str]:
 STRATEGY_KEYS = ["S1", "S1_SHORT", "S1_2", "S2", "S5", "S17A", "S17B", "S10"]
 
 _scan_status: dict = {
-    "running":     False,
-    "progress":    0,
-    "total":       0,
-    "yahoo_ok":    0,   # 成功取得 Yahoo 資料的股票數
-    "yahoo_fail":  0,   # Yahoo 回傳空/失敗的股票數
-    "results":     {},
-    "finished_at": None,
-    "error":       None,
+    "running":      False,
+    "progress":     0,
+    "total":        0,
+    "yahoo_ok":     0,   # 成功取得 Yahoo 資料的股票數
+    "yahoo_fail":   0,   # Yahoo 回傳空/失敗的股票數
+    "failed_stocks": [],  # 失敗的股票代號清單
+    "results":      {},
+    "finished_at":  None,
+    "error":        None,
 }
 
 
 def get_scan_status() -> dict:
     counts = {k: len(v) for k, v in _scan_status["results"].items()} if _scan_status["results"] else {}
     return {
-        "running":     _scan_status["running"],
-        "progress":    _scan_status["progress"],
-        "total":       _scan_status["total"],
-        "yahoo_ok":    _scan_status["yahoo_ok"],
-        "yahoo_fail":  _scan_status["yahoo_fail"],
-        "counts":      counts,
-        "finished_at": _scan_status["finished_at"],
-        "error":       _scan_status["error"],
+        "running":       _scan_status["running"],
+        "progress":      _scan_status["progress"],
+        "total":         _scan_status["total"],
+        "yahoo_ok":      _scan_status["yahoo_ok"],
+        "yahoo_fail":    _scan_status["yahoo_fail"],
+        "failed_stocks": _scan_status["failed_stocks"],
+        "counts":        counts,
+        "finished_at":   _scan_status["finished_at"],
+        "error":         _scan_status["error"],
     }
 
 
@@ -283,13 +289,14 @@ async def run_market_scan(concurrency: int = 50):
     """
     from scanner import scan_one_stock
 
-    _scan_status["running"]     = True
-    _scan_status["progress"]    = 0
-    _scan_status["yahoo_ok"]    = 0
-    _scan_status["yahoo_fail"]  = 0
-    _scan_status["results"]     = {}
-    _scan_status["error"]       = None
-    _scan_status["finished_at"] = None
+    _scan_status["running"]       = True
+    _scan_status["progress"]      = 0
+    _scan_status["yahoo_ok"]      = 0
+    _scan_status["yahoo_fail"]    = 0
+    _scan_status["failed_stocks"] = []
+    _scan_status["results"]       = {}
+    _scan_status["error"]         = None
+    _scan_status["finished_at"]   = None
 
     try:
         stocks = get_stock_list()
@@ -315,6 +322,7 @@ async def run_market_scan(concurrency: int = 50):
                 _scan_status["progress"] += 1
                 if df.empty or len(df) < 5:
                     _scan_status["yahoo_fail"] += 1
+                    _scan_status["failed_stocks"].append(sid)
                     return {}
                 _scan_status["yahoo_ok"] += 1
                 return scan_one_stock(df, sid, names.get(sid, ""))

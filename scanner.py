@@ -19,11 +19,12 @@ def _tick_size(price: float) -> float:
 
 def _limit_up_price(prev_close: float) -> float:
     """
-    計算台股漲停價：前收 × 1.1，依 tick 向下取整。
-    例：前收 10.25 → 11.275 → floor(11.275/0.05)*0.05 = 11.25
+    計算台股漲停價：前收 × 1.1，依「計算後價格所在區間」的 tick 向下取整。
+    例：前收 9.92 → 10.912 → 落在 10~50 區間 tick=0.05 → 10.90
+    例：前收 10.25 → 11.275 → tick=0.05 → 11.25
     """
-    tick = _tick_size(prev_close)
     raw  = prev_close * 1.10
+    tick = _tick_size(raw)
     return round(math.floor(raw / tick) * tick, 6)
 
 STRATEGIES = {
@@ -230,7 +231,7 @@ def screen_s2(prices: dict, names: dict = None) -> list:
         if float(today['close']) <= 10:
             continue
         vol = today.get('volume', 0) or 0
-        if float(vol) < 300:
+        if float(vol) < 300_000:   # 300張 = 300,000股（Yahoo回傳股數）
             continue
         ma10  = calc_ma(closes, 10)
         ma60  = calc_ma(closes, 60)
@@ -369,7 +370,7 @@ def _is_limit_up(close: float, prev_close: float) -> bool:
     if prev_close <= 0:
         return False
     limit = _limit_up_price(prev_close)
-    tick  = _tick_size(prev_close)
+    tick  = _tick_size(limit)
     return close >= limit - tick * 0.1
 
 
