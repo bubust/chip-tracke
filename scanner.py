@@ -49,6 +49,21 @@ def calc_macd(series: pd.Series, fast: int, slow: int, signal: int):
 def calc_ma(series: pd.Series, period: int) -> pd.Series:
     return series.rolling(period, min_periods=period).mean()
 
+def calc_bb_score(df: pd.DataFrame, period: int = 20) -> float:
+    """
+    布林軌道分級：上軌~中軌 +10~0，中軌~下軌 0~-10
+    score = (close - MA20) / (2σ) × 10，夾在 [-10, 10]
+    """
+    if len(df) < period:
+        return 0.0
+    closes = df['close']
+    ma  = closes.rolling(period).mean().iloc[-1]
+    std = closes.rolling(period).std().iloc[-1]
+    if pd.isna(ma) or pd.isna(std) or std == 0:
+        return 0.0
+    score = (float(closes.iloc[-1]) - float(ma)) / (2 * float(std)) * 10
+    return round(max(-10.0, min(10.0, score)), 1)
+
 def find_local_minima(arr, window: int = 3) -> list:
     mins = []
     for i in range(window, len(arr) - window):
@@ -131,6 +146,7 @@ def screen_s1(prices: dict, names: dict = None) -> list:
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(float(today['close']), 2),
                         "volume": round(float(today.get('volume', 0) or 0)),
+                        "bb_score": calc_bb_score(df),
                         "strategy": "S1"})
     return results
 
@@ -169,6 +185,7 @@ def screen_s1_short(prices: dict, names: dict = None) -> list:
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(float(today['close']), 2),
                         "volume": round(float(today.get('volume', 0) or 0)),
+                        "bb_score": calc_bb_score(df),
                         "strategy": "S1_SHORT"})
     return results
 
@@ -198,6 +215,7 @@ def screen_s1_2(prices: dict, names: dict = None) -> list:
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(float(today['close']), 2),
                         "volume": round(float(today.get('volume', 0) or 0)),
+                        "bb_score": calc_bb_score(df),
                         "strategy": "S1_2"})
     return results
 
@@ -236,6 +254,7 @@ def screen_s2(prices: dict, names: dict = None) -> list:
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(float(today['close']), 2),
                         "volume": round(float(today.get('volume', 0) or 0)),
+                        "bb_score": calc_bb_score(df),
                         "strategy": "S2"})
     return results
 
@@ -269,6 +288,7 @@ def screen_s5(prices: dict, names: dict = None) -> list:
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(c, 2),
                         "volume": round(float(today.get('volume', 0) or 0)),
+                        "bb_score": calc_bb_score(df),
                         "strategy": "S5"})
     return results
 
@@ -305,6 +325,7 @@ def screen_s17a(prices: dict, names: dict = None) -> list:
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(float(today['close']), 2),
                         "volume": round(float(today.get('volume', 0) or 0)),
+                        "bb_score": calc_bb_score(df),
                         "strategy": "S17A"})
     return results
 
@@ -337,7 +358,8 @@ def screen_s17b(prices: dict, names: dict = None) -> list:
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(c, 2), "strategy": "S17B",
                         "neckline": round(neckline, 2),
-                        "volume": round(float(today.get('volume', 0) or 0))})
+                        "volume": round(float(today.get('volume', 0) or 0)),
+                        "bb_score": calc_bb_score(df)})
     return results
 
 def _is_limit_up(close: float, prev_close: float) -> bool:
@@ -386,6 +408,7 @@ def screen_s10(prices: dict, names: dict = None) -> list:
                         "change_pct": round(change_pct, 2),
                         "consec_limit_up": consec,
                         "volume": round(float(df.iloc[-1].get('volume', 0) or 0)),
+                        "bb_score": calc_bb_score(df),
                         "strategy": "S10"})
     results.sort(key=lambda x: x['consec_limit_up'], reverse=True)
     return results
@@ -438,6 +461,7 @@ def screen_chip(prices: dict, chip_data: list, stock_info: dict = None) -> list:
             "industry": ind,
             "sector_up_ratio": round(ratio * 100, 1),
             "volume": round(float(today.get('volume', 0) or 0)),
+            "bb_score": calc_bb_score(df),
             "strategy": "CHIP",
         })
     results.sort(key=lambda x: x['whale_flow_lots'], reverse=True)

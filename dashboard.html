@@ -212,6 +212,7 @@
             <th>7日累計 (張)</th>
             <th>集中度</th>
             <th>連續天數</th>
+            <th title="布林軌道分級：上軌=+10 中軌=0 下軌=-10">BB位置</th>
             <th>最新日期</th>
             <th>操作</th>
           </tr>
@@ -525,7 +526,7 @@ function renderWatchlist() {
         <td><b class="link" onclick="openChart('${s.stock_id}')" style="cursor:pointer;color:var(--accent)">${s.stock_id}</b></td>
         <td>${nameCell(s)}</td>
         ${priceCell}
-        <td colspan="6" style="color:var(--muted);font-size:.82rem">尚無籌碼資料，請點全部更新</td>
+        <td colspan="7" style="color:var(--muted);font-size:.82rem">尚無籌碼資料，請點全部更新</td>
         <td>
           <button class="btn sm ghost" onclick="openDetail('${s.stock_id}')">查詢</button>
           <button class="btn sm danger" style="margin-left:4px" onclick="delStock('${s.stock_id}')">刪除</button>
@@ -543,6 +544,13 @@ function renderWatchlist() {
       if (cs > 0) return `<td class="neg">-${cs}天</td>`;
       return `<td class="muted">—</td>`;
     })();
+    const bb = s.bb_score ?? null;
+    const bbCell = (() => {
+      if (bb === null || bb === undefined) return `<td class="muted">—</td>`;
+      const cls = bb > 0 ? 'pos' : bb < 0 ? 'neg' : 'muted';
+      const sign = bb > 0 ? '+' : '';
+      return `<td class="${cls}" title="上軌=+10 中軌=0 下軌=-10">${sign}${bb.toFixed(1)}</td>`;
+    })();
     return `<tr class="clickable" onclick="openDetail('${s.stock_id}')">
       <td onclick="event.stopPropagation();openChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
       <td>${nameCell(s)}</td>
@@ -552,6 +560,7 @@ function renderWatchlist() {
       <td class="${c7 >= 0 ? 'pos' : 'neg'}">${fmtNum(c7)}</td>
       <td class="${c  >= 0 ? 'pos' : 'neg'}">${c.toFixed(3)}</td>
       ${consecCell}
+      ${bbCell}
       <td class="muted">${s.date || '—'}</td>
       <td onclick="event.stopPropagation()">
         <button class="btn sm ghost" onclick="openDetail('${s.stock_id}')">詳細</button>
@@ -1352,7 +1361,7 @@ function renderScreenTable(strategy, data) {
   let headRow = `<tr><th>#</th>${th('代號','stock_id')}${th('股名','name')}${th('股價','close')}`;
   if (strategy === 'S10')  headRow += `${th('漲幅%','change_pct')}${th('連續漲停','consec_limit_up')}`;
   if (strategy === 'S17B') headRow += `${th('頸線','neckline')}`;
-  headRow += `${th('成交量(張)','volume')}<th>操作</th></tr>`;
+  headRow += `${th('成交量(張)','volume')}${th('BB位置','bb_score')}<th>操作</th></tr>`;
   document.getElementById('screen-thead').innerHTML = headRow;
 
   const tbody = document.getElementById('screen-tbody');
@@ -1373,6 +1382,7 @@ function renderScreenTable(strategy, data) {
       <td>${row.close != null ? row.close : '—'}</td>
       ${extraTd}
       <td class="muted">${row.volume ? (row.volume >= 10000 ? (row.volume/10000).toFixed(1)+'萬' : row.volume.toLocaleString('zh-TW')) : '—'}</td>
+      <td class="${(row.bb_score??0)>0?'pos':(row.bb_score??0)<0?'neg':'muted'}" title="上軌=+10 中軌=0 下軌=-10">${row.bb_score!=null ? ((row.bb_score>0?'+':'')+row.bb_score.toFixed(1)) : '—'}</td>
       <td><button class="btn sm ghost" onclick="addFromMarket('${row.stock_id}','${STRATEGY_LABELS[strategy]||strategy}')">+ 加入清單</button></td>
     </tr>`;
   }).join('');

@@ -252,6 +252,7 @@ async def api_watchlist_summary():
             "note":       (r["note"] or "").strip() if "note" in r.keys() else "",
             "close":      price_info.get("close"),
             "change_pct": price_info.get("change_pct"),
+            "bb_score":   price_info.get("bb_score", 0.0),
         }
         if records:
             latest = records[-1]

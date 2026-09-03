@@ -119,7 +119,15 @@ async def fetch_prices_for_stocks(stock_list: list) -> dict:
             close = float(df.iloc[-1]["close"])
             prev  = float(df.iloc[-2]["close"]) if len(df) >= 2 else close
             pct   = round((close - prev) / prev * 100, 2) if prev > 0 else 0.0
-            result[sid] = {"close": round(close, 2), "change_pct": pct}
+            # 布林軌道分級：(close - MA20) / (2σ) × 10，夾在 [-10, 10]
+            bb_score = 0.0
+            if len(df) >= 20:
+                closes = df['close']
+                ma  = closes.rolling(20).mean().iloc[-1]
+                std = closes.rolling(20).std().iloc[-1]
+                if not pd.isna(ma) and not pd.isna(std) and std > 0:
+                    bb_score = round(max(-10.0, min(10.0, (close - float(ma)) / (2 * float(std)) * 10)), 1)
+            result[sid] = {"close": round(close, 2), "change_pct": pct, "bb_score": bb_score}
         except Exception:
             pass
     return result
