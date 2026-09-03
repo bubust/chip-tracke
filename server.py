@@ -192,6 +192,20 @@ def api_update_watchlist(stock_id: str, item: WatchlistItem):
 async def api_watchlist_summary():
     from yahoo_price import get_stock_list, fetch_prices_for_stocks
 
+    # Supabase 優先：Render 重啟後 SQLite 是空的，從 Supabase 同步回來
+    sb_rows = sb.wl_list()
+    if sb_rows is not None and sb_rows:
+        conn = get_conn()
+        local_ids = {r["stock_id"] for r in conn.execute("SELECT stock_id FROM watchlist").fetchall()}
+        for r in sb_rows:
+            if r["stock_id"] not in local_ids:
+                conn.execute(
+                    "INSERT OR IGNORE INTO watchlist (stock_id, name, added_at, note) VALUES (?,?,?,?)",
+                    (r["stock_id"], r.get("name", ""), r.get("added_at", ""), r.get("note", ""))
+                )
+        conn.commit()
+        conn.close()
+
     # stocks.csv → 備用股名 + 市場類型
     stocks_df  = get_stock_list()
     csv_names  = dict(zip(stocks_df["stock_id"], stocks_df["stock_name"]))
@@ -243,6 +257,15 @@ async def api_watchlist_summary():
             latest = records[-1]
             last7  = records[-7:]
             cum7   = sum(r2.get("whale_flow_lots", 0) for r2 in last7)
+            # 連續買超天數（從 CSV/Supabase 讀，若無則從 records 計算）
+            consec_buy = int(latest.get("consecutive_buy", 0) or 0)
+            # 連續賣超天數（whale < 0 的連續天數，即時計算）
+            consec_sell = 0
+            for r2 in reversed(records):
+                if (r2.get("whale_flow_lots", 0) or 0) < 0:
+                    consec_sell += 1
+                else:
+                    break
             item.update({
                 "has_data":            True,
                 "date":                latest.get("date", ""),
@@ -253,6 +276,8 @@ async def api_watchlist_summary():
                 "signal_emoji":        latest.get("signal_emoji", "⚪"),
                 "signal_title":        latest.get("signal_title", "—"),
                 "signal_level":        latest.get("signal_level", 0),
+                "consecutive_buy":     consec_buy,
+                "consecutive_sell":    consec_sell,
             })
         else:
             item["has_data"] = False
@@ -306,70 +331,84 @@ _UA_TWSE = (
 @app.get("/api/market/scan")
 async def api_market_scan(top: int = 50):
     """全市場今日法人買賣超排行（TWSE 上市，T86 三大法人 + STOCK_DAY_ALL 股價）"""
-    today_str = datetime.now().strftime("%Y%m%d")
+    from datetime import date, timedelta
+    from chip_tracker_v2 import is_trading_day
 
     timeout_cfg = httpx.Timeout(20.0, connect=8.0)
+
+    # 股價清單（只抓一次）
+    price_map: dict = {}
+    chip_map: dict = {}
+    used_date_str: str = ""
+
     async with httpx.AsyncClient(
         headers={"User-Agent": _UA_TWSE, "Referer": "https://www.twse.com.tw/"},
         timeout=timeout_cfg,
         verify=False,
         follow_redirects=True,
     ) as client:
-        # 同時抓：股價清單 + T86 三大法人
-        price_task = client.get(
-            "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
-        )
-        t86_task = client.get(
-            "https://www.twse.com.tw/rwd/zh/fund/T86",
-            params={"date": today_str, "selectType": "ALL", "response": "json"},
-        )
-        price_r, t86_r = await asyncio.gather(price_task, t86_task, return_exceptions=True)
+        # 先抓股價（與日期無關，單次即可）
+        try:
+            price_r = await client.get(
+                "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
+            )
+            if price_r.status_code == 200:
+                for item in price_r.json():
+                    sid = str(item.get("Code", "")).strip()
+                    if not sid:
+                        continue
+                    try:
+                        close_s = str(item.get("ClosingPrice", "0")).replace(",", "")
+                        price_map[sid] = {
+                            "name":  item.get("Name", ""),
+                            "close": float(close_s) if close_s not in ("", "--", "-") else None,
+                        }
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
-    # 解析股價
-    price_map: dict = {}
-    if not isinstance(price_r, Exception) and price_r.status_code == 200:
-        for item in price_r.json():
-            sid = str(item.get("Code", "")).strip()
-            if not sid:
+        # T86 嘗試最近 5 個交易日（今日優先，若未公布則往前找）
+        attempt_dt = date.today()
+        for _ in range(5):
+            if not is_trading_day(attempt_dt):
+                attempt_dt -= timedelta(days=1)
                 continue
+            dt_str = attempt_dt.strftime("%Y%m%d")
             try:
-                close_s = str(item.get("ClosingPrice", "0")).replace(",", "")
-                price_map[sid] = {
-                    "name":  item.get("Name", ""),
-                    "close": float(close_s) if close_s not in ("", "--", "-") else None,
-                }
+                t86_r = await client.get(
+                    "https://www.twse.com.tw/rwd/zh/fund/T86",
+                    params={"date": dt_str, "selectType": "ALL", "response": "json"},
+                )
+                if t86_r.status_code == 200:
+                    t86 = t86_r.json()
+                    if t86.get("stat") == "OK" and t86.get("data"):
+                        used_date_str = dt_str
+                        for row in t86.get("data", []):
+                            try:
+                                sid = str(row[0]).strip()
+
+                                def _f(v):
+                                    return float(str(v).replace(",", "")) / 1000  # 股 → 張
+
+                                foreign = _f(row[4])
+                                trust   = _f(row[10])
+                                dealer  = _f(row[14])
+                                whale   = foreign * 1.0 + trust * 0.95 + dealer * 0.70
+                                chip_map[sid] = {
+                                    "foreign_lots":    round(foreign),
+                                    "trust_lots":      round(trust),
+                                    "whale_flow_lots": round(whale),
+                                }
+                            except Exception:
+                                pass
+                        break  # 成功取得資料，停止重試
             except Exception:
                 pass
-
-    # 解析 T86 三大法人
-    # Col: 0=代號 1=名稱 2=外資買 3=外資賣 4=外資淨
-    #       8=投信買 9=投信賣 10=投信淨
-    #      12=自營自行買 13=自營自行賣 14=自營自行淨
-    chip_map: dict = {}
-    if not isinstance(t86_r, Exception) and t86_r.status_code == 200:
-        t86 = t86_r.json()
-        if t86.get("stat") == "OK":
-            for row in t86.get("data", []):
-                try:
-                    sid = str(row[0]).strip()
-
-                    def _f(v):
-                        return float(str(v).replace(",", "")) / 1000  # 股 → 張
-
-                    foreign = _f(row[4])
-                    trust   = _f(row[10])
-                    dealer  = _f(row[14])
-                    whale   = foreign * 1.0 + trust * 0.95 + dealer * 0.70
-                    chip_map[sid] = {
-                        "foreign_lots":    round(foreign),
-                        "trust_lots":      round(trust),
-                        "whale_flow_lots": round(whale),
-                    }
-                except Exception:
-                    pass
+            attempt_dt -= timedelta(days=1)
 
     if not chip_map:
-        raise HTTPException(status_code=503, detail="無法取得今日 T86 法人資料（TWSE 尚未公布或 IP 封鎖），請稍後再試")
+        raise HTTPException(status_code=503, detail="無法取得 T86 法人資料（TWSE 尚未公布或 IP 封鎖），請稍後再試")
 
     # 合併結果
     from yahoo_price import get_stock_list
@@ -394,7 +433,7 @@ async def api_market_scan(top: int = 50):
 
     merged.sort(key=lambda x: x["whale_flow_lots"], reverse=True)
     return {
-        "date":        today_str,
+        "date":        used_date_str,
         "total":       len(merged),
         "top_buyers":  merged[:top],
         "top_sellers": list(reversed(merged))[:top],

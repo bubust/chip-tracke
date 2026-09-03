@@ -211,6 +211,7 @@
             <th>大戶今日 (張)</th>
             <th>7日累計 (張)</th>
             <th>集中度</th>
+            <th>連續天數</th>
             <th>最新日期</th>
             <th>操作</th>
           </tr>
@@ -524,7 +525,7 @@ function renderWatchlist() {
         <td><b class="link" onclick="openChart('${s.stock_id}')" style="cursor:pointer;color:var(--accent)">${s.stock_id}</b></td>
         <td>${nameCell(s)}</td>
         ${priceCell}
-        <td colspan="5" style="color:var(--muted);font-size:.82rem">尚無籌碼資料，請點全部更新</td>
+        <td colspan="6" style="color:var(--muted);font-size:.82rem">尚無籌碼資料，請點全部更新</td>
         <td>
           <button class="btn sm ghost" onclick="openDetail('${s.stock_id}')">查詢</button>
           <button class="btn sm danger" style="margin-left:4px" onclick="delStock('${s.stock_id}')">刪除</button>
@@ -535,6 +536,13 @@ function renderWatchlist() {
     const w  = s.whale_flow_lots  || 0;
     const c7 = s.cum7_whale       || 0;
     const c  = s.concentration_index || 0;
+    const cb = s.consecutive_buy  || 0;
+    const cs = s.consecutive_sell || 0;
+    const consecCell = (() => {
+      if (cb > 0) return `<td class="pos">+${cb}天</td>`;
+      if (cs > 0) return `<td class="neg">-${cs}天</td>`;
+      return `<td class="muted">—</td>`;
+    })();
     return `<tr class="clickable" onclick="openDetail('${s.stock_id}')">
       <td onclick="event.stopPropagation();openChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
       <td>${nameCell(s)}</td>
@@ -543,6 +551,7 @@ function renderWatchlist() {
       <td class="${w  >= 0 ? 'pos' : 'neg'}">${fmtNum(w)}</td>
       <td class="${c7 >= 0 ? 'pos' : 'neg'}">${fmtNum(c7)}</td>
       <td class="${c  >= 0 ? 'pos' : 'neg'}">${c.toFixed(3)}</td>
+      ${consecCell}
       <td class="muted">${s.date || '—'}</td>
       <td onclick="event.stopPropagation()">
         <button class="btn sm ghost" onclick="openDetail('${s.stock_id}')">詳細</button>
