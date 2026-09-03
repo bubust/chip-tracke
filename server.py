@@ -444,6 +444,18 @@ async def api_market_scan(top: int = 50):
 # Stock Query API
 # ════════════════════════════════════════════════════════════════════════════
 
+@app.get("/api/stock/{stock_id}/ohlcv")
+def api_stock_ohlcv(stock_id: str):
+    """回傳個股 OHLCV 日線資料（供 K 線圖使用）"""
+    from yahoo_price import fetch_yahoo, get_stock_list
+    stocks = get_stock_list()
+    row = stocks[stocks["stock_id"] == stock_id]
+    market = str(row.iloc[0]["type"]) if not row.empty else "twse"
+    df = fetch_yahoo(stock_id, market)
+    if df is None or df.empty:
+        raise HTTPException(status_code=404, detail=f"{stock_id} 無法取得資料")
+    return df.tail(300).fillna(0).to_dict(orient="records")
+
 @app.get("/api/stock/{stock_id}")
 async def api_stock(stock_id: str, days: int = 30):
     records = load_stock_history(stock_id)

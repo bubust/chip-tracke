@@ -1425,64 +1425,129 @@ async function warmupServer() {
 
 // ═════════════════════════════ K 線圖 Modal ═════════════════════════════
 
+let _lwcCharts = [];
+
+async function _loadLWC() {
+  if (window.LightweightCharts) return;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js';
+    s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+function _calcEMA(arr, period) {
+  const k = 2 / (period + 1);
+  let ema = arr[0];
+  return arr.map(v => (ema = v * k + ema * (1 - k)));
+}
+
+function _calcMACD(closes, fast=12, slow=26, signal=9) {
+  const ef = _calcEMA(closes, fast), es = _calcEMA(closes, slow);
+  const dif = ef.map((v, i) => v - es[i]);
+  const dea = _calcEMA(dif, signal);
+  const hist = dif.map((v, i) => v - dea[i]);
+  return { dif, dea, hist };
+}
+
+function _toDate(d) {  // "20260902" → "2026-09-02"
+  return d.slice(0,4) + '-' + d.slice(4,6) + '-' + d.slice(6,8);
+}
+
 async function openChart(stockId) {
   const modal     = document.getElementById('chart-modal');
   const title     = document.getElementById('chart-modal-title');
   const container = document.getElementById('chart-tv-container');
+
+  _lwcCharts.forEach(c => { try { c.remove(); } catch(e){} });
+  _lwcCharts = [];
 
   title.textContent = `${stockId} — 載入中...`;
   container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted)"><span class="spinner"></span>&nbsp;載入圖表...</div>';
   modal.style.display = 'flex';
   document.body.style.overflow = 'hidden';
 
-  // 查市場類型
-  let market = 'twse';
   try {
-    const r = await api('GET', `/api/stock-market/${stockId}`);
-    market = r.market || 'twse';
-  } catch(e) {}
+    await _loadLWC();
+    const ohlcv = await api('GET', `/api/stock/${stockId}/ohlcv`);
+    title.textContent = `${stockId} K 線圖`;
 
-  const tvMarket = market === 'tpex' ? 'TPEX' : 'TWSE';
-  const symbol   = `${tvMarket}:${stockId}`;
-  title.textContent = `${stockId} K 線圖（${tvMarket}）`;
+    container.innerHTML = `
+      <div id="lwc-candle" style="width:100%;height:58%"></div>
+      <div id="lwc-vol"    style="width:100%;height:12%;border-top:1px solid #2a2e39"></div>
+      <div id="lwc-macd"  style="width:100%;height:30%;border-top:1px solid #2a2e39"></div>`;
 
-  // 用 TradingView JS Widget API（studies 用陣列才正確，不會被 URLSearchParams 二次編碼）
-  const containerId = 'tv-widget-' + stockId + '-' + Date.now();
-  container.innerHTML = `<div id="${containerId}" style="width:100%;height:100%"></div>`;
+    const BASE = {
+      layout: { background: { color: '#131722' }, textColor: '#9598a1' },
+      grid:   { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
+      crosshair: { mode: 1 },
+      rightPriceScale: { borderColor: '#2a2e39' },
+      timeScale: { borderColor: '#2a2e39', timeVisible: false },
+      handleScale: true, handleScroll: true,
+    };
 
-  const initWidget = () => {
-    new TradingView.widget({
-      container_id:      containerId,
-      width:             '100%',
-      height:            '100%',
-      symbol,
-      interval:          'D',
-      timezone:          'Asia/Taipei',
-      theme:             'dark',
-      style:             '1',
-      locale:            'zh_TW',
-      toolbar_bg:        '#131722',
-      enable_publishing: false,
-      allow_symbol_change: false,
-      hide_side_toolbar: false,
-      withdateranges:    true,
-      range:             '12M',
-      studies:           ['MACD@tv-basicstudies', 'Volume@tv-basicstudies'],
+    // ── 蠟燭圖 ──
+    const cEl = document.getElementById('lwc-candle');
+    const cChart = LightweightCharts.createChart(cEl, { ...BASE, width: cEl.offsetWidth, height: cEl.offsetHeight });
+    _lwcCharts.push(cChart);
+    const cSeries = cChart.addCandlestickSeries({
+      upColor: '#26a69a', downColor: '#ef5350',
+      borderUpColor: '#26a69a', borderDownColor: '#ef5350',
+      wickUpColor: '#26a69a', wickDownColor: '#ef5350',
     });
-  };
+    cSeries.setData(ohlcv.map(r => ({
+      time: _toDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close
+    })));
 
-  if (window.TradingView) {
-    initWidget();
-  } else {
-    const script = document.createElement('script');
-    script.src = 'https://s3.tradingview.com/tv.js';
-    script.onload = initWidget;
-    document.head.appendChild(script);
+    // ── 成交量 ──
+    const vEl = document.getElementById('lwc-vol');
+    const vChart = LightweightCharts.createChart(vEl, { ...BASE, width: vEl.offsetWidth, height: vEl.offsetHeight });
+    _lwcCharts.push(vChart);
+    const vSeries = vChart.addHistogramSeries({ priceFormat: { type: 'volume' }, color: '#26a69a' });
+    vSeries.setData(ohlcv.map(r => ({
+      time: _toDate(r.date),
+      value: r.volume,
+      color: r.close >= r.open ? 'rgba(38,166,154,0.7)' : 'rgba(239,83,80,0.7)'
+    })));
+
+    // ── MACD ──
+    const mEl = document.getElementById('lwc-macd');
+    const mChart = LightweightCharts.createChart(mEl, { ...BASE, width: mEl.offsetWidth, height: mEl.offsetHeight });
+    _lwcCharts.push(mChart);
+    const closes = ohlcv.map(r => r.close);
+    const { dif, dea, hist } = _calcMACD(closes);
+    const skip = 26;
+    const macdBase = ohlcv.slice(skip);
+    const hSeries = mChart.addHistogramSeries({ color: '#26a69a', priceScaleId: 'right' });
+    hSeries.setData(macdBase.map((r, i) => ({
+      time: _toDate(r.date), value: hist[skip+i],
+      color: hist[skip+i] >= 0 ? 'rgba(38,166,154,0.8)' : 'rgba(239,83,80,0.8)'
+    })));
+    const difSeries = mChart.addLineSeries({ color: '#2196f3', lineWidth: 1 });
+    difSeries.setData(macdBase.map((r, i) => ({ time: _toDate(r.date), value: dif[skip+i] })));
+    const deaSeries = mChart.addLineSeries({ color: '#ff9800', lineWidth: 1 });
+    deaSeries.setData(macdBase.map((r, i) => ({ time: _toDate(r.date), value: dea[skip+i] })));
+
+    // ── 同步時間軸 ──
+    const charts = [cChart, vChart, mChart];
+    charts.forEach((src, si) => {
+      src.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (!range) return;
+        charts.forEach((tgt, ti) => { if (ti !== si) tgt.timeScale().setVisibleLogicalRange(range); });
+      });
+    });
+    cChart.timeScale().fitContent();
+
+  } catch(e) {
+    container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--red)">載入失敗：${e.message}</div>`;
   }
 }
 
 function closeChart() {
   document.getElementById('chart-modal').style.display = 'none';
+  _lwcCharts.forEach(c => { try { c.remove(); } catch(e){} });
+  _lwcCharts = [];
   document.getElementById('chart-tv-container').innerHTML = '';
   document.body.style.overflow = '';
 }
@@ -1493,7 +1558,7 @@ function closeChart() {
   <div style="background:#131722;border-radius:var(--radius);width:min(98vw,1300px);height:85vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 60px #000c">
     <div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid #2a2e39;flex-shrink:0">
       <strong id="chart-modal-title" style="font-size:.95rem;flex:1;color:#d1d4dc"></strong>
-      <span style="font-size:.75rem;color:#6b7280;margin-right:12px">可點「技術指標」加入 RSI / MA 等</span>
+      <span style="font-size:.75rem;color:#6b7280;margin-right:12px">K線 ＋ 成交量 ＋ MACD（資料來源：Yahoo Finance）</span>
       <button class="btn sm ghost" onclick="closeChart()">✕ 關閉</button>
     </div>
     <div id="chart-tv-container" style="flex:1;overflow:hidden"></div>
