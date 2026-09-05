@@ -247,7 +247,7 @@ def _get_tpex_active_today() -> set[str]:
 
 # ── 全市場掃描 ────────────────────────────────────────────────────────────────
 
-STRATEGY_KEYS = ["S1", "S1_SHORT", "S1_2", "S2", "S5", "S17A", "S17B", "S10"]
+STRATEGY_KEYS = ["S1", "S1_SHORT", "S1_2", "S2", "S5", "S17A", "S17B", "S10", "CHIP"]
 
 _scan_status: dict = {
     "running":      False,
@@ -287,7 +287,8 @@ async def run_market_scan(concurrency: int = 50):
     - 不做今日有量過濾，直接掃全部，確保不遺漏
     - Semaphore(50) 控制並發，range=1y 資料量只有 2y 一半
     """
-    from scanner import scan_one_stock
+    from scanner import scan_one_stock, screen_chip
+    from tdcc_chip import get_tdcc_data
 
     _scan_status["running"]       = True
     _scan_status["progress"]      = 0
@@ -306,7 +307,8 @@ async def run_market_scan(concurrency: int = 50):
 
         _scan_status["total"] = len(tasks)
 
-        all_results = {k: [] for k in STRATEGY_KEYS}
+        all_results  = {k: [] for k in STRATEGY_KEYS}
+        all_prices   = {}   # 收集所有價格資料，供 CHIP 使用
         sem = asyncio.Semaphore(concurrency)
 
         timeout_cfg = httpx.Timeout(8.0, connect=5.0)
@@ -325,6 +327,7 @@ async def run_market_scan(concurrency: int = 50):
                     _scan_status["failed_stocks"].append(sid)
                     return {}
                 _scan_status["yahoo_ok"] += 1
+                all_prices[sid] = df
                 return scan_one_stock(df, sid, names.get(sid, ""))
 
             coros   = [_fetch_scan(sid, mkt) for sid, mkt in tasks]
@@ -335,6 +338,17 @@ async def run_market_scan(concurrency: int = 50):
                 for strat, result in out.items():
                     if result is not None:
                         all_results[strat].append(result)
+
+        # CHIP：用保所千張大戶週資料掃描（需先執行 /api/tdcc/refresh）
+        tdcc_data = get_tdcc_data()
+        if tdcc_data and all_prices:
+            print(f"[SCAN] CHIP 掃描：TDCC {len(tdcc_data)} 支，價格 {len(all_prices)} 支")
+            chip_names = {sid: names.get(sid, '') for sid in all_prices}
+            stock_info = {sid: {'name': chip_names[sid]} for sid in all_prices}
+            all_results["CHIP"] = screen_chip(all_prices, tdcc_data, stock_info)
+            print(f"[SCAN] CHIP 命中：{len(all_results['CHIP'])} 支")
+        else:
+            print("[SCAN] CHIP 跳過（TDCC 資料未載入，請先執行 /api/tdcc/refresh）")
 
         _scan_status["results"] = all_results
 

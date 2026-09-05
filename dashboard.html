@@ -333,6 +333,7 @@
       <button class="btn ghost screen-strat-btn" data-s="S17A"     onclick="viewStrategy('S17A')">S17a 破底翻 <span class="strat-cnt" id="cnt-S17A"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S17B"     onclick="viewStrategy('S17B')">S17b 撈底加碼 <span class="strat-cnt" id="cnt-S17B"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S10"      onclick="viewStrategy('S10')">S10 漲停 <span class="strat-cnt" id="cnt-S10"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="CHIP"     onclick="viewStrategy('CHIP')">CHIP 千張大戶 <span class="strat-cnt" id="cnt-CHIP"></span></button>
     </div>
   </div>
 
@@ -1242,6 +1243,7 @@ const STRATEGY_LABELS = {
   S1_2: 'S1.2 MACD延伸（創新高拉回）', S2: 'S2 二次確認買進（W底）',
   S5: 'S5 站上均線做多', S17A: 'S17a 底部破底翻試單',
   S17B: 'S17b 突破確認加碼（撈底）', S10: 'S10 漲停',
+  CHIP: 'CHIP 千張大戶增持（保所週資料）',
 };
 
 async function runScreen() {
@@ -1364,6 +1366,7 @@ function renderScreenTable(strategy, data) {
   let headRow = `<tr><th>#</th>${th('代號','stock_id')}${th('股名','name')}${th('股價','close')}${th('漲跌%','change_pct')}`;
   if (strategy === 'S10')  headRow += `${th('連續漲停','consec_limit_up')}`;
   if (strategy === 'S17B') headRow += `${th('頸線','neckline')}`;
+  if (strategy === 'CHIP') headRow += `${th('千張大戶%','thousand_lot_pct')}${th('週變化','thousand_lot_chg')}`;
   headRow += `${th('成交量(張)','volume')}${th('BB位置','bb_score')}<th>操作</th></tr>`;
   document.getElementById('screen-thead').innerHTML = headRow;
 
@@ -1382,6 +1385,11 @@ function renderScreenTable(strategy, data) {
       extraTd = `<td>${row.consec_limit_up != null ? row.consec_limit_up : '—'} 天</td>`;
     else if (strategy === 'S17B')
       extraTd = `<td>${row.neckline != null ? row.neckline : '—'}</td>`;
+    else if (strategy === 'CHIP') {
+      const chg = row.thousand_lot_chg != null ? row.thousand_lot_chg : 0;
+      extraTd = `<td>${row.thousand_lot_pct != null ? row.thousand_lot_pct + '%' : '—'}</td>`
+              + `<td class="${chg > 0 ? 'pos' : chg < 0 ? 'neg' : 'muted'}">${chg > 0 ? '+' : ''}${chg}%</td>`;
+    }
     return `<tr>
       <td class="muted">${i + 1}</td>
       <td><b class="link" onclick="openChart('${row.stock_id}')" style="cursor:pointer;color:var(--accent)">${row.stock_id}</b></td>
@@ -1511,9 +1519,9 @@ async function openChart(stockId) {
     const cChart = LightweightCharts.createChart(cEl, { ...BASE, width: cEl.offsetWidth, height: cEl.offsetHeight });
     _lwcCharts.push(cChart);
     const cSeries = cChart.addCandlestickSeries({
-      upColor: '#26a69a', downColor: '#ef5350',
-      borderUpColor: '#26a69a', borderDownColor: '#ef5350',
-      wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+      upColor: '#ef5350', downColor: '#26a69a',
+      borderUpColor: '#ef5350', borderDownColor: '#26a69a',
+      wickUpColor: '#ef5350', wickDownColor: '#26a69a',
     });
     cSeries.setData(ohlcv.map(r => ({
       time: _toDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close
@@ -1527,7 +1535,7 @@ async function openChart(stockId) {
     vSeries.setData(ohlcv.map(r => ({
       time: _toDate(r.date),
       value: r.volume,
-      color: r.close >= r.open ? 'rgba(38,166,154,0.7)' : 'rgba(239,83,80,0.7)'
+      color: r.close >= r.open ? 'rgba(239,83,80,0.7)' : 'rgba(38,166,154,0.7)'
     })));
 
     const closes = ohlcv.map(r => r.close);
@@ -1537,14 +1545,14 @@ async function openChart(stockId) {
     const mChart = LightweightCharts.createChart(mEl, { ...BASE, width: mEl.offsetWidth, height: mEl.offsetHeight });
     _lwcCharts.push(mChart);
     const { dif: dif1, dea: dea1, hist: hist1 } = _calcMACD(closes, 12, 26, 9);
-    const hSeries = mChart.addHistogramSeries({ color: '#26a69a', priceScaleId: 'right' });
+    const hSeries = mChart.addHistogramSeries({ color: '#ef5350', priceScaleId: 'right', lastValueVisible: false });
     hSeries.setData(ohlcv.map((r, i) => ({
       time: _toDate(r.date), value: hist1[i],
-      color: hist1[i] >= 0 ? 'rgba(38,166,154,0.8)' : 'rgba(239,83,80,0.8)'
+      color: hist1[i] >= 0 ? 'rgba(239,83,80,0.8)' : 'rgba(38,166,154,0.8)'
     })));
-    const difSeries = mChart.addLineSeries({ color: '#2196f3', lineWidth: 1, title: 'DIF' });
+    const difSeries = mChart.addLineSeries({ color: '#2196f3', lineWidth: 1, lastValueVisible: false });
     difSeries.setData(ohlcv.map((r, i) => ({ time: _toDate(r.date), value: dif1[i] })));
-    const deaSeries = mChart.addLineSeries({ color: '#ff9800', lineWidth: 1, title: 'DEA' });
+    const deaSeries = mChart.addLineSeries({ color: '#ff9800', lineWidth: 1, lastValueVisible: false });
     deaSeries.setData(ohlcv.map((r, i) => ({ time: _toDate(r.date), value: dea1[i] })));
 
     // ── 大MACD (108,216,18) ──
@@ -1552,14 +1560,14 @@ async function openChart(stockId) {
     const m2Chart = LightweightCharts.createChart(m2El, { ...BASE, width: m2El.offsetWidth, height: m2El.offsetHeight });
     _lwcCharts.push(m2Chart);
     const { dif: dif2, dea: dea2, hist: hist2 } = _calcMACD(closes, 108, 216, 18);
-    const h2Series = m2Chart.addHistogramSeries({ color: '#26a69a', priceScaleId: 'right' });
+    const h2Series = m2Chart.addHistogramSeries({ color: '#ef5350', priceScaleId: 'right', lastValueVisible: false });
     h2Series.setData(ohlcv.map((r, i) => ({
       time: _toDate(r.date), value: hist2[i],
-      color: hist2[i] >= 0 ? 'rgba(38,166,154,0.8)' : 'rgba(239,83,80,0.8)'
+      color: hist2[i] >= 0 ? 'rgba(239,83,80,0.8)' : 'rgba(38,166,154,0.8)'
     })));
-    const dif2Series = m2Chart.addLineSeries({ color: '#2196f3', lineWidth: 1, title: 'DIF' });
+    const dif2Series = m2Chart.addLineSeries({ color: '#2196f3', lineWidth: 1, lastValueVisible: false });
     dif2Series.setData(ohlcv.map((r, i) => ({ time: _toDate(r.date), value: dif2[i] })));
-    const dea2Series = m2Chart.addLineSeries({ color: '#ff9800', lineWidth: 1, title: 'DEA' });
+    const dea2Series = m2Chart.addLineSeries({ color: '#ff9800', lineWidth: 1, lastValueVisible: false });
     dea2Series.setData(ohlcv.map((r, i) => ({ time: _toDate(r.date), value: dea2[i] })));
 
     // ── 同步時間軸 ──

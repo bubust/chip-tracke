@@ -429,9 +429,14 @@ def screen_s10(prices: dict, names: dict = None) -> list:
     results.sort(key=lambda x: x['consec_limit_up'], reverse=True)
     return results
 
-def screen_chip(prices: dict, chip_data: list, stock_info: dict = None) -> list:
-    """主力籌碼選股：法人買超>200張 + MA5>MA10>MA20 + 同族群上漲>50%"""
-    chip_map = {r['stock_id']: r for r in (chip_data or [])}
+def screen_chip(prices: dict, tdcc_data: dict, stock_info: dict = None) -> list:
+    """
+    CHIP 千張大戶增持選股（集保所週資料）：
+    - 千張大戶本週持股比例 > 上週（change > 0）
+    - MA5 > MA10 > MA20
+    - 收盤 > 10
+    - 同族群上漲比 >= 50%（有傳入 stock_info 且有 industry 時才套用）
+    """
     up_map = {}
     for sid, df in prices.items():
         if len(df) >= 2:
@@ -439,21 +444,23 @@ def screen_chip(prices: dict, chip_data: list, stock_info: dict = None) -> list:
     sector_sids = {}
     if stock_info:
         for sid, info in stock_info.items():
-            ind = info.get('industry') or '未分類'
-            sector_sids.setdefault(ind, []).append(sid)
+            ind = info.get('industry') or ''
+            if ind:
+                sector_sids.setdefault(ind, []).append(sid)
     sector_ratio = {}
     for ind, sids in sector_sids.items():
         up = sum(1 for s in sids if up_map.get(s, False))
         sector_ratio[ind] = up / len(sids) if sids else 0
+
     results = []
     for sid, df in prices.items():
         if len(df) < 25:
             continue
-        chip = chip_map.get(sid)
-        if not chip or chip.get('whale_flow_lots', 0) < 200:
+        tdcc = tdcc_data.get(sid)
+        if not tdcc or tdcc.get('change', 0) <= 0:
             continue
         closes = df['close']
-        today = df.iloc[-1]
+        today  = df.iloc[-1]
         if float(today['close']) <= 10:
             continue
         ma5  = calc_ma(closes, 5)
@@ -463,24 +470,23 @@ def screen_chip(prices: dict, chip_data: list, stock_info: dict = None) -> list:
             continue
         if not (ma5.iloc[-1] > ma10.iloc[-1] > ma20.iloc[-1]):
             continue
-        info = (stock_info or {}).get(sid, {})
-        ind = info.get('industry', '')
+        info  = (stock_info or {}).get(sid, {})
+        ind   = info.get('industry', '')
         ratio = sector_ratio.get(ind, 0) if ind else 0
         if ind and ratio < 0.50:
             continue
         results.append({
-            "stock_id": sid,
-            "name": info.get('name') or chip.get('name', ''),
-            "close": round(float(today['close']), 2),
-            "whale_flow_lots": chip.get('whale_flow_lots', 0),
-            "retail_flow_lots": chip.get('retail_flow_lots', 0),
-            "industry": ind,
-            "sector_up_ratio": round(ratio * 100, 1),
-            "volume": round(float(today.get('volume', 0) or 0)),
-            "bb_score": calc_bb_score(df),
-            "strategy": "CHIP",
+            "stock_id":         sid,
+            "name":             info.get('name', ''),
+            "close":            round(float(today['close']), 2),
+            "change_pct":       _change_pct(df),
+            "volume":           round(float(today.get('volume', 0) or 0)),
+            "bb_score":         calc_bb_score(df),
+            "thousand_lot_pct": tdcc['current_pct'],
+            "thousand_lot_chg": tdcc['change'],
+            "strategy":         "CHIP",
         })
-    results.sort(key=lambda x: x['whale_flow_lots'], reverse=True)
+    results.sort(key=lambda x: x['thousand_lot_chg'], reverse=True)
     return results
 
 def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "") -> dict:
@@ -520,6 +526,6 @@ def run_strategy(strategy: str, prices: dict, names: dict = None,
         "S10":      screen_s10,
     }
     if s == "CHIP":
-        return screen_chip(prices, chip_data or [], stock_info)
+        return screen_chip(prices, chip_data or {}, stock_info)
     fn = fn_map.get(s)
     return fn(prices, names) if fn else []

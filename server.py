@@ -475,6 +475,27 @@ async def api_refresh_stock(stock_id: str, days: int = 30):
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════
+# TDCC 千張大戶週資料
+# ════════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/tdcc/refresh")
+async def api_tdcc_refresh(background_tasks: BackgroundTasks):
+    """觸發 TDCC 保所千張大戶週資料更新（每週六後執行一次即可）"""
+    from tdcc_chip import refresh_tdcc
+    background_tasks.add_task(refresh_tdcc)
+    return {"ok": True, "message": "TDCC 資料更新已排程（約 30 秒~2 分鐘完成）"}
+
+@app.get("/api/tdcc/status")
+def api_tdcc_status():
+    """回傳 TDCC 快取狀態"""
+    from tdcc_chip import get_tdcc_data
+    data = get_tdcc_data()
+    if not data:
+        return {"loaded": False, "count": 0, "date": None}
+    sample = next(iter(data.values()))
+    return {"loaded": True, "count": len(data), "date": sample.get("date")}
+
 # 全市場策略掃描 API（Yahoo Finance）
 # ════════════════════════════════════════════════════════════════════════════
 
