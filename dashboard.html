@@ -1492,9 +1492,10 @@ async function openChart(stockId) {
     title.textContent = `${stockId} K 線圖`;
 
     container.innerHTML = `
-      <div id="lwc-candle" style="width:100%;height:58%"></div>
-      <div id="lwc-vol"    style="width:100%;height:12%;border-top:1px solid #2a2e39"></div>
-      <div id="lwc-macd"  style="width:100%;height:30%;border-top:1px solid #2a2e39"></div>`;
+      <div id="lwc-candle" style="width:100%;height:44%"></div>
+      <div id="lwc-vol"    style="width:100%;height:10%;border-top:1px solid #2a2e39"></div>
+      <div id="lwc-macd"  style="width:100%;height:23%;border-top:1px solid #2a2e39"></div>
+      <div id="lwc-macd2" style="width:100%;height:23%;border-top:1px solid #2a2e39"></div>`;
 
     const BASE = {
       layout: { background: { color: '#131722' }, textColor: '#9598a1' },
@@ -1529,26 +1530,40 @@ async function openChart(stockId) {
       color: r.close >= r.open ? 'rgba(38,166,154,0.7)' : 'rgba(239,83,80,0.7)'
     })));
 
-    // ── MACD ──
+    const closes = ohlcv.map(r => r.close);
+
+    // ── 小MACD (12,26,9) ──
     const mEl = document.getElementById('lwc-macd');
     const mChart = LightweightCharts.createChart(mEl, { ...BASE, width: mEl.offsetWidth, height: mEl.offsetHeight });
     _lwcCharts.push(mChart);
-    const closes = ohlcv.map(r => r.close);
-    const { dif, dea, hist } = _calcMACD(closes);
-    const skip = 26;
-    const macdBase = ohlcv.slice(skip);
+    const { dif: dif1, dea: dea1, hist: hist1 } = _calcMACD(closes, 12, 26, 9);
     const hSeries = mChart.addHistogramSeries({ color: '#26a69a', priceScaleId: 'right' });
-    hSeries.setData(macdBase.map((r, i) => ({
-      time: _toDate(r.date), value: hist[skip+i],
-      color: hist[skip+i] >= 0 ? 'rgba(38,166,154,0.8)' : 'rgba(239,83,80,0.8)'
+    hSeries.setData(ohlcv.map((r, i) => ({
+      time: _toDate(r.date), value: hist1[i],
+      color: hist1[i] >= 0 ? 'rgba(38,166,154,0.8)' : 'rgba(239,83,80,0.8)'
     })));
-    const difSeries = mChart.addLineSeries({ color: '#2196f3', lineWidth: 1 });
-    difSeries.setData(macdBase.map((r, i) => ({ time: _toDate(r.date), value: dif[skip+i] })));
-    const deaSeries = mChart.addLineSeries({ color: '#ff9800', lineWidth: 1 });
-    deaSeries.setData(macdBase.map((r, i) => ({ time: _toDate(r.date), value: dea[skip+i] })));
+    const difSeries = mChart.addLineSeries({ color: '#2196f3', lineWidth: 1, title: 'DIF' });
+    difSeries.setData(ohlcv.map((r, i) => ({ time: _toDate(r.date), value: dif1[i] })));
+    const deaSeries = mChart.addLineSeries({ color: '#ff9800', lineWidth: 1, title: 'DEA' });
+    deaSeries.setData(ohlcv.map((r, i) => ({ time: _toDate(r.date), value: dea1[i] })));
+
+    // ── 大MACD (108,216,18) ──
+    const m2El = document.getElementById('lwc-macd2');
+    const m2Chart = LightweightCharts.createChart(m2El, { ...BASE, width: m2El.offsetWidth, height: m2El.offsetHeight });
+    _lwcCharts.push(m2Chart);
+    const { dif: dif2, dea: dea2, hist: hist2 } = _calcMACD(closes, 108, 216, 18);
+    const h2Series = m2Chart.addHistogramSeries({ color: '#26a69a', priceScaleId: 'right' });
+    h2Series.setData(ohlcv.map((r, i) => ({
+      time: _toDate(r.date), value: hist2[i],
+      color: hist2[i] >= 0 ? 'rgba(38,166,154,0.8)' : 'rgba(239,83,80,0.8)'
+    })));
+    const dif2Series = m2Chart.addLineSeries({ color: '#2196f3', lineWidth: 1, title: 'DIF' });
+    dif2Series.setData(ohlcv.map((r, i) => ({ time: _toDate(r.date), value: dif2[i] })));
+    const dea2Series = m2Chart.addLineSeries({ color: '#ff9800', lineWidth: 1, title: 'DEA' });
+    dea2Series.setData(ohlcv.map((r, i) => ({ time: _toDate(r.date), value: dea2[i] })));
 
     // ── 同步時間軸 ──
-    const charts = [cChart, vChart, mChart];
+    const charts = [cChart, vChart, mChart, m2Chart];
     charts.forEach((src, si) => {
       src.timeScale().subscribeVisibleLogicalRangeChange(range => {
         if (!range) return;
@@ -1576,7 +1591,7 @@ function closeChart() {
   <div style="background:#131722;border-radius:var(--radius);width:min(98vw,1300px);height:85vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 60px #000c">
     <div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid #2a2e39;flex-shrink:0">
       <strong id="chart-modal-title" style="font-size:.95rem;flex:1;color:#d1d4dc"></strong>
-      <span style="font-size:.75rem;color:#6b7280;margin-right:12px">K線 ＋ 成交量 ＋ MACD（資料來源：Yahoo Finance）</span>
+      <span style="font-size:.75rem;color:#6b7280;margin-right:12px">K線 ＋ 成交量 ＋ 小MACD(12,26,9) ＋ 大MACD(108,216,18)（資料來源：Yahoo Finance）</span>
       <button class="btn sm ghost" onclick="closeChart()">✕ 關閉</button>
     </div>
     <div id="chart-tv-container" style="flex:1;overflow:hidden"></div>
