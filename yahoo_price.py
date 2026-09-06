@@ -317,7 +317,9 @@ async def run_market_scan(concurrency: int = 50):
         all_prices   = {}   # 收集所有價格資料，供 CHIP 使用
         sem = asyncio.Semaphore(concurrency)
 
-        timeout_cfg = httpx.Timeout(8.0, connect=5.0)
+        # 單支股票硬 timeout（含兩個 suffix 重試）
+        PER_STOCK_TIMEOUT = 20.0
+        timeout_cfg = httpx.Timeout(8.0, connect=4.0)
         async with httpx.AsyncClient(
             headers={"User-Agent": _UA, "Accept": "application/json"},
             verify=False,
@@ -326,7 +328,13 @@ async def run_market_scan(concurrency: int = 50):
         ) as client:
 
             async def _fetch_scan(sid, mkt):
-                df = await _fetch_yahoo_async(client, sem, sid, mkt, range_="2y")
+                try:
+                    df = await asyncio.wait_for(
+                        _fetch_yahoo_async(client, sem, sid, mkt, range_="2y"),
+                        timeout=PER_STOCK_TIMEOUT,
+                    )
+                except Exception:
+                    df = pd.DataFrame()
                 _scan_status["progress"] += 1
                 if df.empty or len(df) < 5:
                     _scan_status["yahoo_fail"] += 1
@@ -336,8 +344,12 @@ async def run_market_scan(concurrency: int = 50):
                 all_prices[sid] = df
                 return scan_one_stock(df, sid, names.get(sid, ""))
 
+            # 整個 Yahoo 階段最多 15 分鐘
             coros   = [_fetch_scan(sid, mkt) for sid, mkt in tasks]
-            results = await asyncio.gather(*coros, return_exceptions=True)
+            results = await asyncio.wait_for(
+                asyncio.gather(*coros, return_exceptions=True),
+                timeout=15 * 60,
+            )
 
         for out in results:
             if isinstance(out, dict):
@@ -386,6 +398,9 @@ async def run_market_scan(concurrency: int = 50):
 
         _scan_status["results"] = all_results
 
+    except asyncio.TimeoutError:
+        _scan_status["error"] = "掃描超時（15分鐘），已取得的結果仍保留"
+        _scan_status["results"] = all_results if 'all_results' in dir() else {}
     except Exception as e:
         _scan_status["error"] = str(e)
     finally:
