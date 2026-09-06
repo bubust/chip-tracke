@@ -139,10 +139,13 @@ class _TableParser(HTMLParser):
             pass  # 忽略空白
 
     def get_thousand_lot_pct(self) -> float:
-        """累加千張大戶（級距15~17）的 占集保庫存數(%)"""
+        """累加千張大戶（級距15~17）的 占集保庫存數(%)
+        表格欄位：序 | 持股/單位數分級 | 人數 | 股數/單位數 | 占集保庫存數比例(%)
+        index:   0       1              2       3              4
+        """
         total = 0.0
         for row in self._rows:
-            if len(row) < 4:
+            if len(row) < 5:
                 continue
             try:
                 tier = int(row[0])
@@ -150,7 +153,7 @@ class _TableParser(HTMLParser):
                 continue
             if tier in THOUSAND_LOT_TIERS:
                 try:
-                    pct_str = row[3].replace(",", "").replace("%", "").strip()
+                    pct_str = row[4].replace(",", "").replace("%", "").strip()
                     total += float(pct_str)
                 except (ValueError, IndexError):
                     pass
@@ -181,7 +184,7 @@ def _parse_html(html: str) -> float:
             continue
         if tier in THOUSAND_LOT_TIERS:
             try:
-                total += float(cells[3].replace(',', '').replace('%', '').strip())
+                total += float(cells[4].replace(',', '').replace('%', '').strip())
             except (ValueError, IndexError):
                 pass
     return round(total, 2)
