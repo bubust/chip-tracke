@@ -258,7 +258,7 @@ def screen_s2(prices: dict, names: dict = None) -> list:
         sub60 = closes.iloc[-61:]
         high_idx_in_sub = sub60.idxmax()
         days_from_high = len(closes) - 1 - high_idx_in_sub
-        if not (10 <= days_from_high <= 14):
+        if not (5 <= days_from_high <= 40):
             continue
         db = find_double_bottom(df, lookback=40)
         if db is None:
