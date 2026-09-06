@@ -75,7 +75,7 @@ def get_tdcc_data() -> dict:
     try:
         c = _conn()
         dates = [r[0] for r in c.execute(
-            "SELECT DISTINCT date FROM tdcc_holding ORDER BY date DESC LIMIT 2"
+            "SELECT DISTINCT date FROM tdcc_holding ORDER BY date DESC LIMIT 3"
         ).fetchall()]
         if len(dates) < 2:
             c.close()
@@ -88,14 +88,30 @@ def get_tdcc_data() -> dict:
             "SELECT stock_id, kpct FROM tdcc_holding WHERE date=?", (prev_date,)
         ).fetchall()}
         c.close()
+        # 嘗試取第三週資料（計算連續增加週數）
+        prev2 = {}
+        if len(dates) >= 3:
+            prev2_date = dates[2]
+            prev2 = {r["stock_id"]: r["kpct"] for r in c.execute(
+                "SELECT stock_id, kpct FROM tdcc_holding WHERE date=?", (prev2_date,)
+            ).fetchall()}
+
         result = {}
         for sid, cpct in cur.items():
-            ppct = prev.get(sid, cpct)
+            ppct  = prev.get(sid, cpct)
+            pp2ct = prev2.get(sid, ppct)
+            # 連續增加週數（最多3，資料只有3週）
+            consec = 0
+            if cpct > ppct:
+                consec = 1
+                if ppct > pp2ct:
+                    consec = 2
             result[sid] = {
                 "current_pct": cpct,
                 "prev_pct":    ppct,
                 "change":      round(cpct - ppct, 2),
                 "date":        cur_date,
+                "consec_up":   consec,   # 連續增加週數
             }
         return result
     except Exception as e:

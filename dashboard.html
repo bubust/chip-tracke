@@ -339,6 +339,9 @@
       <button class="btn ghost screen-strat-btn" data-s="S17B"     onclick="viewStrategy('S17B')">S17b 撈底加碼 <span class="strat-cnt" id="cnt-S17B"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S10"      onclick="viewStrategy('S10')">S10 漲停 <span class="strat-cnt" id="cnt-S10"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="CHIP"     onclick="viewStrategy('CHIP')">CHIP 千張大戶 <span class="strat-cnt" id="cnt-CHIP"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_PB"    onclick="viewStrategy('S_PB')">🎯 拉回買點 <span class="strat-cnt" id="cnt-S_PB"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_FBD"   onclick="viewStrategy('S_FBD')">🪤 假跌破 <span class="strat-cnt" id="cnt-S_FBD"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_RES"   onclick="viewStrategy('S_RES')">🟡 共振起點 <span class="strat-cnt" id="cnt-S_RES"></span></button>
     </div>
   </div>
 
@@ -1426,7 +1429,10 @@ const STRATEGY_LABELS = {
   S1_2: 'S1.2 MACD延伸（創新高拉回）', S2: 'S2 二次確認買進（W底）',
   S5: 'S5 站上均線做多', S17A: 'S17a 底部破底翻試單',
   S17B: 'S17b 突破確認加碼（撈底）', S10: 'S10 漲停',
-  CHIP: 'CHIP 千張大戶增持（保所週資料）',
+  CHIP:  'CHIP 千張大戶增持（保所週資料）',
+  S_PB:  '🎯 均線拉回買點（MA10拉回後站回，等K線確認）',
+  S_FBD: '🪤 假跌破買進（跌破MA10後快速收復，洗盤完成）',
+  S_RES: '🟡 共振起點（MA10剛穿越MA60，三線同時轉揚）',
 };
 
 async function runScreen() {
