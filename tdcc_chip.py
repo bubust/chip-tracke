@@ -295,6 +295,32 @@ async def _fetch_all_dates(
     return by_date
 
 
+def get_stock_tdcc_history(stock_id: str, weeks: int = 12) -> list[dict]:
+    """
+    回傳單支股票最近 N 週的千張大戶資料（最新在前）。
+    [{date: "YYYYMMDD", kpct: float, change: float}, ...]
+    """
+    try:
+        c = _conn()
+        rows = c.execute(
+            "SELECT date, kpct FROM tdcc_holding WHERE stock_id=? ORDER BY date DESC LIMIT ?",
+            (stock_id, weeks)
+        ).fetchall()
+        c.close()
+        result = []
+        for i, r in enumerate(rows):
+            prev_kpct = rows[i + 1]["kpct"] if i + 1 < len(rows) else r["kpct"]
+            result.append({
+                "date":   r["date"],
+                "kpct":   r["kpct"],
+                "change": round(r["kpct"] - prev_kpct, 2),
+            })
+        return result
+    except Exception as e:
+        print(f"[FinMind] get_stock_tdcc_history error: {e}")
+        return []
+
+
 async def refresh_tdcc() -> dict:
     """API 相容性保留（/api/tdcc/refresh 端點）"""
     return {

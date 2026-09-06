@@ -283,6 +283,22 @@ async def api_watchlist_summary():
         else:
             item["has_data"] = False
         result.append(item)
+
+    # 注入 TDCC 千張大戶週資料（從 SQLite 快取讀取，不會發起網路請求）
+    from tdcc_chip import get_tdcc_data
+    tdcc_map = get_tdcc_data()
+    for item in result:
+        t = tdcc_map.get(item["stock_id"])
+        if t:
+            item["kpct"]        = t["current_pct"]
+            item["kpct_prev"]   = t["prev_pct"]
+            item["kpct_change"] = t["change"]
+            item["kpct_date"]   = t["date"]
+        else:
+            item["kpct"]        = None
+            item["kpct_prev"]   = None
+            item["kpct_change"] = None
+            item["kpct_date"]   = None
     return result
 
 
@@ -501,6 +517,30 @@ async def api_chip_import(request: Request):
     clean = {str(k): float(v) for k, v in data.items() if v is not None}
     _save(date_str, clean)
     return {"ok": True, "date": date_str, "count": len(clean)}
+
+@app.get("/api/stock/{stock_id}/tdcc")
+def api_stock_tdcc(stock_id: str):
+    """回傳單支股票的千張大戶歷史（最近 12 週）"""
+    from tdcc_chip import get_stock_tdcc_history
+    history = get_stock_tdcc_history(stock_id, weeks=12)
+    return {"stock_id": stock_id, "history": history}
+
+@app.post("/api/chip/refresh-watchlist")
+async def api_chip_refresh_watchlist(background_tasks: BackgroundTasks):
+    """用 FinMind 更新觀察清單股票的千張大戶資料（Plan C 手動觸發）"""
+    from tdcc_chip import refresh_for_stocks
+    sb_ids = sb.wl_get_ids()
+    if sb_ids is not None:
+        stock_ids = sb_ids
+    else:
+        conn = get_conn()
+        rows = conn.execute("SELECT stock_id FROM watchlist").fetchall()
+        conn.close()
+        stock_ids = [r["stock_id"] for r in rows]
+    if not stock_ids:
+        return {"ok": False, "message": "觀察清單為空"}
+    background_tasks.add_task(refresh_for_stocks, stock_ids)
+    return {"ok": True, "count": len(stock_ids), "message": f"已開始更新 {len(stock_ids)} 支股票"}
 
 @app.get("/api/tdcc/status")
 def api_tdcc_status():

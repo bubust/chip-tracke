@@ -197,7 +197,10 @@
 
   <!-- 觀察清單表格 -->
   <div class="card" id="watchlist-card">
-    <div class="section-title">我的選股清單</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="section-title" style="margin:0">我的選股清單</div>
+      <button class="btn sm ghost" id="btn-refresh-tdcc" onclick="refreshWatchlistTdcc()" title="用 FinMind 更新觀察清單的千張大戶週資料">🏦 更新千張大戶</button>
+    </div>
     <div id="wl-loading" class="loading" style="display:none"><span class="spinner"></span>載入中...</div>
     <div id="wl-empty" class="empty" style="display:none">尚無股票，請從上方新增</div>
     <div class="tbl-wrap" id="wl-table-wrap" style="display:none">
@@ -213,6 +216,7 @@
             <th>集中度</th>
             <th>連續天數</th>
             <th title="布林軌道分級：上軌=+10 中軌=0 下軌=-10">BB位置</th>
+            <th title="集保所千張大戶持股%，點擊查看歷史趨勢" style="cursor:help">千張大戶</th>
             <th>最新日期</th>
             <th>操作</th>
           </tr>
@@ -527,7 +531,7 @@ function renderWatchlist() {
         <td><b class="link" onclick="openChart('${s.stock_id}')" style="cursor:pointer;color:var(--accent)">${s.stock_id}</b></td>
         <td>${nameCell(s)}</td>
         ${priceCell}
-        <td colspan="7" style="color:var(--muted);font-size:.82rem">尚無籌碼資料，請點全部更新</td>
+        <td colspan="8" style="color:var(--muted);font-size:.82rem">尚無籌碼資料，請點全部更新</td>
         <td>
           <button class="btn sm ghost" onclick="openDetail('${s.stock_id}')">查詢</button>
           <button class="btn sm danger" style="margin-left:4px" onclick="delStock('${s.stock_id}')">刪除</button>
@@ -552,6 +556,18 @@ function renderWatchlist() {
       const sign = bb > 0 ? '+' : '';
       return `<td class="${cls}" title="上軌=+10 中軌=0 下軌=-10">${sign}${bb}</td>`;
     })();
+    const kpct = s.kpct;
+    const kpctChg = s.kpct_change;
+    const kpctCell = (() => {
+      const onclick = `event.stopPropagation();openTdccDetail('${s.stock_id}','${s.name||s.stock_id}')`;
+      if (kpct == null) return `<td class="muted" onclick="${onclick}" style="cursor:pointer" title="無資料，點擊查詢">─</td>`;
+      const arrow = kpctChg > 0.3 ? '▲' : kpctChg < -0.3 ? '▼' : '─';
+      const cls = kpctChg > 0.3 ? 'pos' : kpctChg < -0.3 ? 'neg' : 'muted';
+      const sign = kpctChg > 0 ? '+' : '';
+      return `<td class="${cls}" onclick="${onclick}" style="cursor:pointer" title="千張大戶%，點擊查看歷史">
+        ${kpct.toFixed(1)}% <small>${arrow}${sign}${kpctChg != null ? kpctChg.toFixed(1) : '─'}%</small>
+      </td>`;
+    })();
     return `<tr class="clickable" onclick="openDetail('${s.stock_id}')">
       <td onclick="event.stopPropagation();openChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
       <td>${nameCell(s)}</td>
@@ -562,6 +578,7 @@ function renderWatchlist() {
       <td class="${c  >= 0 ? 'pos' : 'neg'}">${c.toFixed(3)}</td>
       ${consecCell}
       ${bbCell}
+      ${kpctCell}
       <td class="muted">${s.date || '—'}</td>
       <td onclick="event.stopPropagation()">
         <button class="btn sm ghost" onclick="openDetail('${s.stock_id}')">詳細</button>
@@ -846,6 +863,135 @@ async function pushSingle() {
 function closeDetail() {
   document.getElementById('detail-panel').style.display = 'none';
   _detailSid = '';
+}
+
+// ═════════════════════════════ TDCC 千張大戶 Modal ═════════════════════════════
+
+async function openTdccDetail(sid, name) {
+  const modal = document.getElementById('tdcc-modal');
+  modal.style.display = 'flex';
+  document.getElementById('tdcc-modal-title').textContent = `${sid} ${name || ''} — 千張大戶歷史`;
+  document.getElementById('tdcc-modal-badge').textContent = '載入中...';
+  document.getElementById('tdcc-modal-badge').style.background = 'var(--border)';
+  document.getElementById('tdcc-modal-tbody').innerHTML = '';
+  document.getElementById('tdcc-sparkline').innerHTML = '';
+  document.getElementById('tdcc-modal-empty').style.display = 'none';
+  try {
+    const r = await api('GET', `/api/stock/${sid}/tdcc`);
+    renderTdccModal(r.history);
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+function closeTdccModal() {
+  document.getElementById('tdcc-modal').style.display = 'none';
+}
+
+function _tdccTrend(history) {
+  // history[0] = newest; 計算連續增/減週數
+  if (!history || history.length < 2) return { streak: 0, dir: 'flat' };
+  let streak = 0, dir = null;
+  for (let i = 0; i < history.length - 1; i++) {
+    const chg = history[i].kpct - history[i + 1].kpct;
+    const d = chg > 0.2 ? 'up' : chg < -0.2 ? 'down' : 'flat';
+    if (i === 0) { dir = d; streak = (d !== 'flat') ? 1 : 0; }
+    else if (d === dir && dir !== 'flat') streak++;
+    else break;
+  }
+  return { streak, dir };
+}
+
+function _tdccSparkline(history) {
+  // history newest-first → reverse for chart
+  const pts = [...history].reverse().map(r => r.kpct);
+  if (pts.length < 2) return '';
+  const W = 480, H = 60, pad = 6;
+  const minV = Math.min(...pts), maxV = Math.max(...pts);
+  const range = maxV - minV || 1;
+  const x = i => pad + (i / (pts.length - 1)) * (W - pad * 2);
+  const y = v => H - pad - ((v - minV) / range) * (H - pad * 2);
+  const d = pts.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  // fill area
+  const fillD = `${d} L${x(pts.length-1).toFixed(1)},${H} L${x(0).toFixed(1)},${H} Z`;
+  const trend = pts[pts.length-1] >= pts[0];
+  const color = trend ? 'var(--green)' : 'var(--red)';
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:60px;display:block">
+    <defs>
+      <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${color}" stop-opacity=".25"/>
+        <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <path d="${fillD}" fill="url(#sg)"/>
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function renderTdccModal(history) {
+  const tbody = document.getElementById('tdcc-modal-tbody');
+  const empty = document.getElementById('tdcc-modal-empty');
+  const badge = document.getElementById('tdcc-modal-badge');
+  const spark = document.getElementById('tdcc-sparkline');
+
+  if (!history || !history.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    badge.textContent = '無資料';
+    badge.style.background = 'var(--border)';
+    return;
+  }
+
+  // 趨勢計算
+  const { streak, dir } = _tdccTrend(history);
+  if (streak >= 2) {
+    const label = dir === 'up' ? `連續增加 ${streak} 週 ▲` : `連續減少 ${streak} 週 ▼`;
+    badge.textContent = label;
+    badge.style.background = dir === 'up' ? 'var(--green)' : 'var(--red)';
+    badge.style.color = '#fff';
+  } else {
+    badge.textContent = '趨勢不明';
+    badge.style.background = 'var(--border)';
+    badge.style.color = 'var(--muted)';
+  }
+
+  // 迷你折線圖
+  spark.innerHTML = _tdccSparkline(history);
+
+  // 日期格式化
+  const fmtDate = d => d.length === 8
+    ? `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`
+    : d;
+
+  tbody.innerHTML = history.map(r => {
+    const chg = r.change ?? 0;
+    const arrow = chg > 0.2 ? '▲' : chg < -0.2 ? '▼' : '─';
+    const cls = chg > 0.2 ? 'pos' : chg < -0.2 ? 'neg' : 'muted';
+    const sign = chg > 0 ? '+' : '';
+    const trendIcon = chg > 0.2 ? '📈' : chg < -0.2 ? '📉' : '➡️';
+    return `<tr>
+      <td class="muted">${fmtDate(r.date)}</td>
+      <td><b>${r.kpct.toFixed(2)}%</b></td>
+      <td class="${cls}">${arrow} ${sign}${chg.toFixed(2)}%</td>
+      <td>${trendIcon}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function refreshWatchlistTdcc() {
+  const btn = document.getElementById('btn-refresh-tdcc');
+  btn.disabled = true;
+  btn.textContent = '⏳ 更新中...';
+  try {
+    const r = await api('POST', '/api/chip/refresh-watchlist');
+    toast(`✅ ${r.message}（背景執行中，約 1~2 分鐘後重新載入）`);
+    setTimeout(() => loadWatchlist(), 90000);
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🏦 更新千張大戶';
+  }
 }
 
 // ═════════════════════════════ MARKET SCAN ═════════════════════════════
@@ -1719,6 +1865,39 @@ function closeChart() {
   document.body.style.overflow = '';
 }
 </script>
+
+<!-- 千張大戶歷史 Modal -->
+<div id="tdcc-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9998;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeTdccModal()">
+  <div style="background:var(--card);border-radius:var(--radius);width:min(96vw,680px);max-height:88vh;overflow-y:auto;box-shadow:0 12px 60px #000c;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);z-index:1">
+      <strong id="tdcc-modal-title" style="flex:1;font-size:1rem"></strong>
+      <span id="tdcc-modal-badge" style="margin-right:12px;font-size:.82rem;padding:2px 10px;border-radius:20px"></span>
+      <button class="btn sm ghost" onclick="closeTdccModal()">✕ 關閉</button>
+    </div>
+    <div style="padding:16px 18px">
+      <!-- 迷你折線圖 -->
+      <div id="tdcc-sparkline" style="margin-bottom:14px"></div>
+      <!-- 歷史表格 -->
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>週次</th>
+              <th>千張大戶%</th>
+              <th>週變化</th>
+              <th>趨勢</th>
+            </tr>
+          </thead>
+          <tbody id="tdcc-modal-tbody"></tbody>
+        </table>
+      </div>
+      <div id="tdcc-modal-empty" style="display:none;color:var(--muted);text-align:center;padding:24px">
+        尚無千張大戶資料<br>
+        <small>點「更新千張大戶」按鈕取得資料</small>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- K 線圖 Modal -->
 <div id="chart-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeChart()">
