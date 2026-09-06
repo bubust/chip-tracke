@@ -509,30 +509,57 @@ def api_tdcc_status():
 @app.get("/api/tdcc/test/{stock_id}")
 async def api_tdcc_test(stock_id: str):
     """測試單支股票 TDCC 爬蟲（debug 用）"""
-    from tdcc_chip import fetch_batch, _last_thursday, _extract_token, TDCC_WEB, _UA
+    from tdcc_chip import _last_thursday, _extract_token, _TableParser, TDCC_WEB, _UA
     from datetime import date
     import httpx
     date_str = _last_thursday(date.today()).strftime("%Y%m%d")
-    # 先測 token 取得
     token_ok = False
+    token_preview = None
+    html_len = 0
+    table_rows = []
+    post_html_sample = ""
+
     try:
-        async with httpx.AsyncClient(headers={"User-Agent": _UA}, timeout=15.0, verify=False, follow_redirects=True) as client:
+        async with httpx.AsyncClient(headers={"User-Agent": _UA}, timeout=20.0, verify=False, follow_redirects=True) as client:
+            # GET 取 token
             r = await client.get(TDCC_WEB)
             token = _extract_token(r.text)
             token_ok = bool(token)
-            token_preview = (token[:10] + "...") if token else None
+            token_preview = (token[:12] + "...") if token else None
             html_len = len(r.text)
+
+            if token:
+                # POST 查詢
+                form_data = {
+                    "SYNCHRONIZER_TOKEN": token,
+                    "SYNCHRONIZER_URI":   "/portal/zh/smWeb/qryStock",
+                    "method":             "submit",
+                    "firDate":            date_str,
+                    "scaDate":            date_str,
+                    "sqlMethod":          "StockNo",
+                    "stockNo":            stock_id,
+                }
+                pr = await client.post(TDCC_WEB, data=form_data,
+                    headers={"User-Agent": _UA, "Content-Type": "application/x-www-form-urlencoded"})
+                post_html = pr.text
+                post_html_sample = post_html[post_html.find('<table'):post_html.find('<table')+3000] if '<table' in post_html else post_html[:2000]
+
+                # 解析 rows
+                parser = _TableParser()
+                parser.feed(post_html)
+                table_rows = parser._rows[:25]  # 最多 25 行
+
     except Exception as e:
         return {"ok": False, "error": str(e), "date": date_str}
-    # 爬單支
-    result = await fetch_batch([stock_id], date_str)
+
     return {
         "ok": True,
         "date": date_str,
         "token_ok": token_ok,
         "token_preview": token_preview,
         "html_len": html_len,
-        "result": result,
+        "table_rows": table_rows,       # ← parser 抓到的 rows
+        "post_html_sample": post_html_sample,  # ← POST 回應的 table HTML 片段
     }
 
 # 全市場策略掃描 API（Yahoo Finance）
