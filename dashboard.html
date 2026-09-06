@@ -213,10 +213,11 @@
             <th>最新訊號</th>
             <th>大戶今日 (張)</th>
             <th>7日累計 (張)</th>
-            <th>集中度</th>
             <th>連續天數</th>
             <th title="布林軌道分級：上軌=+10 中軌=0 下軌=-10">BB位置</th>
             <th title="集保所千張大戶持股%，點擊查看歷史趨勢" style="cursor:help">千張大戶</th>
+            <th title="系統依MA10/MA60自動判斷，不可手動修改">🔦 狀態</th>
+            <th title="自由填寫：進場價、停損、目標等">📝 備註</th>
             <th>最新日期</th>
             <th>操作</th>
           </tr>
@@ -531,7 +532,7 @@ function renderWatchlist() {
         <td><b class="link" onclick="openChart('${s.stock_id}')" style="cursor:pointer;color:var(--accent)">${s.stock_id}</b></td>
         <td>${nameCell(s)}</td>
         ${priceCell}
-        <td colspan="8" style="color:var(--muted);font-size:.82rem">尚無籌碼資料，請點全部更新</td>
+        <td colspan="9" style="color:var(--muted);font-size:.82rem">尚無籌碼資料，請點全部更新</td>
         <td>
           <button class="btn sm ghost" onclick="openDetail('${s.stock_id}')">查詢</button>
           <button class="btn sm danger" style="margin-left:4px" onclick="delStock('${s.stock_id}')">刪除</button>
@@ -541,7 +542,6 @@ function renderWatchlist() {
     const level = s.signal_level || 0;
     const w  = s.whale_flow_lots  || 0;
     const c7 = s.cum7_whale       || 0;
-    const c  = s.concentration_index || 0;
     const cb = s.consecutive_buy  || 0;
     const cs = s.consecutive_sell || 0;
     const consecCell = (() => {
@@ -568,6 +568,26 @@ function renderWatchlist() {
         ${kpct.toFixed(1)}% <small>${arrow}${sign}${kpctChg != null ? kpctChg.toFixed(1) : '─'}%</small>
       </td>`;
     })();
+    // 自動狀態燈號（系統判定，不可手動修改）
+    const stageInfo = s.stage || {};
+    const _stageColors = {
+      bearish: '#ef4444', fbd: '#d97706', pullback: '#16a34a',
+      attack: '#2563eb', golden: '#ca8a04', consol: '#6b7280',
+      bull: '#0891b2', unknown: '#9ca3af'
+    };
+    const stageColor = _stageColors[stageInfo.code] || '#9ca3af';
+    const stageCell = `<td onclick="event.stopPropagation()" title="${stageInfo.desc || ''}">
+      <span style="display:inline-block;padding:2px 7px;border-radius:10px;font-size:.75rem;font-weight:600;background:${stageColor}22;color:${stageColor};border:1px solid ${stageColor}44;white-space:nowrap">${stageInfo.label || '—'}</span>
+    </td>`;
+    // 個人備註（可自由編輯，失焦自動儲存）
+    const memoVal = (s.memo || '').replace(/"/g, '&quot;');
+    const memoCell = `<td onclick="event.stopPropagation()" style="min-width:100px;max-width:160px">
+      <input type="text" value="${memoVal}" placeholder="進場價、停損…"
+        style="width:100%;background:transparent;border:none;border-bottom:1px dashed var(--border);color:var(--fg);font-size:.78rem;padding:2px 0;outline:none"
+        onblur="saveMemo('${s.stock_id}', this.value)"
+        onkeydown="if(event.key==='Enter')this.blur()"
+        onclick="event.stopPropagation()" />
+    </td>`;
     return `<tr class="clickable" onclick="openDetail('${s.stock_id}')">
       <td onclick="event.stopPropagation();openChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
       <td>${nameCell(s)}</td>
@@ -575,10 +595,11 @@ function renderWatchlist() {
       <td><span class="sig-badge sig-${level}">${s.signal_emoji} ${s.signal_title}</span></td>
       <td class="${w  >= 0 ? 'pos' : 'neg'}">${fmtNum(w)}</td>
       <td class="${c7 >= 0 ? 'pos' : 'neg'}">${fmtNum(c7)}</td>
-      <td class="${c  >= 0 ? 'pos' : 'neg'}">${c.toFixed(3)}</td>
       ${consecCell}
       ${bbCell}
       ${kpctCell}
+      ${stageCell}
+      ${memoCell}
       <td class="muted">${s.date || '—'}</td>
       <td onclick="event.stopPropagation()">
         <button class="btn sm ghost" onclick="openDetail('${s.stock_id}')">詳細</button>
@@ -667,6 +688,14 @@ async function saveName(sid, name) {
     // remove editing class from all
     document.querySelectorAll('.editing').forEach(el => el.classList.remove('editing'));
   } catch (e) { toast(e.message, true); }
+}
+
+async function saveMemo(sid, memo) {
+  try {
+    await api('POST', `/api/watchlist/${sid}/memo`, { memo });
+    const item = _wlData.find(x => x.stock_id === sid);
+    if (item) item.memo = memo;
+  } catch (e) { toast('備註儲存失敗', true); }
 }
 
 // ── 全部更新 ──

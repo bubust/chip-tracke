@@ -126,7 +126,14 @@ async def fetch_prices_for_stocks(stock_list: list) -> dict:
                 std = closes.rolling(20).std().iloc[-1]
                 if not pd.isna(ma) and not pd.isna(std) and std > 0:
                     bb_score = round((close - float(ma)) / (2 * float(std)) * 10)
-            result[sid] = {"close": round(close, 2), "change_pct": pct, "bb_score": bb_score}
+            # 自動階段判斷
+            try:
+                from scanner import classify_stage
+                stage = classify_stage(df)
+            except Exception:
+                stage = {"code": "unknown", "label": "—", "color": "muted", "desc": ""}
+            result[sid] = {"close": round(close, 2), "change_pct": pct,
+                           "bb_score": bb_score, "stage": stage}
         except Exception:
             pass
     return result

@@ -192,6 +192,11 @@ def init_db():
         conn.commit()
     except Exception:
         pass
+    try:
+        conn.execute("ALTER TABLE watchlist ADD COLUMN memo TEXT DEFAULT ''")
+        conn.commit()
+    except Exception:
+        pass
     conn.close()
 
 

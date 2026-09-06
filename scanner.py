@@ -109,6 +109,101 @@ def _change_pct(df: pd.DataFrame) -> float:
         return 0.0
     return round((float(df.iloc[-1]['close']) - prev) / prev * 100, 2)
 
+def classify_stage(df: pd.DataFrame) -> dict:
+    """
+    根據日線資料自動判斷股票所在操作階段。
+    需要至少 60 天資料（MA60）。
+    回傳 {code, label, color, desc}
+    """
+    STAGE_UNKNOWN = {"code": "unknown", "label": "資料不足", "color": "muted",
+                     "desc": "歷史資料不足，無法判斷趨勢"}
+    if df is None or len(df) < 60:
+        return STAGE_UNKNOWN
+
+    closes = df["close"]
+    lows   = df["low"]
+    highs  = df["high"]
+
+    ma10 = closes.rolling(10, min_periods=10).mean()
+    ma60 = closes.rolling(60, min_periods=60).mean()
+
+    m10 = float(ma10.iloc[-1])
+    m60 = float(ma60.iloc[-1])
+    if pd.isna(m10) or pd.isna(m60):
+        return STAGE_UNKNOWN
+
+    today_close = float(closes.iloc[-1])
+    today_open  = float(df.iloc[-1]["open"])
+
+    # ── 1. 空頭觀望 ─────────────────────────────────────────────────────
+    if m10 < m60:
+        return {"code": "bearish", "label": "🔴 空頭", "color": "red",
+                "desc": "MA10 < MA60 均線空頭排列，不操作"}
+
+    # ── 以下皆為 MA10 > MA60 多頭區間 ────────────────────────────────────
+
+    # ── 2. 假跌破：近1~4天收盤跌破MA10，今日站回且收紅 ───────────────────
+    today_is_red = today_close > today_open
+    for i in range(1, 5):
+        if i + 1 > len(closes):
+            break
+        past_close = float(closes.iloc[-(i + 1)])
+        past_m10   = float(ma10.iloc[-(i + 1)])
+        if pd.isna(past_m10):
+            break
+        if past_close < past_m10:          # 那天跌破MA10
+            if today_close > m10 and today_is_red:
+                return {"code": "fbd", "label": "🪤 假跌破", "color": "gold",
+                        "desc": f"{i}天前跌破MA10今日站回，洗盤訊號，可試單，停損前低"}
+            break                          # 跌破但今日未站回，不繼續找
+
+    # ── 3. 拉回買點：MA10斜率向上 + 近5天低點碰MA10 + 今日站回 ────────────
+    if len(ma10) >= 5 and not pd.isna(ma10.iloc[-5]):
+        ma10_rising = float(ma10.iloc[-1]) > float(ma10.iloc[-5])
+        if ma10_rising:
+            touched = any(
+                float(lows.iloc[-(i + 1)]) <= float(ma10.iloc[-(i + 1)]) * 1.02
+                for i in range(5) if i + 1 <= len(lows) and not pd.isna(ma10.iloc[-(i + 1)])
+            )
+            if touched and today_close > m10:
+                return {"code": "pullback", "label": "🎯 拉回買點", "color": "green",
+                        "desc": "回測MA10後站回，均線向上，等K線確認後買進"}
+
+    # ── 4. 強勢攻擊中：近10天漲>15% 或近5天有漲停，且仍在高位 ─────────────
+    if len(closes) >= 20:
+        high20    = float(highs.iloc[-20:].max())
+        close10   = float(closes.iloc[-10]) if len(closes) >= 10 else today_close
+        gain10pct = (today_close - close10) / close10 * 100 if close10 > 0 else 0
+        has_limit = any(
+            len(closes) >= i + 2 and float(closes.iloc[-(i + 1)]) / float(closes.iloc[-(i + 2)]) - 1 > 0.09
+            for i in range(5)
+        )
+        if (gain10pct > 15 or has_limit) and today_close >= high20 * 0.90:
+            return {"code": "attack", "label": "🚀 強勢攻擊", "color": "blue",
+                    "desc": "攻擊進行中，不要追，等中繼整理後再找買點"}
+
+    # ── 5. 剛翻多（黃金交叉）：MA10在近10天內由下穿越MA60 ──────────────────
+    for i in range(1, 11):
+        if i + 1 > len(ma10) or pd.isna(ma10.iloc[-(i + 1)]) or pd.isna(ma60.iloc[-(i + 1)]):
+            break
+        if float(ma10.iloc[-(i + 1)]) < float(ma60.iloc[-(i + 1)]):
+            return {"code": "golden", "label": "🟡 剛翻多", "color": "yellow",
+                    "desc": "近期黃金交叉，等第一段確認後找拉回，不追第一段"}
+
+    # ── 6. 中繼整理：近8天高低振幅 < 6% ────────────────────────────────────
+    if len(df) >= 8:
+        h8 = float(highs.iloc[-8:].max())
+        l8 = float(lows.iloc[-8:].min())
+        if l8 > 0 and (h8 - l8) / l8 * 100 < 6:
+            rng = round((h8 - l8) / l8 * 100, 1)
+            return {"code": "consol", "label": "📦 中繼整理", "color": "gray",
+                    "desc": f"近8日震幅{rng}%，等待突破方向，突破需帶量"}
+
+    # ── 7. 多頭延續 ──────────────────────────────────────────────────────
+    return {"code": "bull", "label": "📈 多頭延續", "color": "cyan",
+            "desc": "多頭排列走勢穩定，等待拉回至MA10附近的買點"}
+
+
 def screen_s1(prices: dict, names: dict = None) -> list:
     """
     S1 雙MACD選股（多）

@@ -188,6 +188,17 @@ def api_update_watchlist(stock_id: str, item: WatchlistItem):
     conn.close()
     return {"ok": True}
 
+@app.post("/api/watchlist/{stock_id}/memo")
+async def api_update_memo(stock_id: str, request: Request):
+    """更新個人備註（不影響策略 note 欄位）"""
+    body = await request.json()
+    memo = str(body.get("memo", "")).strip()
+    conn = get_conn()
+    conn.execute("UPDATE watchlist SET memo=? WHERE stock_id=?", (memo, stock_id))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
 @app.get("/api/watchlist/summary")
 async def api_watchlist_summary():
     from yahoo_price import get_stock_list, fetch_prices_for_stocks
@@ -212,7 +223,7 @@ async def api_watchlist_summary():
     mkt_map    = dict(zip(stocks_df["stock_id"], stocks_df["type"]))
 
     conn = get_conn()
-    rows = conn.execute("SELECT stock_id, name, note FROM watchlist ORDER BY added_at").fetchall()
+    rows = conn.execute("SELECT stock_id, name, note, memo FROM watchlist ORDER BY added_at").fetchall()
     conn.close()
 
     stock_ids = [r["stock_id"] for r in rows]
@@ -250,9 +261,11 @@ async def api_watchlist_summary():
             "stock_id":   sid,
             "name":       name,
             "note":       (r["note"] or "").strip() if "note" in r.keys() else "",
+            "memo":       (r["memo"] or "").strip() if "memo" in r.keys() else "",
             "close":      price_info.get("close"),
             "change_pct": price_info.get("change_pct"),
             "bb_score":   price_info.get("bb_score", 0.0),
+            "stage":      price_info.get("stage", {"code": "unknown", "label": "—", "color": "muted", "desc": ""}),
         }
         if records:
             latest = records[-1]
