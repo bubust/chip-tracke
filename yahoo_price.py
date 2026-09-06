@@ -70,14 +70,12 @@ async def _fetch_yahoo_async(
     sem: asyncio.Semaphore,
     stock_id: str,
     market: str,
-    total_timeout: float = 8.0,
+    total_timeout: float = 8.0,  # 保留參數相容性，實際由 client timeout 控制
     range_: str = "1y",
 ) -> pd.DataFrame:
     """
     async fetch，Semaphore 控制最大並發數。
-    asyncio.wait_for 強制 total_timeout 秒內完成（含慢速回應），
-    避免 Yahoo Finance 用慢速傳輸繞過 per-phase timeout。
-    range_ 預設 1y（約 248 根）：S1 最低需求 235 根，仍足夠，資料量只有 2y 一半。
+    timeout 由 httpx.AsyncClient 自帶機制控制（不用 asyncio.wait_for，避免衝突）。
     """
     suffixes = [".TW"] if market == "twse" else [".TWO", ".TW"]
     async with sem:
@@ -85,10 +83,7 @@ async def _fetch_yahoo_async(
             host = _next_host()
             url  = f"https://{host}.finance.yahoo.com/v8/finance/chart/{stock_id}{suffix}"
             try:
-                r = await asyncio.wait_for(
-                    client.get(url, params={"interval": "1d", "range": range_}),
-                    timeout=total_timeout,
-                )
+                r = await client.get(url, params={"interval": "1d", "range": range_})
                 r.raise_for_status()
                 df = _parse_yahoo_json(r.json())
                 if not df.empty and len(df) >= 5:
@@ -285,7 +280,7 @@ def get_scan_results() -> dict:
     return _scan_status["results"]
 
 
-async def run_market_scan(concurrency: int = 50):
+async def run_market_scan(concurrency: int = 20):
     """
     背景執行全市場策略掃描（上市 + 上櫃，全部 stocks.csv 股票）。
     - 不做今日有量過濾，直接掃全部，確保不遺漏
@@ -317,24 +312,18 @@ async def run_market_scan(concurrency: int = 50):
         all_prices   = {}   # 收集所有價格資料，供 CHIP 使用
         sem = asyncio.Semaphore(concurrency)
 
-        # 單支股票硬 timeout（含兩個 suffix 重試）
-        PER_STOCK_TIMEOUT = 20.0
-        timeout_cfg = httpx.Timeout(8.0, connect=4.0)
+        # httpx 嚴格 timeout：connect=3s, read=10s（不用 asyncio.wait_for，避免衝突）
+        timeout_cfg = httpx.Timeout(connect=3.0, read=10.0, write=3.0, pool=2.0)
         async with httpx.AsyncClient(
             headers={"User-Agent": _UA, "Accept": "application/json"},
             verify=False,
             timeout=timeout_cfg,
             follow_redirects=True,
+            limits=httpx.Limits(max_connections=30, max_keepalive_connections=20),
         ) as client:
 
             async def _fetch_scan(sid, mkt):
-                try:
-                    df = await asyncio.wait_for(
-                        _fetch_yahoo_async(client, sem, sid, mkt, range_="2y"),
-                        timeout=PER_STOCK_TIMEOUT,
-                    )
-                except Exception:
-                    df = pd.DataFrame()
+                df = await _fetch_yahoo_async(client, sem, sid, mkt, range_="2y")
                 _scan_status["progress"] += 1
                 if df.empty or len(df) < 5:
                     _scan_status["yahoo_fail"] += 1
@@ -344,12 +333,8 @@ async def run_market_scan(concurrency: int = 50):
                 all_prices[sid] = df
                 return scan_one_stock(df, sid, names.get(sid, ""))
 
-            # 整個 Yahoo 階段最多 15 分鐘
             coros   = [_fetch_scan(sid, mkt) for sid, mkt in tasks]
-            results = await asyncio.wait_for(
-                asyncio.gather(*coros, return_exceptions=True),
-                timeout=15 * 60,
-            )
+            results = await asyncio.gather(*coros, return_exceptions=True)
 
         for out in results:
             if isinstance(out, dict):
@@ -398,9 +383,6 @@ async def run_market_scan(concurrency: int = 50):
 
         _scan_status["results"] = all_results
 
-    except asyncio.TimeoutError:
-        _scan_status["error"] = "掃描超時（15分鐘），已取得的結果仍保留"
-        _scan_status["results"] = all_results if 'all_results' in dir() else {}
     except Exception as e:
         _scan_status["error"] = str(e)
     finally:
