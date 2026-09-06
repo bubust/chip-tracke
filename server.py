@@ -14,7 +14,7 @@ from typing import Optional
 
 import httpx
 import uvicorn
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -481,10 +481,26 @@ async def api_refresh_stock(stock_id: str, days: int = 30):
 
 @app.post("/api/tdcc/refresh")
 async def api_tdcc_refresh(background_tasks: BackgroundTasks):
-    """觸發 TDCC 保所千張大戶週資料更新（每週六後執行一次即可）"""
-    from tdcc_chip import refresh_tdcc
-    background_tasks.add_task(refresh_tdcc)
-    return {"ok": True, "message": "TDCC 資料更新已排程（約 30 秒~2 分鐘完成）"}
+    """舊端點保留（TDCC 在 Render 因 IP 限制無法使用，請改用 /api/chip/import）"""
+    return {"ok": False, "message": "TDCC 封鎖境外 IP，請在本機執行 tdcc_local.py 上傳資料"}
+
+@app.post("/api/chip/import")
+async def api_chip_import(request: Request):
+    """
+    接收本機上傳的 TDCC 千張大戶週資料。
+    Body: {"date": "20260904", "data": {"2330": 78.5, "2317": 45.2, ...}}
+    """
+    from tdcc_chip import _save
+    body = await request.json()
+    date_str = str(body.get("date", "")).strip()
+    data     = body.get("data", {})
+    if not date_str or not data:
+        raise HTTPException(status_code=400, detail="缺少 date 或 data")
+    if len(date_str) != 8 or not date_str.isdigit():
+        raise HTTPException(status_code=400, detail="date 格式應為 YYYYMMDD")
+    clean = {str(k): float(v) for k, v in data.items() if v is not None}
+    _save(date_str, clean)
+    return {"ok": True, "date": date_str, "count": len(clean)}
 
 @app.get("/api/tdcc/status")
 def api_tdcc_status():
