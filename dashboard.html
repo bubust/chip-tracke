@@ -1283,7 +1283,7 @@ async function pollScreenStatus() {
       const pct = s.total > 0 ? Math.round(s.progress / s.total * 100) : 0;
       document.getElementById('screen-progress-bar').style.width = pct + '%';
       const okInfo = (s.yahoo_ok !== undefined)
-        ? `  ✅${s.yahoo_ok} ❌${s.yahoo_fail}` : '';
+        ? `  成功 ${s.yahoo_ok} 失敗 ${s.yahoo_fail}` : '';
       document.getElementById('screen-progress-text').textContent =
         `掃描中 ${s.progress} / ${s.total} 支${okInfo}`;
       btn.textContent = `⏳ 掃描中 ${pct}%`;
