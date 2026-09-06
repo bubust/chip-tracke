@@ -625,13 +625,21 @@ async function addToWatchlist() {
 
 async function delStock(sid) {
   if (!confirm(`確定要刪除 ${sid}？`)) return;
+  // 樂觀更新：立刻移除 UI，不等 API
+  const prev = [..._wlData];
+  _wlData = _wlData.filter(x => x.stock_id !== sid);
+  renderWatchlist();
+  if (_detailSid === sid) closeDetail();
+  loadPill();
   try {
     await api('DELETE', `/api/watchlist/${sid}`);
     toast(`已刪除 ${sid}`);
-    if (_detailSid === sid) closeDetail();
-    await loadWatchlist();
-    await loadPill();
-  } catch (e) { toast(e.message, true); }
+  } catch (e) {
+    // 失敗時回滾
+    _wlData = prev;
+    renderWatchlist();
+    toast(e.message, true);
+  }
 }
 
 async function saveName(sid, name) {
@@ -1585,7 +1593,10 @@ async function openChart(stockId) {
     const cLeg = _mkLegend(cEl);
     function updateCLeg(idx) {
       const i = Math.min(Math.max(idx, 0), n - 1);
+      const r = ohlcv[i];
+      const priceColor = r.close >= r.open ? '#ef5350' : '#26a69a';
       cLeg.innerHTML =
+        `<span style="color:${priceColor};font-weight:bold">現價:${_fmtN(r.close)}</span>　` +
         `<span style="color:#4caf50">MA5:${_fmtN(ma5[i])}</span>　` +
         `<span style="color:#ffeb3b">MA10:${_fmtN(ma10[i])}</span>　` +
         `<span style="color:#e91e63">MA20:${_fmtN(ma20[i])}</span>　` +

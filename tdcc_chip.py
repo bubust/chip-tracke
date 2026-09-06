@@ -188,8 +188,19 @@ def _parse_html(html: str) -> float:
 
 
 def _extract_token(html: str) -> str | None:
-    """從 HTML 中取出 SYNCHRONIZER_TOKEN"""
-    m = re.search(r'name="SYNCHRONIZER_TOKEN"\s+value="([^"]+)"', html, re.IGNORECASE)
+    """從 HTML 中取出 SYNCHRONIZER_TOKEN（順序不拘，單引號/雙引號都接受）"""
+    # name 在前
+    m = re.search(
+        r'name=["\']?SYNCHRONIZER_TOKEN["\']?[^>]*value=["\']([^"\']+)["\']',
+        html, re.IGNORECASE
+    )
+    if m:
+        return m.group(1)
+    # value 在前
+    m = re.search(
+        r'value=["\']([^"\']+)["\'][^>]*name=["\']?SYNCHRONIZER_TOKEN["\']?',
+        html, re.IGNORECASE
+    )
     return m.group(1) if m else None
 
 

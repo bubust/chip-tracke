@@ -489,12 +489,51 @@ async def api_tdcc_refresh(background_tasks: BackgroundTasks):
 @app.get("/api/tdcc/status")
 def api_tdcc_status():
     """回傳 TDCC 快取狀態"""
-    from tdcc_chip import get_tdcc_data
+    from tdcc_chip import get_tdcc_data, DB_PATH
+    import sqlite3
     data = get_tdcc_data()
+    # 取各日期的快取筆數
+    date_counts = {}
+    try:
+        c = sqlite3.connect(DB_PATH)
+        rows = c.execute("SELECT date, COUNT(*) FROM tdcc_holding GROUP BY date ORDER BY date DESC LIMIT 5").fetchall()
+        date_counts = {r[0]: r[1] for r in rows}
+        c.close()
+    except Exception:
+        pass
     if not data:
-        return {"loaded": False, "count": 0, "date": None}
+        return {"loaded": False, "count": 0, "date": None, "cache_by_date": date_counts}
     sample = next(iter(data.values()))
-    return {"loaded": True, "count": len(data), "date": sample.get("date")}
+    return {"loaded": True, "count": len(data), "date": sample.get("date"), "cache_by_date": date_counts}
+
+@app.get("/api/tdcc/test/{stock_id}")
+async def api_tdcc_test(stock_id: str):
+    """測試單支股票 TDCC 爬蟲（debug 用）"""
+    from tdcc_chip import fetch_batch, _last_thursday, _extract_token, TDCC_WEB, _UA
+    from datetime import date
+    import httpx
+    date_str = _last_thursday(date.today()).strftime("%Y%m%d")
+    # 先測 token 取得
+    token_ok = False
+    try:
+        async with httpx.AsyncClient(headers={"User-Agent": _UA}, timeout=15.0, verify=False, follow_redirects=True) as client:
+            r = await client.get(TDCC_WEB)
+            token = _extract_token(r.text)
+            token_ok = bool(token)
+            token_preview = (token[:10] + "...") if token else None
+            html_len = len(r.text)
+    except Exception as e:
+        return {"ok": False, "error": str(e), "date": date_str}
+    # 爬單支
+    result = await fetch_batch([stock_id], date_str)
+    return {
+        "ok": True,
+        "date": date_str,
+        "token_ok": token_ok,
+        "token_preview": token_preview,
+        "html_len": html_len,
+        "result": result,
+    }
 
 # 全市場策略掃描 API（Yahoo Finance）
 # ════════════════════════════════════════════════════════════════════════════
