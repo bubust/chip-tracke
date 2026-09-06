@@ -1477,8 +1477,37 @@ function _calcMACD(closes, fast=12, slow=26, signal=9) {
   return { dif, dea, hist };
 }
 
+function _calcMA(arr, period) {
+  const result = new Array(arr.length).fill(NaN);
+  for (let i = period - 1; i < arr.length; i++) {
+    let sum = 0;
+    for (let j = 0; j < period; j++) sum += arr[i - j];
+    result[i] = sum / period;
+  }
+  return result;
+}
+
 function _toDate(d) {  // "20260902" → "2026-09-02"
   return d.slice(0,4) + '-' + d.slice(4,6) + '-' + d.slice(6,8);
+}
+
+function _fmtN(v, d=2) {
+  return (v === null || v === undefined || isNaN(v)) ? '—' : (+v).toFixed(d);
+}
+
+function _fmtVol(v) {
+  if (!v || isNaN(v)) return '—';
+  if (v >= 1e8) return (v/1e8).toFixed(2) + '億';
+  return (v/1e3).toFixed(1) + 'K';
+}
+
+function _mkLegend(el) {
+  const d = document.createElement('div');
+  d.style.cssText = 'position:absolute;top:5px;left:8px;z-index:10;font-size:11px;' +
+    'line-height:1.8;pointer-events:none;color:#d1d4dc;white-space:nowrap;' +
+    'background:rgba(19,23,34,0.75);padding:2px 8px;border-radius:3px';
+  el.appendChild(d);
+  return d;
 }
 
 async function openChart(stockId) {
@@ -1500,10 +1529,10 @@ async function openChart(stockId) {
     title.textContent = `${stockId} K 線圖`;
 
     container.innerHTML = `
-      <div id="lwc-candle" style="width:100%;height:44%"></div>
-      <div id="lwc-vol"    style="width:100%;height:10%;border-top:1px solid #2a2e39"></div>
-      <div id="lwc-macd"  style="width:100%;height:23%;border-top:1px solid #2a2e39"></div>
-      <div id="lwc-macd2" style="width:100%;height:23%;border-top:1px solid #2a2e39"></div>`;
+      <div id="lwc-candle" style="width:100%;height:44%;position:relative"></div>
+      <div id="lwc-vol"    style="width:100%;height:10%;border-top:1px solid #2a2e39;position:relative"></div>
+      <div id="lwc-macd"  style="width:100%;height:23%;border-top:1px solid #2a2e39;position:relative"></div>
+      <div id="lwc-macd2" style="width:100%;height:23%;border-top:1px solid #2a2e39;position:relative"></div>`;
 
     const BASE = {
       layout: { background: { color: '#131722' }, textColor: '#9598a1' },
@@ -1514,6 +1543,15 @@ async function openChart(stockId) {
       handleScale: true, handleScroll: true,
     };
 
+    const closes = ohlcv.map(r => r.close);
+    const n = ohlcv.length;
+
+    // ── MA 計算 ──
+    const ma5  = _calcMA(closes, 5);
+    const ma10 = _calcMA(closes, 10);
+    const ma20 = _calcMA(closes, 20);
+    const ma60 = _calcMA(closes, 60);
+
     // ── 蠟燭圖 ──
     const cEl = document.getElementById('lwc-candle');
     const cChart = LightweightCharts.createChart(cEl, { ...BASE, width: cEl.offsetWidth, height: cEl.offsetHeight });
@@ -1522,63 +1560,134 @@ async function openChart(stockId) {
       upColor: '#ef5350', downColor: '#26a69a',
       borderUpColor: '#ef5350', borderDownColor: '#26a69a',
       wickUpColor: '#ef5350', wickDownColor: '#26a69a',
+      priceLineVisible: false, lastValueVisible: false,
     });
     cSeries.setData(ohlcv.map(r => ({
       time: _toDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close
     })));
 
+    // MA 線
+    const MA_CFG = [
+      { period: 5,  ma: ma5,  color: '#4caf50' },
+      { period: 10, ma: ma10, color: '#ffeb3b' },
+      { period: 20, ma: ma20, color: '#e91e63' },
+      { period: 60, ma: ma60, color: '#ff9800' },
+    ];
+    for (const { period, ma, color } of MA_CFG) {
+      const s = cChart.addLineSeries({
+        color, lineWidth: 1,
+        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+      });
+      s.setData(ohlcv.map((r, i) => isNaN(ma[i]) ? null : { time: _toDate(r.date), value: ma[i] }).filter(Boolean));
+    }
+
+    // 蠟燭 legend
+    const cLeg = _mkLegend(cEl);
+    function updateCLeg(idx) {
+      const i = Math.min(Math.max(idx, 0), n - 1);
+      cLeg.innerHTML =
+        `<span style="color:#4caf50">MA5:${_fmtN(ma5[i])}</span>　` +
+        `<span style="color:#ffeb3b">MA10:${_fmtN(ma10[i])}</span>　` +
+        `<span style="color:#e91e63">MA20:${_fmtN(ma20[i])}</span>　` +
+        `<span style="color:#ff9800">MA60:${_fmtN(ma60[i])}</span>`;
+    }
+    updateCLeg(n - 1);
+
     // ── 成交量 ──
     const vEl = document.getElementById('lwc-vol');
     const vChart = LightweightCharts.createChart(vEl, { ...BASE, width: vEl.offsetWidth, height: vEl.offsetHeight });
     _lwcCharts.push(vChart);
-    const vSeries = vChart.addHistogramSeries({ priceFormat: { type: 'volume' }, color: '#26a69a' });
+    const vSeries = vChart.addHistogramSeries({
+      priceFormat: { type: 'volume' },
+      priceLineVisible: false, lastValueVisible: false,
+    });
     vSeries.setData(ohlcv.map(r => ({
-      time: _toDate(r.date),
-      value: r.volume,
+      time: _toDate(r.date), value: r.volume,
       color: r.close >= r.open ? 'rgba(239,83,80,0.7)' : 'rgba(38,166,154,0.7)'
     })));
 
-    const closes = ohlcv.map(r => r.close);
+    const vLeg = _mkLegend(vEl);
+    function updateVLeg(idx) {
+      const i = Math.min(Math.max(idx, 0), n - 1);
+      vLeg.innerHTML = `<span style="color:#9598a1">成交量：${_fmtVol(ohlcv[i].volume)}</span>`;
+    }
+    updateVLeg(n - 1);
 
     // ── 小MACD (12,26,9) ──
     const mEl = document.getElementById('lwc-macd');
     const mChart = LightweightCharts.createChart(mEl, { ...BASE, width: mEl.offsetWidth, height: mEl.offsetHeight });
     _lwcCharts.push(mChart);
     const { dif: dif1, dea: dea1, hist: hist1 } = _calcMACD(closes, 12, 26, 9);
-    const hSeries = mChart.addHistogramSeries({ color: '#ef5350', priceScaleId: 'right', lastValueVisible: false });
+
+    const hSeries = mChart.addHistogramSeries({ priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false });
     hSeries.setData(ohlcv.map((r, i) => ({
       time: _toDate(r.date), value: hist1[i],
       color: hist1[i] >= 0 ? 'rgba(239,83,80,0.8)' : 'rgba(38,166,154,0.8)'
     })));
-    const difSeries = mChart.addLineSeries({ color: '#2196f3', lineWidth: 1, lastValueVisible: false });
+    const difSeries = mChart.addLineSeries({ color: '#2196f3', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
     difSeries.setData(ohlcv.map((r, i) => ({ time: _toDate(r.date), value: dif1[i] })));
-    const deaSeries = mChart.addLineSeries({ color: '#ff9800', lineWidth: 1, lastValueVisible: false });
+    // 零軸（實線）
+    difSeries.createPriceLine({ price: 0, color: 'rgba(255,255,255,0.45)', lineWidth: 1, lineStyle: 0, axisLabelVisible: false });
+    const deaSeries = mChart.addLineSeries({ color: '#ff9800', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
     deaSeries.setData(ohlcv.map((r, i) => ({ time: _toDate(r.date), value: dea1[i] })));
+
+    const mLeg = _mkLegend(mEl);
+    function updateMLeg(idx) {
+      const i = Math.min(Math.max(idx, 0), n - 1);
+      const oc = hist1[i] >= 0 ? '#ef5350' : '#26a69a';
+      mLeg.innerHTML = `小MACD(12,26,9)　` +
+        `<span style="color:#2196f3">DIF:${_fmtN(dif1[i])}</span>　` +
+        `<span style="color:#ff9800">DEA:${_fmtN(dea1[i])}</span>　` +
+        `<span style="color:${oc}">OSC:${_fmtN(hist1[i])}</span>`;
+    }
+    updateMLeg(n - 1);
 
     // ── 大MACD (108,216,18) ──
     const m2El = document.getElementById('lwc-macd2');
     const m2Chart = LightweightCharts.createChart(m2El, { ...BASE, width: m2El.offsetWidth, height: m2El.offsetHeight });
     _lwcCharts.push(m2Chart);
     const { dif: dif2, dea: dea2, hist: hist2 } = _calcMACD(closes, 108, 216, 18);
-    const h2Series = m2Chart.addHistogramSeries({ color: '#ef5350', priceScaleId: 'right', lastValueVisible: false });
+
+    const h2Series = m2Chart.addHistogramSeries({ priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false });
     h2Series.setData(ohlcv.map((r, i) => ({
       time: _toDate(r.date), value: hist2[i],
       color: hist2[i] >= 0 ? 'rgba(239,83,80,0.8)' : 'rgba(38,166,154,0.8)'
     })));
-    const dif2Series = m2Chart.addLineSeries({ color: '#2196f3', lineWidth: 1, lastValueVisible: false });
+    const dif2Series = m2Chart.addLineSeries({ color: '#2196f3', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
     dif2Series.setData(ohlcv.map((r, i) => ({ time: _toDate(r.date), value: dif2[i] })));
-    const dea2Series = m2Chart.addLineSeries({ color: '#ff9800', lineWidth: 1, lastValueVisible: false });
+    // 零軸（實線）
+    dif2Series.createPriceLine({ price: 0, color: 'rgba(255,255,255,0.45)', lineWidth: 1, lineStyle: 0, axisLabelVisible: false });
+    const dea2Series = m2Chart.addLineSeries({ color: '#ff9800', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
     dea2Series.setData(ohlcv.map((r, i) => ({ time: _toDate(r.date), value: dea2[i] })));
 
-    // ── 同步時間軸 ──
+    const m2Leg = _mkLegend(m2El);
+    function updateM2Leg(idx) {
+      const i = Math.min(Math.max(idx, 0), n - 1);
+      const oc = hist2[i] >= 0 ? '#ef5350' : '#26a69a';
+      m2Leg.innerHTML = `大MACD(108,216,18)　` +
+        `<span style="color:#2196f3">DIF:${_fmtN(dif2[i])}</span>　` +
+        `<span style="color:#ff9800">DEA:${_fmtN(dea2[i])}</span>　` +
+        `<span style="color:${oc}">OSC:${_fmtN(hist2[i])}</span>`;
+    }
+    updateM2Leg(n - 1);
+
+    // ── 同步時間軸 + crosshair legend ──
     const charts = [cChart, vChart, mChart, m2Chart];
     charts.forEach((src, si) => {
       src.timeScale().subscribeVisibleLogicalRangeChange(range => {
         if (!range) return;
         charts.forEach((tgt, ti) => { if (ti !== si) tgt.timeScale().setVisibleLogicalRange(range); });
       });
+      src.subscribeCrosshairMove(param => {
+        const idx = (param.logical !== null && param.logical !== undefined)
+          ? Math.round(param.logical) : n - 1;
+        updateCLeg(idx); updateVLeg(idx); updateMLeg(idx); updateM2Leg(idx);
+      });
     });
-    cChart.timeScale().fitContent();
+
+    // ── 預設六個月（約 126 根）──
+    const sixMo = Math.min(126, n);
+    cChart.timeScale().setVisibleLogicalRange({ from: n - sixMo, to: n - 1 });
 
   } catch(e) {
     container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--red)">載入失敗：${e.message}</div>`;
