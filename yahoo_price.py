@@ -357,6 +357,10 @@ async def run_market_scan(concurrency: int = 50):
             if float(ma5) > float(ma10) > float(ma20):
                 ma_candidates.append(sid)
 
+        # 最多爬 400 支（避免 TDCC 爬太久），按收盤價降序優先
+        if len(ma_candidates) > 400:
+            ma_candidates.sort(key=lambda s: float(all_prices[s].iloc[-1]['close']), reverse=True)
+            ma_candidates = ma_candidates[:400]
         print(f"[SCAN] CHIP MA預篩：{len(ma_candidates)} 支符合，開始爬 TDCC...")
         if ma_candidates:
             await refresh_for_stocks(ma_candidates)

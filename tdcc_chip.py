@@ -280,7 +280,7 @@ async def fetch_batch(stock_ids: list[str], date_str: str) -> dict[str, float]:
         return {}
 
     print(f"[TDCC] 開始爬 {len(stock_ids)} 支股票，日期 {date_str}")
-    sem = asyncio.Semaphore(10)
+    sem = asyncio.Semaphore(20)
     timeout_cfg = httpx.Timeout(20.0, connect=10.0)
 
     async with httpx.AsyncClient(
