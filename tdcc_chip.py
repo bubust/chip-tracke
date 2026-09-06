@@ -39,10 +39,10 @@ def _conn():
     return c
 
 
-def _last_thursday(d: date = None) -> date:
-    """回傳最近的週四（含今天若為週四）"""
+def _last_friday(d: date = None) -> date:
+    """回傳最近的週五（含今天若為週五）— TDCC 每週五更新"""
     d = d or date.today()
-    return d - timedelta(days=(d.weekday() - 3) % 7)
+    return d - timedelta(days=(d.weekday() - 4) % 7)
 
 
 def _has_date(date_str: str, min_count: int = 10) -> bool:
@@ -189,14 +189,12 @@ def _parse_html(html: str) -> float:
 
 def _extract_token(html: str) -> str | None:
     """從 HTML 中取出 SYNCHRONIZER_TOKEN（順序不拘，單引號/雙引號都接受）"""
-    # name 在前
     m = re.search(
         r'name=["\']?SYNCHRONIZER_TOKEN["\']?[^>]*value=["\']([^"\']+)["\']',
         html, re.IGNORECASE
     )
     if m:
         return m.group(1)
-    # value 在前
     m = re.search(
         r'value=["\']([^"\']+)["\'][^>]*name=["\']?SYNCHRONIZER_TOKEN["\']?',
         html, re.IGNORECASE
@@ -204,10 +202,22 @@ def _extract_token(html: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _extract_available_dates(html: str, n: int = 2) -> list[str]:
+    """從 TDCC 頁面的 scaDate 下拉選單取得最近 n 個可用日期（最可靠的方式）"""
+    m = re.search(
+        r'<select[^>]*name=["\']?scaDate["\']?[^>]*>(.*?)</select>',
+        html, re.DOTALL | re.IGNORECASE
+    )
+    if not m:
+        return []
+    dates = re.findall(r'<option[^>]*value=["\'](\d{8})["\']', m.group(1), re.IGNORECASE)
+    return dates[:n]
+
+
 # ── TDCC 爬蟲 ────────────────────────────────────────────────────────────────
 
-async def _get_session(client: httpx.AsyncClient) -> tuple[str, dict] | None:
-    """GET TDCC 頁面，取 SYNCHRONIZER_TOKEN + cookies。失敗回傳 None。"""
+async def _get_session(client: httpx.AsyncClient) -> tuple[str, list[str], dict] | None:
+    """GET TDCC 頁面，取 SYNCHRONIZER_TOKEN + 可用日期清單 + cookies。失敗回傳 None。"""
     try:
         r = await client.get(TDCC_WEB)
         if r.status_code != 200:
@@ -217,7 +227,15 @@ async def _get_session(client: httpx.AsyncClient) -> tuple[str, dict] | None:
         if not token:
             print("[TDCC] 無法取得 SYNCHRONIZER_TOKEN，頁面可能已改版")
             return None
-        return token, dict(r.cookies)
+        dates = _extract_available_dates(r.text, n=2)
+        if not dates:
+            print("[TDCC] 無法取得可用日期，改用計算值")
+            # fallback：計算最近週五
+            today = date.today()
+            fri  = _last_friday(today)
+            dates = [fri.strftime("%Y%m%d"), (fri - timedelta(days=7)).strftime("%Y%m%d")]
+        print(f"[TDCC] 可用日期：{dates}")
+        return token, dates, dict(r.cookies)
     except Exception as e:
         print(f"[TDCC] 取 session 失敗：{e}")
         return None
@@ -279,11 +297,16 @@ async def fetch_batch(stock_ids: list[str], date_str: str) -> dict[str, float]:
         if not session_info:
             print("[TDCC] 無法建立 session，跳過 TDCC 爬蟲")
             return {}
-        token, cookies = session_info
+        token, available_dates, cookies = session_info
         client.cookies.update(cookies)
 
+        # 若傳入的日期不在可用清單，使用最近的可用日期
+        actual_date = date_str if date_str in available_dates else (available_dates[0] if available_dates else date_str)
+        if actual_date != date_str:
+            print(f"[TDCC] 日期 {date_str} 不在可用清單，改用 {actual_date}")
+
         tasks = [
-            _fetch_one(client, sem, token, sid, date_str)
+            _fetch_one(client, sem, token, sid, actual_date)
             for sid in stock_ids
         ]
         pcts = await asyncio.gather(*tasks, return_exceptions=True)
@@ -291,29 +314,47 @@ async def fetch_batch(stock_ids: list[str], date_str: str) -> dict[str, float]:
     results: dict[str, float] = {}
     ok = 0
     for sid, pct in zip(stock_ids, pcts):
-        if isinstance(pct, (int, float)) and pct is not None and not isinstance(pct, Exception):
+        if isinstance(pct, (int, float)) and not isinstance(pct, Exception):
             results[sid] = float(pct)
             ok += 1
 
-    print(f"[TDCC] 完成：{ok}/{len(stock_ids)} 支成功，日期 {date_str}")
+    used = actual_date if 'actual_date' in dir() else date_str
+    print(f"[TDCC] 完成：{ok}/{len(stock_ids)} 支成功，日期 {used}")
     return results
 
 
 async def refresh_for_stocks(stock_ids: list[str]) -> dict:
     """
     為指定股票清單取得最近兩週 TDCC 資料並寫入快取。
-    - 已有足夠快取的日期跳過（避免重複爬）
-    - 供 run_market_scan() 的 MA 預篩後呼叫
+    日期直接從 TDCC 頁面的下拉選單取得（不靠 weekday 計算，避免日期錯誤）。
     回傳 {date_str: count | "cached"}
     """
-    today   = date.today()
-    cur     = _last_thursday(today)
-    prev    = cur - timedelta(days=7)
-    report  = {}
+    if not stock_ids:
+        return {}
+
     skip_threshold = max(10, len(stock_ids) // 2)
 
-    for s in [cur, prev]:
-        ds = s.strftime("%Y%m%d")
+    # 先取一次頁面，拿真實可用日期（最多 2 週）
+    timeout_cfg = httpx.Timeout(20.0, connect=10.0)
+    available_dates = []
+    try:
+        async with httpx.AsyncClient(
+            headers={"User-Agent": _UA, "Referer": TDCC_WEB},
+            timeout=timeout_cfg, verify=False, follow_redirects=True,
+        ) as client:
+            r = await client.get(TDCC_WEB)
+            available_dates = _extract_available_dates(r.text, n=2)
+    except Exception as e:
+        print(f"[TDCC] 取可用日期失敗：{e}")
+
+    if not available_dates:
+        # fallback：用計算值（週五）
+        fri = _last_friday(date.today())
+        available_dates = [fri.strftime("%Y%m%d"), (fri - timedelta(days=7)).strftime("%Y%m%d")]
+
+    print(f"[TDCC] 本次使用日期：{available_dates}")
+    report = {}
+    for ds in available_dates:
         if _has_date(ds, min_count=skip_threshold):
             print(f"[TDCC] {ds} 已有快取（>={skip_threshold} 筆），跳過")
             report[ds] = "cached"

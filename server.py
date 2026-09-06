@@ -509,10 +509,10 @@ def api_tdcc_status():
 @app.get("/api/tdcc/test/{stock_id}")
 async def api_tdcc_test(stock_id: str):
     """測試單支股票 TDCC 爬蟲（debug 用）"""
-    from tdcc_chip import _last_thursday, _extract_token, _TableParser, TDCC_WEB, _UA
+    from tdcc_chip import _extract_token, _extract_available_dates, _TableParser, TDCC_WEB, _UA
     from datetime import date
     import httpx
-    date_str = _last_thursday(date.today()).strftime("%Y%m%d")
+    date_str = "latest"  # 從頁面動態取得
     token_ok = False
     token_preview = None
     html_len = 0
@@ -521,12 +521,14 @@ async def api_tdcc_test(stock_id: str):
 
     try:
         async with httpx.AsyncClient(headers={"User-Agent": _UA}, timeout=20.0, verify=False, follow_redirects=True) as client:
-            # GET 取 token
+            # GET 取 token + 可用日期
             r = await client.get(TDCC_WEB)
             token = _extract_token(r.text)
             token_ok = bool(token)
             token_preview = (token[:12] + "...") if token else None
             html_len = len(r.text)
+            available_dates = _extract_available_dates(r.text, n=2)
+            date_str = available_dates[0] if available_dates else date_str
 
             if token:
                 # POST 查詢
@@ -554,12 +556,13 @@ async def api_tdcc_test(stock_id: str):
 
     return {
         "ok": True,
-        "date": date_str,
+        "date_used": date_str,
         "token_ok": token_ok,
         "token_preview": token_preview,
         "html_len": html_len,
-        "table_rows": table_rows,       # ← parser 抓到的 rows
-        "post_html_sample": post_html_sample,  # ← POST 回應的 table HTML 片段
+        "available_dates": available_dates if 'available_dates' in dir() else [],
+        "table_rows": table_rows,
+        "post_html_sample": post_html_sample,
     }
 
 # 全市場策略掃描 API（Yahoo Finance）
