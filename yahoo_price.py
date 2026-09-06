@@ -339,16 +339,38 @@ async def run_market_scan(concurrency: int = 50):
                     if result is not None:
                         all_results[strat].append(result)
 
-        # CHIP：用保所千張大戶週資料掃描（需先執行 /api/tdcc/refresh）
-        tdcc_data = get_tdcc_data()
-        if tdcc_data and all_prices:
-            print(f"[SCAN] CHIP 掃描：TDCC {len(tdcc_data)} 支，價格 {len(all_prices)} 支")
-            chip_names = {sid: names.get(sid, '') for sid in all_prices}
-            stock_info = {sid: {'name': chip_names[sid]} for sid in all_prices}
-            all_results["CHIP"] = screen_chip(all_prices, tdcc_data, stock_info)
-            print(f"[SCAN] CHIP 命中：{len(all_results['CHIP'])} 支")
+        # CHIP：MA 預篩 → TDCC 爬蟲（只爬通過的股票）→ screen_chip
+        from tdcc_chip import refresh_for_stocks, get_tdcc_data
+
+        ma_candidates = []
+        for sid, df in all_prices.items():
+            if len(df) < 20:
+                continue
+            if float(df.iloc[-1]['close']) <= 10:
+                continue
+            closes = df['close']
+            ma5  = closes.rolling(5).mean().iloc[-1]
+            ma10 = closes.rolling(10).mean().iloc[-1]
+            ma20 = closes.rolling(20).mean().iloc[-1]
+            if pd.isna(ma5) or pd.isna(ma10) or pd.isna(ma20):
+                continue
+            if float(ma5) > float(ma10) > float(ma20):
+                ma_candidates.append(sid)
+
+        print(f"[SCAN] CHIP MA預篩：{len(ma_candidates)} 支符合，開始爬 TDCC...")
+        if ma_candidates:
+            await refresh_for_stocks(ma_candidates)
+            tdcc_data = get_tdcc_data()
+            if tdcc_data and all_prices:
+                print(f"[SCAN] CHIP 掃描：TDCC {len(tdcc_data)} 支，價格 {len(all_prices)} 支")
+                chip_names = {sid: names.get(sid, '') for sid in all_prices}
+                stock_info = {sid: {'name': chip_names[sid]} for sid in all_prices}
+                all_results["CHIP"] = screen_chip(all_prices, tdcc_data, stock_info)
+                print(f"[SCAN] CHIP 命中：{len(all_results['CHIP'])} 支")
+            else:
+                print("[SCAN] CHIP 跳過（TDCC 快取為空）")
         else:
-            print("[SCAN] CHIP 跳過（TDCC 資料未載入，請先執行 /api/tdcc/refresh）")
+            print("[SCAN] CHIP 跳過（無 MA 預篩通過股票）")
 
         _scan_status["results"] = all_results
 
