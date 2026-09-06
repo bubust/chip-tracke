@@ -256,6 +256,8 @@ _scan_status: dict = {
     "yahoo_ok":     0,   # 成功取得 Yahoo 資料的股票數
     "yahoo_fail":   0,   # Yahoo 回傳空/失敗的股票數
     "failed_stocks": [],  # 失敗的股票代號清單
+    "phase":        "",  # 目前階段："yahoo" | "tdcc" | "done"
+    "tdcc_total":   0,   # TDCC 需爬股票數
     "results":      {},
     "finished_at":  None,
     "error":        None,
@@ -271,6 +273,8 @@ def get_scan_status() -> dict:
         "yahoo_ok":      _scan_status["yahoo_ok"],
         "yahoo_fail":    _scan_status["yahoo_fail"],
         "failed_stocks": _scan_status["failed_stocks"],
+        "phase":         _scan_status.get("phase", ""),
+        "tdcc_total":    _scan_status.get("tdcc_total", 0),
         "counts":        counts,
         "finished_at":   _scan_status["finished_at"],
         "error":         _scan_status["error"],
@@ -292,6 +296,8 @@ async def run_market_scan(concurrency: int = 50):
 
     _scan_status["running"]       = True
     _scan_status["progress"]      = 0
+    _scan_status["phase"]         = "yahoo"
+    _scan_status["tdcc_total"]    = 0
     _scan_status["yahoo_ok"]      = 0
     _scan_status["yahoo_fail"]    = 0
     _scan_status["failed_stocks"] = []
@@ -361,6 +367,8 @@ async def run_market_scan(concurrency: int = 50):
         if len(ma_candidates) > 400:
             ma_candidates.sort(key=lambda s: float(all_prices[s].iloc[-1]['close']), reverse=True)
             ma_candidates = ma_candidates[:400]
+        _scan_status["phase"]      = "tdcc"
+        _scan_status["tdcc_total"] = len(ma_candidates)
         print(f"[SCAN] CHIP MA預篩：{len(ma_candidates)} 支符合，開始爬 TDCC...")
         if ma_candidates:
             await refresh_for_stocks(ma_candidates)

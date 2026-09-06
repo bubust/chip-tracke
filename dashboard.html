@@ -1284,9 +1284,15 @@ async function pollScreenStatus() {
       document.getElementById('screen-progress-bar').style.width = pct + '%';
       const okInfo = (s.yahoo_ok !== undefined)
         ? `  成功 ${s.yahoo_ok} 失敗 ${s.yahoo_fail}` : '';
-      document.getElementById('screen-progress-text').textContent =
-        `掃描中 ${s.progress} / ${s.total} 支${okInfo}`;
-      btn.textContent = `⏳ 掃描中 ${pct}%`;
+      let progressText;
+      if (s.phase === 'tdcc') {
+        progressText = `Yahoo 完成 ${s.yahoo_ok}支  →  爬 TDCC 中（${s.tdcc_total} 支，請稍候...）`;
+        btn.textContent = `⏳ TDCC 爬蟲中`;
+      } else {
+        progressText = `掃描中 ${s.progress} / ${s.total} 支${okInfo}`;
+        btn.textContent = `⏳ 掃描中 ${pct}%`;
+      }
+      document.getElementById('screen-progress-text').textContent = progressText;
     } else {
       clearInterval(_screenPollTimer);
       _screenPollTimer = null;
