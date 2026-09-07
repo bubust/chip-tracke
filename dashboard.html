@@ -15,6 +15,8 @@
     --yellow: #eab308;
     --orange: #f97316;
     --red:    #ef4444;
+    --up:     #ef4444;
+    --down:   #22c55e;
     --text:   #e2e8f0;
     --muted:  #64748b;
     --radius: 10px;
@@ -77,8 +79,8 @@
   td { padding: 9px 10px; border-bottom: 1px solid #1e2230; white-space: nowrap; }
   tr:last-child td { border-bottom: none; }
   tr.clickable:hover td { background: #1e2230; cursor: pointer; }
-  .pos { color: var(--green); }
-  .neg { color: var(--red); }
+  .pos { color: var(--up); }
+  .neg { color: var(--down); }
   .muted { color: var(--muted); }
 
   /* metrics */
@@ -95,11 +97,11 @@
 
   /* signal badge */
   .sig-badge { display: inline-flex; align-items: center; gap: 4px; font-size: .82rem; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
-  .sig-2 { background: #16301e; color: var(--green); }
+  .sig-2 { background: #2a1010; color: var(--up); }
   .sig-1 { background: #2a2700; color: var(--yellow); }
   .sig-0 { background: #1e2130; color: var(--muted); }
   .sig--1 { background: #2a1a00; color: var(--orange); }
-  .sig--2, .sig--3 { background: #2a1010; color: var(--red); }
+  .sig--2, .sig--3 { background: #16301e; color: var(--down); }
 
   /* detail panel */
   #detail-panel { border: 1px solid var(--accent); border-radius: var(--radius); margin-bottom: 14px; overflow: hidden; display: none; }
@@ -947,7 +949,7 @@ function _tdccSparkline(history) {
   // fill area
   const fillD = `${d} L${x(pts.length-1).toFixed(1)},${H} L${x(0).toFixed(1)},${H} Z`;
   const trend = pts[pts.length-1] >= pts[0];
-  const color = trend ? 'var(--green)' : 'var(--red)';
+  const color = trend ? 'var(--up)' : 'var(--down)';
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:60px;display:block">
     <defs>
       <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
@@ -979,7 +981,7 @@ function renderTdccModal(history) {
   if (streak >= 2) {
     const label = dir === 'up' ? `連續增加 ${streak} 週 ▲` : `連續減少 ${streak} 週 ▼`;
     badge.textContent = label;
-    badge.style.background = dir === 'up' ? 'var(--green)' : 'var(--red)';
+    badge.style.background = dir === 'up' ? 'var(--up)' : 'var(--down)';
     badge.style.color = '#fff';
   } else {
     badge.textContent = '趨勢不明';
