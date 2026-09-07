@@ -510,8 +510,10 @@ async def api_refresh_stock(stock_id: str, days: int = 30):
 
 @app.post("/api/tdcc/refresh")
 async def api_tdcc_refresh(background_tasks: BackgroundTasks):
-    """舊端點保留（TDCC 在 Render 因 IP 限制無法使用，請改用 /api/chip/import）"""
-    return {"ok": False, "message": "TDCC 封鎖境外 IP，請在本機執行 tdcc_local.py 上傳資料"}
+    """觸發 TDCC 官方 OpenAPI 更新（全市場，無 IP 限制）"""
+    from tdcc_chip import refresh_for_stocks
+    background_tasks.add_task(refresh_for_stocks)
+    return {"ok": True, "message": "已開始從 TDCC 官方 OpenAPI 下載全市場資料（~9.7MB）"}
 
 @app.post("/api/chip/import")
 async def api_chip_import(request: Request):
@@ -577,62 +579,30 @@ def api_tdcc_status():
 
 @app.get("/api/tdcc/test/{stock_id}")
 async def api_tdcc_test(stock_id: str):
-    """測試單支股票 TDCC 爬蟲（debug 用）"""
-    from tdcc_chip import _extract_token, _extract_available_dates, _TableParser, TDCC_WEB, _UA
-    from datetime import date
-    import httpx
-    date_str = "latest"  # 從頁面動態取得
-    token_ok = False
-    token_preview = None
-    html_len = 0
-    table_rows = []
-    post_html_sample = ""
-
+    """測試 TDCC 官方 OpenAPI（debug 用，無 IP 限制）"""
+    from tdcc_chip import TDCC_OPENAPI, _parse_openapi_rows
     try:
-        async with httpx.AsyncClient(headers={"User-Agent": _UA}, timeout=20.0, verify=False, follow_redirects=True) as client:
-            # GET 取 token + 可用日期
-            r = await client.get(TDCC_WEB)
-            token = _extract_token(r.text)
-            token_ok = bool(token)
-            token_preview = (token[:12] + "...") if token else None
-            html_len = len(r.text)
-            available_dates = _extract_available_dates(r.text, n=2)
-            date_str = available_dates[0] if available_dates else date_str
-
-            if token:
-                # POST 查詢
-                form_data = {
-                    "SYNCHRONIZER_TOKEN": token,
-                    "SYNCHRONIZER_URI":   "/portal/zh/smWeb/qryStock",
-                    "method":             "submit",
-                    "firDate":            date_str,
-                    "scaDate":            date_str,
-                    "sqlMethod":          "StockNo",
-                    "stockNo":            stock_id,
-                }
-                pr = await client.post(TDCC_WEB, data=form_data,
-                    headers={"User-Agent": _UA, "Content-Type": "application/x-www-form-urlencoded"})
-                post_html = pr.text
-                post_html_sample = post_html[post_html.find('<table'):post_html.find('<table')+3000] if '<table' in post_html else post_html[:2000]
-
-                # 解析 rows
-                parser = _TableParser()
-                parser.feed(post_html)
-                table_rows = parser._rows[:25]  # 最多 25 行
-
+        timeout = httpx.Timeout(30.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            r = await client.get(TDCC_OPENAPI)
+            r.raise_for_status()
+            rows = r.json()
+        date_str, data = _parse_openapi_rows(rows)
+        kpct = data.get(stock_id, 0.0)
+        available_dates = []
+        try:
+            import sqlite3
+            from tdcc_chip import DB_PATH
+            c = sqlite3.connect(DB_PATH)
+            available_dates = [r[0] for r in c.execute(
+                "SELECT DISTINCT date FROM tdcc_holding ORDER BY date DESC LIMIT 3"
+            ).fetchall()]
+            c.close()
+        except Exception:
+            pass
+        return {"ok": True, "stock_id": stock_id, "date": date_str, "kpct": kpct, "available_dates": available_dates}
     except Exception as e:
-        return {"ok": False, "error": str(e), "date": date_str}
-
-    return {
-        "ok": True,
-        "date_used": date_str,
-        "token_ok": token_ok,
-        "token_preview": token_preview,
-        "html_len": html_len,
-        "available_dates": available_dates if 'available_dates' in dir() else [],
-        "table_rows": table_rows,
-        "post_html_sample": post_html_sample,
-    }
+        return {"ok": False, "error": str(e)}
 
 # 全市場策略掃描 API（Yahoo Finance）
 # ════════════════════════════════════════════════════════════════════════════

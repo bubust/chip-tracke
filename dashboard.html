@@ -1016,8 +1016,17 @@ async function refreshWatchlistTdcc() {
   btn.textContent = '⏳ 更新中...';
   try {
     const r = await api('POST', '/api/chip/refresh-watchlist');
-    toast(`✅ ${r.message}（背景執行中，約 1~2 分鐘後重新載入）`);
-    setTimeout(() => loadWatchlist(), 90000);
+    toast(`✅ ${r.message}（背景執行中，90秒後自動重新載入）`);
+    // 90秒後重載，並檢查是否有資料
+    setTimeout(async () => {
+      await loadWatchlist();
+      const hasKpct = (_wlData || []).some(s => s.kpct != null);
+      if (hasKpct) {
+        toast('✅ 千張大戶資料已更新');
+      } else {
+        toast('⚠️ 仍無千張大戶資料，請開啟 F12 主控台確認 server log，或重試', true);
+      }
+    }, 90000);
   } catch (e) {
     toast(e.message, true);
   } finally {
@@ -1775,6 +1784,71 @@ async function openChart(stockId) {
       });
       s.setData(ohlcv.map((r, i) => isNaN(ma[i]) ? null : { time: _toDate(r.date), value: ma[i] }).filter(Boolean));
     }
+
+    // ── MA10 ±2% 拉回帶（半透明虛線上下邊界）──
+    const ma10Upper = cChart.addLineSeries({
+      color: 'rgba(255,235,59,0.55)', lineWidth: 1, lineStyle: 2,
+      priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+    });
+    ma10Upper.setData(ohlcv.map((r, i) => isNaN(ma10[i]) ? null : { time: _toDate(r.date), value: +(ma10[i] * 1.02).toFixed(2) }).filter(Boolean));
+    const ma10Lower = cChart.addLineSeries({
+      color: 'rgba(255,235,59,0.55)', lineWidth: 1, lineStyle: 2,
+      priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+    });
+    ma10Lower.setData(ohlcv.map((r, i) => isNaN(ma10[i]) ? null : { time: _toDate(r.date), value: +(ma10[i] * 0.98).toFixed(2) }).filter(Boolean));
+
+    // ── 假跌破標記 ──
+    const markers = [];
+    for (let i = 1; i < n - 1; i++) {
+      if (isNaN(ma10[i]) || isNaN(ma10[i + 1])) continue;
+      // i 日跌破 MA10，i+1 日收復
+      if (closes[i] < ma10[i] && closes[i + 1] > ma10[i + 1]) {
+        markers.push({
+          time: _toDate(ohlcv[i + 1].date),
+          position: 'belowBar', color: '#fbbf24', shape: 'arrowUp', text: '假跌破', size: 1,
+        });
+      }
+    }
+
+    // ── 段落力道標示（最近 12 段）──
+    const W = 5;
+    const pivots = [];
+    for (let i = W; i < n - W; i++) {
+      const c = closes[i];
+      let hi = true, lo = true;
+      for (let k = 1; k <= W; k++) {
+        if (closes[i - k] >= c || closes[i + k] >= c) hi = false;
+        if (closes[i - k] <= c || closes[i + k] <= c) lo = false;
+      }
+      if (hi) pivots.push({ idx: i, type: 'H', price: c });
+      if (lo) pivots.push({ idx: i, type: 'L', price: c });
+    }
+    // 合併相鄰同類型，保留最極端
+    const cp = [];
+    for (const p of pivots) {
+      if (!cp.length || cp[cp.length - 1].type !== p.type) {
+        cp.push({ ...p });
+      } else {
+        const last = cp[cp.length - 1];
+        if ((p.type === 'H' && p.price > last.price) || (p.type === 'L' && p.price < last.price))
+          cp[cp.length - 1] = { ...p };
+      }
+    }
+    const recent = cp.slice(-12);
+    for (let i = 1; i < recent.length; i++) {
+      const prev = recent[i - 1], curr = recent[i];
+      const pct = ((curr.price - prev.price) / prev.price * 100).toFixed(1);
+      const sign = pct >= 0 ? '+' : '';
+      markers.push({
+        time: _toDate(ohlcv[curr.idx].date),
+        position: curr.type === 'H' ? 'aboveBar' : 'belowBar',
+        color: curr.type === 'H' ? '#ef5350' : '#26a69a',
+        shape: 'circle', size: 1,
+        text: `${sign}${pct}%`,
+      });
+    }
+    markers.sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0);
+    cSeries.setMarkers(markers);
 
     // 蠟燭 legend
     const cLeg = _mkLegend(cEl);
