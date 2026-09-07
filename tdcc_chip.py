@@ -138,8 +138,9 @@ def get_stock_tdcc_history(stock_id: str, weeks: int = 12) -> list[dict]:
 def _parse_openapi_rows(rows: list[dict]) -> tuple[str, dict[str, float]]:
     """
     解析 TDCC OpenAPI 回傳資料，計算每支股票的千張大戶持股比例。
-    - 千張大戶 = 持股分級 15~17
-    - 注意：第一個 key 的 JSON 原始值帶有 BOM（\ufeff），httpx 解析後 key 名稱含中文即可正常匹配
+    - 千張大戶 = 持股分級 15~17（持股 >= 1,000,000 股 ≈ >= 1,000 張）
+    - 用「股數」欄位計算比例（不用 % 欄位：各 tier 的 % 分母不同，直接加總會超過 100%）
+    - kpct = tier15~17 股數 ÷ 全部 tier 股數 × 100，結果必在 0~100%
     - 股票代號有尾部空格，需 .strip()
     回傳 (date_str, {stock_id: kpct})
     """
@@ -149,27 +150,32 @@ def _parse_openapi_rows(rows: list[dict]) -> tuple[str, dict[str, float]]:
     # 動態定位欄位 key（避免硬寫 BOM 問題）
     first = rows[0]
     keys = list(first.keys())
-    sid_key  = next(k for k in keys if "代號" in k)
-    tier_key = next(k for k in keys if "分級" in k)
-    pct_key  = next(k for k in keys if "%" in k)
-    date_key = next(k for k in keys if "日期" in k)
+    sid_key   = next(k for k in keys if "代號" in k)
+    tier_key  = next(k for k in keys if "分級" in k)
+    share_key = next(k for k in keys if "股數" in k)
+    date_key  = next(k for k in keys if "日期" in k)
 
     date_str = rows[0][date_key].strip()
 
-    holdings: dict[str, float] = {}
+    # 按股票分組，累計總股數 & 千張以上股數
+    total: dict[str, int] = {}
+    whale: dict[str, int] = {}
     for row in rows:
+        sid = row[sid_key].strip()
         try:
-            tier = int(row[tier_key])
+            shares = int(row[share_key].replace(",", ""))
+            tier   = int(row[tier_key])
         except (ValueError, KeyError):
             continue
+        total[sid] = total.get(sid, 0) + shares
         if tier >= 15:
-            sid = row[sid_key].strip()
-            try:
-                holdings[sid] = holdings.get(sid, 0.0) + float(row[pct_key])
-            except (ValueError, KeyError):
-                pass
+            whale[sid] = whale.get(sid, 0) + shares
 
-    result = {sid: round(pct, 2) for sid, pct in holdings.items() if pct > 0}
+    result = {}
+    for sid, w in whale.items():
+        t = total.get(sid, 0)
+        if t > 0:
+            result[sid] = round(w / t * 100, 2)
     return date_str, result
 
 
