@@ -288,12 +288,12 @@ def get_scan_results() -> dict:
     return _scan_status["results"]
 
 
-async def run_market_scan(concurrency: int = 40):
+async def run_market_scan(concurrency: int = 60):
     """
     背景執行全市場策略掃描（上市 + 上櫃，全部 stocks.csv 股票）。
-    - 不做今日有量過濾，直接掃全部，確保不遺漏
-    - Semaphore(40) 控制並發
-    - scan_one_stock 跑在 ThreadPoolExecutor，不阻塞 event loop
+    - 啟動時並行取 TWSE/TPEX 有量清單，過濾無量股（盤後效果最好）
+    - Semaphore(60) 控制並發；range=1y（足夠所有策略的 235 天需求）
+    - scan_one_stock 跑在 ThreadPoolExecutor(16)，不阻塞 event loop
     """
     import concurrent.futures
     from scanner import scan_one_stock, screen_chip
@@ -313,30 +313,43 @@ async def run_market_scan(concurrency: int = 40):
     try:
         stocks = get_stock_list()
         names  = dict(zip(stocks["stock_id"], stocks["stock_name"]))
-        tasks  = list(stocks[["stock_id", "type"]].itertuples(index=False, name=None))
-        print(f"[SCAN] 全市場掃描：共 {len(tasks)} 支")
+        all_tasks = list(stocks[["stock_id", "type"]].itertuples(index=False, name=None))
 
+        # ── 並行取 TWSE + TPEX 有量清單，過濾無量股 ──────────────────────
+        loop = asyncio.get_event_loop()
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=16)
+        twse_active, tpex_active = await asyncio.gather(
+            loop.run_in_executor(executor, _get_twse_active_today),
+            loop.run_in_executor(executor, _get_tpex_active_today),
+        )
+        active_all = twse_active | tpex_active
+        if active_all:
+            tasks = [(sid, mkt) for sid, mkt in all_tasks if sid in active_all]
+            print(f"[SCAN] 有量過濾後：{len(tasks)} 支（原 {len(all_tasks)} 支）")
+        else:
+            tasks = all_tasks
+            print(f"[SCAN] 無法取得有量清單，掃全部 {len(tasks)} 支")
+
+        print(f"[SCAN] 全市場掃描：共 {len(tasks)} 支")
         _scan_status["total"] = len(tasks)
 
         all_results  = {k: [] for k in STRATEGY_KEYS}
         all_prices   = {}   # 收集所有價格資料，供 CHIP 使用
         sem = asyncio.Semaphore(concurrency)
 
-        # 加快 timeout：read 10s → 8s；連線數 30/20 → 60/40
         timeout_cfg = httpx.Timeout(connect=3.0, read=8.0, write=3.0, pool=2.0)
-        loop = asyncio.get_event_loop()
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=8)
 
         async with httpx.AsyncClient(
             headers={"User-Agent": _UA, "Accept": "application/json"},
             verify=False,
             timeout=timeout_cfg,
             follow_redirects=True,
-            limits=httpx.Limits(max_connections=60, max_keepalive_connections=40),
+            limits=httpx.Limits(max_connections=80, max_keepalive_connections=60),
         ) as client:
 
             async def _fetch_scan(sid, mkt):
-                df = await _fetch_yahoo_async(client, sem, sid, mkt, range_="2y")
+                # range=1y 足夠 235 天需求，資料量砍半加快下載
+                df = await _fetch_yahoo_async(client, sem, sid, mkt, range_="1y")
                 _scan_status["progress"] += 1
                 if df.empty or len(df) < 5:
                     _scan_status["yahoo_fail"] += 1
@@ -344,7 +357,7 @@ async def run_market_scan(concurrency: int = 40):
                     return {}
                 _scan_status["yahoo_ok"] += 1
                 all_prices[sid] = df
-                # 把 CPU-bound 的 pandas 運算放到 thread pool，釋放 event loop
+                # CPU-bound pandas 運算放到 thread pool，釋放 event loop
                 return await loop.run_in_executor(
                     executor, scan_one_stock, df, sid, names.get(sid, "")
                 )
