@@ -288,12 +288,14 @@ def get_scan_results() -> dict:
     return _scan_status["results"]
 
 
-async def run_market_scan(concurrency: int = 20):
+async def run_market_scan(concurrency: int = 40):
     """
     背景執行全市場策略掃描（上市 + 上櫃，全部 stocks.csv 股票）。
     - 不做今日有量過濾，直接掃全部，確保不遺漏
-    - Semaphore(50) 控制並發，range=1y 資料量只有 2y 一半
+    - Semaphore(40) 控制並發
+    - scan_one_stock 跑在 ThreadPoolExecutor，不阻塞 event loop
     """
+    import concurrent.futures
     from scanner import scan_one_stock, screen_chip
     from tdcc_chip import get_tdcc_data
 
@@ -320,14 +322,17 @@ async def run_market_scan(concurrency: int = 20):
         all_prices   = {}   # 收集所有價格資料，供 CHIP 使用
         sem = asyncio.Semaphore(concurrency)
 
-        # httpx 嚴格 timeout：connect=3s, read=10s（不用 asyncio.wait_for，避免衝突）
-        timeout_cfg = httpx.Timeout(connect=3.0, read=10.0, write=3.0, pool=2.0)
+        # 加快 timeout：read 10s → 8s；連線數 30/20 → 60/40
+        timeout_cfg = httpx.Timeout(connect=3.0, read=8.0, write=3.0, pool=2.0)
+        loop = asyncio.get_event_loop()
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=8)
+
         async with httpx.AsyncClient(
             headers={"User-Agent": _UA, "Accept": "application/json"},
             verify=False,
             timeout=timeout_cfg,
             follow_redirects=True,
-            limits=httpx.Limits(max_connections=30, max_keepalive_connections=20),
+            limits=httpx.Limits(max_connections=60, max_keepalive_connections=40),
         ) as client:
 
             async def _fetch_scan(sid, mkt):
@@ -339,10 +344,15 @@ async def run_market_scan(concurrency: int = 20):
                     return {}
                 _scan_status["yahoo_ok"] += 1
                 all_prices[sid] = df
-                return scan_one_stock(df, sid, names.get(sid, ""))
+                # 把 CPU-bound 的 pandas 運算放到 thread pool，釋放 event loop
+                return await loop.run_in_executor(
+                    executor, scan_one_stock, df, sid, names.get(sid, "")
+                )
 
             coros   = [_fetch_scan(sid, mkt) for sid, mkt in tasks]
             results = await asyncio.gather(*coros, return_exceptions=True)
+
+        executor.shutdown(wait=False)
 
         for out in results:
             if isinstance(out, dict):
