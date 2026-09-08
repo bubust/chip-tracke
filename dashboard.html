@@ -1448,6 +1448,7 @@ let _screenPollTimer = null;
 let _screenAllResults = {};   // {S1: [...], S5: [...], ...}
 let _viewingStrategy  = '';
 let _screenSort = { col: null, dir: 1 };  // 排序狀態
+let _screenStartTime  = null;  // 掃描開始時間（Date.now()）
 
 const STRATEGY_LABELS = {
   S1: 'S1 雙MACD選股（多）', S1_SHORT: 'S1空 雙MACD選股（空）',
@@ -1472,6 +1473,7 @@ async function runScreen() {
   document.getElementById('screen-progress-bar-wrap').style.display = 'block';
   document.getElementById('screen-progress-bar').style.width = '0%';
   document.getElementById('screen-progress-text').textContent = '';
+  _screenStartTime = Date.now();
   try {
     const res = await api('POST', '/api/screen/run');
     if (res.ok === false) { toast(res.message, true); btn.disabled = false; btn.textContent = '🔍 掃描全市場（所有策略）'; return; }
@@ -1489,6 +1491,10 @@ async function pollScreenStatus() {
   try {
     const s = await api('GET', '/api/screen/status');
     const btn = document.getElementById('btn-screen');
+    const _elapsedSec = _screenStartTime ? Math.round((Date.now() - _screenStartTime) / 1000) : 0;
+    const _elapsedStr = _elapsedSec >= 60
+      ? `${Math.floor(_elapsedSec/60)}m${_elapsedSec%60}s`
+      : `${_elapsedSec}s`;
     if (s.running) {
       const pct = s.total > 0 ? Math.round(s.progress / s.total * 100) : 0;
       document.getElementById('screen-progress-bar').style.width = pct + '%';
@@ -1496,10 +1502,10 @@ async function pollScreenStatus() {
         ? `  成功 ${s.yahoo_ok} 失敗 ${s.yahoo_fail}` : '';
       let progressText;
       if (s.phase === 'tdcc') {
-        progressText = `Yahoo 完成 ${s.yahoo_ok}支  →  爬 TDCC 中（${s.tdcc_total} 支，請稍候...）`;
+        progressText = `Yahoo 完成 ${s.yahoo_ok}支  →  爬 TDCC 中（${s.tdcc_total} 支，請稍候...）  ⏱ ${_elapsedStr}`;
         btn.textContent = `⏳ TDCC 爬蟲中`;
       } else {
-        progressText = `掃描中 ${s.progress} / ${s.total} 支${okInfo}`;
+        progressText = `掃描中 ${s.progress} / ${s.total} 支${okInfo}  ⏱ ${_elapsedStr}`;
         btn.textContent = `⏳ 掃描中 ${pct}%`;
       }
       document.getElementById('screen-progress-text').textContent = progressText;
@@ -1509,7 +1515,7 @@ async function pollScreenStatus() {
       btn.disabled = false;
       btn.textContent = '🔍 掃描全市場（所有策略）';
       document.getElementById('screen-progress-bar-wrap').style.display = 'none';
-      document.getElementById('screen-progress-text').textContent = '';
+      document.getElementById('screen-progress-text').textContent = `上次掃描費時 ${_elapsedStr}`;
       if (s.error) {
         const errEl = document.getElementById('screen-error-msg');
         errEl.textContent = '掃描失敗：' + s.error;
@@ -1527,7 +1533,7 @@ async function pollScreenStatus() {
         const total = Object.values(_screenAllResults).reduce((s, a) => s + a.length, 0);
         const diagMsg = (s.yahoo_ok !== undefined)
           ? `（Yahoo成功 ${s.yahoo_ok}／失敗 ${s.yahoo_fail} 支）` : '';
-        toast(`✅ 掃描完成，共找到 ${total} 支 ${diagMsg}`);
+        toast(`✅ 掃描完成，費時 ${_elapsedStr}，共找到 ${total} 支 ${diagMsg}`);
         if (s.failed_stocks && s.failed_stocks.length > 0) {
           console.warn('[掃描失敗清單]', s.failed_stocks.join(', '));
         }
