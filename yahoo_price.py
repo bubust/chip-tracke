@@ -250,7 +250,7 @@ def _get_tpex_active_today() -> set[str]:
 # ── 全市場掃描 ────────────────────────────────────────────────────────────────
 
 STRATEGY_KEYS = ["S1", "S1_SHORT", "S1_2", "S2", "S5", "S17A", "S17B", "S10", "CHIP",
-                 "S_PB", "S_FBD", "S_RES"]
+                 "S_PB", "S_FBD", "S_RES", "S_KD"]
 
 _scan_status: dict = {
     "running":      False,

@@ -211,6 +211,7 @@
           <tr>
             <th>代號</th>
             <th>名稱</th>
+            <th title="從哪個策略或市場排行加入">來源</th>
             <th>股價</th>
             <th>最新訊號</th>
             <th>大戶今日 (張)</th>
@@ -346,6 +347,14 @@
       <button class="btn ghost screen-strat-btn" data-s="S_RES"   onclick="viewStrategy('S_RES')">🟡 共振起點 <span class="strat-cnt" id="cnt-S_RES"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_KD"    onclick="viewStrategy('S_KD')">📉 KD超賣反彈 <span class="strat-cnt" id="cnt-S_KD"></span></button>
     </div>
+  </div>
+
+  <!-- 篩選說明 / 錯誤區 -->
+  <div class="card" id="screen-placeholder" style="text-align:center;padding:36px 20px;color:var(--muted)">
+    <div style="font-size:2rem;margin-bottom:12px">🔍</div>
+    <div style="font-size:.95rem;margin-bottom:6px">點擊「掃描全市場」開始掃描所有策略</div>
+    <div style="font-size:.82rem">全市場約 2000+ 支，需 2~4 分鐘，請耐心等候</div>
+    <div id="screen-error-msg" style="display:none;margin-top:16px;color:var(--red);font-size:.88rem;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 16px"></div>
   </div>
 
   <div class="card" id="screen-result-card" style="display:none">
@@ -537,6 +546,7 @@ function renderWatchlist() {
       return `<tr>
         <td><b class="link" onclick="openChart('${s.stock_id}')" style="cursor:pointer;color:var(--accent)">${s.stock_id}</b></td>
         <td>${nameCell(s)}</td>
+        ${noteCell(s)}
         ${priceCell}
         <td colspan="9" style="color:var(--muted);font-size:.82rem">尚無籌碼資料，請點全部更新</td>
         <td>
@@ -597,6 +607,7 @@ function renderWatchlist() {
     return `<tr class="clickable" onclick="openDetail('${s.stock_id}')">
       <td onclick="event.stopPropagation();openChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
       <td>${nameCell(s)}</td>
+      ${noteCell(s)}
       ${priceCell}
       <td><span class="sig-badge sig-${level}">${s.signal_emoji} ${s.signal_title}</span></td>
       <td class="${w  >= 0 ? 'pos' : 'neg'}">${fmtNum(w)}</td>
@@ -615,11 +626,13 @@ function renderWatchlist() {
   }).join('');
 }
 
+function noteCell(s) {
+  if (!s.note) return `<td class="muted" style="font-size:.75rem">—</td>`;
+  return `<td><span style="font-size:.72rem;padding:2px 7px;border-radius:10px;background:rgba(79,142,247,.18);color:var(--accent);white-space:nowrap;border:1px solid rgba(79,142,247,.3)">${s.note}</span></td>`;
+}
+
 function nameCell(s) {
-  const noteBadge = s.note
-    ? `<span style="font-size:.7rem;padding:1px 5px;border-radius:8px;background:var(--accent);color:#fff;margin-left:5px;opacity:.85">${s.note}</span>`
-    : '';
-  return `<span class="view-name">${s.name || '<span style="color:var(--muted)">—</span>'}${noteBadge}</span>
+  return `<span class="view-name">${s.name || '<span style="color:var(--muted)">—</span>'}</span>
     <input class="inline-edit" type="text" value="${s.name || ''}"
       style="width:90px" onblur="saveName('${s.stock_id}', this.value)"
       onkeydown="if(event.key==='Enter') this.blur(); if(event.key==='Escape') this.parentElement.classList.remove('editing');"
@@ -1453,6 +1466,9 @@ async function runScreen() {
   btn.disabled = true;
   btn.textContent = '⏳ 啟動中...';
   document.getElementById('screen-result-card').style.display = 'none';
+  document.getElementById('screen-placeholder').style.display = 'none';
+  const _errEl = document.getElementById('screen-error-msg');
+  if (_errEl) { _errEl.style.display = 'none'; _errEl.textContent = ''; }
   document.getElementById('screen-progress-bar-wrap').style.display = 'block';
   document.getElementById('screen-progress-bar').style.width = '0%';
   document.getElementById('screen-progress-text').textContent = '';
@@ -1495,8 +1511,13 @@ async function pollScreenStatus() {
       document.getElementById('screen-progress-bar-wrap').style.display = 'none';
       document.getElementById('screen-progress-text').textContent = '';
       if (s.error) {
+        const errEl = document.getElementById('screen-error-msg');
+        errEl.textContent = '掃描失敗：' + s.error;
+        errEl.style.display = 'block';
+        document.getElementById('screen-placeholder').style.display = 'block';
         toast('掃描失敗：' + s.error, true);
       } else {
+        document.getElementById('screen-placeholder').style.display = 'none';
         const r = await api('GET', '/api/screen/results');
         _screenAllResults = r.results || {};
         renderStratBar();
@@ -1703,10 +1724,10 @@ function _fmtN(v, d=2) {
   return (v === null || v === undefined || isNaN(v)) ? '—' : (+v).toFixed(d);
 }
 
-function _fmtVol(v) {
-  if (!v || isNaN(v)) return '—';
-  if (v >= 1e8) return (v/1e8).toFixed(2) + '億';
-  return (v/1e3).toFixed(1) + 'K';
+function _fmtVol(lots) {
+  if (!lots || isNaN(lots)) return '—';
+  if (lots >= 10000) return (lots / 10000).toFixed(1) + '萬張';
+  return Math.round(lots).toLocaleString('zh-TW') + '張';
 }
 
 function _mkLegend(el) {
@@ -1873,14 +1894,14 @@ async function openChart(stockId) {
       priceLineVisible: false, lastValueVisible: false,
     });
     vSeries.setData(ohlcv.map(r => ({
-      time: _toDate(r.date), value: r.volume,
+      time: _toDate(r.date), value: r.volume / 1000,
       color: r.close >= r.open ? 'rgba(239,83,80,0.7)' : 'rgba(38,166,154,0.7)'
     })));
 
     const vLeg = _mkLegend(vEl);
     function updateVLeg(idx) {
       const i = Math.min(Math.max(idx, 0), n - 1);
-      vLeg.innerHTML = `<span style="color:#9598a1">成交量：${_fmtVol(ohlcv[i].volume)}</span>`;
+      vLeg.innerHTML = `<span style="color:#9598a1">成交量：${_fmtVol(ohlcv[i].volume / 1000)}</span>`;
     }
     updateVLeg(n - 1);
 
@@ -1942,8 +1963,25 @@ async function openChart(stockId) {
     }
     updateM2Leg(n - 1);
 
-    // ── 同步時間軸 + crosshair legend ──
+    // ── 同步時間軸 + crosshair（主副圖垂直線一起顯示）──
     const charts = [cChart, vChart, mChart, m2Chart];
+    const primarySeries = [cSeries, vSeries, hSeries, h2Series];
+
+    // 建立時間 → 各圖數值對照表，供 setCrosshairPosition 使用
+    const _tMap = {};
+    ohlcv.forEach((r, i) => {
+      _tMap[_toDate(r.date)] = {
+        close: r.close,
+        vol:   r.volume / 1000,
+        macd:  hist1[i],
+        macd2: hist2[i],
+      };
+    });
+    const _priceFor = (ti, t) => {
+      const d = _tMap[t]; if (!d) return 0;
+      return [d.close, d.vol, d.macd, d.macd2][ti] ?? 0;
+    };
+
     charts.forEach((src, si) => {
       src.timeScale().subscribeVisibleLogicalRangeChange(range => {
         if (!range) return;
@@ -1953,6 +1991,16 @@ async function openChart(stockId) {
         const idx = (param.logical !== null && param.logical !== undefined)
           ? Math.round(param.logical) : n - 1;
         updateCLeg(idx); updateVLeg(idx); updateMLeg(idx); updateM2Leg(idx);
+
+        // 同步其他圖的垂直準線
+        charts.forEach((tgt, ti) => {
+          if (ti === si) return;
+          if (param.time) {
+            tgt.setCrosshairPosition(_priceFor(ti, param.time), param.time, primarySeries[ti]);
+          } else {
+            try { tgt.clearCrosshairPosition(); } catch(e) {}
+          }
+        });
       });
     });
 
