@@ -344,6 +344,7 @@
       <button class="btn ghost screen-strat-btn" data-s="S_PB"    onclick="viewStrategy('S_PB')">🎯 拉回買點 <span class="strat-cnt" id="cnt-S_PB"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_FBD"   onclick="viewStrategy('S_FBD')">🪤 假跌破 <span class="strat-cnt" id="cnt-S_FBD"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_RES"   onclick="viewStrategy('S_RES')">🟡 共振起點 <span class="strat-cnt" id="cnt-S_RES"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_KD"    onclick="viewStrategy('S_KD')">📉 KD超賣反彈 <span class="strat-cnt" id="cnt-S_KD"></span></button>
     </div>
   </div>
 
@@ -1444,6 +1445,7 @@ const STRATEGY_LABELS = {
   S_PB:  '🎯 均線拉回買點（MA10拉回後站回，等K線確認）',
   S_FBD: '🪤 假跌破買進（跌破MA10後快速收復，洗盤完成）',
   S_RES: '🟡 共振起點（MA10剛穿越MA60，三線同時轉揚）',
+  S_KD:  '📉 KD超賣反彈（K值跌破20後回升，K上穿D離開超賣區）',
 };
 
 async function runScreen() {

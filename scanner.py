@@ -40,6 +40,7 @@ STRATEGIES = {
     "S_PB":     "均線拉回買點",
     "S_FBD":    "假跌破買進",
     "S_RES":    "共振起點（黃金交叉）",
+    "S_KD":     "KD超賣反彈（KD跌破20後回升）",
 }
 
 def calc_macd(series: pd.Series, fast: int, slow: int, signal: int):
@@ -681,6 +682,74 @@ def screen_sres(prices: dict, names: dict = None) -> list:
     return results
 
 
+def calc_kd(df: pd.DataFrame, n: int = 9) -> tuple:
+    """
+    計算 KD 指標（台灣標準）：
+    RSV = (Close - LowestLow_N) / (HighestHigh_N - LowestLow_N) × 100
+    K = prev_K × 2/3 + RSV × 1/3（初始50）
+    D = prev_D × 2/3 + K × 1/3（初始50）
+    回傳 (K series, D series)，長度與 df 相同
+    """
+    closes = df['close'].astype(float)
+    highs  = df['high'].astype(float)
+    lows   = df['low'].astype(float)
+    size   = len(df)
+    k_vals = [50.0] * size
+    d_vals = [50.0] * size
+    for i in range(n - 1, size):
+        lo = lows.iloc[i - n + 1:i + 1].min()
+        hi = highs.iloc[i - n + 1:i + 1].max()
+        rsv = (float(closes.iloc[i]) - lo) / (hi - lo) * 100 if (hi - lo) > 0 else 50.0
+        k_vals[i] = k_vals[i - 1] * 2 / 3 + rsv / 3
+        d_vals[i] = d_vals[i - 1] * 2 / 3 + k_vals[i] / 3
+    return pd.Series(k_vals, index=df.index), pd.Series(d_vals, index=df.index)
+
+
+def screen_skd(prices: dict, names: dict = None) -> list:
+    """
+    S_KD KD超賣反彈：
+    1. 收盤 > 10，量 >= 300張
+    2. KD 的 K 值在近 1~5 天曾跌破 20（超賣區）
+    3. 今日 K 值回升至 20 以上（離開超賣區）
+    4. K 上穿 D（黃金交叉，或 K > D 且方向向上）
+    """
+    results = []
+    for sid, df in prices.items():
+        if len(df) < 30:
+            continue
+        if 'high' not in df.columns or 'low' not in df.columns:
+            continue
+        today = df.iloc[-1]
+        tc    = float(today['close'])
+        if tc <= 10:
+            continue
+        vol = float(today.get('volume', 0) or 0)
+        if vol < 300_000:
+            continue
+        k_ser, d_ser = calc_kd(df)
+        k_now = k_ser.iloc[-1]
+        d_now = d_ser.iloc[-1]
+        # 今日 K 必須已回到 20 以上
+        if k_now <= 20:
+            continue
+        # 近 1~5 天（不含今日）K 曾 <= 20
+        broke_oversold = any(
+            k_ser.iloc[-(i+1)] <= 20
+            for i in range(1, 6) if i + 1 <= len(k_ser)
+        )
+        if not broke_oversold:
+            continue
+        # K > D（多頭排列或剛黃金交叉）
+        if k_now <= d_now:
+            continue
+        results.append({"stock_id": sid, "name": _name(sid, names),
+                        "close": round(tc, 2), "change_pct": _change_pct(df),
+                        "volume": round(vol), "bb_score": calc_bb_score(df),
+                        "kd_k": round(k_now, 1), "kd_d": round(d_now, 1),
+                        "strategy": "S_KD"})
+    return results
+
+
 def screen_chip(prices: dict, tdcc_data: dict, stock_info: dict = None) -> list:
     """
     CHIP 千張大戶增持選股（集保所週資料）：
@@ -764,6 +833,7 @@ def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "") -> dict:
         ("S_PB",     screen_spb),
         ("S_FBD",    screen_sfbd),
         ("S_RES",    screen_sres),
+        ("S_KD",     screen_skd),
     ]:
         results = fn(prices_single, names_single)
         out[key] = results[0] if results else None
@@ -785,6 +855,7 @@ def run_strategy(strategy: str, prices: dict, names: dict = None,
         "S_PB":     screen_spb,
         "S_FBD":    screen_sfbd,
         "S_RES":    screen_sres,
+        "S_KD":     screen_skd,
     }
     if s == "CHIP":
         return screen_chip(prices, chip_data or {}, stock_info)
