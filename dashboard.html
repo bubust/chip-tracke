@@ -1787,27 +1787,22 @@ async function openChart(stockId) {
       s.setData(ohlcv.map((r, i) => isNaN(ma[i]) ? null : { time: _toDate(r.date), value: ma[i] }).filter(Boolean));
     }
 
-    // ── MA10 ±2% 拉回帶（半透明虛線上下邊界）──
-    const ma10Upper = cChart.addLineSeries({
-      color: 'rgba(255,235,59,0.55)', lineWidth: 1, lineStyle: 2,
-      priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
-    });
-    ma10Upper.setData(ohlcv.map((r, i) => isNaN(ma10[i]) ? null : { time: _toDate(r.date), value: +(ma10[i] * 1.02).toFixed(2) }).filter(Boolean));
-    const ma10Lower = cChart.addLineSeries({
-      color: 'rgba(255,235,59,0.55)', lineWidth: 1, lineStyle: 2,
-      priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
-    });
-    ma10Lower.setData(ohlcv.map((r, i) => isNaN(ma10[i]) ? null : { time: _toDate(r.date), value: +(ma10[i] * 0.98).toFixed(2) }).filter(Boolean));
-
-    // ── 假跌破標記 ──
+    // ── 假跌破 / 假突破標記 ──
     const markers = [];
     for (let i = 1; i < n - 1; i++) {
       if (isNaN(ma10[i]) || isNaN(ma10[i + 1])) continue;
-      // i 日跌破 MA10，i+1 日收復
+      // i 日跌破 MA10，i+1 日收復 → 假跌破
       if (closes[i] < ma10[i] && closes[i + 1] > ma10[i + 1]) {
         markers.push({
           time: _toDate(ohlcv[i + 1].date),
           position: 'belowBar', color: '#fbbf24', shape: 'arrowUp', text: '假跌破', size: 1,
+        });
+      }
+      // i 日突破 MA10，i+1 日跌回 → 假突破
+      if (closes[i] > ma10[i] && closes[i + 1] < ma10[i + 1]) {
+        markers.push({
+          time: _toDate(ohlcv[i + 1].date),
+          position: 'aboveBar', color: '#ef5350', shape: 'arrowDown', text: '假突破', size: 1,
         });
       }
     }
