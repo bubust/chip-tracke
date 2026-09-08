@@ -820,6 +820,7 @@ def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "") -> dict:
     """
     prices_single = {sid: df}
     names_single  = {sid: name}
+    last_date = str(df.iloc[-1].get('date', '')) if not df.empty else ''
     out = {}
     for key, fn in [
         ("S1",       screen_s1),
@@ -836,7 +837,10 @@ def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "") -> dict:
         ("S_KD",     screen_skd),
     ]:
         results = fn(prices_single, names_single)
-        out[key] = results[0] if results else None
+        result = results[0] if results else None
+        if result and last_date:
+            result['last_date'] = last_date  # YYYYMMDD，讓 UI 顯示資料日期
+        out[key] = result
     return out
 
 

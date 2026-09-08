@@ -1533,7 +1533,16 @@ async function pollScreenStatus() {
         const total = Object.values(_screenAllResults).reduce((s, a) => s + a.length, 0);
         const diagMsg = (s.yahoo_ok !== undefined)
           ? `（Yahoo成功 ${s.yahoo_ok}／失敗 ${s.yahoo_fail} 支）` : '';
-        toast(`✅ 掃描完成，費時 ${_elapsedStr}，共找到 ${total} 支 ${diagMsg}`);
+        // 找第一個有 last_date 的結果，顯示資料日期
+        let dataDate = '';
+        for (const arr of Object.values(_screenAllResults)) {
+          const hit = arr.find(r => r.last_date);
+          if (hit) { dataDate = hit.last_date; break; }
+        }
+        const dateTip = dataDate.length === 8
+          ? `　資料日期 ${dataDate.slice(0,4)}/${dataDate.slice(4,6)}/${dataDate.slice(6,8)}`
+          : '';
+        toast(`✅ 掃描完成，費時 ${_elapsedStr}，共找到 ${total} 支${dateTip} ${diagMsg}`);
         if (s.failed_stocks && s.failed_stocks.length > 0) {
           console.warn('[掃描失敗清單]', s.failed_stocks.join(', '));
         }
@@ -1629,7 +1638,14 @@ function renderScreenTable(strategy, data) {
       <td class="muted">${i + 1}</td>
       <td><b class="link" onclick="openChart('${row.stock_id}')" style="cursor:pointer;color:var(--accent)">${row.stock_id}</b></td>
       <td style="max-width:80px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openChart('${row.stock_id}')">${row.name || '—'}</td>
-      <td>${row.close != null ? row.close : '—'}</td>
+      <td>${(() => {
+        if (row.close == null) return '—';
+        const d = row.last_date || '';
+        const dateSub = d.length === 8
+          ? `<br><span style="font-size:.7rem;color:var(--muted)">${d.slice(4,6)}/${d.slice(6,8)}</span>`
+          : '';
+        return row.close + dateSub;
+      })()}</td>
       ${pctTd}
       ${extraTd}
       <td class="muted">${(() => { if (!row.volume) return '—'; const lots = Math.round(row.volume / 1000); return lots >= 10000 ? (lots/10000).toFixed(1)+'萬' : lots.toLocaleString('zh-TW'); })()}</td>
