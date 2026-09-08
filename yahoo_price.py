@@ -180,11 +180,11 @@ def _get_twse_active_today() -> set[str]:
             sid     = str(item.get("Code", "")).strip()
             vol_str = str(item.get("TradeVolume", "0")).replace(",", "")
             try:
-                if int(vol_str) > 0:
+                if int(vol_str) >= 30000:   # 30張 = 30,000股
                     active.add(sid)
             except Exception:
                 pass
-        print(f"[SCAN] TWSE今日有量股票：{len(active)} 支")
+        print(f"[SCAN] TWSE今日≥30張股票：{len(active)} 支")
         return active
     except Exception as e:
         print(f"[SCAN] 無法取得TWSE今日資料：{e}")
@@ -231,13 +231,13 @@ def _get_tpex_active_today() -> set[str]:
                 if vol_key:
                     vol_str = str(item.get(vol_key, "0")).replace(",", "")
                     try:
-                        if int(float(vol_str)) <= 0:
+                        if int(float(vol_str)) < 30000:  # 30張 = 30,000股
                             continue
                     except Exception:
                         pass
                 active.add(sid)
             if active:
-                print(f"[SCAN] TPEX今日有量股票：{len(active)} 支（via {url.split('/')[-1]}）")
+                print(f"[SCAN] TPEX今日≥30張股票：{len(active)} 支（via {url.split('/')[-1]}）")
                 return active
         except Exception as e:
             print(f"[SCAN] TPEX openapi 嘗試失敗 {url}: {e}")
@@ -316,19 +316,26 @@ async def run_market_scan(concurrency: int = 60):
         all_tasks = list(stocks[["stock_id", "type"]].itertuples(index=False, name=None))
 
         # ── 並行取 TWSE + TPEX 有量清單，過濾無量股 ──────────────────────
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=16)
-        twse_active, tpex_active = await asyncio.gather(
-            loop.run_in_executor(executor, _get_twse_active_today),
-            loop.run_in_executor(executor, _get_tpex_active_today),
-        )
+        try:
+            twse_active, tpex_active = await asyncio.wait_for(
+                asyncio.gather(
+                    loop.run_in_executor(executor, _get_twse_active_today),
+                    loop.run_in_executor(executor, _get_tpex_active_today),
+                ),
+                timeout=20.0,
+            )
+        except Exception as e:
+            print(f"[SCAN] 有量過濾取得失敗({e})，掃全部")
+            twse_active, tpex_active = set(), set()
         active_all = twse_active | tpex_active
         if active_all:
             tasks = [(sid, mkt) for sid, mkt in all_tasks if sid in active_all]
-            print(f"[SCAN] 有量過濾後：{len(tasks)} 支（原 {len(all_tasks)} 支）")
+            print(f"[SCAN] 有量過濾後：{len(tasks)} 支（原 {len(all_tasks)} 支，跳過 {len(all_tasks)-len(tasks)} 支）")
         else:
             tasks = all_tasks
-            print(f"[SCAN] 無法取得有量清單，掃全部 {len(tasks)} 支")
+            print(f"[SCAN] 有量清單為空，掃全部 {len(tasks)} 支")
 
         print(f"[SCAN] 全市場掃描：共 {len(tasks)} 支")
         _scan_status["total"] = len(tasks)
