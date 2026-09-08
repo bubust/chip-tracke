@@ -1681,6 +1681,33 @@ async function warmupServer() {
 // ═════════════════════════════ K 線圖 Modal ═════════════════════════════
 
 let _lwcCharts = [];
+let _chartStockId = null;
+let _chartRefreshTimer = null;
+
+function _isTWTradingHours() {
+  try {
+    const tw = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+    const d = tw.getDay();
+    if (d === 0 || d === 6) return false;
+    const mins = tw.getHours() * 60 + tw.getMinutes();
+    return mins >= 540 && mins <= 815; // 9:00 ~ 13:35
+  } catch(e) { return false; }
+}
+
+function _stopChartAutoRefresh() {
+  if (_chartRefreshTimer) { clearInterval(_chartRefreshTimer); _chartRefreshTimer = null; }
+}
+
+function _startChartAutoRefresh() {
+  _stopChartAutoRefresh();
+  _chartRefreshTimer = setInterval(async () => {
+    if (!_chartStockId) return;
+    if (document.getElementById('chart-modal').style.display === 'none') { _stopChartAutoRefresh(); return; }
+    if (!_isTWTradingHours()) { _stopChartAutoRefresh(); return; }
+    const range = _lwcCharts[0]?.timeScale()?.getVisibleLogicalRange();
+    await openChart(_chartStockId, range);
+  }, 60000); // 每 60 秒刷新
+}
 
 async function _loadLWC() {
   if (window.LightweightCharts) return;
@@ -1739,23 +1766,29 @@ function _mkLegend(el) {
   return d;
 }
 
-async function openChart(stockId) {
+async function openChart(stockId, savedRange = null) {
   const modal     = document.getElementById('chart-modal');
   const title     = document.getElementById('chart-modal-title');
   const container = document.getElementById('chart-tv-container');
 
   _lwcCharts.forEach(c => { try { c.remove(); } catch(e){} });
   _lwcCharts = [];
+  _chartStockId = stockId;
 
-  title.textContent = `${stockId} — 載入中...`;
-  container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted)"><span class="spinner"></span>&nbsp;載入圖表...</div>';
-  modal.style.display = 'flex';
-  document.body.style.overflow = 'hidden';
+  if (!savedRange) {
+    // 首次開啟：顯示 loading
+    title.textContent = `${stockId} — 載入中...`;
+    container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted)"><span class="spinner"></span>&nbsp;載入圖表...</div>';
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
 
   try {
     await _loadLWC();
     const ohlcv = await api('GET', `/api/stock/${stockId}/ohlcv`);
-    title.textContent = `${stockId} K 線圖`;
+    const _trading = _isTWTradingHours();
+    title.innerHTML = `${stockId} K 線圖` +
+      (_trading ? ' <span style="font-size:.72rem;color:#22c55e;background:rgba(34,197,94,.12);padding:1px 8px;border-radius:8px;border:1px solid rgba(34,197,94,.3)">🔴 盤中 · 每分鐘更新</span>' : '');
 
     container.innerHTML = `
       <div id="lwc-candle" style="width:100%;height:44%;position:relative"></div>
@@ -2004,9 +2037,14 @@ async function openChart(stockId) {
       });
     });
 
-    // ── 預設六個月（約 126 根）──
+    // ── 時間軸範圍：刷新時還原，首次開啟顯示六個月 ──
     const sixMo = Math.min(126, n);
-    cChart.timeScale().setVisibleLogicalRange({ from: n - sixMo, to: n - 1 });
+    if (savedRange) {
+      cChart.timeScale().setVisibleLogicalRange(savedRange);
+    } else {
+      cChart.timeScale().setVisibleLogicalRange({ from: n - sixMo, to: n - 1 });
+      if (_isTWTradingHours()) _startChartAutoRefresh();
+    }
 
   } catch(e) {
     container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--red)">載入失敗：${e.message}</div>`;
@@ -2014,6 +2052,8 @@ async function openChart(stockId) {
 }
 
 function closeChart() {
+  _stopChartAutoRefresh();
+  _chartStockId = null;
   document.getElementById('chart-modal').style.display = 'none';
   _lwcCharts.forEach(c => { try { c.remove(); } catch(e){} });
   _lwcCharts = [];
