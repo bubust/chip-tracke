@@ -45,6 +45,79 @@ STRATEGIES = {
     "S_VOLX_SHORT": "量爆下殺（成交量暴增3倍且跌破20週線）",
 }
 
+STRATEGY_PARAMS_SCHEMA = {
+    "S1": [
+        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "osc_lookback",   "label": "OSC局部谷底回溯天數", "type": "number", "default": 12,  "min": 5,   "max": 30,   "step": 1},
+    ],
+    "S1_SHORT": [
+        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "osc_lookback",   "label": "OSC局部頂部回溯天數", "type": "number", "default": 12,  "min": 5,   "max": 30,   "step": 1},
+    ],
+    "S1_2": [
+        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "new_high_window","label": "創新高回溯天數",  "type": "number", "default": 20,  "min": 5,   "max": 60,   "step": 1},
+    ],
+    "S2": [
+        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "min_vol_lots",   "label": "最低量（張）",    "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
+        {"key": "days_high_min",  "label": "距高點最少天數",  "type": "number", "default": 5,   "min": 1,   "max": 30,   "step": 1},
+        {"key": "days_high_max",  "label": "距高點最多天數",  "type": "number", "default": 40,  "min": 10,  "max": 100,  "step": 5},
+    ],
+    "S5": [
+        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+    ],
+    "S17A": [
+        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "drop_pct",       "label": "距120日高點跌幅%（≥）","type": "number", "default": 30, "min": 10,  "max": 70,   "step": 5},
+        {"key": "wave_vol_ratio", "label": "第二波量能比第一波%（≥）","type": "number", "default": 60, "min": 20,  "max": 100,  "step": 5},
+    ],
+    "S17B": [
+        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "drop_pct",       "label": "距120日高點跌幅%（≥）","type": "number", "default": 30, "min": 10,  "max": 70,   "step": 5},
+        {"key": "neckline_pct",   "label": "頸線下方距離%（≤）","type": "number", "default": 10,  "min": 1,   "max": 30,   "step": 1},
+        {"key": "w2_recency",     "label": "第二谷底在近幾日內","type": "number", "default": 30,  "min": 5,   "max": 60,   "step": 5},
+    ],
+    "S10": [],
+    "S_PB": [
+        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "min_vol_lots",   "label": "最低量（張）",    "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
+        {"key": "touch_window",   "label": "碰MA10回溯天數",  "type": "number", "default": 5,   "min": 1,   "max": 15,   "step": 1},
+        {"key": "vol_shrink_pct", "label": "量能萎縮不超過%", "type": "number", "default": 60,  "min": 20,  "max": 100,  "step": 5},
+    ],
+    "S_FBD": [
+        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "min_vol_lots",   "label": "最低量（張）",    "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
+        {"key": "break_window",   "label": "跌破MA10回溯天數","type": "number", "default": 4,   "min": 1,   "max": 10,   "step": 1},
+        {"key": "break_vol_ratio","label": "跌破當天量≤均量×幾倍","type": "number", "default": 2.5, "min": 1,   "max": 5,    "step": 0.5},
+    ],
+    "S_RES": [
+        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "min_vol_lots",   "label": "最低量（張）",    "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
+        {"key": "cross_window",   "label": "黃金交叉在近幾天內","type": "number", "default": 15,  "min": 5,   "max": 30,   "step": 1},
+    ],
+    "S_KD": [
+        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "min_vol_lots",   "label": "最低量（張）",    "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
+        {"key": "oversold_level", "label": "超賣門檻（K值≤）","type": "number", "default": 20,  "min": 5,   "max": 40,   "step": 5},
+        {"key": "lookback",       "label": "超賣回溯天數",    "type": "number", "default": 5,   "min": 1,   "max": 15,   "step": 1},
+    ],
+    "S_VOLX": [
+        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "vol_multiplier", "label": "量能倍數（≥）",  "type": "number", "default": 3,   "min": 1.5, "max": 10,   "step": 0.5},
+        {"key": "ma_period",      "label": "均線週期（天）",  "type": "number", "default": 100, "min": 5,   "max": 250,  "step": 5},
+    ],
+    "S_VOLX_SHORT": [
+        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "vol_multiplier", "label": "量能倍數（≥）",  "type": "number", "default": 3,   "min": 1.5, "max": 10,   "step": 0.5},
+        {"key": "ma_period",      "label": "均線週期（天）",  "type": "number", "default": 10,  "min": 5,   "max": 250,  "step": 5},
+    ],
+    "CHIP": [
+        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "sector_ratio",   "label": "同族群上漲比%（≥）","type": "number", "default": 50,  "min": 0,   "max": 100,  "step": 5},
+    ],
+}
+
 def calc_macd(series: pd.Series, fast: int, slow: int, signal: int):
     """回傳 (dif, dea, osc)"""
     ema_fast = series.ewm(span=fast, adjust=False).mean()
@@ -210,7 +283,7 @@ def classify_stage(df: pd.DataFrame) -> dict:
             "desc": "多頭排列走勢穩定，等待拉回至MA10附近的買點"}
 
 
-def screen_s1(prices: dict, names: dict = None) -> list:
+def screen_s1(prices: dict, names: dict = None, params: dict = None) -> list:
     """
     S1 雙MACD選股（多）
     條件：
@@ -222,6 +295,9 @@ def screen_s1(prices: dict, names: dict = None) -> list:
     6. 大MACD(108,216,18)：DIF2 > 0、DEA2 > 0、OSC2 > 0（需 2y 資料才可靠）
     7. 收盤 ≥ 近10天最低收盤
     """
+    p = params or {}
+    min_price    = p.get("min_price", 10)
+    osc_lookback = int(p.get("osc_lookback", 12))
     results = []
     for sid, df in prices.items():
         if len(df) < 235:
@@ -230,7 +306,7 @@ def screen_s1(prices: dict, names: dict = None) -> list:
         dif1, dea1, osc1 = calc_macd(closes, 12, 26, 9)
         dif2, dea2, osc2 = calc_macd(closes, 108, 216, 18)
         today = df.iloc[-1]
-        if float(today['close']) <= 10:
+        if float(today['close']) <= min_price:
             continue
         if pd.isna(today.get('open')) or float(today['close']) <= float(today['open']):
             continue
@@ -240,10 +316,10 @@ def screen_s1(prices: dict, names: dict = None) -> list:
             continue
         if len(osc1) < 22:
             continue
-        # 昨日是局部谷底：昨天比前天低（或昨天是近10天最低）
+        # 昨日是局部谷底：昨天比前天低（或昨天是近N天最低）
         osc_prev2 = osc1.iloc[-3]   # 前天
         osc_prev1 = osc1.iloc[-2]   # 昨天
-        is_local_min = (osc_prev1 < osc_prev2) or (osc_prev1 <= osc1.iloc[-12:-1].min() + 1e-9)
+        is_local_min = (osc_prev1 < osc_prev2) or (osc_prev1 <= osc1.iloc[-(osc_lookback+1):-1].min() + 1e-9)
         if not is_local_min:
             continue
         # 今日 OSC 絕對值比昨日小（柱子縮短，確認反轉）
@@ -261,8 +337,11 @@ def screen_s1(prices: dict, names: dict = None) -> list:
                         "strategy": "S1"})
     return results
 
-def screen_s1_short(prices: dict, names: dict = None) -> list:
+def screen_s1_short(prices: dict, names: dict = None, params: dict = None) -> list:
     """S1空 雙MACD選股（空）"""
+    p = params or {}
+    min_price    = p.get("min_price", 10)
+    osc_lookback = int(p.get("osc_lookback", 12))
     results = []
     for sid, df in prices.items():
         if len(df) < 235:
@@ -271,7 +350,7 @@ def screen_s1_short(prices: dict, names: dict = None) -> list:
         dif1, dea1, osc1 = calc_macd(closes, 12, 26, 9)
         dif2, dea2, osc2 = calc_macd(closes, 108, 216, 18)
         today = df.iloc[-1]
-        if float(today['close']) <= 10:
+        if float(today['close']) <= min_price:
             continue
         if pd.isna(today.get('open')) or float(today['close']) >= float(today['open']):
             continue
@@ -283,8 +362,8 @@ def screen_s1_short(prices: dict, names: dict = None) -> list:
             continue
         osc_prev2 = osc1.iloc[-3]
         osc_prev1 = osc1.iloc[-2]
-        # 昨日是局部頂部：昨天比前天高（或昨天是近10天最高）
-        is_local_max = (osc_prev1 > osc_prev2) or (osc_prev1 >= osc1.iloc[-12:-1].max() - 1e-9)
+        # 昨日是局部頂部：昨天比前天高（或昨天是近N天最高）
+        is_local_max = (osc_prev1 > osc_prev2) or (osc_prev1 >= osc1.iloc[-(osc_lookback+1):-1].max() - 1e-9)
         if not is_local_max:
             continue
         if abs(osc1.iloc[-1]) >= abs(osc_prev1):
@@ -301,8 +380,11 @@ def screen_s1_short(prices: dict, names: dict = None) -> list:
                         "strategy": "S1_SHORT"})
     return results
 
-def screen_s1_2(prices: dict, names: dict = None) -> list:
+def screen_s1_2(prices: dict, names: dict = None, params: dict = None) -> list:
     """S1.2 MACD延伸（創新高拉回）"""
+    p = params or {}
+    min_price       = p.get("min_price", 10)
+    new_high_window = int(p.get("new_high_window", 20))
     results = []
     for sid, df in prices.items():
         if len(df) < 70:
@@ -310,19 +392,19 @@ def screen_s1_2(prices: dict, names: dict = None) -> list:
         closes = df['close']
         dif1, dea1, osc1 = calc_macd(closes, 12, 26, 9)
         today = df.iloc[-1]
-        if float(today['close']) <= 10:
+        if float(today['close']) <= min_price:
             continue
         if dif1.iloc[-1] <= 0 or dea1.iloc[-1] <= 0:
             continue
-        if (dif1.iloc[-20:] <= 0).any():
+        if (dif1.iloc[-new_high_window:] <= 0).any():
             continue
         if osc1.iloc[-1] >= 0:
             continue
-        if len(closes) < 65:
+        if len(closes) < new_high_window * 3 + 5:
             continue
-        prior_60_high = float(closes.iloc[-65:-20].max())
-        recent_20_high = float(closes.iloc[-20:].max())
-        if recent_20_high <= prior_60_high:
+        prior_high  = float(closes.iloc[-(new_high_window*3+5):-new_high_window].max())
+        recent_high = float(closes.iloc[-new_high_window:].max())
+        if recent_high <= prior_high:
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(float(today['close']), 2),
@@ -332,18 +414,23 @@ def screen_s1_2(prices: dict, names: dict = None) -> list:
                         "strategy": "S1_2"})
     return results
 
-def screen_s2(prices: dict, names: dict = None) -> list:
+def screen_s2(prices: dict, names: dict = None, params: dict = None) -> list:
     """S2 二次確認買進（W底）"""
+    p = params or {}
+    min_price    = p.get("min_price", 10)
+    min_vol_lots = p.get("min_vol_lots", 300)
+    days_high_min = int(p.get("days_high_min", 5))
+    days_high_max = int(p.get("days_high_max", 40))
     results = []
     for sid, df in prices.items():
         if len(df) < 205:
             continue
         closes = df['close']
         today = df.iloc[-1]
-        if float(today['close']) <= 10:
+        if float(today['close']) <= min_price:
             continue
         vol = today.get('volume', 0) or 0
-        if float(vol) < 300_000:   # 300張 = 300,000股（Yahoo回傳股數）
+        if float(vol) < min_vol_lots * 1000:
             continue
         ma10  = calc_ma(closes, 10)
         ma60  = calc_ma(closes, 60)
@@ -360,7 +447,7 @@ def screen_s2(prices: dict, names: dict = None) -> list:
         sub60 = closes.iloc[-61:]
         high_idx_in_sub = sub60.idxmax()
         days_from_high = len(closes) - 1 - high_idx_in_sub
-        if not (5 <= days_from_high <= 40):
+        if not (days_high_min <= days_from_high <= days_high_max):
             continue
         db = find_double_bottom(df, lookback=40)
         if db is None:
@@ -373,15 +460,17 @@ def screen_s2(prices: dict, names: dict = None) -> list:
                         "strategy": "S2"})
     return results
 
-def screen_s5(prices: dict, names: dict = None) -> list:
+def screen_s5(prices: dict, names: dict = None, params: dict = None) -> list:
     """S5 站上均線做多（今日才剛全部突破5/10/20/60/200MA）"""
+    p = params or {}
+    min_price = p.get("min_price", 10)
     results = []
     for sid, df in prices.items():
         if len(df) < 205:
             continue
         closes = df['close']
         today = df.iloc[-1]
-        if float(today['close']) <= 10:
+        if float(today['close']) <= min_price:
             continue
         ma5   = calc_ma(closes, 5)
         ma10  = calc_ma(closes, 10)
@@ -408,18 +497,22 @@ def screen_s5(prices: dict, names: dict = None) -> list:
                         "strategy": "S5"})
     return results
 
-def screen_s17a(prices: dict, names: dict = None) -> list:
+def screen_s17a(prices: dict, names: dict = None, params: dict = None) -> list:
     """S17a 底部破底翻試單"""
+    p = params or {}
+    min_price      = p.get("min_price", 10)
+    drop_pct       = p.get("drop_pct", 30)
+    wave_vol_ratio = p.get("wave_vol_ratio", 60)
     results = []
     for sid, df in prices.items():
         if len(df) < 125:
             continue
         closes = df['close']
         today = df.iloc[-1]
-        if float(today['close']) <= 10:
+        if float(today['close']) <= min_price:
             continue
         high_120 = float(closes.iloc[-121:].max())
-        if high_120 <= 0 or float(today['close']) >= high_120 * 0.70:
+        if high_120 <= 0 or float(today['close']) >= high_120 * (1 - drop_pct / 100):
             continue
         db = find_double_bottom(df, lookback=60, tol=0.08)
         if db is None:
@@ -429,7 +522,7 @@ def screen_s17a(prices: dict, names: dict = None) -> list:
         if 'volume' in df_sub.columns:
             w1_vol = float(df_sub.iloc[max(0, w1_i - 4):w1_i + 5]['volume'].mean())
             w2_vol = float(df_sub.iloc[max(0, w2_i - 4):w2_i + 5]['volume'].mean())
-            if w1_vol > 0 and w2_vol < w1_vol * 0.60:
+            if w1_vol > 0 and w2_vol < w1_vol * (wave_vol_ratio / 100):
                 continue
         low_10 = float(closes.iloc[-11:-1].min())
         broke = (float(closes.iloc[-1]) <= low_10 or float(closes.iloc[-2]) <= low_10)
@@ -446,28 +539,33 @@ def screen_s17a(prices: dict, names: dict = None) -> list:
                         "strategy": "S17A"})
     return results
 
-def screen_s17b(prices: dict, names: dict = None) -> list:
+def screen_s17b(prices: dict, names: dict = None, params: dict = None) -> list:
     """S17b 突破確認加碼（撈底）"""
+    p = params or {}
+    min_price    = p.get("min_price", 10)
+    drop_pct     = p.get("drop_pct", 30)
+    neckline_pct = p.get("neckline_pct", 10)
+    w2_recency   = int(p.get("w2_recency", 30))
     results = []
     for sid, df in prices.items():
         if len(df) < 125:
             continue
         closes = df['close']
         today = df.iloc[-1]
-        if float(today['close']) <= 10:
+        if float(today['close']) <= min_price:
             continue
         high_120 = float(closes.iloc[-121:].max())
-        if high_120 <= 0 or float(today['close']) >= high_120 * 0.70:
+        if high_120 <= 0 or float(today['close']) >= high_120 * (1 - drop_pct / 100):
             continue
         db = find_double_bottom(df, lookback=60, tol=0.08)
         if db is None:
             continue
         df_sub = db['df_sub']
-        if len(df_sub) - 1 - db['wave2_idx'] > 30:
+        if len(df_sub) - 1 - db['wave2_idx'] > w2_recency:
             continue
         neckline = db['neckline']
         c = float(today['close'])
-        if not (neckline * 0.90 <= c < neckline):
+        if not (neckline * (1 - neckline_pct / 100) <= c < neckline):
             continue
         if 'open' in df.columns and not pd.isna(df.iloc[-2].get('open')):
             if c <= float(df.iloc[-2]['open']):
@@ -491,7 +589,7 @@ def _is_limit_up(close: float, prev_close: float) -> bool:
     return close >= limit - tick * 0.1
 
 
-def screen_s10(prices: dict, names: dict = None) -> list:
+def screen_s10(prices: dict, names: dict = None, params: dict = None) -> list:
     """
     S10 漲停（收盤達漲停價，依台股 tick 規則計算，顯示連續天數）。
     僅取最新一筆：最後一根 K 棒必須與倒數第二根日期不同（確認是獨立交易日）。
@@ -531,8 +629,13 @@ def screen_s10(prices: dict, names: dict = None) -> list:
     results.sort(key=lambda x: x['consec_limit_up'], reverse=True)
     return results
 
-def screen_spb(prices: dict, names: dict = None) -> list:
+def screen_spb(prices: dict, names: dict = None, params: dict = None) -> list:
     """S_PB 均線拉回買點：多頭排列中，股價回測MA10後站回，出現多方K線"""
+    p = params or {}
+    min_price    = p.get("min_price", 10)
+    min_vol_lots = p.get("min_vol_lots", 300)
+    touch_window = int(p.get("touch_window", 5))
+    vol_shrink_pct = p.get("vol_shrink_pct", 60)
     results = []
     for sid, df in prices.items():
         if len(df) < 65:
@@ -542,10 +645,10 @@ def screen_spb(prices: dict, names: dict = None) -> list:
         today  = df.iloc[-1]
         tc     = float(today['close'])
         to_    = float(today['open'])
-        if tc <= 10:
+        if tc <= min_price:
             continue
         vol = float(today.get('volume', 0) or 0)
-        if vol < 300_000:
+        if vol < min_vol_lots * 1000:
             continue
         ma10 = calc_ma(closes, 10)
         ma60 = calc_ma(closes, 60)
@@ -558,10 +661,10 @@ def screen_spb(prices: dict, names: dict = None) -> list:
         # MA10 斜率向上（近5天）
         if pd.isna(ma10.iloc[-5]) or not (m10 > float(ma10.iloc[-5])):
             continue
-        # 近5天低點曾碰 MA10 (±2%)
+        # 近 touch_window 天低點曾碰 MA10 (±2%)
         touched = any(
             not pd.isna(ma10.iloc[-(i+1)]) and float(lows.iloc[-(i+1)]) <= float(ma10.iloc[-(i+1)]) * 1.02
-            for i in range(5) if i + 1 <= len(lows)
+            for i in range(touch_window) if i + 1 <= len(lows)
         )
         if not touched:
             continue
@@ -574,9 +677,9 @@ def screen_spb(prices: dict, names: dict = None) -> list:
         is_bullish = (tc > to_) or (body > 0 and low_wick >= body * 1.5)
         if not is_bullish:
             continue
-        # 量能不能萎縮超過 40%（5日均量）
+        # 量能萎縮檢查
         vol5 = df.iloc[-5:]['volume'].astype(float).mean() if len(df) >= 5 else 0
-        if vol5 > 0 and vol < vol5 * 0.6:
+        if vol5 > 0 and vol < vol5 * (vol_shrink_pct / 100):
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(tc, 2), "change_pct": _change_pct(df),
@@ -585,8 +688,13 @@ def screen_spb(prices: dict, names: dict = None) -> list:
     return results
 
 
-def screen_sfbd(prices: dict, names: dict = None) -> list:
+def screen_sfbd(prices: dict, names: dict = None, params: dict = None) -> list:
     """S_FBD 假跌破買進：多頭中近期跌破MA10後當日/隔日收復，洗盤完成"""
+    p = params or {}
+    min_price      = p.get("min_price", 10)
+    min_vol_lots   = p.get("min_vol_lots", 300)
+    break_window   = int(p.get("break_window", 4))
+    break_vol_ratio = p.get("break_vol_ratio", 2.5)
     results = []
     for sid, df in prices.items():
         if len(df) < 65:
@@ -595,10 +703,10 @@ def screen_sfbd(prices: dict, names: dict = None) -> list:
         today  = df.iloc[-1]
         tc     = float(today['close'])
         to_    = float(today['open'])
-        if tc <= 10:
+        if tc <= min_price:
             continue
         vol = float(today.get('volume', 0) or 0)
-        if vol < 300_000:
+        if vol < min_vol_lots * 1000:
             continue
         ma10 = calc_ma(closes, 10)
         ma60 = calc_ma(closes, 60)
@@ -611,9 +719,9 @@ def screen_sfbd(prices: dict, names: dict = None) -> list:
         # 今日收紅且站回 MA10
         if not (tc > to_ and tc > m10):
             continue
-        # 近1~4天有一天收盤跌破 MA10
+        # 近 1~break_window 天有一天收盤跌破 MA10
         broke_idx = None
-        for i in range(1, 5):
+        for i in range(1, break_window + 1):
             if i + 1 > len(closes):
                 break
             pm10 = float(ma10.iloc[-(i+1)])
@@ -622,10 +730,10 @@ def screen_sfbd(prices: dict, names: dict = None) -> list:
                 break
         if broke_idx is None:
             continue
-        # 跌破當天量 ≤ 20日均量 × 2.5（非出貨）
+        # 跌破當天量 ≤ 20日均量 × break_vol_ratio（非出貨）
         vol20 = df.iloc[-20:]['volume'].astype(float).mean() if len(df) >= 20 else 0
         broke_vol = float(df.iloc[-(broke_idx+1)].get('volume', 0) or 0)
-        if vol20 > 0 and broke_vol > vol20 * 2.5:
+        if vol20 > 0 and broke_vol > vol20 * break_vol_ratio:
             continue
         # 今日收盤吃回跌破那天的收盤
         if tc <= float(closes.iloc[-(broke_idx+1)]):
@@ -637,8 +745,12 @@ def screen_sfbd(prices: dict, names: dict = None) -> list:
     return results
 
 
-def screen_sres(prices: dict, names: dict = None) -> list:
+def screen_sres(prices: dict, names: dict = None, params: dict = None) -> list:
     """S_RES 共振起點：MA10/MA60 近期由空翻多，三線同時轉揚"""
+    p = params or {}
+    min_price    = p.get("min_price", 10)
+    min_vol_lots = p.get("min_vol_lots", 300)
+    cross_window = int(p.get("cross_window", 15))
     results = []
     for sid, df in prices.items():
         if len(df) < 65:
@@ -646,10 +758,10 @@ def screen_sres(prices: dict, names: dict = None) -> list:
         closes = df['close']
         today  = df.iloc[-1]
         tc     = float(today['close'])
-        if tc <= 10:
+        if tc <= min_price:
             continue
         vol = float(today.get('volume', 0) or 0)
-        if vol < 300_000:
+        if vol < min_vol_lots * 1000:
             continue
         ma10 = calc_ma(closes, 10)
         ma60 = calc_ma(closes, 60)
@@ -669,11 +781,11 @@ def screen_sres(prices: dict, names: dict = None) -> list:
         # 現在 MA10 > MA60（剛翻多）
         if not (m10 > m60):
             continue
-        # 近15天內 MA10 曾在 MA60 下方（確認是轉折，不是長期多頭延續）
+        # 近 cross_window 天內 MA10 曾在 MA60 下方（確認是轉折，不是長期多頭延續）
         was_below = any(
             not pd.isna(ma10.iloc[-(i+1)]) and not pd.isna(ma60.iloc[-(i+1)])
             and float(ma10.iloc[-(i+1)]) < float(ma60.iloc[-(i+1)])
-            for i in range(1, 16) if i + 1 <= len(ma10)
+            for i in range(1, cross_window + 1) if i + 1 <= len(ma10)
         )
         if not was_below:
             continue
@@ -707,14 +819,19 @@ def calc_kd(df: pd.DataFrame, n: int = 9) -> tuple:
     return pd.Series(k_vals, index=df.index), pd.Series(d_vals, index=df.index)
 
 
-def screen_skd(prices: dict, names: dict = None) -> list:
+def screen_skd(prices: dict, names: dict = None, params: dict = None) -> list:
     """
     S_KD KD超賣反彈：
-    1. 收盤 > 10，量 >= 300張
-    2. KD 的 K 值在近 1~5 天曾跌破 20（超賣區）
-    3. 今日 K 值回升至 20 以上（離開超賣區）
+    1. 收盤 > min_price，量 >= min_vol_lots 張
+    2. KD 的 K 值在近 1~lookback 天曾跌破 oversold_level（超賣區）
+    3. 今日 K 值回升至 oversold_level 以上（離開超賣區）
     4. K 上穿 D（黃金交叉，或 K > D 且方向向上）
     """
+    p = params or {}
+    min_price      = p.get("min_price", 10)
+    min_vol_lots   = p.get("min_vol_lots", 300)
+    oversold_level = p.get("oversold_level", 20)
+    lookback       = int(p.get("lookback", 5))
     results = []
     for sid, df in prices.items():
         if len(df) < 30:
@@ -723,21 +840,21 @@ def screen_skd(prices: dict, names: dict = None) -> list:
             continue
         today = df.iloc[-1]
         tc    = float(today['close'])
-        if tc <= 10:
+        if tc <= min_price:
             continue
         vol = float(today.get('volume', 0) or 0)
-        if vol < 300_000:
+        if vol < min_vol_lots * 1000:
             continue
         k_ser, d_ser = calc_kd(df)
         k_now = k_ser.iloc[-1]
         d_now = d_ser.iloc[-1]
-        # 今日 K 必須已回到 20 以上
-        if k_now <= 20:
+        # 今日 K 必須已回到 oversold_level 以上
+        if k_now <= oversold_level:
             continue
-        # 近 1~5 天（不含今日）K 曾 <= 20
+        # 近 1~lookback 天（不含今日）K 曾 <= oversold_level
         broke_oversold = any(
-            k_ser.iloc[-(i+1)] <= 20
-            for i in range(1, 6) if i + 1 <= len(k_ser)
+            k_ser.iloc[-(i+1)] <= oversold_level
+            for i in range(1, lookback + 1) if i + 1 <= len(k_ser)
         )
         if not broke_oversold:
             continue
@@ -752,11 +869,15 @@ def screen_skd(prices: dict, names: dict = None) -> list:
     return results
 
 
-def screen_svolx(prices: dict, names: dict = None) -> list:
-    """S_VOLX 量爆拉升（多）：今日量 >= 昨日量 × 3 且上漲且站上20週均線(MA100)"""
+def screen_svolx(prices: dict, names: dict = None, params: dict = None) -> list:
+    """S_VOLX 量爆拉升（多）：今日量 >= 昨日量 × vol_multiplier 且上漲且站上 ma_period 均線"""
+    p = params or {}
+    min_price      = p.get("min_price", 10)
+    vol_multiplier = p.get("vol_multiplier", 3)
+    ma_period      = int(p.get("ma_period", 100))
     results = []
     for sid, df in prices.items():
-        if len(df) < 101:
+        if len(df) < ma_period + 1:
             continue
         today = df.iloc[-1]
         prev  = df.iloc[-2]
@@ -764,14 +885,14 @@ def screen_svolx(prices: dict, names: dict = None) -> list:
         pc  = float(prev['close'])
         vol     = float(today.get('volume', 0) or 0)
         vol_yd  = float(prev.get('volume', 0) or 0)
-        if tc <= 10:
+        if tc <= min_price:
             continue
-        if vol_yd <= 0 or vol < vol_yd * 3:
+        if vol_yd <= 0 or vol < vol_yd * vol_multiplier:
             continue
         if tc <= pc:
             continue
-        ma100 = float(calc_ma(df['close'], 100).iloc[-1])
-        if pd.isna(ma100) or tc <= ma100:
+        ma_val = float(calc_ma(df['close'], ma_period).iloc[-1])
+        if pd.isna(ma_val) or tc <= ma_val:
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(tc, 2), "change_pct": _change_pct(df),
@@ -781,11 +902,15 @@ def screen_svolx(prices: dict, names: dict = None) -> list:
     return results
 
 
-def screen_svolx_short(prices: dict, names: dict = None) -> list:
-    """S_VOLX_SHORT 量爆下殺（空）：今日量 >= 昨日量 × 3 且下跌且跌破10日線(MA10)"""
+def screen_svolx_short(prices: dict, names: dict = None, params: dict = None) -> list:
+    """S_VOLX_SHORT 量爆下殺（空）：今日量 >= 昨日量 × vol_multiplier 且下跌且跌破 ma_period 均線"""
+    p = params or {}
+    min_price      = p.get("min_price", 10)
+    vol_multiplier = p.get("vol_multiplier", 3)
+    ma_period      = int(p.get("ma_period", 10))
     results = []
     for sid, df in prices.items():
-        if len(df) < 12:
+        if len(df) < ma_period + 2:
             continue
         today = df.iloc[-1]
         prev  = df.iloc[-2]
@@ -793,14 +918,14 @@ def screen_svolx_short(prices: dict, names: dict = None) -> list:
         pc  = float(prev['close'])
         vol     = float(today.get('volume', 0) or 0)
         vol_yd  = float(prev.get('volume', 0) or 0)
-        if tc <= 10:
+        if tc <= min_price:
             continue
-        if vol_yd <= 0 or vol < vol_yd * 3:
+        if vol_yd <= 0 or vol < vol_yd * vol_multiplier:
             continue
         if tc >= pc:
             continue
-        ma10 = float(calc_ma(df['close'], 10).iloc[-1])
-        if pd.isna(ma10) or tc >= ma10:
+        ma_val = float(calc_ma(df['close'], ma_period).iloc[-1])
+        if pd.isna(ma_val) or tc >= ma_val:
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(tc, 2), "change_pct": _change_pct(df),
@@ -810,14 +935,18 @@ def screen_svolx_short(prices: dict, names: dict = None) -> list:
     return results
 
 
-def screen_chip(prices: dict, tdcc_data: dict, stock_info: dict = None) -> list:
+def screen_chip(prices: dict, tdcc_data: dict, stock_info: dict = None, params: dict = None) -> list:
     """
     CHIP 千張大戶增持選股（集保所週資料）：
     - 千張大戶本週持股比例 > 上週（change > 0）
     - MA5 > MA10 > MA20
-    - 收盤 > 10
-    - 同族群上漲比 >= 50%（有傳入 stock_info 且有 industry 時才套用）
+    - 收盤 > min_price
+    - 同族群上漲比 >= sector_ratio%（有傳入 stock_info 且有 industry 時才套用）
     """
+    p = params or {}
+    min_price    = p.get("min_price", 10)
+    sector_ratio_pct = p.get("sector_ratio", 50)
+
     up_map = {}
     for sid, df in prices.items():
         if len(df) >= 2:
@@ -845,7 +974,7 @@ def screen_chip(prices: dict, tdcc_data: dict, stock_info: dict = None) -> list:
             continue
         closes = df['close']
         today  = df.iloc[-1]
-        if float(today['close']) <= 10:
+        if float(today['close']) <= min_price:
             continue
         ma5  = calc_ma(closes, 5)
         ma10 = calc_ma(closes, 10)
@@ -857,7 +986,7 @@ def screen_chip(prices: dict, tdcc_data: dict, stock_info: dict = None) -> list:
         info  = (stock_info or {}).get(sid, {})
         ind   = info.get('industry', '')
         ratio = sector_ratio.get(ind, 0) if ind else 0
-        if ind and ratio < 0.50:
+        if ind and ratio < sector_ratio_pct / 100:
             continue
         results.append({
             "stock_id":         sid,
@@ -873,10 +1002,12 @@ def screen_chip(prices: dict, tdcc_data: dict, stock_info: dict = None) -> list:
     results.sort(key=lambda x: x['thousand_lot_chg'], reverse=True)
     return results
 
-def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "") -> dict:
+def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "",
+                   strategy_params: dict = None) -> dict:
     """
     檢查單支股票的所有策略，回傳 {strategy_key: result_dict or None}。
     供全市場掃描使用：一次抓取 → 同時跑所有策略，避免重複請求。
+    strategy_params: {strategy_key: {param_key: value, ...}, ...}
     """
     prices_single = {sid: df}
     names_single  = {sid: name}
@@ -898,7 +1029,8 @@ def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "") -> dict:
         ("S_VOLX",        screen_svolx),
         ("S_VOLX_SHORT",  screen_svolx_short),
     ]:
-        results = fn(prices_single, names_single)
+        p = strategy_params.get(key, {}) if strategy_params else None
+        results = fn(prices_single, names_single, params=p)
         result = results[0] if results else None
         if result and last_date:
             result['last_date'] = last_date  # YYYYMMDD，讓 UI 顯示資料日期
@@ -907,8 +1039,10 @@ def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "") -> dict:
 
 
 def run_strategy(strategy: str, prices: dict, names: dict = None,
-                 chip_data: list = None, stock_info: dict = None) -> list:
+                 chip_data: list = None, stock_info: dict = None,
+                 strategy_params: dict = None) -> list:
     s = strategy.upper()
+    p = strategy_params.get(s, {}) if strategy_params else None
     fn_map = {
         "S1":       screen_s1,
         "S1_SHORT": screen_s1_short,
@@ -926,6 +1060,6 @@ def run_strategy(strategy: str, prices: dict, names: dict = None,
         "S_VOLX_SHORT":  screen_svolx_short,
     }
     if s == "CHIP":
-        return screen_chip(prices, chip_data or {}, stock_info)
+        return screen_chip(prices, chip_data or {}, stock_info, params=p)
     fn = fn_map.get(s)
-    return fn(prices, names) if fn else []
+    return fn(prices, names, params=p) if fn else []

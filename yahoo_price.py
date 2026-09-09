@@ -11,6 +11,7 @@ import asyncio
 import datetime
 import os
 import threading
+import time
 from itertools import cycle
 
 import httpx
@@ -75,15 +76,23 @@ async def _fetch_yahoo_async(
 ) -> pd.DataFrame:
     """
     async fetch，Semaphore 控制最大並發數。
+    用 period1/period2 取代 range，強制 Yahoo 回傳到當下最新資料（避免快取延遲）。
     timeout 由 httpx.AsyncClient 自帶機制控制（不用 asyncio.wait_for，避免衝突）。
     """
     suffixes = [".TW"] if market == "twse" else [".TWO", ".TW"]
+    # 換算 range 字串為天數，再換成 period1/period2（period2=now 強制最新）
+    _range_days = {"1d": 1, "5d": 5, "1mo": 30, "3mo": 90, "6mo": 180,
+                   "1y": 365, "2y": 730, "5y": 1825}
+    days = _range_days.get(range_, 365)
+    now  = int(time.time())
+    p1   = now - days * 86400
+    params = {"interval": "1d", "period1": p1, "period2": now}
     async with sem:
         for suffix in suffixes:
             host = _next_host()
             url  = f"https://{host}.finance.yahoo.com/v8/finance/chart/{stock_id}{suffix}"
             try:
-                r = await client.get(url, params={"interval": "1d", "range": range_})
+                r = await client.get(url, params=params)
                 r.raise_for_status()
                 df = _parse_yahoo_json(r.json())
                 if not df.empty and len(df) >= 5:
@@ -288,16 +297,18 @@ def get_scan_results() -> dict:
     return _scan_status["results"]
 
 
-async def run_market_scan(concurrency: int = 60):
+async def run_market_scan(concurrency: int = 60, strategy_params: dict = None):
     """
     背景執行全市場策略掃描（上市 + 上櫃，全部 stocks.csv 股票）。
     - 啟動時並行取 TWSE/TPEX 有量清單，過濾無量股（盤後效果最好）
     - Semaphore(60) 控制並發；range=1y（足夠所有策略的 235 天需求）
     - scan_one_stock 跑在 ThreadPoolExecutor(16)，不阻塞 event loop
+    - strategy_params: {strategy_key: {param_key: value}} 各策略自訂參數
     """
     import concurrent.futures
     from scanner import scan_one_stock, screen_chip
     from tdcc_chip import get_tdcc_data
+    _strategy_params = strategy_params or {}
 
     _scan_status["running"]       = True
     _scan_status["progress"]      = 0
@@ -365,8 +376,11 @@ async def run_market_scan(concurrency: int = 60):
                 _scan_status["yahoo_ok"] += 1
                 all_prices[sid] = df
                 # CPU-bound pandas 運算放到 thread pool，釋放 event loop
+                import functools
                 return await loop.run_in_executor(
-                    executor, scan_one_stock, df, sid, names.get(sid, "")
+                    executor,
+                    functools.partial(scan_one_stock, df, sid, names.get(sid, ""),
+                                      strategy_params=_strategy_params)
                 )
 
             coros   = [_fetch_scan(sid, mkt) for sid, mkt in tasks]
@@ -412,7 +426,8 @@ async def run_market_scan(concurrency: int = 60):
                 print(f"[SCAN] CHIP 掃描：TDCC {len(tdcc_data)} 支，價格 {len(all_prices)} 支")
                 chip_names = {sid: names.get(sid, '') for sid in all_prices}
                 stock_info = {sid: {'name': chip_names[sid]} for sid in all_prices}
-                all_results["CHIP"] = screen_chip(all_prices, tdcc_data, stock_info)
+                all_results["CHIP"] = screen_chip(all_prices, tdcc_data, stock_info,
+                                                   params=_strategy_params.get("CHIP"))
                 print(f"[SCAN] CHIP 命中：{len(all_results['CHIP'])} 支")
             else:
                 print("[SCAN] CHIP 跳過（TDCC 快取為空）")

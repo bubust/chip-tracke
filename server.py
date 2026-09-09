@@ -5,6 +5,7 @@ server.py — FastAPI 後端
 """
 
 import asyncio
+import json
 import os
 import sqlite3
 from contextlib import asynccontextmanager
@@ -28,6 +29,7 @@ from chip_tracker_v2 import (
     DEFAULT_WEIGHTS, DEFAULT_THRESHOLDS,
     get_weights, get_thresholds, save_params,
 )
+from scanner import STRATEGY_PARAMS_SCHEMA
 import supabase_store as sb
 
 BASE_DIR = Path(__file__).parent
@@ -619,13 +621,28 @@ async def api_tdcc_test(stock_id: str):
 # 全市場策略掃描 API（Yahoo Finance）
 # ════════════════════════════════════════════════════════════════════════════
 
+def _load_strategy_params() -> dict:
+    """從 DB 讀取所有策略參數設定，回傳 {strategy_key: {param_key: value}}"""
+    conn = get_conn()
+    rows = conn.execute("SELECT key, value FROM settings WHERE key LIKE 'sp_%'").fetchall()
+    conn.close()
+    result = {}
+    for r in rows:
+        sk = r['key'][3:]   # 去掉 'sp_' prefix
+        try:
+            result[sk] = json.loads(r['value'])
+        except Exception:
+            pass
+    return result
+
 @app.post("/api/screen/run")
 async def api_screen_run(background_tasks: BackgroundTasks):
     from yahoo_price import get_scan_status, run_market_scan
     status = get_scan_status()
     if status["running"]:
         return {"ok": False, "message": "掃描中，請稍候"}
-    background_tasks.add_task(run_market_scan)
+    strategy_params = _load_strategy_params()
+    background_tasks.add_task(run_market_scan, strategy_params=strategy_params)
     return {"ok": True, "message": "全市場掃描已啟動（所有策略）..."}
 
 @app.get("/api/screen/status")
@@ -711,6 +728,39 @@ def api_save_params(body: ParamsBody):
 def api_reset_params():
     conn = get_conn()
     conn.execute("DELETE FROM settings WHERE key LIKE 'w_%' OR key LIKE 't_%'")
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+@app.get("/api/params/strategies")
+def get_strategy_params():
+    conn = get_conn()
+    rows = conn.execute("SELECT key, value FROM settings WHERE key LIKE 'sp_%'").fetchall()
+    conn.close()
+    saved = {}
+    for r in rows:
+        sk = r['key'][3:]   # 去掉 'sp_' prefix
+        try:
+            saved[sk] = json.loads(r['value'])
+        except Exception:
+            pass
+    result = {}
+    for skey, schema in STRATEGY_PARAMS_SCHEMA.items():
+        saved_vals = saved.get(skey, {})
+        params = {}
+        for field in schema:
+            params[field['key']] = saved_vals.get(field['key'], field['default'])
+        result[skey] = {"schema": schema, "values": params}
+    return result
+
+@app.put("/api/params/strategies/{strategy_key}")
+async def put_strategy_params(strategy_key: str, request: Request):
+    body = await request.json()
+    conn = get_conn()
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+        (f"sp_{strategy_key}", json.dumps(body))
+    )
     conn.commit()
     conn.close()
     return {"ok": True}

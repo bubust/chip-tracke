@@ -334,21 +334,21 @@
     </div>
     <!-- 策略快篩（掃描前後都顯示；掃描完後顯示各策略命中數） -->
     <div id="screen-strat-bar" style="display:flex;flex-wrap:wrap;gap:6px">
-      <button class="btn ghost screen-strat-btn" data-s="S1"       onclick="viewStrategy('S1')">S1 雙MACD多 <span class="strat-cnt" id="cnt-S1"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="S1_SHORT" onclick="viewStrategy('S1_SHORT')">S1空 雙MACD空 <span class="strat-cnt" id="cnt-S1_SHORT"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="S1_2"     onclick="viewStrategy('S1_2')">S1.2 創新高拉回 <span class="strat-cnt" id="cnt-S1_2"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="S2"       onclick="viewStrategy('S2')">S2 W底 <span class="strat-cnt" id="cnt-S2"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="S5"       onclick="viewStrategy('S5')">S5 站上均線 <span class="strat-cnt" id="cnt-S5"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="S17A"     onclick="viewStrategy('S17A')">S17a 破底翻 <span class="strat-cnt" id="cnt-S17A"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="S17B"     onclick="viewStrategy('S17B')">S17b 撈底加碼 <span class="strat-cnt" id="cnt-S17B"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S1"       onclick="viewStrategy('S1')">S1 雙MACD多 <span class="strat-cnt" id="cnt-S1"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S1','S1 雙MACD多')">⚙️</button>
+      <button class="btn ghost screen-strat-btn" data-s="S1_SHORT" onclick="viewStrategy('S1_SHORT')">S1空 雙MACD空 <span class="strat-cnt" id="cnt-S1_SHORT"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S1_SHORT','S1空 雙MACD空')">⚙️</button>
+      <button class="btn ghost screen-strat-btn" data-s="S1_2"     onclick="viewStrategy('S1_2')">S1.2 創新高拉回 <span class="strat-cnt" id="cnt-S1_2"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S1_2','S1.2 創新高拉回')">⚙️</button>
+      <button class="btn ghost screen-strat-btn" data-s="S2"       onclick="viewStrategy('S2')">S2 W底 <span class="strat-cnt" id="cnt-S2"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S2','S2 W底')">⚙️</button>
+      <button class="btn ghost screen-strat-btn" data-s="S5"       onclick="viewStrategy('S5')">S5 站上均線 <span class="strat-cnt" id="cnt-S5"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S5','S5 站上均線')">⚙️</button>
+      <button class="btn ghost screen-strat-btn" data-s="S17A"     onclick="viewStrategy('S17A')">S17a 破底翻 <span class="strat-cnt" id="cnt-S17A"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S17A','S17a 破底翻')">⚙️</button>
+      <button class="btn ghost screen-strat-btn" data-s="S17B"     onclick="viewStrategy('S17B')">S17b 撈底加碼 <span class="strat-cnt" id="cnt-S17B"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S17B','S17b 撈底加碼')">⚙️</button>
       <button class="btn ghost screen-strat-btn" data-s="S10"      onclick="viewStrategy('S10')">S10 漲停 <span class="strat-cnt" id="cnt-S10"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="CHIP"     onclick="viewStrategy('CHIP')">CHIP 千張大戶 <span class="strat-cnt" id="cnt-CHIP"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="S_PB"    onclick="viewStrategy('S_PB')">🎯 拉回買點 <span class="strat-cnt" id="cnt-S_PB"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="S_FBD"   onclick="viewStrategy('S_FBD')">🪤 假跌破 <span class="strat-cnt" id="cnt-S_FBD"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="S_RES"   onclick="viewStrategy('S_RES')">🟡 共振起點 <span class="strat-cnt" id="cnt-S_RES"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="S_KD"         onclick="viewStrategy('S_KD')">📉 KD超賣反彈 <span class="strat-cnt" id="cnt-S_KD"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="S_VOLX"       onclick="viewStrategy('S_VOLX')">💥 量爆拉升 <span class="strat-cnt" id="cnt-S_VOLX"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="S_VOLX_SHORT" onclick="viewStrategy('S_VOLX_SHORT')">💥 量爆下殺 <span class="strat-cnt" id="cnt-S_VOLX_SHORT"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="CHIP"     onclick="viewStrategy('CHIP')">CHIP 千張大戶 <span class="strat-cnt" id="cnt-CHIP"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('CHIP','CHIP 千張大戶')">⚙️</button>
+      <button class="btn ghost screen-strat-btn" data-s="S_PB"    onclick="viewStrategy('S_PB')">🎯 拉回買點 <span class="strat-cnt" id="cnt-S_PB"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S_PB','拉回買點')">⚙️</button>
+      <button class="btn ghost screen-strat-btn" data-s="S_FBD"   onclick="viewStrategy('S_FBD')">🪤 假跌破 <span class="strat-cnt" id="cnt-S_FBD"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S_FBD','假跌破')">⚙️</button>
+      <button class="btn ghost screen-strat-btn" data-s="S_RES"   onclick="viewStrategy('S_RES')">🟡 共振起點 <span class="strat-cnt" id="cnt-S_RES"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S_RES','共振起點')">⚙️</button>
+      <button class="btn ghost screen-strat-btn" data-s="S_KD"         onclick="viewStrategy('S_KD')">📉 KD超賣反彈 <span class="strat-cnt" id="cnt-S_KD"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S_KD','KD超賣反彈')">⚙️</button>
+      <button class="btn ghost screen-strat-btn" data-s="S_VOLX"       onclick="viewStrategy('S_VOLX')">💥 量爆拉升 <span class="strat-cnt" id="cnt-S_VOLX"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S_VOLX','量爆拉升')">⚙️</button>
+      <button class="btn ghost screen-strat-btn" data-s="S_VOLX_SHORT" onclick="viewStrategy('S_VOLX_SHORT')">💥 量爆下殺 <span class="strat-cnt" id="cnt-S_VOLX_SHORT"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S_VOLX_SHORT','量爆下殺')">⚙️</button>
     </div>
   </div>
 
@@ -2108,6 +2108,69 @@ function closeChart() {
   document.getElementById('chart-tv-container').innerHTML = '';
   document.body.style.overflow = '';
 }
+
+// ── 策略參數編輯器 ──────────────────────────────────────────────────────────
+let _stratParamsKey = null;
+let _stratParamsSchema = null;
+
+async function openStratParams(key, title) {
+  _stratParamsKey = key;
+  document.getElementById('strat-params-title').textContent = '⚙️ ' + title + ' 參數';
+  document.getElementById('strat-params-msg').textContent = '';
+  try {
+    const data = await api('GET', '/api/params/strategies');
+    const entry = data[key];
+    if (!entry || !entry.schema || entry.schema.length === 0) {
+      toast('此策略無可調整的參數');
+      return;
+    }
+    _stratParamsSchema = entry.schema;
+    const vals = entry.values;
+    const fields = document.getElementById('strat-params-fields');
+    fields.innerHTML = entry.schema.map(f => `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <label style="font-size:.85rem;color:var(--text);white-space:nowrap">${f.label}</label>
+        <input type="number" id="sp-${f.key}" value="${vals[f.key] ?? f.default}"
+          min="${f.min}" max="${f.max}" step="${f.step}"
+          style="width:100px;text-align:right;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:4px 8px;font-size:.88rem">
+      </div>
+    `).join('');
+    document.getElementById('strat-params-modal').style.display = 'flex';
+  } catch(e) {
+    toast('載入參數失敗：' + e.message, true);
+  }
+}
+
+function closeStratParams() {
+  document.getElementById('strat-params-modal').style.display = 'none';
+}
+
+function resetStratParams() {
+  if (!_stratParamsSchema) return;
+  _stratParamsSchema.forEach(f => {
+    const el = document.getElementById('sp-' + f.key);
+    if (el) el.value = f.default;
+  });
+}
+
+async function saveStratParams() {
+  if (!_stratParamsKey || !_stratParamsSchema) return;
+  const body = {};
+  for (const f of _stratParamsSchema) {
+    const el = document.getElementById('sp-' + f.key);
+    if (el) body[f.key] = parseFloat(el.value);
+  }
+  try {
+    await api('PUT', '/api/params/strategies/' + _stratParamsKey, body);
+    document.getElementById('strat-params-msg').textContent = '✓ 已儲存，下次掃描生效';
+    setTimeout(() => {
+      const msg = document.getElementById('strat-params-msg');
+      if (msg) msg.textContent = '';
+    }, 3000);
+  } catch(e) {
+    toast('儲存失敗：' + e.message, true);
+  }
+}
 </script>
 
 <!-- 千張大戶歷史 Modal -->
@@ -2140,6 +2203,22 @@ function closeChart() {
         <small>點「更新千張大戶」按鈕取得資料</small>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ── 策略參數 Modal ── -->
+<div id="strat-params-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closeStratParams()">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;min-width:340px;max-width:480px;width:90%">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <strong id="strat-params-title" style="font-size:1rem"></strong>
+      <button onclick="closeStratParams()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem">✕</button>
+    </div>
+    <div id="strat-params-fields" style="display:flex;flex-direction:column;gap:12px"></div>
+    <div style="display:flex;gap:8px;margin-top:20px;justify-content:flex-end">
+      <button class="btn ghost" onclick="resetStratParams()">重設預設值</button>
+      <button class="btn" onclick="saveStratParams()">儲存</button>
+    </div>
+    <div id="strat-params-msg" style="font-size:.8rem;color:var(--green);margin-top:8px;text-align:right;height:1em"></div>
   </div>
 </div>
 
