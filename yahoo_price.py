@@ -1,10 +1,9 @@
 """
 yahoo_price.py - 用 Yahoo Finance 抓全市場日線資料
-架構改為純 async（httpx.AsyncClient + asyncio.Semaphore）：
-  - httpx 的 timeout=Timeout(total=8) 確保整個請求（含慢速回應）在 8s 內完成
-  - asyncio.Semaphore 控制並發數（預設 20），不需要 Thread
-  - 每支股票：抓資料 → 同時跑所有策略（一次掃描得全部結果）
-  - TWSE openapi 預過濾有量股票（大幅減少 Yahoo 請求數）
+架構：純 async（httpx.AsyncClient + asyncio.Semaphore）
+  - Semaphore(100) 控制並發，range=6mo 下載量減半
+  - scan_one_stock 跑在 ThreadPoolExecutor(24) 釋放 event loop
+  - 掃全部 stocks.csv 股票（不做有量過濾，避免漏掉低量漲停股）
   - query1 / query2 輪流使用，避免單一端點被封
 """
 import asyncio
@@ -190,125 +189,6 @@ def fetch_yahoo(stock_id: str, market: str = "twse") -> pd.DataFrame:
         return pd.DataFrame()
 
 
-# ── TWSE / TPEX 今日有量股票過濾 ─────────────────────────────────────────────
-
-def _get_twse_active_today() -> set[str]:
-    """
-    從 TWSE openapi 取今日上市有成交量股票 set。
-    漲停股（收盤 >= 前收×1.0999）不受量限制，一律納入。
-    失敗時回傳空 set（代表不過濾）。
-    """
-    try:
-        r = httpx.get(
-            "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL",
-            headers={"User-Agent": _UA},
-            timeout=15,
-            follow_redirects=True,
-        )
-        r.raise_for_status()
-        data = r.json()
-        active = set()
-        limit_up_count = 0
-        for item in data:
-            sid     = str(item.get("Code", "")).strip()
-            vol_str = str(item.get("TradeVolume", "0")).replace(",", "")
-            try:
-                vol = int(float(vol_str))
-            except Exception:
-                vol = 0
-            if vol >= 30000:   # 30張 = 30,000股
-                active.add(sid)
-                continue
-            # 漲停判斷：用 ClosingPrice 和 Change 推算前收，比較是否達漲停
-            try:
-                close  = float(str(item.get("ClosingPrice", "0")).replace(",", "").replace("+", "") or "0")
-                change = float(str(item.get("Change",       "0")).replace(",", "").replace("+", "") or "0")
-                prev   = close - change
-                if prev > 0 and change > 0 and close >= prev * 1.0999:
-                    active.add(sid)
-                    limit_up_count += 1
-            except Exception:
-                pass
-        print(f"[SCAN] TWSE今日≥30張：{len(active)-limit_up_count} 支，漲停補入：{limit_up_count} 支，共 {len(active)} 支")
-        return active
-    except Exception as e:
-        print(f"[SCAN] 無法取得TWSE今日資料：{e}")
-        return set()
-
-
-def _get_tpex_active_today() -> set[str]:
-    """
-    從 TPEX openapi 取今日上櫃有成交量股票 set。
-    失敗時回傳空 set（代表不過濾）。
-    """
-    _TPEX_ENDPOINTS = [
-        "https://www.tpex.org.tw/openapi/v1/tpex_esb_daily_close_quotes",
-        "https://www.tpex.org.tw/openapi/v1/tpex_esb_latest_statistics",
-    ]
-    # 欄位名稱候選（不同 endpoint 欄位名不同）
-    _CODE_KEYS   = ["Code", "code", "SecuritiesCompanyCode", "StockCode", "symbol"]
-    _VOL_KEYS    = ["TradeVolume", "Volume", "TradingShares", "volume", "TradeValue"]
-    _CLOSE_KEYS  = ["Close", "ClosingPrice", "ClosePrice", "close"]
-    _CHANGE_KEYS = ["Change", "PriceChange", "change", "Net"]
-
-    for url in _TPEX_ENDPOINTS:
-        try:
-            r = httpx.get(
-                url,
-                headers={"User-Agent": _UA, "Accept": "application/json"},
-                timeout=15,
-                verify=False,
-                follow_redirects=True,
-            )
-            if r.status_code != 200:
-                continue
-            data = r.json()
-            if not data or not isinstance(data, list):
-                continue
-            sample     = data[0]
-            code_key   = next((k for k in _CODE_KEYS   if k in sample), None)
-            vol_key    = next((k for k in _VOL_KEYS    if k in sample), None)
-            close_key  = next((k for k in _CLOSE_KEYS  if k in sample), None)
-            change_key = next((k for k in _CHANGE_KEYS if k in sample), None)
-            if not code_key:
-                continue
-            active = set()
-            limit_up_count = 0
-            for item in data:
-                sid = str(item.get(code_key, "")).strip()
-                if not sid:
-                    continue
-                # 漲停判斷：用 Close 和 Change 推算前收，比較是否達漲停
-                if close_key and change_key:
-                    try:
-                        close  = float(str(item.get(close_key,  "0")).replace(",", "").replace("+", "") or "0")
-                        change = float(str(item.get(change_key, "0")).replace(",", "").replace("+", "") or "0")
-                        prev   = close - change
-                        if prev > 0 and change > 0 and close >= prev * 1.0999:
-                            active.add(sid)
-                            limit_up_count += 1
-                            continue
-                    except Exception:
-                        pass
-                if vol_key:
-                    vol_str = str(item.get(vol_key, "0")).replace(",", "")
-                    try:
-                        if int(float(vol_str)) < 30000:  # 30張 = 30,000股
-                            continue
-                    except Exception:
-                        pass
-                active.add(sid)
-            if active:
-                print(f"[SCAN] TPEX今日≥30張：{len(active)-limit_up_count} 支，漲停補入：{limit_up_count} 支，共 {len(active)} 支（via {url.split('/')[-1]}）")
-                return active
-        except Exception as e:
-            print(f"[SCAN] TPEX openapi 嘗試失敗 {url}: {e}")
-            continue
-
-    print(f"[SCAN] 無法取得TPEX今日資料，上櫃股票全包")
-    return set()
-
-
 # ── 全市場掃描 ────────────────────────────────────────────────────────────────
 
 STRATEGY_KEYS = ["S1", "S1_SHORT", "S1_2", "S2", "S5", "S17A", "S17B", "S10", "CHIP",
@@ -350,12 +230,12 @@ def get_scan_results() -> dict:
     return _scan_status["results"]
 
 
-async def run_market_scan(concurrency: int = 60, strategy_params: dict = None):
+async def run_market_scan(concurrency: int = 100, strategy_params: dict = None):
     """
     背景執行全市場策略掃描（上市 + 上櫃，全部 stocks.csv 股票）。
-    - 啟動時並行取 TWSE/TPEX 有量清單，過濾無量股（盤後效果最好）
-    - Semaphore(60) 控制並發；range=1y（足夠所有策略的 235 天需求）
-    - scan_one_stock 跑在 ThreadPoolExecutor(16)，不阻塞 event loop
+    - 掃全部股票，不做有量過濾（避免漏掉低量漲停或上櫃股票）
+    - Semaphore(100) 控制並發；range=6mo（足夠所有策略，速度快一倍）
+    - scan_one_stock 跑在 ThreadPoolExecutor(24)，不阻塞 event loop
     - strategy_params: {strategy_key: {param_key: value}} 各策略自訂參數
     """
     import concurrent.futures
@@ -377,47 +257,16 @@ async def run_market_scan(concurrency: int = 60, strategy_params: dict = None):
     try:
         stocks = get_stock_list()
         names  = dict(zip(stocks["stock_id"], stocks["stock_name"]))
-        all_tasks = list(stocks[["stock_id", "type"]].itertuples(index=False, name=None))
+        tasks  = list(stocks[["stock_id", "type"]].itertuples(index=False, name=None))
 
-        # ── 並行取 TWSE + TPEX 有量清單，過濾無量股 ──────────────────────
-        loop = asyncio.get_running_loop()
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=16)
-        twse_active, tpex_active = set(), set()
-        twse_ok, tpex_ok = False, False
-        try:
-            twse_active, tpex_active = await asyncio.wait_for(
-                asyncio.gather(
-                    loop.run_in_executor(executor, _get_twse_active_today),
-                    loop.run_in_executor(executor, _get_tpex_active_today),
-                ),
-                timeout=20.0,
-            )
-            twse_ok = bool(twse_active)
-            tpex_ok = bool(tpex_active)
-        except Exception as e:
-            print(f"[SCAN] 有量過濾取得失敗({e})，掃全部")
-
-        # 分市場過濾：某市場 API 失敗時，該市場股票全部納入
-        if twse_ok or tpex_ok:
-            tasks = []
-            for sid, mkt in all_tasks:
-                if mkt == "twse":
-                    if not twse_ok or sid in twse_active:
-                        tasks.append((sid, mkt))
-                else:  # tpex
-                    if not tpex_ok or sid in tpex_active:
-                        tasks.append((sid, mkt))
-            print(f"[SCAN] 有量過濾後：{len(tasks)} 支（原 {len(all_tasks)} 支，twse_ok={twse_ok} tpex_ok={tpex_ok}）")
-        else:
-            tasks = all_tasks
-            print(f"[SCAN] 有量清單皆為空，掃全部 {len(tasks)} 支")
-
-        print(f"[SCAN] 全市場掃描：共 {len(tasks)} 支")
+        print(f"[SCAN] 全市場掃描：共 {len(tasks)} 支（無量過濾）")
         _scan_status["total"] = len(tasks)
 
         all_results  = {k: [] for k in STRATEGY_KEYS}
         all_prices   = {}   # 收集所有價格資料，供 CHIP 使用
         sem = asyncio.Semaphore(concurrency)
+        loop = asyncio.get_running_loop()
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=24)
 
         timeout_cfg = httpx.Timeout(connect=3.0, read=8.0, write=3.0, pool=2.0)
 
@@ -426,12 +275,12 @@ async def run_market_scan(concurrency: int = 60, strategy_params: dict = None):
             verify=False,
             timeout=timeout_cfg,
             follow_redirects=True,
-            limits=httpx.Limits(max_connections=80, max_keepalive_connections=60),
+            limits=httpx.Limits(max_connections=120, max_keepalive_connections=80),
         ) as client:
 
             async def _fetch_scan(sid, mkt):
-                # range=1y 足夠 235 天需求，資料量砍半加快下載
-                df = await _fetch_yahoo_async(client, sem, sid, mkt, range_="1y")
+                # range=6mo 足夠所有策略（MA100 需 100 天，6mo≈130 交易日）
+                df = await _fetch_yahoo_async(client, sem, sid, mkt, range_="6mo")
                 _scan_status["progress"] += 1
                 if df.empty or len(df) < 5:
                     _scan_status["yahoo_fail"] += 1
