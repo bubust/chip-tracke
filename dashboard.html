@@ -1983,24 +1983,27 @@ async function warmupServer() {
 let _lwcCharts = [];
 let _chartStockId = null;
 let _chartRefreshTimer = null;
-let _chartList = [];   // 目前導覽清單的 stock_id 陣列
-let _chartIdx  = -1;   // 目前在清單中的位置
+let _chartList = [];         // 隨 render 更新的清單（setChartList 寫入）
+let _frozenChartList = [];   // 開啟 modal 時凍結的快照，導覽用這個
+let _frozenChartIdx  = -1;
 let _chartStockName = '';  // 目前開啟的股名
 let _chartNames = {};  // stock_id → name 快取
 
 function setChartList(ids) { _chartList = ids || []; }
 
 function openChartInList(stockId) {
-  _chartIdx = _chartList.indexOf(stockId);
+  // 凍結快照：開啟 modal 的瞬間鎖定清單，背景 render 不影響導覽
+  _frozenChartList = [..._chartList];
+  _frozenChartIdx  = _frozenChartList.indexOf(stockId);
   openChart(stockId);
 }
 
 function chartNav(dir) {
-  if (!_chartList.length) return;
-  const ni = _chartIdx + dir;
-  if (ni < 0 || ni >= _chartList.length) return;
-  _chartIdx = ni;
-  openChart(_chartList[ni]);
+  if (!_frozenChartList.length) return;
+  const ni = _frozenChartIdx + dir;
+  if (ni < 0 || ni >= _frozenChartList.length) return;
+  _frozenChartIdx = ni;
+  openChart(_frozenChartList[ni]);
 }
 
 async function addChartToWl() {
@@ -2026,8 +2029,8 @@ async function addChartToWl() {
 function _updateChartNavBtns() {
   const prev = document.getElementById('chart-prev-btn');
   const next = document.getElementById('chart-next-btn');
-  if (prev) prev.disabled = _chartIdx <= 0;
-  if (next) next.disabled = _chartIdx < 0 || _chartIdx >= _chartList.length - 1;
+  if (prev) prev.disabled = _frozenChartIdx <= 0;
+  if (next) next.disabled = _frozenChartIdx < 0 || _frozenChartIdx >= _frozenChartList.length - 1;
 }
 
 function _updateChartWlBtn() {
