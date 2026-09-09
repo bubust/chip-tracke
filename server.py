@@ -506,6 +506,7 @@ async def api_market_scan(top: int = 50):
             "whale_flow_lots": chip["whale_flow_lots"],
             "retail_flow_lots": 0,
             "signal_emoji":    "⚪",
+            "signal_title":    "—",
             "signal_level":    0,
         })
 

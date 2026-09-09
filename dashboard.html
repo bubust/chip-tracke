@@ -35,7 +35,7 @@
   nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
   nav button:hover:not(.active) { color: var(--text); }
 
-  main { padding: 20px 24px; max-width: 1280px; margin: 0 auto; }
+  main { padding: 16px 16px; max-width: 100%; }
   .tab { display: none; }
   .tab.active { display: block; }
 
@@ -315,7 +315,7 @@
     <div class="tbl-wrap">
       <table>
         <thead>
-          <tr><th>#</th><th>代號</th><th>股名</th><th>股價</th><th>訊號</th><th>法人合計 (張)</th><th>外資 (張)</th><th>投信 (張)</th><th>融資增減 (張)</th><th>操作</th></tr>
+          <tr><th>#</th><th>代號</th><th>股名</th><th>股價</th><th>訊號</th><th>法人合計 (張)</th><th>外資 (張)</th><th>投信 (張)</th><th>融資增減 (張)</th><th>連買連賣</th><th>操作</th></tr>
         </thead>
         <tbody id="mkt-tbody">
           <tr><td colspan="10" class="empty">點擊「掃描今日全市場」取得資料</td></tr>
@@ -607,6 +607,7 @@ function renderWatchlist() {
     document.getElementById('wl-table-wrap').style.display = 'none';
     return;
   }
+  _applyWlOrder();
   document.getElementById('wl-table-wrap').style.display = 'block';
   document.getElementById('wl-empty').style.display = 'none';
   setChartList(_wlData.map(s => s.stock_id));
@@ -696,13 +697,41 @@ function renderWatchlist() {
       ${stageCell}
       ${memoCell}
       <td class="muted">${s.date || '—'}</td>
-      <td onclick="event.stopPropagation()">
-        <button class="btn sm ghost" onclick="openDetail('${s.stock_id}')">詳細</button>
+      <td onclick="event.stopPropagation()" style="white-space:nowrap">
+        <button class="btn sm ghost" style="padding:2px 6px" onclick="moveWlItem('${s.stock_id}',-1)" title="上移">▲</button>
+        <button class="btn sm ghost" style="padding:2px 6px;margin-left:2px" onclick="moveWlItem('${s.stock_id}',1)" title="下移">▼</button>
+        <button class="btn sm ghost" style="margin-left:4px" onclick="openDetail('${s.stock_id}')">詳細</button>
         <button class="btn sm ghost" style="margin-left:4px;border-color:var(--yellow);color:var(--yellow)" onclick="openWarrant('${s.stock_id}','${(s.name||s.stock_id).replace(/'/g,'')}')">權證/股期</button>
         <button class="btn sm danger" style="margin-left:4px" onclick="delStock('${s.stock_id}')">刪除</button>
       </td>
     </tr>`;
   }).join('');
+}
+
+// 觀察清單上下移動
+const WL_ORDER_KEY = 'chip_wl_order_v1';
+function _loadWlOrder()  { try { return JSON.parse(localStorage.getItem(WL_ORDER_KEY) || '[]'); } catch(e) { return []; } }
+function _saveWlOrder(o) { try { localStorage.setItem(WL_ORDER_KEY, JSON.stringify(o)); } catch(e) {} }
+function _applyWlOrder() {
+  const order = _loadWlOrder();
+  if (!order.length) return;
+  _wlData.sort((a, b) => {
+    const ai = order.indexOf(a.stock_id);
+    const bi = order.indexOf(b.stock_id);
+    const a2 = ai === -1 ? 9999 : ai;
+    const b2 = bi === -1 ? 9999 : bi;
+    return a2 - b2;
+  });
+}
+function moveWlItem(sid, dir) {
+  const idx = _wlData.findIndex(x => x.stock_id === sid);
+  if (idx < 0) return;
+  const ni = idx + dir;
+  if (ni < 0 || ni >= _wlData.length) return;
+  [_wlData[idx], _wlData[ni]] = [_wlData[ni], _wlData[idx]];
+  _saveWlOrder(_wlData.map(x => x.stock_id));
+  setChartList(_wlData.map(s => s.stock_id));
+  renderWatchlist();
 }
 
 // ── 現價自動刷新 ──
@@ -1315,6 +1344,7 @@ function renderMarket() {
     tbody.innerHTML = `<tr><td colspan="10" class="empty">點擊「掃描今日全市場」取得資料</td></tr>`;
     return;
   }
+  setChartList(data.map(r => r.stock_id));
   tbody.innerHTML = data.map((r, i) => {
     const w  = r.whale_flow_lots  || 0;
     const re = r.retail_flow_lots || 0;
@@ -1322,18 +1352,28 @@ function renderMarket() {
     const tl = r.trust_lots       || 0;
     const lv = r.signal_level     || 0;
     const closeStr = r.close != null ? Number(r.close).toFixed(2) : '—';
-    return `<tr class="clickable" onclick="addFromMarket('${r.stock_id}')">
+    // 連買連賣（依法人合計正負判斷）
+    const cb = r.consecutive_buy  || 0;
+    const cs = r.consecutive_sell || 0;
+    const consecStr = cb > 0
+      ? `<span class="pos">連買 ${cb}天</span>`
+      : cs > 0
+        ? `<span class="neg">連賣 ${cs}天</span>`
+        : `<span class="muted">—</span>`;
+    const note = '全市場排行';
+    return `<tr>
       <td class="muted">${i + 1}</td>
-      <td><b>${r.stock_id}</b></td>
+      <td><b class="link" onclick="openChartInList('${r.stock_id}')" style="cursor:pointer;color:var(--accent)">${r.stock_id}</b></td>
       <td style="max-width:70px;overflow:hidden;text-overflow:ellipsis">${r.name || '—'}</td>
       <td>${closeStr}</td>
-      <td><span class="sig-badge sig-${lv}">${r.signal_emoji} ${r.signal_title}</span></td>
+      <td><span class="sig-badge sig-${lv}">${r.signal_emoji || '⚪'} ${r.signal_title || '—'}</span></td>
       <td class="${w  >= 0 ? 'pos' : 'neg'}">${fmtNum(w)}</td>
       <td class="${fl >= 0 ? 'pos' : 'neg'}">${fmtNum(fl)}</td>
       <td class="${tl >= 0 ? 'pos' : 'neg'}">${fmtNum(tl)}</td>
       <td class="${re >= 0 ? 'pos' : 'neg'}">${fmtNum(re)}</td>
+      <td>${consecStr}</td>
       <td onclick="event.stopPropagation()">
-        <button class="btn sm ghost" onclick="addFromMarket('${r.stock_id}')">+ 加入清單</button>
+        <button class="btn sm ghost" onclick="addFromMarket('${r.stock_id}','${note}')">+ 加入清單</button>
       </td>
     </tr>`;
   }).join('');
