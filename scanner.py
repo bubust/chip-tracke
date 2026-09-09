@@ -47,74 +47,92 @@ STRATEGIES = {
 
 STRATEGY_PARAMS_SCHEMA = {
     "S1": [
-        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "osc_lookback",   "label": "OSC局部谷底回溯天數", "type": "number", "default": 12,  "min": 5,   "max": 30,   "step": 1},
+        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "osc_lookback",     "label": "OSC局部谷底回溯天數",   "type": "number", "default": 12,  "min": 5,   "max": 30,   "step": 1},
+        {"key": "close_lookback",   "label": "近期低點回溯天數",       "type": "number", "default": 10,  "min": 3,   "max": 20,   "step": 1},
     ],
     "S1_SHORT": [
-        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "osc_lookback",   "label": "OSC局部頂部回溯天數", "type": "number", "default": 12,  "min": 5,   "max": 30,   "step": 1},
+        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "osc_lookback",     "label": "OSC局部頂部回溯天數",   "type": "number", "default": 12,  "min": 5,   "max": 30,   "step": 1},
+        {"key": "close_lookback",   "label": "近期高點回溯天數",       "type": "number", "default": 10,  "min": 3,   "max": 20,   "step": 1},
     ],
     "S1_2": [
-        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "new_high_window","label": "創新高回溯天數",  "type": "number", "default": 20,  "min": 5,   "max": 60,   "step": 1},
+        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "new_high_window",  "label": "創新高回溯天數",        "type": "number", "default": 20,  "min": 5,   "max": 60,   "step": 1},
+        {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 0,   "min": 0,   "max": 5000, "step": 50},
     ],
     "S2": [
-        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "min_vol_lots",   "label": "最低量（張）",    "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
-        {"key": "days_high_min",  "label": "距高點最少天數",  "type": "number", "default": 5,   "min": 1,   "max": 30,   "step": 1},
-        {"key": "days_high_max",  "label": "距高點最多天數",  "type": "number", "default": 40,  "min": 10,  "max": 100,  "step": 5},
+        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
+        {"key": "days_high_min",    "label": "距高點最少天數",         "type": "number", "default": 5,   "min": 1,   "max": 30,   "step": 1},
+        {"key": "days_high_max",    "label": "距高點最多天數",         "type": "number", "default": 40,  "min": 10,  "max": 100,  "step": 5},
+        {"key": "db_lookback",      "label": "W底回溯天數",           "type": "number", "default": 40,  "min": 20,  "max": 80,   "step": 5},
     ],
     "S5": [
-        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 0,   "min": 0,   "max": 5000, "step": 50},
     ],
     "S17A": [
-        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "drop_pct",       "label": "距120日高點跌幅%（≥）","type": "number", "default": 30, "min": 10,  "max": 70,   "step": 5},
-        {"key": "wave_vol_ratio", "label": "第二波量能比第一波%（≥）","type": "number", "default": 60, "min": 20,  "max": 100,  "step": 5},
+        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "drop_pct",         "label": "距120日高點跌幅%（≥）", "type": "number", "default": 30,  "min": 10,  "max": 70,   "step": 5},
+        {"key": "wave_vol_ratio",   "label": "第二波量能比第一波%（≥）","type": "number", "default": 60,  "min": 20,  "max": 100,  "step": 5},
+        {"key": "db_lookback",      "label": "W底回溯天數",           "type": "number", "default": 60,  "min": 20,  "max": 120,  "step": 5},
+        {"key": "db_tol",           "label": "W底兩底價差容差%",      "type": "number", "default": 8,   "min": 2,   "max": 20,   "step": 1},
+        {"key": "broke_lookback",   "label": "跌破低點確認天數",       "type": "number", "default": 10,  "min": 3,   "max": 20,   "step": 1},
     ],
     "S17B": [
-        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "drop_pct",       "label": "距120日高點跌幅%（≥）","type": "number", "default": 30, "min": 10,  "max": 70,   "step": 5},
-        {"key": "neckline_pct",   "label": "頸線下方距離%（≤）","type": "number", "default": 10,  "min": 1,   "max": 30,   "step": 1},
-        {"key": "w2_recency",     "label": "第二谷底在近幾日內","type": "number", "default": 30,  "min": 5,   "max": 60,   "step": 5},
+        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "drop_pct",         "label": "距120日高點跌幅%（≥）", "type": "number", "default": 30,  "min": 10,  "max": 70,   "step": 5},
+        {"key": "neckline_pct",     "label": "頸線下方距離%（≤）",    "type": "number", "default": 10,  "min": 1,   "max": 30,   "step": 1},
+        {"key": "w2_recency",       "label": "第二谷底在近幾日內",     "type": "number", "default": 30,  "min": 5,   "max": 60,   "step": 5},
+        {"key": "db_lookback",      "label": "W底回溯天數",           "type": "number", "default": 60,  "min": 20,  "max": 120,  "step": 5},
+        {"key": "db_tol",           "label": "W底兩底價差容差%",      "type": "number", "default": 8,   "min": 2,   "max": 20,   "step": 1},
     ],
     "S10": [],
     "S_PB": [
-        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "min_vol_lots",   "label": "最低量（張）",    "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
-        {"key": "touch_window",   "label": "碰MA10回溯天數",  "type": "number", "default": 5,   "min": 1,   "max": 15,   "step": 1},
-        {"key": "vol_shrink_pct", "label": "量能萎縮不超過%", "type": "number", "default": 60,  "min": 20,  "max": 100,  "step": 5},
+        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
+        {"key": "touch_window",     "label": "碰MA10回溯天數",        "type": "number", "default": 5,   "min": 1,   "max": 15,   "step": 1},
+        {"key": "ma_touch_pct",     "label": "碰MA10容差%",          "type": "number", "default": 2,   "min": 0,   "max": 5,    "step": 0.5},
+        {"key": "vol_shrink_pct",   "label": "量能萎縮不超過%",       "type": "number", "default": 60,  "min": 20,  "max": 100,  "step": 5},
+        {"key": "ma_slope_window",  "label": "MA10向上判斷天數",      "type": "number", "default": 5,   "min": 3,   "max": 15,   "step": 1},
     ],
     "S_FBD": [
-        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "min_vol_lots",   "label": "最低量（張）",    "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
-        {"key": "break_window",   "label": "跌破MA10回溯天數","type": "number", "default": 4,   "min": 1,   "max": 10,   "step": 1},
-        {"key": "break_vol_ratio","label": "跌破當天量≤均量×幾倍","type": "number", "default": 2.5, "min": 1,   "max": 5,    "step": 0.5},
+        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
+        {"key": "break_window",     "label": "跌破MA10回溯天數",      "type": "number", "default": 4,   "min": 1,   "max": 10,   "step": 1},
+        {"key": "break_vol_ratio",  "label": "跌破當天量≤均量×幾倍",  "type": "number", "default": 2.5, "min": 1,   "max": 5,    "step": 0.5},
+        {"key": "vol_ref_days",     "label": "均量參考天數",          "type": "number", "default": 20,  "min": 5,   "max": 60,   "step": 5},
     ],
     "S_RES": [
-        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "min_vol_lots",   "label": "最低量（張）",    "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
-        {"key": "cross_window",   "label": "黃金交叉在近幾天內","type": "number", "default": 15,  "min": 5,   "max": 30,   "step": 1},
+        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
+        {"key": "cross_window",     "label": "黃金交叉在近幾天內",    "type": "number", "default": 15,  "min": 5,   "max": 30,   "step": 1},
+        {"key": "ma10_slope_window","label": "MA10向上判斷天數",      "type": "number", "default": 5,   "min": 3,   "max": 15,   "step": 1},
+        {"key": "ma60_slope_window","label": "MA60向上判斷天數",      "type": "number", "default": 10,  "min": 5,   "max": 20,   "step": 1},
     ],
     "S_KD": [
-        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "min_vol_lots",   "label": "最低量（張）",    "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
-        {"key": "oversold_level", "label": "超賣門檻（K值≤）","type": "number", "default": 20,  "min": 5,   "max": 40,   "step": 5},
-        {"key": "lookback",       "label": "超賣回溯天數",    "type": "number", "default": 5,   "min": 1,   "max": 15,   "step": 1},
+        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
+        {"key": "oversold_level",   "label": "超賣門檻（K值≤）",     "type": "number", "default": 20,  "min": 5,   "max": 40,   "step": 5},
+        {"key": "lookback",         "label": "超賣回溯天數",          "type": "number", "default": 5,   "min": 1,   "max": 15,   "step": 1},
+        {"key": "kd_period",        "label": "KD週期（天）",          "type": "number", "default": 9,   "min": 5,   "max": 20,   "step": 1},
     ],
     "S_VOLX": [
-        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "vol_multiplier", "label": "量能倍數（≥）",  "type": "number", "default": 3,   "min": 1.5, "max": 10,   "step": 0.5},
-        {"key": "ma_period",      "label": "均線週期（天）",  "type": "number", "default": 100, "min": 5,   "max": 250,  "step": 5},
+        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "vol_multiplier",   "label": "量能倍數（≥）",         "type": "number", "default": 3,   "min": 1.5, "max": 10,   "step": 0.5},
+        {"key": "ma_period",        "label": "均線週期（天）",         "type": "number", "default": 100, "min": 5,   "max": 250,  "step": 5},
+        {"key": "vol_ref_days",     "label": "比較昨日量（固定1天）",  "type": "number", "default": 1,   "min": 1,   "max": 5,    "step": 1},
     ],
     "S_VOLX_SHORT": [
-        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "vol_multiplier", "label": "量能倍數（≥）",  "type": "number", "default": 3,   "min": 1.5, "max": 10,   "step": 0.5},
-        {"key": "ma_period",      "label": "均線週期（天）",  "type": "number", "default": 10,  "min": 5,   "max": 250,  "step": 5},
+        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "vol_multiplier",   "label": "量能倍數（≥）",         "type": "number", "default": 3,   "min": 1.5, "max": 10,   "step": 0.5},
+        {"key": "ma_period",        "label": "均線週期（天）",         "type": "number", "default": 10,  "min": 5,   "max": 250,  "step": 5},
     ],
     "CHIP": [
-        {"key": "min_price",      "label": "最低股價",       "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "sector_ratio",   "label": "同族群上漲比%（≥）","type": "number", "default": 50,  "min": 0,   "max": 100,  "step": 5},
+        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "sector_ratio",     "label": "同族群上漲比%（≥）",    "type": "number", "default": 50,  "min": 0,   "max": 100,  "step": 5},
+        {"key": "min_consec_up",    "label": "最少連續增持週數",       "type": "number", "default": 1,   "min": 1,   "max": 4,    "step": 1},
     ],
 }
 
@@ -296,8 +314,9 @@ def screen_s1(prices: dict, names: dict = None, params: dict = None) -> list:
     7. 收盤 ≥ 近10天最低收盤
     """
     p = params or {}
-    min_price    = p.get("min_price", 10)
-    osc_lookback = int(p.get("osc_lookback", 12))
+    min_price     = p.get("min_price", 10)
+    osc_lookback  = int(p.get("osc_lookback", 12))
+    close_lookback = int(p.get("close_lookback", 10))
     results = []
     for sid, df in prices.items():
         if len(df) < 235:
@@ -327,7 +346,7 @@ def screen_s1(prices: dict, names: dict = None, params: dict = None) -> list:
             continue
         if dif2.iloc[-1] <= 0 or dea2.iloc[-1] <= 0 or osc2.iloc[-1] <= 0:
             continue
-        if float(today['close']) < float(closes.iloc[-11:-1].min()):
+        if float(today['close']) < float(closes.iloc[-(close_lookback+1):-1].min()):
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(float(today['close']), 2),
@@ -340,8 +359,9 @@ def screen_s1(prices: dict, names: dict = None, params: dict = None) -> list:
 def screen_s1_short(prices: dict, names: dict = None, params: dict = None) -> list:
     """S1空 雙MACD選股（空）"""
     p = params or {}
-    min_price    = p.get("min_price", 10)
-    osc_lookback = int(p.get("osc_lookback", 12))
+    min_price      = p.get("min_price", 10)
+    osc_lookback   = int(p.get("osc_lookback", 12))
+    close_lookback = int(p.get("close_lookback", 10))
     results = []
     for sid, df in prices.items():
         if len(df) < 235:
@@ -370,7 +390,7 @@ def screen_s1_short(prices: dict, names: dict = None, params: dict = None) -> li
             continue
         if dif2.iloc[-1] >= 0 or dea2.iloc[-1] >= 0 or osc2.iloc[-1] >= 0:
             continue
-        if float(today['close']) > float(closes.iloc[-11:-1].max()):
+        if float(today['close']) > float(closes.iloc[-(close_lookback+1):-1].max()):
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(float(today['close']), 2),
@@ -385,6 +405,7 @@ def screen_s1_2(prices: dict, names: dict = None, params: dict = None) -> list:
     p = params or {}
     min_price       = p.get("min_price", 10)
     new_high_window = int(p.get("new_high_window", 20))
+    min_vol_lots    = p.get("min_vol_lots", 0)
     results = []
     for sid, df in prices.items():
         if len(df) < 70:
@@ -393,6 +414,9 @@ def screen_s1_2(prices: dict, names: dict = None, params: dict = None) -> list:
         dif1, dea1, osc1 = calc_macd(closes, 12, 26, 9)
         today = df.iloc[-1]
         if float(today['close']) <= min_price:
+            continue
+        vol = float(today.get('volume', 0) or 0)
+        if min_vol_lots > 0 and vol < min_vol_lots * 1000:
             continue
         if dif1.iloc[-1] <= 0 or dea1.iloc[-1] <= 0:
             continue
@@ -421,6 +445,7 @@ def screen_s2(prices: dict, names: dict = None, params: dict = None) -> list:
     min_vol_lots = p.get("min_vol_lots", 300)
     days_high_min = int(p.get("days_high_min", 5))
     days_high_max = int(p.get("days_high_max", 40))
+    db_lookback  = int(p.get("db_lookback", 40))
     results = []
     for sid, df in prices.items():
         if len(df) < 205:
@@ -449,7 +474,7 @@ def screen_s2(prices: dict, names: dict = None, params: dict = None) -> list:
         days_from_high = len(closes) - 1 - high_idx_in_sub
         if not (days_high_min <= days_from_high <= days_high_max):
             continue
-        db = find_double_bottom(df, lookback=40)
+        db = find_double_bottom(df, lookback=db_lookback)
         if db is None:
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
@@ -463,7 +488,8 @@ def screen_s2(prices: dict, names: dict = None, params: dict = None) -> list:
 def screen_s5(prices: dict, names: dict = None, params: dict = None) -> list:
     """S5 站上均線做多（今日才剛全部突破5/10/20/60/200MA）"""
     p = params or {}
-    min_price = p.get("min_price", 10)
+    min_price    = p.get("min_price", 10)
+    min_vol_lots = p.get("min_vol_lots", 0)
     results = []
     for sid, df in prices.items():
         if len(df) < 205:
@@ -471,6 +497,9 @@ def screen_s5(prices: dict, names: dict = None, params: dict = None) -> list:
         closes = df['close']
         today = df.iloc[-1]
         if float(today['close']) <= min_price:
+            continue
+        vol = float(today.get('volume', 0) or 0)
+        if min_vol_lots > 0 and vol < min_vol_lots * 1000:
             continue
         ma5   = calc_ma(closes, 5)
         ma10  = calc_ma(closes, 10)
@@ -503,6 +532,9 @@ def screen_s17a(prices: dict, names: dict = None, params: dict = None) -> list:
     min_price      = p.get("min_price", 10)
     drop_pct       = p.get("drop_pct", 30)
     wave_vol_ratio = p.get("wave_vol_ratio", 60)
+    db_lookback    = int(p.get("db_lookback", 60))
+    db_tol         = p.get("db_tol", 8) / 100
+    broke_lookback = int(p.get("broke_lookback", 10))
     results = []
     for sid, df in prices.items():
         if len(df) < 125:
@@ -514,7 +546,7 @@ def screen_s17a(prices: dict, names: dict = None, params: dict = None) -> list:
         high_120 = float(closes.iloc[-121:].max())
         if high_120 <= 0 or float(today['close']) >= high_120 * (1 - drop_pct / 100):
             continue
-        db = find_double_bottom(df, lookback=60, tol=0.08)
+        db = find_double_bottom(df, lookback=db_lookback, tol=db_tol)
         if db is None:
             continue
         w1_i, w2_i = db['wave1_idx'], db['wave2_idx']
@@ -524,8 +556,8 @@ def screen_s17a(prices: dict, names: dict = None, params: dict = None) -> list:
             w2_vol = float(df_sub.iloc[max(0, w2_i - 4):w2_i + 5]['volume'].mean())
             if w1_vol > 0 and w2_vol < w1_vol * (wave_vol_ratio / 100):
                 continue
-        low_10 = float(closes.iloc[-11:-1].min())
-        broke = (float(closes.iloc[-1]) <= low_10 or float(closes.iloc[-2]) <= low_10)
+        low_n = float(closes.iloc[-(broke_lookback+1):-1].min())
+        broke = (float(closes.iloc[-1]) <= low_n or float(closes.iloc[-2]) <= low_n)
         if not broke:
             continue
         if 'open' in df.columns and not pd.isna(df.iloc[-2].get('open')):
@@ -546,6 +578,8 @@ def screen_s17b(prices: dict, names: dict = None, params: dict = None) -> list:
     drop_pct     = p.get("drop_pct", 30)
     neckline_pct = p.get("neckline_pct", 10)
     w2_recency   = int(p.get("w2_recency", 30))
+    db_lookback  = int(p.get("db_lookback", 60))
+    db_tol       = p.get("db_tol", 8) / 100
     results = []
     for sid, df in prices.items():
         if len(df) < 125:
@@ -557,7 +591,7 @@ def screen_s17b(prices: dict, names: dict = None, params: dict = None) -> list:
         high_120 = float(closes.iloc[-121:].max())
         if high_120 <= 0 or float(today['close']) >= high_120 * (1 - drop_pct / 100):
             continue
-        db = find_double_bottom(df, lookback=60, tol=0.08)
+        db = find_double_bottom(df, lookback=db_lookback, tol=db_tol)
         if db is None:
             continue
         df_sub = db['df_sub']
@@ -632,10 +666,12 @@ def screen_s10(prices: dict, names: dict = None, params: dict = None) -> list:
 def screen_spb(prices: dict, names: dict = None, params: dict = None) -> list:
     """S_PB 均線拉回買點：多頭排列中，股價回測MA10後站回，出現多方K線"""
     p = params or {}
-    min_price    = p.get("min_price", 10)
-    min_vol_lots = p.get("min_vol_lots", 300)
-    touch_window = int(p.get("touch_window", 5))
+    min_price      = p.get("min_price", 10)
+    min_vol_lots   = p.get("min_vol_lots", 300)
+    touch_window   = int(p.get("touch_window", 5))
+    ma_touch_pct   = p.get("ma_touch_pct", 2) / 100
     vol_shrink_pct = p.get("vol_shrink_pct", 60)
+    ma_slope_window = int(p.get("ma_slope_window", 5))
     results = []
     for sid, df in prices.items():
         if len(df) < 65:
@@ -658,12 +694,12 @@ def screen_spb(prices: dict, names: dict = None, params: dict = None) -> list:
             continue
         if not (m10 > m60):
             continue
-        # MA10 斜率向上（近5天）
-        if pd.isna(ma10.iloc[-5]) or not (m10 > float(ma10.iloc[-5])):
+        # MA10 斜率向上（近 ma_slope_window 天）
+        if pd.isna(ma10.iloc[-ma_slope_window]) or not (m10 > float(ma10.iloc[-ma_slope_window])):
             continue
-        # 近 touch_window 天低點曾碰 MA10 (±2%)
+        # 近 touch_window 天低點曾碰 MA10 (容差 ma_touch_pct)
         touched = any(
-            not pd.isna(ma10.iloc[-(i+1)]) and float(lows.iloc[-(i+1)]) <= float(ma10.iloc[-(i+1)]) * 1.02
+            not pd.isna(ma10.iloc[-(i+1)]) and float(lows.iloc[-(i+1)]) <= float(ma10.iloc[-(i+1)]) * (1 + ma_touch_pct)
             for i in range(touch_window) if i + 1 <= len(lows)
         )
         if not touched:
@@ -692,9 +728,10 @@ def screen_sfbd(prices: dict, names: dict = None, params: dict = None) -> list:
     """S_FBD 假跌破買進：多頭中近期跌破MA10後當日/隔日收復，洗盤完成"""
     p = params or {}
     min_price      = p.get("min_price", 10)
-    min_vol_lots   = p.get("min_vol_lots", 300)
-    break_window   = int(p.get("break_window", 4))
+    min_vol_lots    = p.get("min_vol_lots", 300)
+    break_window    = int(p.get("break_window", 4))
     break_vol_ratio = p.get("break_vol_ratio", 2.5)
+    vol_ref_days    = int(p.get("vol_ref_days", 20))
     results = []
     for sid, df in prices.items():
         if len(df) < 65:
@@ -730,8 +767,8 @@ def screen_sfbd(prices: dict, names: dict = None, params: dict = None) -> list:
                 break
         if broke_idx is None:
             continue
-        # 跌破當天量 ≤ 20日均量 × break_vol_ratio（非出貨）
-        vol20 = df.iloc[-20:]['volume'].astype(float).mean() if len(df) >= 20 else 0
+        # 跌破當天量 ≤ 均量 × break_vol_ratio（非出貨）
+        vol20 = df.iloc[-vol_ref_days:]['volume'].astype(float).mean() if len(df) >= vol_ref_days else 0
         broke_vol = float(df.iloc[-(broke_idx+1)].get('volume', 0) or 0)
         if vol20 > 0 and broke_vol > vol20 * break_vol_ratio:
             continue
@@ -748,9 +785,11 @@ def screen_sfbd(prices: dict, names: dict = None, params: dict = None) -> list:
 def screen_sres(prices: dict, names: dict = None, params: dict = None) -> list:
     """S_RES 共振起點：MA10/MA60 近期由空翻多，三線同時轉揚"""
     p = params or {}
-    min_price    = p.get("min_price", 10)
-    min_vol_lots = p.get("min_vol_lots", 300)
-    cross_window = int(p.get("cross_window", 15))
+    min_price         = p.get("min_price", 10)
+    min_vol_lots      = p.get("min_vol_lots", 300)
+    cross_window      = int(p.get("cross_window", 15))
+    ma10_slope_window = int(p.get("ma10_slope_window", 5))
+    ma60_slope_window = int(p.get("ma60_slope_window", 10))
     results = []
     for sid, df in prices.items():
         if len(df) < 65:
@@ -772,11 +811,11 @@ def screen_sres(prices: dict, names: dict = None, params: dict = None) -> list:
         # 收盤在兩條均線上方
         if not (tc > m10 and tc > m60):
             continue
-        # MA10 斜率向上（近5天）
-        if pd.isna(ma10.iloc[-6]) or not (m10 > float(ma10.iloc[-6])):
+        # MA10 斜率向上
+        if pd.isna(ma10.iloc[-(ma10_slope_window+1)]) or not (m10 > float(ma10.iloc[-(ma10_slope_window+1)])):
             continue
-        # MA60 斜率向上（近10天）
-        if pd.isna(ma60.iloc[-11]) or not (m60 > float(ma60.iloc[-11])):
+        # MA60 斜率向上
+        if pd.isna(ma60.iloc[-(ma60_slope_window+1)]) or not (m60 > float(ma60.iloc[-(ma60_slope_window+1)])):
             continue
         # 現在 MA10 > MA60（剛翻多）
         if not (m10 > m60):
@@ -832,6 +871,7 @@ def screen_skd(prices: dict, names: dict = None, params: dict = None) -> list:
     min_vol_lots   = p.get("min_vol_lots", 300)
     oversold_level = p.get("oversold_level", 20)
     lookback       = int(p.get("lookback", 5))
+    kd_period      = int(p.get("kd_period", 9))
     results = []
     for sid, df in prices.items():
         if len(df) < 30:
@@ -845,7 +885,7 @@ def screen_skd(prices: dict, names: dict = None, params: dict = None) -> list:
         vol = float(today.get('volume', 0) or 0)
         if vol < min_vol_lots * 1000:
             continue
-        k_ser, d_ser = calc_kd(df)
+        k_ser, d_ser = calc_kd(df, n=kd_period)
         k_now = k_ser.iloc[-1]
         d_now = d_ser.iloc[-1]
         # 今日 K 必須已回到 oversold_level 以上
@@ -944,8 +984,9 @@ def screen_chip(prices: dict, tdcc_data: dict, stock_info: dict = None, params: 
     - 同族群上漲比 >= sector_ratio%（有傳入 stock_info 且有 industry 時才套用）
     """
     p = params or {}
-    min_price    = p.get("min_price", 10)
+    min_price        = p.get("min_price", 10)
     sector_ratio_pct = p.get("sector_ratio", 50)
+    min_consec_up    = int(p.get("min_consec_up", 1))
 
     up_map = {}
     for sid, df in prices.items():
@@ -969,8 +1010,8 @@ def screen_chip(prices: dict, tdcc_data: dict, stock_info: dict = None, params: 
         tdcc = tdcc_data.get(sid)
         if not tdcc or tdcc.get('change', 0) <= 0:
             continue
-        # 需連續兩週增加（有第三週資料才嚴格要求，否則退回單週）
-        if tdcc.get('consec_up', 1) < 1:
+        # 連續增持週數門檻
+        if tdcc.get('consec_up', 1) < min_consec_up:
             continue
         closes = df['close']
         today  = df.iloc[-1]
