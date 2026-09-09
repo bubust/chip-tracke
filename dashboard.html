@@ -609,6 +609,7 @@ function renderWatchlist() {
   }
   document.getElementById('wl-table-wrap').style.display = 'block';
   document.getElementById('wl-empty').style.display = 'none';
+  setChartList(_wlData.map(s => s.stock_id));
 
   tbody.innerHTML = _wlData.map(s => {
     const priceCell = (() => {
@@ -620,7 +621,7 @@ function renderWatchlist() {
     })();
     if (!s.has_data) {
       return `<tr>
-        <td><b class="link" onclick="openChart('${s.stock_id}')" style="cursor:pointer;color:var(--accent)">${s.stock_id}</b></td>
+        <td><b class="link" onclick="openChartInList('${s.stock_id}')" style="cursor:pointer;color:var(--accent)">${s.stock_id}</b></td>
         <td>${nameCell(s)}</td>
         ${noteCell(s)}
         ${priceCell}
@@ -682,7 +683,7 @@ function renderWatchlist() {
         onclick="event.stopPropagation()" />
     </td>`;
     return `<tr class="clickable" onclick="openDetail('${s.stock_id}')">
-      <td onclick="event.stopPropagation();openChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
+      <td onclick="event.stopPropagation();openChartInList('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
       <td>${nameCell(s)}</td>
       ${noteCell(s)}
       ${priceCell}
@@ -1812,6 +1813,7 @@ function renderScreenTable(strategy, data) {
     tbody.innerHTML = `<tr><td colspan="8" class="empty">本日無符合條件的股票</td></tr>`;
     return;
   }
+  setChartList(sorted.map(r => r.stock_id));
   tbody.innerHTML = sorted.map((row, i) => {
     const pct = row.change_pct != null ? row.change_pct : null;
     const pctTd = pct != null
@@ -1829,8 +1831,8 @@ function renderScreenTable(strategy, data) {
     }
     return `<tr>
       <td class="muted">${i + 1}</td>
-      <td><b class="link" onclick="openChart('${row.stock_id}')" style="cursor:pointer;color:var(--accent)">${row.stock_id}</b></td>
-      <td style="max-width:80px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openChart('${row.stock_id}')">${row.name || '—'}</td>
+      <td><b class="link" onclick="openChartInList('${row.stock_id}')" style="cursor:pointer;color:var(--accent)">${row.stock_id}</b></td>
+      <td style="max-width:80px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openChartInList('${row.stock_id}')">${row.name || '—'}</td>
       <td>${(() => {
         if (row.close == null) return '—';
         const d = row.last_date || '';
@@ -1898,6 +1900,45 @@ async function warmupServer() {
 let _lwcCharts = [];
 let _chartStockId = null;
 let _chartRefreshTimer = null;
+let _chartList = [];   // 目前導覽清單的 stock_id 陣列
+let _chartIdx  = -1;   // 目前在清單中的位置
+
+function setChartList(ids) { _chartList = ids || []; }
+
+function openChartInList(stockId) {
+  _chartIdx = _chartList.indexOf(stockId);
+  openChart(stockId);
+}
+
+function chartNav(dir) {
+  if (!_chartList.length) return;
+  const ni = _chartIdx + dir;
+  if (ni < 0 || ni >= _chartList.length) return;
+  _chartIdx = ni;
+  openChart(_chartList[ni]);
+}
+
+function addChartToWl() {
+  if (!_chartStockId) return;
+  addToWatchlist(_chartStockId);
+  _updateChartWlBtn();
+}
+
+function _updateChartNavBtns() {
+  const prev = document.getElementById('chart-prev-btn');
+  const next = document.getElementById('chart-next-btn');
+  if (prev) prev.disabled = _chartIdx <= 0;
+  if (next) next.disabled = _chartIdx < 0 || _chartIdx >= _chartList.length - 1;
+}
+
+function _updateChartWlBtn() {
+  const btn = document.getElementById('chart-wl-btn');
+  if (!btn) return;
+  const inWl = (_wlData || []).some(x => x.stock_id === _chartStockId);
+  btn.textContent = inWl ? '✓ 已在清單' : '+ 觀察清單';
+  btn.disabled = inWl;
+  btn.style.color = inWl ? '#6b7280' : '#22c55e';
+}
 
 function _isTWTradingHours() {
   try {
@@ -1989,6 +2030,8 @@ async function openChart(stockId, savedRange = null) {
   _lwcCharts.forEach(c => { try { c.remove(); } catch(e){} });
   _lwcCharts = [];
   _chartStockId = stockId;
+  _updateChartNavBtns();
+  _updateChartWlBtn();
 
   if (!savedRange) {
     // 首次開啟：顯示 loading
@@ -2466,9 +2509,12 @@ async function saveAllStratParams() {
 <!-- K 線圖 Modal -->
 <div id="chart-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeChart()">
   <div style="background:#131722;border-radius:var(--radius);width:min(98vw,1300px);height:85vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 60px #000c">
-    <div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid #2a2e39;flex-shrink:0">
-      <strong id="chart-modal-title" style="font-size:.95rem;flex:1;color:#d1d4dc"></strong>
-      <span style="font-size:.75rem;color:#6b7280;margin-right:12px">K線 ＋ 成交量 ＋ 小MACD(12,26,9) ＋ 大MACD(108,216,18)（資料來源：Yahoo Finance）</span>
+    <div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid #2a2e39;flex-shrink:0;gap:8px">
+      <button id="chart-prev-btn" class="btn sm ghost" onclick="chartNav(-1)" title="上一檔" style="padding:4px 10px">◀ 上一檔</button>
+      <button id="chart-next-btn" class="btn sm ghost" onclick="chartNav(+1)" title="下一檔" style="padding:4px 10px">下一檔 ▶</button>
+      <strong id="chart-modal-title" style="font-size:.95rem;flex:1;color:#d1d4dc;text-align:center"></strong>
+      <span style="font-size:.72rem;color:#6b7280;white-space:nowrap">K線＋量＋小MACD＋大MACD（Yahoo Finance）</span>
+      <button id="chart-wl-btn" class="btn sm ghost" onclick="addChartToWl()" style="color:#22c55e;white-space:nowrap">+ 觀察清單</button>
       <button class="btn sm ghost" onclick="closeChart()">✕ 關閉</button>
     </div>
     <div id="chart-tv-container" style="flex:1;overflow:hidden"></div>
