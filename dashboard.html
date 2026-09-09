@@ -571,6 +571,15 @@ function updateLocalWlInfo() {
 
 // ── 載入 watchlist summary ──
 async function loadWatchlist() {
+  // 冷啟動保護：先從 localStorage 預顯示，讓使用者不會看到空清單
+  if (_wlData.length === 0) {
+    const ls = lsLoadWatchlist();
+    if (ls.length > 0) {
+      _wlData = ls.map(x => ({ stock_id: x.stock_id, name: x.name || '', memo: x.memo || '', note: x.note || '', has_data: false }));
+      renderWatchlist();
+    }
+  }
+
   document.getElementById('wl-loading').style.display = 'flex';
   document.getElementById('wl-empty').style.display = 'none';
   document.getElementById('wl-table-wrap').style.display = 'none';
@@ -593,7 +602,9 @@ async function loadWatchlist() {
     }
     renderWatchlist();
   } catch (e) {
-    toast(e.message, true);
+    // API 失敗（Render 冷啟動）→ 5 秒後自動重試
+    toast('伺服器連線中，5 秒後重試...', true);
+    setTimeout(() => loadWatchlist(), 5000);
   } finally {
     document.getElementById('wl-loading').style.display = 'none';
   }
