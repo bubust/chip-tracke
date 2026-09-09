@@ -358,7 +358,7 @@ async def api_watchlist_summary():
 @app.post("/api/refresh")
 async def api_refresh(body: RefreshBody):
     sb_ids = sb.wl_get_ids()
-    if sb_ids is not None:
+    if sb_ids:  # 非空才採用 Supabase，空或 None 都 fallback 到 SQLite
         stock_ids = sb_ids
     else:
         conn = get_conn()
@@ -581,7 +581,7 @@ async def api_chip_refresh_watchlist(background_tasks: BackgroundTasks):
     """用 FinMind 更新觀察清單股票的千張大戶資料（Plan C 手動觸發）"""
     from tdcc_chip import refresh_for_stocks
     sb_ids = sb.wl_get_ids()
-    if sb_ids is not None:
+    if sb_ids:  # 非空才採用 Supabase，空或 None 都 fallback 到 SQLite
         stock_ids = sb_ids
     else:
         conn = get_conn()

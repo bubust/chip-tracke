@@ -582,14 +582,14 @@ async function loadWatchlist() {
       if (backup.length > 0) {
         toast(`🔄 伺服器清單已重置，自動還原 ${backup.length} 支股票...`);
         for (const item of backup) {
-          try { await api('POST', '/api/watchlist', { stock_id: item.stock_id, name: item.name || '' }); } catch(e) {}
+          try { await api('POST', '/api/watchlist', { stock_id: item.stock_id, name: item.name || '', note: item.note || '' }); } catch(e) {}
         }
         _wlData = await api('GET', '/api/watchlist/summary');
       }
     }
     // 有資料時更新本機備份
     if (_wlData.length > 0) {
-      lsSaveWatchlist(_wlData.map(x => ({ stock_id: x.stock_id, name: x.name || '', memo: x.memo || '' })));
+      lsSaveWatchlist(_wlData.map(x => ({ stock_id: x.stock_id, name: x.name || '', memo: x.memo || '', note: x.note || '' })));
     }
     renderWatchlist();
   } catch (e) {
@@ -877,7 +877,7 @@ async function delStock(sid) {
   if (_detailSid === sid) closeDetail();
   loadPill();
   // 同步更新 localStorage
-  lsSaveWatchlist(_wlData.map(x => ({ stock_id: x.stock_id, name: x.name || '', memo: x.memo || '' })));
+  lsSaveWatchlist(_wlData.map(x => ({ stock_id: x.stock_id, name: x.name || '', memo: x.memo || '', note: x.note || '' })));
   updateLocalWlInfo();
   try {
     await api('DELETE', `/api/watchlist/${sid}`);
@@ -886,7 +886,7 @@ async function delStock(sid) {
     // 失敗時回滾
     _wlData = prev;
     renderWatchlist();
-    lsSaveWatchlist(_wlData.map(x => ({ stock_id: x.stock_id, name: x.name || '', memo: x.memo || '' })));
+    lsSaveWatchlist(_wlData.map(x => ({ stock_id: x.stock_id, name: x.name || '', memo: x.memo || '', note: x.note || '' })));
     toast(e.message, true);
   }
 }
@@ -1315,7 +1315,7 @@ async function addFromMarket(sid, note = '') {
   // 先存進 localStorage 防止 Render 重啟遺失
   const lsBefore = lsLoadWatchlist();
   if (!lsBefore.find(x => x.stock_id === sid)) {
-    lsBefore.push({ stock_id: sid, name: '', memo: '' });
+    lsBefore.push({ stock_id: sid, name: '', memo: '', note });
     lsSaveWatchlist(lsBefore);
   }
   try {
