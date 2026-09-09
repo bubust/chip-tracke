@@ -611,6 +611,7 @@ function renderWatchlist() {
   document.getElementById('wl-table-wrap').style.display = 'block';
   document.getElementById('wl-empty').style.display = 'none';
   setChartList(_wlData.map(s => s.stock_id));
+  _wlData.forEach(s => { if (s.name) _chartNames[s.stock_id] = s.name; });
 
   tbody.innerHTML = _wlData.map(s => {
     const priceCell = (() => {
@@ -975,7 +976,9 @@ async function refreshAll() {
   btn.disabled = true;
   btn.textContent = '⏳ 更新中...';
   try {
-    const r = await api('POST', '/api/refresh', { backfill: days });
+    // 帶入目前前端清單，防止 Render 重啟後 server SQLite 是空的
+    const extraIds = (_wlData || []).map(x => x.stock_id).filter(Boolean);
+    const r = await api('POST', '/api/refresh', { backfill: days, extra_stocks: extraIds });
     toast(`✅ 更新完成：${r.updated.join(', ')}（${r.days} 天）`);
     await loadWatchlist();
     await loadPill();
@@ -1347,6 +1350,7 @@ function renderMarket() {
     return;
   }
   setChartList(data.map(r => r.stock_id));
+  data.forEach(r => { if (r.name) _chartNames[r.stock_id] = r.name; });
   tbody.innerHTML = data.map((r, i) => {
     const w  = r.whale_flow_lots  || 0;
     const re = r.retail_flow_lots || 0;
@@ -1892,6 +1896,7 @@ function renderScreenTable(strategy, data) {
     return;
   }
   setChartList(sorted.map(r => r.stock_id));
+  sorted.forEach(r => { if (r.name) _chartNames[r.stock_id] = r.name; });
   tbody.innerHTML = sorted.map((row, i) => {
     const pct = row.change_pct != null ? row.change_pct : null;
     const pctTd = pct != null
@@ -1980,6 +1985,8 @@ let _chartStockId = null;
 let _chartRefreshTimer = null;
 let _chartList = [];   // 目前導覽清單的 stock_id 陣列
 let _chartIdx  = -1;   // 目前在清單中的位置
+let _chartStockName = '';  // 目前開啟的股名
+let _chartNames = {};  // stock_id → name 快取
 
 function setChartList(ids) { _chartList = ids || []; }
 
@@ -1998,9 +2005,22 @@ function chartNav(dir) {
 
 async function addChartToWl() {
   if (!_chartStockId) return;
-  await addFromMarket(_chartStockId);
-  closeChart();
-  _updateChartWlBtn();
+  // 背景加入，不關閉圖表不跳頁
+  const sid  = _chartStockId;
+  const name = _chartStockName || '';
+  const lsBefore = lsLoadWatchlist();
+  if (!lsBefore.find(x => x.stock_id === sid)) {
+    lsBefore.push({ stock_id: sid, name, memo: '', note: '' });
+    lsSaveWatchlist(lsBefore);
+  }
+  try {
+    await api('POST', '/api/watchlist', { stock_id: sid, name, note: '' });
+    toast(`已加入觀察清單：${sid}${name ? ' ' + name : ''}`);
+    // 更新 _wlData cache（不切換 tab）
+    if (!_wlData.find(x => x.stock_id === sid))
+      _wlData.push({ stock_id: sid, name, memo: '', note: '', has_data: false });
+    _updateChartWlBtn();
+  } catch(e) { toast(e.message, true); }
 }
 
 function _updateChartNavBtns() {
@@ -2108,7 +2128,8 @@ async function openChart(stockId, savedRange = null) {
 
   _lwcCharts.forEach(c => { try { c.remove(); } catch(e){} });
   _lwcCharts = [];
-  _chartStockId = stockId;
+  _chartStockId   = stockId;
+  _chartStockName = _chartNames[stockId] || '';
   _updateChartNavBtns();
   _updateChartWlBtn();
 
@@ -2124,7 +2145,7 @@ async function openChart(stockId, savedRange = null) {
     await _loadLWC();
     const ohlcv = await api('GET', `/api/stock/${stockId}/ohlcv`);
     const _trading = _isTWTradingHours();
-    title.innerHTML = `${stockId} K 線圖` +
+    title.innerHTML = `${stockId}${_chartStockName ? ' ' + _chartStockName : ''} K 線圖` +
       (_trading ? ' <span style="font-size:.72rem;color:#22c55e;background:rgba(34,197,94,.12);padding:1px 8px;border-radius:8px;border:1px solid rgba(34,197,94,.3)">🔴 盤中 · 每分鐘更新</span>' : '');
 
     container.innerHTML = `
