@@ -70,7 +70,7 @@ def _parse_yahoo_json(data: dict) -> pd.DataFrame:
     try:
         rmp  = meta.get("regularMarketPrice")
         rmt  = meta.get("regularMarketTime")
-        rmv  = meta.get("regularMarketVolume") or meta.get("regularMarketDayRange") or 0
+        rmv  = meta.get("regularMarketVolume") or 0
         if rmp and rmt and float(rmp) > 0:
             import datetime as _dt
             last_dt   = _dt.datetime.utcfromtimestamp(int(rmt))
@@ -81,9 +81,13 @@ def _parse_yahoo_json(data: dict) -> pd.DataFrame:
                     vol = int(rmv)
                 except Exception:
                     vol = 0
+                # 用 meta 的真實 open/high/low，避免 open==close 造成策略誤判
+                rmo = float(meta.get("regularMarketOpen") or rmp)
+                rmh = float(meta.get("regularMarketDayHigh") or rmp)
+                rml = float(meta.get("regularMarketDayLow") or rmp)
                 new_row = pd.DataFrame([{
-                    "date": last_date, "open": rmp, "high": rmp,
-                    "low": rmp, "close": float(rmp), "volume": vol,
+                    "date": last_date, "open": rmo, "high": rmh,
+                    "low": rml, "close": float(rmp), "volume": vol,
                 }])
                 df = pd.concat([df, new_row], ignore_index=True)
     except Exception:
