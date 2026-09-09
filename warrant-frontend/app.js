@@ -1,3 +1,10 @@
+/* ── 跨 iframe 選股（從大戶選股主頁 postMessage 觸發） ── */
+window.addEventListener('message', e => {
+  if (e.data && e.data.type === 'selectStock' && e.data.code) {
+    selectUnderlying(e.data.code, e.data.name || e.data.code);
+  }
+});
+
 /* ── State ── */
 let currentUnderlying = null;   // { code, name }
 let currentSide = 'call';

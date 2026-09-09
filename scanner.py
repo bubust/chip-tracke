@@ -782,10 +782,10 @@ def screen_svolx(prices: dict, names: dict = None) -> list:
 
 
 def screen_svolx_short(prices: dict, names: dict = None) -> list:
-    """S_VOLX_SHORT 量爆下殺（空）：今日量 >= 昨日量 × 3 且下跌且跌破20週均線(MA100)"""
+    """S_VOLX_SHORT 量爆下殺（空）：今日量 >= 昨日量 × 3 且下跌且跌破10日線(MA10)"""
     results = []
     for sid, df in prices.items():
-        if len(df) < 101:
+        if len(df) < 12:
             continue
         today = df.iloc[-1]
         prev  = df.iloc[-2]
@@ -799,8 +799,8 @@ def screen_svolx_short(prices: dict, names: dict = None) -> list:
             continue
         if tc >= pc:
             continue
-        ma100 = float(calc_ma(df['close'], 100).iloc[-1])
-        if pd.isna(ma100) or tc >= ma100:
+        ma10 = float(calc_ma(df['close'], 10).iloc[-1])
+        if pd.isna(ma10) or tc >= ma10:
             continue
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(tc, 2), "change_pct": _change_pct(df),
