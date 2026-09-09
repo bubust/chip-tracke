@@ -910,7 +910,7 @@ async function addToWatchlist() {
   // ★ 立刻存進 localStorage（在 API 呼叫之前），防止 Render 重啟導致遺失
   const lsBefore = lsLoadWatchlist();
   if (!lsBefore.find(x => x.stock_id === sid)) {
-    lsBefore.push({ stock_id: sid, name: name || '', memo: '' });
+    lsBefore.push({ stock_id: sid, name: name || '', memo: '', note: '' });
     lsSaveWatchlist(lsBefore);
     updateLocalWlInfo();
   }
