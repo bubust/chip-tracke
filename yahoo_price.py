@@ -51,6 +51,7 @@ def _parse_yahoo_json(data: dict) -> pd.DataFrame:
     if not result:
         return pd.DataFrame()
     result = result[0]
+    meta   = result.get("meta", {})
     quote  = result["indicators"]["quote"][0]
     timestamps = result.get("timestamp", [])
     df = pd.DataFrame({
@@ -63,7 +64,28 @@ def _parse_yahoo_json(data: dict) -> pd.DataFrame:
     df = df.dropna(subset=["close"])
     df = df[df["close"] > 0]
     df["date"] = df.index.strftime("%Y%m%d")
-    return df.reset_index(drop=True)[["date", "open", "high", "low", "close", "volume"]]
+    df = df.reset_index(drop=True)[["date", "open", "high", "low", "close", "volume"]]
+
+    # 午夜換日補丁：Yahoo 換日時最後一行 close 會暫時變 None，
+    # 用 meta.regularMarketPrice + regularMarketTime 補回最新收盤
+    try:
+        rmp  = meta.get("regularMarketPrice")
+        rmt  = meta.get("regularMarketTime")
+        if rmp and rmt and float(rmp) > 0:
+            import datetime as _dt
+            last_dt  = _dt.datetime.utcfromtimestamp(int(rmt))
+            last_date = last_dt.strftime("%Y%m%d")
+            # 只有在 df 裡沒有這天資料時才補
+            if df.empty or df.iloc[-1]["date"] != last_date:
+                new_row = pd.DataFrame([{
+                    "date": last_date, "open": rmp, "high": rmp,
+                    "low": rmp, "close": float(rmp), "volume": 0,
+                }])
+                df = pd.concat([df, new_row], ignore_index=True)
+    except Exception:
+        pass
+
+    return df
 
 
 async def _fetch_yahoo_async(
