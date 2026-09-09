@@ -173,7 +173,7 @@ def fetch_yahoo(stock_id: str, market: str = "twse") -> pd.DataFrame:
 def _get_twse_active_today() -> set[str]:
     """
     從 TWSE openapi 取今日上市有成交量股票 set。
-    漲停股（收盤 == 漲停價）不受量限制，一律納入。
+    漲停股（收盤 >= 前收×1.0999）不受量限制，一律納入。
     失敗時回傳空 set（代表不過濾）。
     """
     try:
@@ -186,25 +186,28 @@ def _get_twse_active_today() -> set[str]:
         r.raise_for_status()
         data = r.json()
         active = set()
+        limit_up_count = 0
         for item in data:
             sid     = str(item.get("Code", "")).strip()
             vol_str = str(item.get("TradeVolume", "0")).replace(",", "")
             try:
-                vol = int(vol_str)
+                vol = int(float(vol_str))
             except Exception:
-                continue
+                vol = 0
             if vol >= 30000:   # 30張 = 30,000股
                 active.add(sid)
                 continue
-            # 漲停股：收盤 == 漲停價，不受量限制
-            close_str  = str(item.get("ClosingPrice", "")).replace(",", "")
-            upper_str  = str(item.get("UpperLimitPrice", "")).replace(",", "")
+            # 漲停判斷：用 ClosingPrice 和 Change 推算前收，比較是否達漲停
             try:
-                if close_str and upper_str and float(close_str) >= float(upper_str) - 0.01:
+                close  = float(str(item.get("ClosingPrice", "0")).replace(",", "").replace("+", "") or "0")
+                change = float(str(item.get("Change",       "0")).replace(",", "").replace("+", "") or "0")
+                prev   = close - change
+                if prev > 0 and change > 0 and close >= prev * 1.0999:
                     active.add(sid)
+                    limit_up_count += 1
             except Exception:
                 pass
-        print(f"[SCAN] TWSE今日≥30張或漲停股票：{len(active)} 支")
+        print(f"[SCAN] TWSE今日≥30張：{len(active)-limit_up_count} 支，漲停補入：{limit_up_count} 支，共 {len(active)} 支")
         return active
     except Exception as e:
         print(f"[SCAN] 無法取得TWSE今日資料：{e}")
@@ -221,10 +224,10 @@ def _get_tpex_active_today() -> set[str]:
         "https://www.tpex.org.tw/openapi/v1/tpex_esb_latest_statistics",
     ]
     # 欄位名稱候選（不同 endpoint 欄位名不同）
-    _CODE_KEYS  = ["Code", "code", "SecuritiesCompanyCode", "StockCode", "symbol"]
-    _VOL_KEYS   = ["TradeVolume", "Volume", "TradingShares", "volume", "TradeValue"]
-    _CLOSE_KEYS = ["Close", "ClosingPrice", "ClosePrice", "close"]
-    _UPPER_KEYS = ["UpperLimitPrice", "RisingLimitPrice", "UpperLimit", "LimitUp"]
+    _CODE_KEYS   = ["Code", "code", "SecuritiesCompanyCode", "StockCode", "symbol"]
+    _VOL_KEYS    = ["TradeVolume", "Volume", "TradingShares", "volume", "TradeValue"]
+    _CLOSE_KEYS  = ["Close", "ClosingPrice", "ClosePrice", "close"]
+    _CHANGE_KEYS = ["Change", "PriceChange", "change", "Net"]
 
     for url in _TPEX_ENDPOINTS:
         try:
@@ -240,25 +243,28 @@ def _get_tpex_active_today() -> set[str]:
             data = r.json()
             if not data or not isinstance(data, list):
                 continue
-            sample    = data[0]
-            code_key  = next((k for k in _CODE_KEYS  if k in sample), None)
-            vol_key   = next((k for k in _VOL_KEYS   if k in sample), None)
-            close_key = next((k for k in _CLOSE_KEYS if k in sample), None)
-            upper_key = next((k for k in _UPPER_KEYS if k in sample), None)
+            sample     = data[0]
+            code_key   = next((k for k in _CODE_KEYS   if k in sample), None)
+            vol_key    = next((k for k in _VOL_KEYS    if k in sample), None)
+            close_key  = next((k for k in _CLOSE_KEYS  if k in sample), None)
+            change_key = next((k for k in _CHANGE_KEYS if k in sample), None)
             if not code_key:
                 continue
             active = set()
+            limit_up_count = 0
             for item in data:
                 sid = str(item.get(code_key, "")).strip()
                 if not sid:
                     continue
-                # 漲停股：不受量限制
-                if close_key and upper_key:
+                # 漲停判斷：用 Close 和 Change 推算前收，比較是否達漲停
+                if close_key and change_key:
                     try:
-                        c = float(str(item.get(close_key, "0")).replace(",", ""))
-                        u = float(str(item.get(upper_key, "0")).replace(",", ""))
-                        if c > 0 and u > 0 and c >= u - 0.01:
+                        close  = float(str(item.get(close_key,  "0")).replace(",", "").replace("+", "") or "0")
+                        change = float(str(item.get(change_key, "0")).replace(",", "").replace("+", "") or "0")
+                        prev   = close - change
+                        if prev > 0 and change > 0 and close >= prev * 1.0999:
                             active.add(sid)
+                            limit_up_count += 1
                             continue
                     except Exception:
                         pass
@@ -271,7 +277,7 @@ def _get_tpex_active_today() -> set[str]:
                         pass
                 active.add(sid)
             if active:
-                print(f"[SCAN] TPEX今日≥30張或漲停股票：{len(active)} 支（via {url.split('/')[-1]}）")
+                print(f"[SCAN] TPEX今日≥30張：{len(active)-limit_up_count} 支，漲停補入：{limit_up_count} 支，共 {len(active)} 支（via {url.split('/')[-1]}）")
                 return active
         except Exception as e:
             print(f"[SCAN] TPEX openapi 嘗試失敗 {url}: {e}")
