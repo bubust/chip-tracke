@@ -41,6 +41,8 @@ STRATEGIES = {
     "S_FBD":    "假跌破買進",
     "S_RES":    "共振起點（黃金交叉）",
     "S_KD":     "KD超賣反彈（KD跌破20後回升）",
+    "S_VOLX":       "量爆拉升（成交量暴增3倍且站上20週線）",
+    "S_VOLX_SHORT": "量爆下殺（成交量暴增3倍且跌破20週線）",
 }
 
 def calc_macd(series: pd.Series, fast: int, slow: int, signal: int):
@@ -750,6 +752,64 @@ def screen_skd(prices: dict, names: dict = None) -> list:
     return results
 
 
+def screen_svolx(prices: dict, names: dict = None) -> list:
+    """S_VOLX 量爆拉升（多）：今日量 >= 昨日量 × 3 且上漲且站上20週均線(MA100)"""
+    results = []
+    for sid, df in prices.items():
+        if len(df) < 101:
+            continue
+        today = df.iloc[-1]
+        prev  = df.iloc[-2]
+        tc  = float(today['close'])
+        pc  = float(prev['close'])
+        vol     = float(today.get('volume', 0) or 0)
+        vol_yd  = float(prev.get('volume', 0) or 0)
+        if tc <= 10:
+            continue
+        if vol_yd <= 0 or vol < vol_yd * 3:
+            continue
+        if tc <= pc:
+            continue
+        ma100 = float(calc_ma(df['close'], 100).iloc[-1])
+        if pd.isna(ma100) or tc <= ma100:
+            continue
+        results.append({"stock_id": sid, "name": _name(sid, names),
+                        "close": round(tc, 2), "change_pct": _change_pct(df),
+                        "volume": round(vol), "bb_score": calc_bb_score(df),
+                        "vol_ratio": round(vol / vol_yd, 1),
+                        "strategy": "S_VOLX"})
+    return results
+
+
+def screen_svolx_short(prices: dict, names: dict = None) -> list:
+    """S_VOLX_SHORT 量爆下殺（空）：今日量 >= 昨日量 × 3 且下跌且跌破20週均線(MA100)"""
+    results = []
+    for sid, df in prices.items():
+        if len(df) < 101:
+            continue
+        today = df.iloc[-1]
+        prev  = df.iloc[-2]
+        tc  = float(today['close'])
+        pc  = float(prev['close'])
+        vol     = float(today.get('volume', 0) or 0)
+        vol_yd  = float(prev.get('volume', 0) or 0)
+        if tc <= 10:
+            continue
+        if vol_yd <= 0 or vol < vol_yd * 3:
+            continue
+        if tc >= pc:
+            continue
+        ma100 = float(calc_ma(df['close'], 100).iloc[-1])
+        if pd.isna(ma100) or tc >= ma100:
+            continue
+        results.append({"stock_id": sid, "name": _name(sid, names),
+                        "close": round(tc, 2), "change_pct": _change_pct(df),
+                        "volume": round(vol), "bb_score": calc_bb_score(df),
+                        "vol_ratio": round(vol / vol_yd, 1),
+                        "strategy": "S_VOLX_SHORT"})
+    return results
+
+
 def screen_chip(prices: dict, tdcc_data: dict, stock_info: dict = None) -> list:
     """
     CHIP 千張大戶增持選股（集保所週資料）：
@@ -834,7 +894,9 @@ def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "") -> dict:
         ("S_PB",     screen_spb),
         ("S_FBD",    screen_sfbd),
         ("S_RES",    screen_sres),
-        ("S_KD",     screen_skd),
+        ("S_KD",          screen_skd),
+        ("S_VOLX",        screen_svolx),
+        ("S_VOLX_SHORT",  screen_svolx_short),
     ]:
         results = fn(prices_single, names_single)
         result = results[0] if results else None
@@ -859,7 +921,9 @@ def run_strategy(strategy: str, prices: dict, names: dict = None,
         "S_PB":     screen_spb,
         "S_FBD":    screen_sfbd,
         "S_RES":    screen_sres,
-        "S_KD":     screen_skd,
+        "S_KD":          screen_skd,
+        "S_VOLX":        screen_svolx,
+        "S_VOLX_SHORT":  screen_svolx_short,
     }
     if s == "CHIP":
         return screen_chip(prices, chip_data or {}, stock_info)
