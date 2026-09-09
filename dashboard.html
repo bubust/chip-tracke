@@ -1406,8 +1406,8 @@ async function addFromMarket(sid, note = '') {
   try {
     await api('POST', '/api/watchlist', { stock_id: sid, name: '', note });
     toast(`已加入觀察清單：${sid}${note ? '（' + note + '）' : ''}`);
-    switchTab('watchlist');
-    await loadWatchlist();
+    if (!_wlData.find(x => x.stock_id === sid))
+      _wlData.push({ stock_id: sid, name: '', memo: '', note, has_data: false });
   } catch (e) { toast(e.message, true); }
 }
 
