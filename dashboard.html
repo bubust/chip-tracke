@@ -835,13 +835,20 @@ async function addToWatchlist() {
   }
 
   sid = sid.toUpperCase();
+  // ★ 立刻存進 localStorage（在 API 呼叫之前），防止 Render 重啟導致遺失
+  const lsBefore = lsLoadWatchlist();
+  if (!lsBefore.find(x => x.stock_id === sid)) {
+    lsBefore.push({ stock_id: sid, name: name || '', memo: '' });
+    lsSaveWatchlist(lsBefore);
+    updateLocalWlInfo();
+  }
   try {
     await api('POST', '/api/watchlist', { stock_id: sid, name });
     document.getElementById('add-sid').value  = '';
     document.getElementById('add-name').value = '';
     hideSearchDrop();
     toast(`已新增 ${sid} ${name}`);
-    await loadWatchlist(); // loadWatchlist 內會自動更新 localStorage
+    await loadWatchlist();
     await loadPill();
   } catch (e) { toast(e.message, true); }
 }
