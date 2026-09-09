@@ -213,6 +213,26 @@ async def api_update_memo(stock_id: str, request: Request):
     conn.close()
     return {"ok": True}
 
+@app.get("/api/watchlist/prices")
+async def api_watchlist_prices():
+    """輕量端點：只回傳觀察清單各股的最新現價，用於自動刷新。"""
+    from yahoo_price import get_stock_list, fetch_prices_for_stocks
+    stocks_df = get_stock_list()
+    mkt_map   = dict(zip(stocks_df["stock_id"], stocks_df["type"]))
+    conn = get_conn()
+    rows = conn.execute("SELECT stock_id FROM watchlist").fetchall()
+    conn.close()
+    stock_ids = [r["stock_id"] for r in rows]
+    stock_list = [(sid, mkt_map.get(sid, "twse")) for sid in stock_ids]
+    latest_prices = await fetch_prices_for_stocks(stock_list)
+    return {
+        sid: {
+            "close":      info.get("close"),
+            "change_pct": info.get("change_pct"),
+        }
+        for sid, info in latest_prices.items()
+    }
+
 @app.get("/api/watchlist/summary")
 async def api_watchlist_summary():
     from yahoo_price import get_stock_list, fetch_prices_for_stocks

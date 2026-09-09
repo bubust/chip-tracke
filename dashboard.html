@@ -202,7 +202,14 @@
   <div class="card" id="watchlist-card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div class="section-title" style="margin:0">我的選股清單</div>
-      <button class="btn sm ghost" id="btn-refresh-tdcc" onclick="refreshWatchlistTdcc()" title="用 FinMind 更新觀察清單的千張大戶週資料">🏦 更新千張大戶</button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="btn sm ghost" id="btn-refresh-tdcc" onclick="refreshWatchlistTdcc()" title="用 FinMind 更新觀察清單的千張大戶週資料">🏦 更新千張大戶</button>
+        <span style="color:var(--muted);font-size:.8rem">現價自動刷新：</span>
+        <input id="price-refresh-sec" type="number" min="5" max="3600" value="30" style="width:60px;text-align:center;background:var(--card2);border:1px solid var(--border);border-radius:4px;color:var(--fg);padding:2px 4px;font-size:.82rem" title="刷新間隔（秒）">
+        <span style="color:var(--muted);font-size:.8rem">秒</span>
+        <button id="btn-price-refresh-toggle" class="btn sm ghost" onclick="togglePriceRefresh()" title="開始/暫停現價自動刷新">▶ 啟動</button>
+        <span id="price-refresh-status" style="font-size:.75rem;color:var(--muted)"></span>
+      </div>
     </div>
     <div id="wl-loading" class="loading" style="display:none"><span class="spinner"></span>載入中...</div>
     <div id="wl-empty" class="empty" style="display:none">尚無股票，請從上方新增</div>
@@ -502,6 +509,7 @@ function switchTab(name) {
   const idx = { watchlist: 0, market: 1, screen: 2, settings: 3, warrant: 4 };
   document.querySelectorAll('nav button')[idx[name]].classList.add('active');
   if (name === 'settings') { loadSysStatus(); loadPushLog(); loadTGSettings(); loadParams(); }
+  if (name !== 'watchlist') { _stopPriceRefreshIfActive(); }
 }
 
 // ───── Status pill ─────
@@ -544,11 +552,11 @@ function renderWatchlist() {
 
   tbody.innerHTML = _wlData.map(s => {
     const priceCell = (() => {
-      if (s.close == null) return '<td class="muted">—</td>';
+      if (s.close == null) return `<td id="price-${s.stock_id}" class="muted">—</td>`;
       const pct = s.change_pct ?? 0;
       const cls = pct > 0 ? 'pos' : pct < 0 ? 'neg' : '';
       const sign = pct > 0 ? '+' : '';
-      return `<td class="${cls}">${s.close} <small style="opacity:.7">${sign}${pct.toFixed(2)}%</small></td>`;
+      return `<td id="price-${s.stock_id}" class="${cls}">${s.close} <small style="opacity:.7">${sign}${pct.toFixed(2)}%</small></td>`;
     })();
     if (!s.has_data) {
       return `<tr>
@@ -634,6 +642,94 @@ function renderWatchlist() {
       </td>
     </tr>`;
   }).join('');
+}
+
+// ── 現價自動刷新 ──
+let _priceRefreshTimer = null;
+let _priceRefreshCountdown = 0;
+let _priceRefreshCountdownTimer = null;
+
+function _renderPriceCell(sid, close, change_pct) {
+  const td = document.getElementById(`price-${sid}`);
+  if (!td) return;
+  if (close == null) {
+    td.className = 'muted';
+    td.innerHTML = '—';
+    return;
+  }
+  const pct = change_pct ?? 0;
+  const cls = pct > 0 ? 'pos' : pct < 0 ? 'neg' : '';
+  const sign = pct > 0 ? '+' : '';
+  td.className = cls;
+  td.innerHTML = `${close} <small style="opacity:.7">${sign}${pct.toFixed(2)}%</small>`;
+  // 閃爍提示更新
+  td.style.transition = 'background .15s';
+  td.style.background = pct > 0 ? 'rgba(239,83,80,.18)' : pct < 0 ? 'rgba(38,166,154,.18)' : 'rgba(255,255,255,.08)';
+  setTimeout(() => { td.style.background = ''; }, 600);
+}
+
+async function refreshPricesOnly() {
+  const status = document.getElementById('price-refresh-status');
+  try {
+    const data = await api('GET', '/api/watchlist/prices');
+    for (const [sid, info] of Object.entries(data)) {
+      _renderPriceCell(sid, info.close, info.change_pct);
+      // 同步 _wlData
+      const item = _wlData.find(x => x.stock_id === sid);
+      if (item) { item.close = info.close; item.change_pct = info.change_pct; }
+    }
+    if (status) status.textContent = `上次更新 ${new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit',second:'2-digit'})}`;
+  } catch(e) {
+    if (status) status.textContent = '更新失敗';
+  }
+}
+
+function _startCountdown(sec) {
+  _priceRefreshCountdown = sec;
+  clearInterval(_priceRefreshCountdownTimer);
+  _priceRefreshCountdownTimer = setInterval(() => {
+    const btn = document.getElementById('btn-price-refresh-toggle');
+    _priceRefreshCountdown--;
+    if (btn) btn.textContent = `⏸ ${_priceRefreshCountdown}s`;
+    if (_priceRefreshCountdown <= 0) _priceRefreshCountdown = parseInt(document.getElementById('price-refresh-sec').value) || 30;
+  }, 1000);
+}
+
+function togglePriceRefresh() {
+  const btn = document.getElementById('btn-price-refresh-toggle');
+  if (_priceRefreshTimer) {
+    // 停止
+    clearInterval(_priceRefreshTimer);
+    clearInterval(_priceRefreshCountdownTimer);
+    _priceRefreshTimer = null;
+    if (btn) btn.textContent = '▶ 啟動';
+    const status = document.getElementById('price-refresh-status');
+    if (status) status.textContent = '';
+    return;
+  }
+  // 啟動
+  const sec = Math.max(5, parseInt(document.getElementById('price-refresh-sec').value) || 30);
+  document.getElementById('price-refresh-sec').value = sec;
+  refreshPricesOnly();
+  _priceRefreshTimer = setInterval(() => {
+    refreshPricesOnly();
+    _startCountdown(sec);
+  }, sec * 1000);
+  _startCountdown(sec);
+  if (btn) btn.textContent = `⏸ ${sec}s`;
+}
+
+// 切換 tab 時停止自動刷新（省流量）
+function _stopPriceRefreshIfActive() {
+  if (_priceRefreshTimer) {
+    clearInterval(_priceRefreshTimer);
+    clearInterval(_priceRefreshCountdownTimer);
+    _priceRefreshTimer = null;
+    const btn = document.getElementById('btn-price-refresh-toggle');
+    if (btn) btn.textContent = '▶ 啟動';
+    const status = document.getElementById('price-refresh-status');
+    if (status) status.textContent = '';
+  }
 }
 
 function noteCell(s) {
