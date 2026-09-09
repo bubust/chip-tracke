@@ -875,6 +875,54 @@ def api_clear_cache():
 # 首頁
 # ════════════════════════════════════════════════════════════════════════════
 
+@app.get("/api/debug/bb/{stock_id}")
+async def debug_bb(stock_id: str):
+    """Debug: 查看 Yahoo 抓到的原始資料及 BB 計算過程"""
+    import asyncio, time
+    from yahoo_price import _fetch_yahoo_async, get_stock_list
+    from scanner import calc_bb_score
+    import httpx
+
+    stocks = get_stock_list()
+    row = stocks[stocks["stock_id"] == stock_id]
+    market = "twse" if row.empty else str(row.iloc[0]["type"])
+    suffixes = [".TW"] if market == "twse" else [".TWO", ".TW"]
+
+    sem = asyncio.Semaphore(5)
+    now = int(time.time())
+    p1 = now - 365 * 86400
+    params = {"interval": "1d", "period1": p1, "period2": now}
+    async with httpx.AsyncClient(verify=False, timeout=15) as client:
+        for suffix in suffixes:
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{stock_id}{suffix}"
+            try:
+                r = await client.get(url, params=params)
+                from yahoo_price import _parse_yahoo_json
+                df = _parse_yahoo_json(r.json())
+                if df.empty: continue
+                closes = df["close"]
+                ma20 = float(closes.rolling(20).mean().iloc[-1])
+                std20 = float(closes.rolling(20).std().iloc[-1])
+                last_close = float(df.iloc[-1]["close"])
+                last_date = df.iloc[-1]["date"]
+                raw_score = (last_close - ma20) / (2 * std20) * 10 if std20 > 0 else 0
+                return {
+                    "stock_id": stock_id, "suffix": suffix,
+                    "total_rows": len(df),
+                    "last_date": last_date,
+                    "last_close": round(last_close, 2),
+                    "ma20": round(ma20, 2),
+                    "std20": round(std20, 4),
+                    "upper_band": round(ma20 + 2*std20, 2),
+                    "lower_band": round(ma20 - 2*std20, 2),
+                    "raw_score": round(raw_score, 2),
+                    "bb_score": calc_bb_score(df),
+                    "last_10_closes": [round(float(x), 2) for x in closes.tail(10).tolist()],
+                }
+            except Exception as e:
+                return {"error": str(e)}
+    return {"error": "no data"}
+
 @app.get("/")
 def root():
     html_path = BASE_DIR / "dashboard.html"
