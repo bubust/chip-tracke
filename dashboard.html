@@ -846,7 +846,7 @@ async function saveNote(sid, val, inputEl) {
     if (item) item.note = val;
     lsSaveWatchlist(_wlData.map(x => ({ stock_id: x.stock_id, name: x.name || '', memo: x.memo || '', note: x.note || '' })));
     // 重繪該 cell 的 view div
-    const viewDiv = inputEl.previousSibling;
+    const viewDiv = inputEl.previousElementSibling;
     if (val) {
       viewDiv.innerHTML = `<span style="font-size:.72rem;padding:2px 7px;border-radius:10px;background:rgba(79,142,247,.18);color:var(--accent);white-space:nowrap;border:1px solid rgba(79,142,247,.3)">${val}</span>`;
     } else {
