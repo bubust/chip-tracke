@@ -756,6 +756,11 @@ def screen_sfbd(prices: dict, names: dict = None, params: dict = None) -> list:
         # 今日收紅且站回 MA10
         if not (tc > to_ and tc > m10):
             continue
+        # 昨天收盤必須仍在 MA10 以下（確保今天才是站回的第一天）
+        yst_c   = float(closes.iloc[-2])
+        yst_m10 = float(ma10.iloc[-2])
+        if pd.isna(yst_m10) or yst_c >= yst_m10:
+            continue
         # 近 1~break_window 天有一天收盤跌破 MA10
         broke_idx = None
         for i in range(1, break_window + 1):
