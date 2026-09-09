@@ -70,15 +70,20 @@ def _parse_yahoo_json(data: dict) -> pd.DataFrame:
     try:
         rmp  = meta.get("regularMarketPrice")
         rmt  = meta.get("regularMarketTime")
+        rmv  = meta.get("regularMarketVolume") or meta.get("regularMarketDayRange") or 0
         if rmp and rmt and float(rmp) > 0:
             import datetime as _dt
-            last_dt  = _dt.datetime.utcfromtimestamp(int(rmt))
+            last_dt   = _dt.datetime.utcfromtimestamp(int(rmt))
             last_date = last_dt.strftime("%Y%m%d")
             # 只有在 df 裡沒有這天資料時才補
             if df.empty or df.iloc[-1]["date"] != last_date:
+                try:
+                    vol = int(rmv)
+                except Exception:
+                    vol = 0
                 new_row = pd.DataFrame([{
                     "date": last_date, "open": rmp, "high": rmp,
-                    "low": rmp, "close": float(rmp), "volume": 0,
+                    "low": rmp, "close": float(rmp), "volume": vol,
                 }])
                 df = pd.concat([df, new_row], ignore_index=True)
     except Exception:
@@ -234,7 +239,7 @@ async def run_market_scan(concurrency: int = 100, strategy_params: dict = None):
     """
     背景執行全市場策略掃描（上市 + 上櫃，全部 stocks.csv 股票）。
     - 掃全部股票，不做有量過濾（避免漏掉低量漲停或上櫃股票）
-    - Semaphore(100) 控制並發；range=6mo（足夠所有策略，速度快一倍）
+    - Semaphore(100) 控制並發；range=1y（S1 大 MACD 需 235 天）
     - scan_one_stock 跑在 ThreadPoolExecutor(24)，不阻塞 event loop
     - strategy_params: {strategy_key: {param_key: value}} 各策略自訂參數
     """
@@ -279,8 +284,8 @@ async def run_market_scan(concurrency: int = 100, strategy_params: dict = None):
         ) as client:
 
             async def _fetch_scan(sid, mkt):
-                # range=6mo 足夠所有策略（MA100 需 100 天，6mo≈130 交易日）
-                df = await _fetch_yahoo_async(client, sem, sid, mkt, range_="6mo")
+                # range=1y：S1 大 MACD 需要 235 天，1y≈252 交易日
+                df = await _fetch_yahoo_async(client, sem, sid, mkt, range_="1y")
                 _scan_status["progress"] += 1
                 if df.empty or len(df) < 5:
                     _scan_status["yahoo_fail"] += 1
