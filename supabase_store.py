@@ -89,6 +89,11 @@ def wl_update_name(stock_id: str, name: str):
         return False
     return _patch(f"chip_watchlist?stock_id=eq.{stock_id}", {"name": name})
 
+def wl_update_note(stock_id: str, note: str):
+    if not _enabled():
+        return False
+    return _patch(f"chip_watchlist?stock_id=eq.{stock_id}", {"note": note})
+
 def wl_get_ids():
     """僅回傳 stock_id 清單"""
     rows = wl_list()

@@ -215,6 +215,18 @@ async def api_update_memo(stock_id: str, request: Request):
     conn.close()
     return {"ok": True}
 
+@app.post("/api/watchlist/{stock_id}/note")
+async def api_update_note(stock_id: str, request: Request):
+    """更新來源標籤"""
+    body = await request.json()
+    note = str(body.get("note", "")).strip()
+    sb.wl_update_note(stock_id, note)
+    conn = get_conn()
+    conn.execute("UPDATE watchlist SET note=? WHERE stock_id=?", (note, stock_id))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
 @app.get("/api/watchlist/prices")
 async def api_watchlist_prices():
     """輕量端點：只回傳觀察清單各股的最新現價，用於自動刷新。"""

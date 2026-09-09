@@ -794,8 +794,36 @@ function _stopPriceRefreshIfActive() {
 }
 
 function noteCell(s) {
-  if (!s.note) return `<td class="muted" style="font-size:.75rem">—</td>`;
-  return `<td><span style="font-size:.72rem;padding:2px 7px;border-radius:10px;background:rgba(79,142,247,.18);color:var(--accent);white-space:nowrap;border:1px solid rgba(79,142,247,.3)">${s.note}</span></td>`;
+  const val = (s.note || '').replace(/"/g, '&quot;');
+  const display = s.note
+    ? `<span style="font-size:.72rem;padding:2px 7px;border-radius:10px;background:rgba(79,142,247,.18);color:var(--accent);white-space:nowrap;border:1px solid rgba(79,142,247,.3)">${s.note}</span>`
+    : `<span style="font-size:.72rem;color:var(--muted)">點擊編輯</span>`;
+  return `<td onclick="event.stopPropagation()" style="min-width:90px;max-width:180px;cursor:text" title="點擊編輯來源">
+    <div class="note-view" onclick="this.style.display='none';this.nextSibling.style.display='block';this.nextSibling.focus()">${display}</div>
+    <input type="text" value="${val}" placeholder="來源…"
+      style="display:none;width:100%;background:transparent;border:none;border-bottom:1px dashed var(--accent);color:var(--accent);font-size:.75rem;padding:2px 0;outline:none"
+      onblur="saveNote('${s.stock_id}', this.value, this)"
+      onkeydown="if(event.key==='Enter')this.blur(); if(event.key==='Escape'){this.value=this.defaultValue;this.blur();}" />
+  </td>`;
+}
+
+async function saveNote(sid, val, inputEl) {
+  try {
+    await api('POST', `/api/watchlist/${sid}/note`, { note: val });
+    // 更新 _wlData cache
+    const item = _wlData.find(x => x.stock_id === sid);
+    if (item) item.note = val;
+    lsSaveWatchlist(_wlData.map(x => ({ stock_id: x.stock_id, name: x.name || '', memo: x.memo || '', note: x.note || '' })));
+    // 重繪該 cell 的 view div
+    const viewDiv = inputEl.previousSibling;
+    if (val) {
+      viewDiv.innerHTML = `<span style="font-size:.72rem;padding:2px 7px;border-radius:10px;background:rgba(79,142,247,.18);color:var(--accent);white-space:nowrap;border:1px solid rgba(79,142,247,.3)">${val}</span>`;
+    } else {
+      viewDiv.innerHTML = `<span style="font-size:.72rem;color:var(--muted)">點擊編輯</span>`;
+    }
+    viewDiv.style.display = '';
+    inputEl.style.display = 'none';
+  } catch(e) { toast('來源儲存失敗', true); }
 }
 
 function nameCell(s) {
