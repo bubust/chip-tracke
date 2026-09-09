@@ -17,7 +17,9 @@ import uvicorn
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from warrant.router import router as warrant_router, init_warrant, start_warrant_scheduler, stop_warrant_scheduler
 
 from chip_tracker_v2 import (
     DATA_DIR, DB_PATH,
@@ -38,9 +40,19 @@ BASE_DIR = Path(__file__).parent
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    init_warrant()
+    start_warrant_scheduler()
     yield
+    stop_warrant_scheduler()
 
 app = FastAPI(title="籌碼追蹤系統", lifespan=lifespan)
+
+# 掛載 warrant 路由（prefix=/warrant）
+app.include_router(warrant_router, prefix="/warrant")
+
+# 掛載 warrant 前端靜態檔
+WARRANT_FRONTEND = BASE_DIR / "warrant-frontend"
+app.mount("/warrant/static", StaticFiles(directory=str(WARRANT_FRONTEND)), name="warrant_static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -797,6 +809,10 @@ def root():
     if html_path.exists():
         return FileResponse(html_path)
     return JSONResponse({"error": "dashboard.html not found"}, status_code=404)
+
+@app.get("/warrant/")
+def warrant_index():
+    return FileResponse(str(WARRANT_FRONTEND / "index.html"))
 
 
 if __name__ == "__main__":

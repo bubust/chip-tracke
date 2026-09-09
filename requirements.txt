@@ -2,3 +2,7 @@ httpx
 pandas
 fastapi
 uvicorn
+apscheduler
+scipy
+pyyaml
+requests

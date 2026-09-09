@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>權證選擇器</title>
+<link rel="stylesheet" href="/warrant/static/style.css">
+</head>
+<body>
+
+<!-- ── 頂部搜尋 ── -->
+<div class="header">
+  <div class="search-wrap">
+    <input id="searchInput" type="text" placeholder="股號 / 股名 / 權證代號" autocomplete="off" inputmode="search">
+    <div id="searchDropdown" class="dropdown hidden"></div>
+  </div>
+  <div class="quick-list" id="quickList">
+    <span class="quick-tag" data-code="2330">台積電</span>
+    <span class="quick-tag" data-code="2454">聯發科</span>
+    <span class="quick-tag" data-code="2317">鴻海</span>
+    <span class="quick-tag" data-code="2881">富邦金</span>
+  </div>
+</div>
+
+<!-- ── Tab 切換 ── -->
+<div class="tab-bar">
+  <button class="tab-btn active" id="tabWarrant" onclick="switchTab('warrant')">📋 權證</button>
+  <button class="tab-btn"        id="tabFutures" onclick="switchTab('futures')">📊 個股期</button>
+</div>
+
+<!-- ── 標的資訊列（共用） ── -->
+<div id="underlyingBar" class="underlying-bar hidden">
+  <div>
+    <span id="ulName" class="ul-name">—</span>
+    <span id="ulCode" class="ul-code"></span>
+    <span id="ulPrice" class="ul-price">—</span>
+    <span id="ulChange" class="ul-change"></span>
+  </div>
+  <div class="ul-meta">
+    <span id="ulHV">HV20 —</span>
+    <span id="quoteTime" class="quote-time">—</span>
+    <span id="stateLabel" class="state-label"></span>
+  </div>
+</div>
+
+<!-- ════ 權證區 ════ -->
+<div id="warrantSection">
+
+  <!-- ── 控制列 ── -->
+  <div id="controls" class="controls hidden">
+    <div class="side-switch">
+      <button id="btnCall" class="side-btn active" onclick="setSide('call')">看多 ▲</button>
+      <button id="btnPut"  class="side-btn"        onclick="setSide('put')">看空 ▼</button>
+    </div>
+    <div class="side-switch">
+      <button id="btnSortEntry" class="side-btn active" onclick="setSort('entry')">差槓比</button>
+      <button id="btnSortTotal" class="side-btn"        onclick="setSort('total')">回本門檻</button>
+    </div>
+    <div class="slider-wrap">
+      <label>持有 <span id="holdingDaysLabel">7</span> 天</label>
+      <input id="holdingSlider" type="range" min="3" max="10" value="7" step="1"
+             oninput="onSliderChange(this.value)">
+    </div>
+    <div class="slider-wrap">
+      <label>價外 ≤ <span id="otmLabel">10</span>%</label>
+      <input id="otmSlider" type="range" min="0" max="30" value="10" step="5"
+             oninput="onOtmChange(this.value)">
+    </div>
+  </div>
+
+  <!-- ── 盤後橫幅 ── -->
+  <div id="afterHoursBanner" class="after-hours-banner hidden">
+    盤後模式：無即時報價，進出成本與流動性無法評估
+  </div>
+
+  <!-- ── 主要結果 ── -->
+  <div id="resultArea" class="result-area"></div>
+
+  <!-- ── 已排除摘要 ── -->
+  <div id="excludedSummary" class="excluded-summary hidden">
+    <span id="excludedText">▸ 已排除 — 檔</span>
+  </div>
+
+</div><!-- /warrantSection -->
+
+<!-- ════ 個股期區 ════ -->
+<div id="futuresSection" class="hidden">
+  <div class="fut-dir-bar">
+    <button class="fut-dir-btn long active" id="futBtnLong"  onclick="setFutDir('long')">做多 ▲</button>
+    <button class="fut-dir-btn short"       id="futBtnShort" onclick="setFutDir('short')">做空 ▼</button>
+  </div>
+  <div id="futuresContent">
+    <div class="fut-placeholder">
+      <div class="fut-placeholder-icon">📊</div>
+      <div>請用上方搜尋框選擇股票</div>
+    </div>
+  </div>
+</div><!-- /futuresSection -->
+
+<!-- ── Toast ── -->
+<div id="toast" class="toast hidden"></div>
+
+<!-- ── 燈號說明 Modal ── -->
+<div id="modal" class="modal-overlay hidden" onclick="closeModal()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div id="modalContent"></div>
+    <button onclick="closeModal()">關閉</button>
+  </div>
+</div>
+
+<script src="/warrant/static/app.js"></script>
+<script src="/warrant/static/futures.js"></script>
+</body>
+</html>

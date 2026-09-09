@@ -1,0 +1,29 @@
+# 篩選門檻（可調整）
+filters:
+  min_days_to_last_trade: 60        # 最少剩餘天數
+  max_moneyness_otm: 0.10           # 最大價外程度（10%）
+  max_outstanding_ratio: 0.80       # 最大流通比例
+  min_outstanding_ratio: 0.01       # 最小流通比例
+  min_ask_price: 0.50               # 最低賣一價
+  min_ask_lots: 10                  # 最低賣一量（張）
+  max_spread_ratio: 0.025           # 最大買賣價差比（2.5%）
+  allowed_styles:
+    - PLAIN                         # 只允許一般型
+
+# 使用者設定預設值
+defaults:
+  fee_discount: 0.6                 # 手續費折數
+  holding_days: 7                   # 預計持有天數
+  position_size: 100000             # 常用單筆金額（元）
+
+# BS 參數
+bs:
+  risk_free_rate: 0.015             # 無風險利率
+  dividend_yield: 0.0               # 股利率（無資料時預設 0）
+
+# 軟性警示門檻
+warnings:
+  leverage_high: 15                 # effective_leverage > 15
+  iv_ratio_high: 1.25               # iv_ratio > 1.25
+  iv_drop_loss_high: 0.02           # iv_drop_1pt_loss_pct > 2%
+  iv_stability_min_samples: 10      # 隱波穩定度最少樣本數
