@@ -888,6 +888,67 @@ def api_clear_cache():
 # 首頁
 # ════════════════════════════════════════════════════════════════════════════
 
+@app.get("/api/debug/yahoo/{stock_id}")
+async def debug_yahoo(stock_id: str):
+    """Debug: 查看 Yahoo 原始 meta + 解析後 DataFrame 的最後幾行，確認補丁是否正確觸發"""
+    import asyncio, time as _time
+    from yahoo_price import get_stock_list
+    import httpx, datetime as _dt
+
+    stocks = get_stock_list()
+    row = stocks[stocks["stock_id"] == stock_id]
+    market = "twse" if row.empty else str(row.iloc[0]["type"])
+    suffixes = [".TW"] if market == "twse" else [".TWO", ".TW"]
+
+    now = int(_time.time())
+    p1  = now - 730 * 86400  # 2y
+    params = {"interval": "1d", "period1": p1, "period2": now}
+
+    async with httpx.AsyncClient(verify=False, timeout=15,
+            headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"}) as client:
+        for suffix in suffixes:
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{stock_id}{suffix}"
+            try:
+                r = await client.get(url, params=params)
+                raw = r.json()
+                result = (raw.get("chart", {}).get("result") or [{}])[0]
+                meta   = result.get("meta", {})
+                from yahoo_price import _parse_yahoo_json
+                df = _parse_yahoo_json(raw)
+                if df.empty:
+                    continue
+
+                rmt = meta.get("regularMarketTime", 0)
+                rmp = meta.get("regularMarketPrice")
+                rmo = meta.get("regularMarketOpen")
+                rmh = meta.get("regularMarketDayHigh")
+                rml = meta.get("regularMarketDayLow")
+                rmv = meta.get("regularMarketVolume")
+                # regularMarketTime 轉台灣時間
+                rmt_tw = (_dt.datetime.utcfromtimestamp(int(rmt)) + _dt.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M") if rmt else None
+
+                last5 = df.tail(5)[["date","open","high","low","close","volume"]].to_dict("records")
+                return {
+                    "stock_id":   stock_id,
+                    "suffix":     suffix,
+                    "total_rows": len(df),
+                    "last_date":  df.iloc[-1]["date"],
+                    "meta": {
+                        "regularMarketTime_tw": rmt_tw,
+                        "regularMarketOpen":    rmo,
+                        "regularMarketDayHigh": rmh,
+                        "regularMarketDayLow":  rml,
+                        "regularMarketPrice":   rmp,
+                        "regularMarketVolume":  rmv,
+                    },
+                    "last5_rows": last5,
+                    "last_is_red_k": bool(float(df.iloc[-1]["close"]) > float(df.iloc[-1]["open"])) if df.iloc[-1]["open"] else None,
+                }
+            except Exception as e:
+                return {"error": str(e), "suffix": suffix}
+    return {"error": "no data"}
+
+
 @app.get("/api/debug/bb/{stock_id}")
 async def debug_bb(stock_id: str):
     """Debug: 查看 Yahoo 抓到的原始資料及 BB 計算過程"""
