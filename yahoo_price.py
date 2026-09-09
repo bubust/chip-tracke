@@ -360,6 +360,8 @@ async def run_market_scan(concurrency: int = 60, strategy_params: dict = None):
         # ── 並行取 TWSE + TPEX 有量清單，過濾無量股 ──────────────────────
         loop = asyncio.get_running_loop()
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=16)
+        twse_active, tpex_active = set(), set()
+        twse_ok, tpex_ok = False, False
         try:
             twse_active, tpex_active = await asyncio.wait_for(
                 asyncio.gather(
@@ -368,16 +370,25 @@ async def run_market_scan(concurrency: int = 60, strategy_params: dict = None):
                 ),
                 timeout=20.0,
             )
+            twse_ok = bool(twse_active)
+            tpex_ok = bool(tpex_active)
         except Exception as e:
             print(f"[SCAN] 有量過濾取得失敗({e})，掃全部")
-            twse_active, tpex_active = set(), set()
-        active_all = twse_active | tpex_active
-        if active_all:
-            tasks = [(sid, mkt) for sid, mkt in all_tasks if sid in active_all]
-            print(f"[SCAN] 有量過濾後：{len(tasks)} 支（原 {len(all_tasks)} 支，跳過 {len(all_tasks)-len(tasks)} 支）")
+
+        # 分市場過濾：某市場 API 失敗時，該市場股票全部納入
+        if twse_ok or tpex_ok:
+            tasks = []
+            for sid, mkt in all_tasks:
+                if mkt == "twse":
+                    if not twse_ok or sid in twse_active:
+                        tasks.append((sid, mkt))
+                else:  # tpex
+                    if not tpex_ok or sid in tpex_active:
+                        tasks.append((sid, mkt))
+            print(f"[SCAN] 有量過濾後：{len(tasks)} 支（原 {len(all_tasks)} 支，twse_ok={twse_ok} tpex_ok={tpex_ok}）")
         else:
             tasks = all_tasks
-            print(f"[SCAN] 有量清單為空，掃全部 {len(tasks)} 支")
+            print(f"[SCAN] 有量清單皆為空，掃全部 {len(tasks)} 支")
 
         print(f"[SCAN] 全市場掃描：共 {len(tasks)} 支")
         _scan_status["total"] = len(tasks)
