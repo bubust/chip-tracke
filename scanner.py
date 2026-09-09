@@ -103,6 +103,7 @@ STRATEGY_PARAMS_SCHEMA = {
         {"key": "break_window",     "label": "跌破MA10回溯天數",      "type": "number", "default": 4,   "min": 1,   "max": 10,   "step": 1},
         {"key": "break_vol_ratio",  "label": "跌破當天量≤均量×幾倍",  "type": "number", "default": 2.5, "min": 1,   "max": 5,    "step": 0.5},
         {"key": "vol_ref_days",     "label": "均量參考天數",          "type": "number", "default": 20,  "min": 5,   "max": 60,   "step": 5},
+        {"key": "macd_ref_days",    "label": "MACD綠柱縮短比較天數",  "type": "number", "default": 3,   "min": 1,   "max": 8,    "step": 1},
     ],
     "S_RES": [
         {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
@@ -725,13 +726,14 @@ def screen_spb(prices: dict, names: dict = None, params: dict = None) -> list:
 
 
 def screen_sfbd(prices: dict, names: dict = None, params: dict = None) -> list:
-    """S_FBD 假跌破買進：多頭中近期跌破MA10後當日/隔日收復，洗盤完成"""
+    """S_FBD 假跌破買進：MA10>MA60多頭中，小MACD綠柱縮短時跌破MA10後收復，洗盤完成"""
     p = params or {}
     min_price      = p.get("min_price", 10)
     min_vol_lots    = p.get("min_vol_lots", 300)
     break_window    = int(p.get("break_window", 4))
     break_vol_ratio = p.get("break_vol_ratio", 2.5)
     vol_ref_days    = int(p.get("vol_ref_days", 20))
+    macd_ref_days   = int(p.get("macd_ref_days", 3))
     results = []
     for sid, df in prices.items():
         if len(df) < 65:
@@ -745,18 +747,28 @@ def screen_sfbd(prices: dict, names: dict = None, params: dict = None) -> list:
         vol = float(today.get('volume', 0) or 0)
         if vol < min_vol_lots * 1000:
             continue
-        ma5  = calc_ma(closes, 5)
         ma10 = calc_ma(closes, 10)
-        ma20 = calc_ma(closes, 20)
         ma60 = calc_ma(closes, 60)
-        m5   = float(ma5.iloc[-1])
         m10  = float(ma10.iloc[-1])
-        m20  = float(ma20.iloc[-1])
         m60  = float(ma60.iloc[-1])
-        if pd.isna(m5) or pd.isna(m10) or pd.isna(m20) or pd.isna(m60):
+        if pd.isna(m10) or pd.isna(m60):
             continue
-        # 多頭排列：MA5 > MA10 > MA20 > MA60
-        if not (m5 > m10 > m20 > m60):
+        # 基本多頭格局：MA10 > MA60
+        if not (m10 > m60):
+            continue
+        # ── 小MACD(12,26,9) 綠柱縮短 ──────────────────────────────────
+        # 綠柱 = OSC(DIF-DEA) < 0，縮短 = 今天比 N 天前更接近 0
+        if len(closes) < macd_ref_days + 2:
+            continue
+        ema12 = closes.ewm(span=12, adjust=False).mean()
+        ema26 = closes.ewm(span=26, adjust=False).mean()
+        dif   = ema12 - ema26
+        dea   = dif.ewm(span=9, adjust=False).mean()
+        osc   = dif - dea
+        osc_now = float(osc.iloc[-1])
+        osc_ref = float(osc.iloc[-1 - macd_ref_days])
+        # OSC 必須為負（綠柱）且比 N 天前縮短（向 0 靠近）
+        if not (osc_now < 0 and osc_now > osc_ref):
             continue
         # 今日收紅且站回 MA10
         if not (tc > to_ and tc > m10):
