@@ -6,3 +6,4 @@ apscheduler
 scipy
 pyyaml
 requests
+python-dotenv

@@ -8,6 +8,8 @@ import asyncio
 import json
 import os
 import sqlite3
+from dotenv import load_dotenv
+load_dotenv()  # 本機從 .env 載入；Render 用 dashboard 環境變數
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
