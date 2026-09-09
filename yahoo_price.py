@@ -53,29 +53,34 @@ def _parse_yahoo_json(data: dict) -> pd.DataFrame:
     meta   = result.get("meta", {})
     quote  = result["indicators"]["quote"][0]
     timestamps = result.get("timestamp", [])
+    # Yahoo timestamp 是 UTC，台股是 UTC+8；統一換成台灣時間後再取日期，
+    # 避免 00:00 CST = 前一天 16:00 UTC 造成 date 少一天的問題。
+    _TW_OFFSET = pd.Timedelta(hours=8)
+    tw_idx = (pd.to_datetime(timestamps, unit="s", utc=True) + _TW_OFFSET).tz_localize(None)
     df = pd.DataFrame({
         "open":   quote.get("open",   []),
         "high":   quote.get("high",   []),
         "low":    quote.get("low",    []),
         "close":  quote.get("close",  []),
         "volume": quote.get("volume", []),
-    }, index=pd.to_datetime(timestamps, unit="s", utc=True).tz_localize(None))
+    }, index=tw_idx)
     df = df.dropna(subset=["close"])
     df = df[df["close"] > 0]
     df["date"] = df.index.strftime("%Y%m%d")
     df = df.reset_index(drop=True)[["date", "open", "high", "low", "close", "volume"]]
 
     # 午夜換日補丁：Yahoo 換日時最後一行 close 會暫時變 None，
-    # 用 meta.regularMarketPrice + regularMarketTime 補回最新收盤
+    # 用 meta.regularMarketPrice + regularMarketTime 補回最新收盤。
+    # regularMarketTime 也換成台灣時間，才能與 df["date"] 正確比對。
     try:
         rmp  = meta.get("regularMarketPrice")
         rmt  = meta.get("regularMarketTime")
         rmv  = meta.get("regularMarketVolume") or 0
         if rmp and rmt and float(rmp) > 0:
             import datetime as _dt
-            last_dt   = _dt.datetime.utcfromtimestamp(int(rmt))
+            last_dt   = _dt.datetime.utcfromtimestamp(int(rmt)) + _dt.timedelta(hours=8)
             last_date = last_dt.strftime("%Y%m%d")
-            # 只有在 df 裡沒有這天資料時才補
+            # 只有在 df 裡沒有這天資料時才補（日期統一台灣時間，比對才準）
             if df.empty or df.iloc[-1]["date"] != last_date:
                 try:
                     vol = int(rmv)
