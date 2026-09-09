@@ -293,8 +293,9 @@ async def run_market_scan(concurrency: int = 100, strategy_params: dict = None):
         ) as client:
 
             async def _fetch_scan(sid, mkt):
-                # range=1y：S1 大 MACD 需要 235 天，1y≈252 交易日
-                df = await _fetch_yahoo_async(client, sem, sid, mkt, range_="1y")
+                # range=2y：S1 大MACD(108,216,18) 的 216-period EWM 需約 430 天才收斂
+                # 1y≈252 天不夠，2y≈504 天可讓 EWM 誤差降至 <0.1%
+                df = await _fetch_yahoo_async(client, sem, sid, mkt, range_="2y")
                 _scan_status["progress"] += 1
                 if df.empty or len(df) < 5:
                     _scan_status["yahoo_fail"] += 1
