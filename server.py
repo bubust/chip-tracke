@@ -902,7 +902,7 @@ async def debug_bb(stock_id: str):
                 if df.empty: continue
                 closes = df["close"]
                 ma20 = float(closes.rolling(20).mean().iloc[-1])
-                std20 = float(closes.rolling(20).std().iloc[-1])
+                std20 = float(closes.rolling(20).std(ddof=0).iloc[-1])
                 last_close = float(df.iloc[-1]["close"])
                 last_date = df.iloc[-1]["date"]
                 raw_score = (last_close - ma20) / (2 * std20) * 10 if std20 > 0 else 0

@@ -132,7 +132,7 @@ async def fetch_prices_for_stocks(stock_list: list) -> dict:
             if len(df) >= 20:
                 closes = df['close']
                 ma  = closes.rolling(20).mean().iloc[-1]
-                std = closes.rolling(20).std().iloc[-1]
+                std = closes.rolling(20).std(ddof=0).iloc[-1]
                 if not pd.isna(ma) and not pd.isna(std) and std > 0:
                     bb_score = round((close - float(ma)) / (2 * float(std)) * 10, 1)
             # 自動階段判斷

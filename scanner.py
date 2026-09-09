@@ -156,7 +156,7 @@ def calc_bb_score(df: pd.DataFrame, period: int = 20) -> float:
         return 0.0
     closes = df['close']
     ma  = closes.rolling(period).mean().iloc[-1]
-    std = closes.rolling(period).std().iloc[-1]
+    std = closes.rolling(period).std(ddof=0).iloc[-1]
     if pd.isna(ma) or pd.isna(std) or std == 0:
         return 0.0
     score = (float(closes.iloc[-1]) - float(ma)) / (2 * float(std)) * 10
