@@ -42,6 +42,18 @@ scheduler = BackgroundScheduler(timezone="Asia/Taipei")
 def init_warrant():
     """chip-tracker server.py 的 lifespan 裡呼叫"""
     _db.init_db()
+    import threading
+    with _db.db() as conn:
+        cnt = conn.execute("SELECT COUNT(*) FROM warrants").fetchone()[0]
+    if cnt == 0:
+        log.info("[warrant] DB 為空，背景初始化合約檔...")
+        def _bg_init():
+            try:
+                ingester.ingest_contracts()
+                log.info("[warrant] 初始合約檔完成")
+            except Exception as e:
+                log.error(f"[warrant] 初始合約檔失敗: {e}")
+        threading.Thread(target=_bg_init, daemon=True).start()
 
 def start_warrant_scheduler():
     scheduler.add_job(lambda: ingester.ingest_contracts(), "cron", hour=8, minute=0, id="w_contracts", replace_existing=True)

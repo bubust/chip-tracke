@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from contextlib import contextmanager
 
-DB_PATH = Path(__file__).parent.parent / "data" / "warrants.db"
+DB_PATH = Path(__file__).parent.parent / "chip_data" / "warrants.db"
 
 
 def get_conn() -> sqlite3.Connection:
