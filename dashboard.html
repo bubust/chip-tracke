@@ -621,7 +621,7 @@ function renderWatchlist() {
   _applyWlOrder();
   document.getElementById('wl-table-wrap').style.display = 'block';
   document.getElementById('wl-empty').style.display = 'none';
-  setChartList(_wlData.map(s => s.stock_id));
+  _wlChartList = _wlData.map(s => s.stock_id);
   _wlData.forEach(s => { if (s.name) _chartNames[s.stock_id] = s.name; });
 
   tbody.innerHTML = _wlData.map(s => {
@@ -634,7 +634,7 @@ function renderWatchlist() {
     })();
     if (!s.has_data) {
       return `<tr>
-        <td><b class="link" onclick="openChartInList('${s.stock_id}')" style="cursor:pointer;color:var(--accent)">${s.stock_id}</b></td>
+        <td><b class="link" onclick="openWlChart('${s.stock_id}')" style="cursor:pointer;color:var(--accent)">${s.stock_id}</b></td>
         <td>${nameCell(s)}</td>
         ${noteCell(s)}
         ${priceCell}
@@ -698,7 +698,7 @@ function renderWatchlist() {
         onclick="event.stopPropagation()" />
     </td>`;
     return `<tr class="clickable" onclick="openDetail('${s.stock_id}')">
-      <td onclick="event.stopPropagation();openChartInList('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
+      <td onclick="event.stopPropagation();openWlChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
       <td>${nameCell(s)}</td>
       ${noteCell(s)}
       ${priceCell}
@@ -744,7 +744,6 @@ function moveWlItem(sid, dir) {
   if (ni < 0 || ni >= _wlData.length) return;
   [_wlData[idx], _wlData[ni]] = [_wlData[ni], _wlData[idx]];
   _saveWlOrder(_wlData.map(x => x.stock_id));
-  setChartList(_wlData.map(s => s.stock_id));
   renderWatchlist();
 }
 
@@ -1360,7 +1359,7 @@ function renderMarket() {
     tbody.innerHTML = `<tr><td colspan="10" class="empty">點擊「掃描今日全市場」取得資料</td></tr>`;
     return;
   }
-  setChartList(data.map(r => r.stock_id));
+  _mktChartList = data.map(r => r.stock_id);
   data.forEach(r => { if (r.name) _chartNames[r.stock_id] = r.name; });
   tbody.innerHTML = data.map((r, i) => {
     const w  = r.whale_flow_lots  || 0;
@@ -1380,7 +1379,7 @@ function renderMarket() {
     const note = '全市場排行';
     return `<tr>
       <td class="muted">${i + 1}</td>
-      <td><b class="link" onclick="openChartInList('${r.stock_id}')" style="cursor:pointer;color:var(--accent)">${r.stock_id}</b></td>
+      <td><b class="link" onclick="openMktChart('${r.stock_id}')" style="cursor:pointer;color:var(--accent)">${r.stock_id}</b></td>
       <td style="max-width:70px;overflow:hidden;text-overflow:ellipsis">${r.name || '—'}</td>
       <td>${closeStr}</td>
       <td><span class="sig-badge sig-${lv}">${r.signal_emoji || '⚪'} ${r.signal_title || '—'}</span></td>
@@ -1906,7 +1905,7 @@ function renderScreenTable(strategy, data) {
     tbody.innerHTML = `<tr><td colspan="8" class="empty">本日無符合條件的股票</td></tr>`;
     return;
   }
-  setChartList(sorted.map(r => r.stock_id));
+  _screenChartList = sorted.map(r => r.stock_id);
   sorted.forEach(r => { if (r.name) _chartNames[r.stock_id] = r.name; });
   tbody.innerHTML = sorted.map((row, i) => {
     const pct = row.change_pct != null ? row.change_pct : null;
@@ -1925,8 +1924,8 @@ function renderScreenTable(strategy, data) {
     }
     return `<tr>
       <td class="muted">${i + 1}</td>
-      <td><b class="link" onclick="openChartInList('${row.stock_id}')" style="cursor:pointer;color:var(--accent)">${row.stock_id}</b></td>
-      <td style="max-width:80px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openChartInList('${row.stock_id}')">${row.name || '—'}</td>
+      <td><b class="link" onclick="openScreenChart('${row.stock_id}')" style="cursor:pointer;color:var(--accent)">${row.stock_id}</b></td>
+      <td style="max-width:80px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openScreenChart('${row.stock_id}')">${row.name || '—'}</td>
       <td>${(() => {
         if (row.close == null) return '—';
         const d = row.last_date || '';
@@ -1994,20 +1993,18 @@ async function warmupServer() {
 let _lwcCharts = [];
 let _chartStockId = null;
 let _chartRefreshTimer = null;
-let _chartList = [];         // 隨 render 更新的清單（setChartList 寫入）
-let _frozenChartList = [];   // 開啟 modal 時凍結的快照，導覽用這個
+// 三個區塊各自維護自己的清單，互不干擾
+let _wlChartList     = [];
+let _mktChartList    = [];
+let _screenChartList = [];
+let _frozenChartList = [];   // 開啟 modal 時凍結的快照
 let _frozenChartIdx  = -1;
 let _chartStockName = '';  // 目前開啟的股名
 let _chartNames = {};  // stock_id → name 快取
 
-function setChartList(ids) { _chartList = ids || []; }
-
-function openChartInList(stockId) {
-  // 凍結快照：開啟 modal 的瞬間鎖定清單，背景 render 不影響導覽
-  _frozenChartList = [..._chartList];
-  _frozenChartIdx  = _frozenChartList.indexOf(stockId);
-  openChart(stockId);
-}
+function openWlChart(sid)     { _frozenChartList = [..._wlChartList];     _frozenChartIdx = _frozenChartList.indexOf(sid); openChart(sid); }
+function openMktChart(sid)    { _frozenChartList = [..._mktChartList];    _frozenChartIdx = _frozenChartList.indexOf(sid); openChart(sid); }
+function openScreenChart(sid) { _frozenChartList = [..._screenChartList]; _frozenChartIdx = _frozenChartList.indexOf(sid); openChart(sid); }
 
 function chartNav(dir) {
   if (!_frozenChartList.length) return;
