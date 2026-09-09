@@ -745,13 +745,18 @@ def screen_sfbd(prices: dict, names: dict = None, params: dict = None) -> list:
         vol = float(today.get('volume', 0) or 0)
         if vol < min_vol_lots * 1000:
             continue
+        ma5  = calc_ma(closes, 5)
         ma10 = calc_ma(closes, 10)
+        ma20 = calc_ma(closes, 20)
         ma60 = calc_ma(closes, 60)
+        m5   = float(ma5.iloc[-1])
         m10  = float(ma10.iloc[-1])
+        m20  = float(ma20.iloc[-1])
         m60  = float(ma60.iloc[-1])
-        if pd.isna(m10) or pd.isna(m60):
+        if pd.isna(m5) or pd.isna(m10) or pd.isna(m20) or pd.isna(m60):
             continue
-        if not (m10 > m60):
+        # 多頭排列：MA5 > MA10 > MA20 > MA60
+        if not (m5 > m10 > m20 > m60):
             continue
         # 今日收紅且站回 MA10
         if not (tc > to_ and tc > m10):
