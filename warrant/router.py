@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
+import httpx
 import yaml
 from fastapi import APIRouter, HTTPException, Query
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -198,6 +199,26 @@ def _build_warrant_card(w_row, mis_item: dict, underlying_price: float, cfg: dic
         "issuer_score": None,
     }
 
+def _yahoo_close(stock_id: str, market: str) -> Optional[float]:
+    """Yahoo Finance 備用報價（MIS 被境外 IP 封鎖時使用）"""
+    suffix = ".TW" if market == "TSE" else ".TWO"
+    ticker = f"{stock_id}{suffix}"
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=5d"
+    try:
+        with httpx.Client(timeout=8, headers={"User-Agent": "Mozilla/5.0"}) as c:
+            r = c.get(url)
+            data = r.json()
+        result = (data.get("chart", {}).get("result") or [])
+        if not result:
+            return None
+        closes = result[0]["indicators"]["quote"][0].get("close", [])
+        closes = [x for x in closes if x is not None]
+        return round(float(closes[-1]), 2) if closes else None
+    except Exception as e:
+        log.warning(f"[warrant] Yahoo fallback 失敗 {stock_id}: {e}")
+        return None
+
+
 def apply_hard_filters(w_row, today: date) -> Optional[str]:
     try:
         last_td = date.fromisoformat(w_row["last_trade_date"])
@@ -265,6 +286,10 @@ def get_warrants(
         with _db.db() as conn:
             daily = conn.execute("SELECT close_price FROM warrant_daily WHERE warrant_code=? ORDER BY trade_date DESC LIMIT 1", (underlying,)).fetchone()
         S = daily["close_price"] if daily else None
+
+    if not S:
+        # MIS 可能被境外 IP 封鎖，改用 Yahoo Finance
+        S = _yahoo_close(underlying, ul_row["market"])
 
     if not S:
         raise HTTPException(503, "無法取得標的現價")
