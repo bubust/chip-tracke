@@ -600,18 +600,19 @@ async function loadWatchlist() {
   document.getElementById('wl-table-wrap').style.display = 'none';
   try {
     _wlData = await api('GET', '/api/watchlist/summary');
-    // 若伺服器是空的，但本機有備份 → 自動還原
-    if (_wlData.length === 0) {
-      const backup = lsLoadWatchlist();
-      if (backup.length > 0) {
-        toast(`🔄 伺服器清單已重置，自動還原 ${backup.length} 支股票...`);
-        for (const item of backup) {
-          try { await api('POST', '/api/watchlist', { stock_id: item.stock_id, name: item.name || '', note: item.note || '' }); } catch(e) {}
-        }
-        _wlData = await api('GET', '/api/watchlist/summary');
+    // 合併本機備份：把本機有、伺服器沒有的股票補回去
+    // （防止 Render 重啟時 Supabase 只有部分股票，導致本機備份被少量資料覆蓋）
+    const backup = lsLoadWatchlist();
+    const serverIds = new Set(_wlData.map(x => x.stock_id));
+    const missing = backup.filter(x => x.stock_id && !serverIds.has(x.stock_id));
+    if (missing.length > 0) {
+      toast(`🔄 從本機備份補回 ${missing.length} 支股票...`);
+      for (const item of missing) {
+        try { await api('POST', '/api/watchlist', { stock_id: item.stock_id, name: item.name || '', note: item.note || '' }); } catch(e) {}
       }
+      _wlData = await api('GET', '/api/watchlist/summary');
     }
-    // 有資料時更新本機備份
+    // 更新本機備份（合併後的完整清單）
     if (_wlData.length > 0) {
       lsSaveWatchlist(_wlData.map(x => ({ stock_id: x.stock_id, name: x.name || '', memo: x.memo || '', note: x.note || '' })));
     }
@@ -1439,6 +1440,7 @@ async function addFromMarket(sid, note = '') {
       if (note) existing.note = note;
       toast(`已更新來源：${sid}${note ? '（' + note + '）' : ''}`);
     }
+    renderWatchlist();
   } catch (e) { toast(e.message, true); }
 }
 
