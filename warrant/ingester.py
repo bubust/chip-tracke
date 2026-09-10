@@ -113,7 +113,7 @@ def fetch_tpex_warrants() -> list[dict]:
     return json.loads(r.content.decode("utf-8"))
 
 
-def _parse_warrant_row(row: dict, market: str, sinopac_map: dict) -> Optional[dict]:
+def _parse_warrant_row(row: dict, market: str, sinopac_map: dict, name_to_code: dict = {}) -> Optional[dict]:
     code = row.get("權證代號", "").strip()
     if not code:
         return None
@@ -153,17 +153,13 @@ def _parse_warrant_row(row: dict, market: str, sinopac_map: dict) -> Optional[di
     if not last_trade_date:
         return None
 
-    # 標的代號：優先 TWSE/TPEx 官方欄位，fallback 永豐 basic.js
-    ul_code_api = (
-        row.get("標的有價證券代號", "").strip() or
-        row.get("標的證券代號", "").strip() or
-        row.get("標的代號", "").strip()
-    )
-    # 只接受 ASCII 英數字組成的股票代號（台股 4~6 碼，排除中文/指數名稱）
-    if ul_code_api and not re.match(r'^[0-9A-Za-z]{2,6}$', ul_code_api):
-        ul_code_api = ""
+    # 標的代號：優先永豐 basic.js（有 code），fallback 從標的名稱查 price_daily
     sp = sinopac_map.get(code, {})
-    underlying_code = ul_code_api or sp.get("underlying_code") or None
+    underlying_code = sp.get("underlying_code") or None
+    if not underlying_code:
+        ul_name = row.get("標的證券/指數", "").strip()
+        if ul_name:
+            underlying_code = name_to_code.get(ul_name) or None
     issuer = sp.get("issuer") or parse_issuer(name)
 
     return {
@@ -191,6 +187,25 @@ def ingest_contracts():
     twse_rows = fetch_twse_warrants()
     tpex_rows = fetch_tpex_warrants()
 
+    # ── 建立 標的名稱 → 標的代號 對照表 ────────────────────────────────
+    # 方法：用 TWSE/TPEx 的 '標的證券/指數'（名稱）+ 永豐 basic.js（代號）交叉比對
+    # 例：TWSE 資料有 "04004S": 標的="台積電"；永豐有 "04004S": underlying_code="2330"
+    # → 推導出 "台積電" → "2330"
+    warrant_to_ul_name: dict = {}
+    for row in twse_rows + tpex_rows:
+        w_code = row.get("權證代號", "").strip()
+        ul_name = row.get("標的證券/指數", "").strip()
+        if w_code and ul_name:
+            warrant_to_ul_name[w_code] = ul_name
+
+    name_to_code: dict = {}
+    for w_code, sp in sinopac_map.items():
+        ul_code = sp.get("underlying_code", "")
+        ul_name = warrant_to_ul_name.get(w_code, "")
+        if ul_code and ul_name and ul_name not in name_to_code:
+            name_to_code[ul_name] = ul_code
+    log.info(f"[ingester] name_to_code: {len(name_to_code)} 個標的")
+
     today_str = date.today().strftime("%Y-%m-%d")
     warrants_upserted = 0
     underlyings_upserted = set()
@@ -198,7 +213,7 @@ def ingest_contracts():
     with db() as conn:
         for row, market in [(r, "TSE") for r in twse_rows] + \
                            [(r, "OTC") for r in tpex_rows]:
-            w = _parse_warrant_row(row, market, sinopac_map)
+            w = _parse_warrant_row(row, market, sinopac_map, name_to_code)
             if not w:
                 continue
 
