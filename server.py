@@ -25,6 +25,8 @@ from pydantic import BaseModel
 from warrant.router import router as warrant_router, init_warrant, start_warrant_scheduler, stop_warrant_scheduler
 from regime.router import router as regime_router
 from regime.db import init_db as regime_init_db
+from regime.fetcher import fetch_all as regime_fetch_all, fetch_twse_margin, fetch_twse_foreign_spot, fetch_twse_market_breadth, fetch_taifex_foreign_futures
+from regime.factor import calculate_factors as regime_calc_factors
 
 from chip_tracker_v2 import (
     DATA_DIR, DB_PATH,
@@ -144,6 +146,23 @@ async def lifespan(app: FastAPI):
     init_warrant()
     regime_init_db()
     start_warrant_scheduler()
+    # 若 regime.db 無資料，背景啟動初始更新
+    import threading
+    from regime.db import db as _rdb
+    with _rdb() as _c:
+        _cnt = _c.execute("SELECT COUNT(*) FROM market_daily").fetchone()[0]
+    if _cnt == 0:
+        def _regime_init():
+            try:
+                regime_fetch_all(days=90)
+                fetch_twse_margin()
+                fetch_twse_foreign_spot()
+                fetch_twse_market_breadth(lookback=90)
+                fetch_taifex_foreign_futures()
+                regime_calc_factors()
+            except Exception as _e:
+                import logging; logging.getLogger(__name__).error(f"[regime_init] {_e}")
+        threading.Thread(target=_regime_init, daemon=True).start()
     yield
     stop_warrant_scheduler()
 

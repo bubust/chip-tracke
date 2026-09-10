@@ -2,6 +2,7 @@
 Regime Engine — 資料抓取
 Sprint 1: Yahoo Finance TAIEX/OTC/SOX/VIX/US10Y/USDTWD/TSM_ADR/SP500/NASDAQ
 Sprint 2: 市場廣度(>50MA%) + A/D線 + TAIFEX外資期貨 + 中位數漲跌幅
+Sprint 3: TWSE MI_INDEX 直接抓漲跌家數（不依賴 price_daily）
 """
 import logging
 import sqlite3
@@ -229,6 +230,130 @@ def fetch_breadth_ad(lookback: int = 90):
                 upsert_series(conn, dt, "MEDIAN_RET", round(med, 4), "PRICE_DAILY")
 
     log.info(f"[fetcher] Breadth/AD/MedianRet: {len(sorted_dates)} 天 寫入完成")
+
+
+def _parse_mi_index_ad(data: dict):
+    """
+    解析 TWSE MI_INDEX response 中的漲跌家數 (table[7])
+    回傳 (上漲+上櫃合計, 下跌+上櫃合計, 持平合計) 或 (None, None, None)
+    """
+    for table in data.get("tables", []):
+        rows = table.get("data", [])
+        if not rows:
+            continue
+        up, down, flat = None, None, None
+        for row in rows:
+            if len(row) < 2:
+                continue
+            label = str(row[0]).strip()
+
+            def _parse(s):
+                # '6,805(58)' → 6805; '607(12)' → 607
+                s = str(s).split("(")[0].replace(",", "").strip()
+                try:
+                    return int(s)
+                except Exception:
+                    return None
+
+            if "\u4e0a\u6f32" in label:      # 上漲
+                v1 = _parse(row[1]) if len(row) > 1 else None
+                v2 = _parse(row[2]) if len(row) > 2 else 0
+                if v1 is not None:
+                    up = v1 + (v2 or 0)
+            elif "\u4e0b\u8dcc" in label:    # 下跌
+                v1 = _parse(row[1]) if len(row) > 1 else None
+                v2 = _parse(row[2]) if len(row) > 2 else 0
+                if v1 is not None:
+                    down = v1 + (v2 or 0)
+            elif "\u6301\u5e73" in label or "\u5e73\u76e4" in label:  # 持平 / 平盤
+                v1 = _parse(row[1]) if len(row) > 1 else None
+                v2 = _parse(row[2]) if len(row) > 2 else 0
+                if v1 is not None:
+                    flat = v1 + (v2 or 0)
+
+        if up is not None and down is not None:
+            return up, down, flat or 0
+
+    return None, None, None
+
+
+def fetch_twse_market_breadth(lookback: int = 90):
+    """
+    Sprint 3: 從 TWSE MI_INDEX 抓歷史漲跌家數，不依賴 price_daily。
+    寫入:
+    - AD_LINE: 上漲家數(TSE+OTC) - 下跌家數(TSE+OTC)
+    - BREADTH_50MA: 上漲/(上漲+下跌+持平)*100（當 price_daily 無資料時的代理指標）
+    """
+    import time as _time
+
+    today = date.today()
+
+    # 找出哪些日期已有 AD_LINE（跳過）
+    with db() as conn:
+        existing_ad = set(
+            r[0] for r in conn.execute(
+                "SELECT date FROM market_daily WHERE series='AD_LINE'"
+            ).fetchall()
+        )
+
+    # 過去 lookback 天的工作日（週一~週五），最新在後
+    targets = []
+    for i in range(lookback, -1, -1):
+        d = today - timedelta(days=i)
+        if d.weekday() < 5:
+            ds = d.strftime("%Y-%m-%d")
+            if ds not in existing_ad:
+                targets.append(d)
+
+    if not targets:
+        log.info("[fetcher] TWSE breadth: 無需補充資料")
+        return
+
+    log.info(f"[fetcher] TWSE breadth: 待補 {len(targets)} 天")
+    inserted = 0
+    _MI_URL = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
+
+    for d in targets:
+        dt_param = d.strftime("%Y%m%d")
+        dt_iso   = d.strftime("%Y-%m-%d")
+        try:
+            with httpx.Client(timeout=12, headers={
+                "User-Agent": _UA, "Referer": "https://www.twse.com.tw/"
+            }) as c:
+                r = c.get(_MI_URL, params={"date": dt_param, "response": "json"})
+                data = r.json()
+
+            if data.get("stat") != "OK":
+                continue  # 假日/無資料 → 跳過
+
+            up, down, flat = _parse_mi_index_ad(data)
+            if up is None:
+                log.debug(f"[fetcher] MI_INDEX {dt_param}: 解析失敗")
+                continue
+
+            ad_val      = up - down
+            breadth_pct = round(up / max(up + down + flat, 1) * 100, 2)
+
+            with db() as conn:
+                upsert_series(conn, dt_iso, "AD_LINE", ad_val, "TWSE_MI")
+                # BREADTH_50MA: 只在 price_daily 未填入時才用代理值
+                has_b = conn.execute(
+                    "SELECT 1 FROM market_daily WHERE date=? AND series='BREADTH_50MA'",
+                    (dt_iso,)
+                ).fetchone()
+                if not has_b:
+                    upsert_series(conn, dt_iso, "BREADTH_50MA", breadth_pct, "TWSE_MI_PROXY")
+
+            inserted += 1
+            log.debug(f"[fetcher] {dt_iso} 上漲:{up} 下跌:{down} 持平:{flat} "
+                      f"→ AD:{ad_val} breadth:{breadth_pct}%")
+
+        except Exception as e:
+            log.warning(f"[fetcher] MI_INDEX {dt_param}: {e}")
+
+        _time.sleep(0.4)   # 避免被 TWSE 封鎖
+
+    log.info(f"[fetcher] TWSE breadth 完成: 寫入 {inserted} 天")
 
 
 def fetch_taifex_foreign_futures():

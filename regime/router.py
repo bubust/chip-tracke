@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter
 
 from .db import db, init_db
-from .fetcher import fetch_all, fetch_twse_margin, fetch_twse_foreign_spot, fetch_breadth_ad, fetch_taifex_foreign_futures
+from .fetcher import fetch_all, fetch_twse_margin, fetch_twse_foreign_spot, fetch_breadth_ad, fetch_twse_market_breadth, fetch_taifex_foreign_futures
 from .factor import calculate_factors
 
 log = logging.getLogger(__name__)
@@ -68,7 +68,8 @@ def regime_refresh():
             fetch_all(days=90)
             fetch_twse_margin()
             fetch_twse_foreign_spot()
-            fetch_breadth_ad(lookback=90)
+            fetch_twse_market_breadth(lookback=90)  # Sprint 3: 直接從 TWSE 抓漲跌家數
+            fetch_breadth_ad(lookback=90)           # price_daily 有資料時覆蓋為精確值
             fetch_taifex_foreign_futures()
             calculate_factors()
             log.info("[regime] 更新完成")
