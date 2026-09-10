@@ -156,7 +156,7 @@
   <button class="active" onclick="switchTab('watchlist')">觀察清單</button>
   <button onclick="switchTab('market')">全市場排行</button>
   <button onclick="switchTab('screen')">策略篩選</button>
-  <button onclick="switchTab('warrant')">権証股期選択器</button>
+  <button onclick="switchTab('warrant')">權證股期選擇器</button>
   <button onclick="switchTab('regime')">📊 總經面板</button>
   <button onclick="switchTab('settings')">設定</button>
 </nav>
@@ -389,14 +389,14 @@
 </div><!-- /tab-screen -->
 
 
-<!-- ═══════════════════════ 権証股期選択器 ═══════════════════════ -->
+<!-- ═══════════════════════ 權證股期選擇器 ═══════════════════════ -->
 <div id="tab-warrant" class="tab">
   <iframe src="/warrant/" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
 </div>
 
 <!-- ═══════════════════════ Regime 面板 ═══════════════════════ -->
-<div id="tab-regime" class="tab" style="display:none">
-  <iframe id="regime-iframe" src="/regime/static/index.html" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;" onload="if(this.contentDocument&&this.contentDocument.body&&!this.contentDocument.body.innerHTML.trim())this.src=this.src"></iframe>
+<div id="tab-regime" class="tab">
+  <iframe id="regime-iframe" src="/regime/" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
 </div>
 
 <!-- ═══════════════════════ 設定 ═══════════════════════ -->
@@ -531,6 +531,7 @@ function switchTab(name) {
   const idx = { watchlist: 0, market: 1, screen: 2, warrant: 3, regime: 4, settings: 5 };
   document.querySelectorAll('nav button')[idx[name]].classList.add('active');
   if (name === 'settings') { loadSysStatus(); loadPushLog(); loadTGSettings(); loadParams(); loadAllStratParams(); updateLocalWlInfo(); }
+  if (name === 'regime') { const rf = document.getElementById('regime-iframe'); if (rf && !rf.dataset.loaded) { rf.dataset.loaded = '1'; rf.src = '/regime/'; } }
   if (name !== 'watchlist') { _stopPriceRefreshIfActive(); }
 }
 

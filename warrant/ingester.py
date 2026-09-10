@@ -153,9 +153,17 @@ def _parse_warrant_row(row: dict, market: str, sinopac_map: dict) -> Optional[di
     if not last_trade_date:
         return None
 
-    # 標的代號 + 發行商：優先永豐 basic.js
+    # 標的代號：優先 TWSE/TPEx 官方欄位，fallback 永豐 basic.js
+    ul_code_api = (
+        row.get("標的有價證券代號", "").strip() or
+        row.get("標的證券代號", "").strip() or
+        row.get("標的代號", "").strip()
+    )
+    # 只接受 ASCII 英數字組成的股票代號（台股 4~6 碼，排除中文/指數名稱）
+    if ul_code_api and not re.match(r'^[0-9A-Za-z]{2,6}$', ul_code_api):
+        ul_code_api = ""
     sp = sinopac_map.get(code, {})
-    underlying_code = sp.get("underlying_code") or None
+    underlying_code = ul_code_api or sp.get("underlying_code") or None
     issuer = sp.get("issuer") or parse_issuer(name)
 
     return {
