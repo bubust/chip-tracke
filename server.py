@@ -38,12 +38,13 @@ BASE_DIR = Path(__file__).parent
 
 import time as _time
 
-# ── 觀察清單即時現價快取（MIS with session）────────────────────────────────────
-# MIS 需要先 visit index.jsp 建立 session，否則 z 欄位回傳 "-"（盤中無成交假象）
-# MI_INDEX type=ALLBUT0999 是「每日收盤行情」盤後報表，盤中只有昨日資料，不適用
-_PRICE_ALL: dict = {}
+# ── 觀察清單即時現價快取（MIS）───────────────────────────────────────────────
+# MIS z 欄位：每次成交後更新，無新成交時回傳 "-"
+# _STOCK_PRICE_CACHE：記住每支股票上次查到的真實 z 值，避免 z="-" 時 fallback 到昨收(y)
+_PRICE_ALL: dict = {}           # 相容舊呼叫點用（實際未使用）
 _PRICE_ALL_TS: float = 0.0
 _PRICE_ALL_TTL: float = 20.0
+_STOCK_PRICE_CACHE: dict = {}   # {stock_id: {"close": float, "change_pct": float}}
 
 def _sf_price(s) -> "float | None":
     try:
@@ -113,14 +114,20 @@ async def _fetch_mis_prices(stock_ids: list, mkt_map: dict) -> dict:
             continue
         z = _sf_price(item.get("z"))
         y = _sf_price(item.get("y"))
-        price = z if z is not None else y
-        if price is None:
-            continue
-        pct = round((z - y) / y * 100, 2) if (z is not None and y and y > 0) else None
-        result[sid] = {"close": round(price, 2), "change_pct": pct}
-        if z is not None:
+        if z is not None and y and y > 0:
+            # 有真實成交價：更新 cache
+            pct = round((z - y) / y * 100, 2)
+            entry = {"close": round(z, 2), "change_pct": pct}
+            _STOCK_PRICE_CACHE[sid] = entry
+            result[sid] = entry
             z_ok += 1
-    print(f"[MIS] parsed={len(result)} 支，其中即時成交={z_ok} 支")
+        elif sid in _STOCK_PRICE_CACHE:
+            # z="-"（本次無新成交）：用上次查到的真實價，不 fallback 到昨收
+            result[sid] = _STOCK_PRICE_CACHE[sid]
+        elif y is not None:
+            # 從未查過且 z="-"：只好顯示昨收，但不 cache（避免永遠卡住昨收）
+            result[sid] = {"close": round(y, 2), "change_pct": None}
+    print(f"[MIS] parsed={len(result)} 支，即時z={z_ok} 支，cache命中={len(result)-z_ok} 支")
     return result
 
 
