@@ -1140,37 +1140,61 @@ async def debug_prices():
         except Exception as e:
             out["mi_index"] = {"error": str(e)}
 
-        # MIS with session — 測試 2303/3481/5314 三支（TSE+OTC）
+        # MIS — 嘗試多個 session 入口，看哪個能取得 cookie
+        MIS_BASE = "https://mis.twse.com.tw"
+        UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        mis_entries = [
+            f"{MIS_BASE}/",
+            f"{MIS_BASE}/stock/",
+            f"{MIS_BASE}/stock/fibest.jsp",
+            f"{MIS_BASE}/stock/fibest.jsp?lang=zh_TW",
+        ]
+        out["mis_session"] = {}
+        for entry_url in mis_entries:
+            try:
+                async with httpx.AsyncClient(timeout=12, follow_redirects=True, verify=False,
+                                             headers={"User-Agent": UA}) as mis_client:
+                    sess_r = await mis_client.get(entry_url,
+                        headers={"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"})
+                    cookies_got = dict(mis_client.cookies)
+                    price_r = await mis_client.get(
+                        f"{MIS_BASE}/stock/api/getStockInfo.jsp",
+                        headers={"Accept": "application/json, text/javascript, */*; q=0.01",
+                                 "Referer": entry_url,
+                                 "X-Requested-With": "XMLHttpRequest"},
+                        params={"ex_ch": "tse_2303.tw|tse_3481.tw|otc_5314.tw", "json": "1", "delay": "0",
+                                "_": str(int(_time.time() * 1000))},
+                    )
+                    items = price_r.json().get("msgArray", []) if price_r.status_code == 200 else []
+                    out["mis_session"][entry_url] = {
+                        "session_status": sess_r.status_code,
+                        "cookies": list(cookies_got.keys()),
+                        "price_status": price_r.status_code,
+                        "z_values": {i.get("c"): i.get("z") for i in items},
+                    }
+            except Exception as e:
+                out["mis_session"][entry_url] = {"error": str(e)}
+
+        # FinMind — 測試今日分鐘資料（若可取得則可做即時現價）
+        import datetime as _dt
+        today_str = _dt.date.today().strftime("%Y-%m-%d")
+        FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0.LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
         try:
-            MIS_BASE = "https://mis.twse.com.tw"
-            UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-            async with httpx.AsyncClient(timeout=15, follow_redirects=True, verify=False,
-                                         headers={"User-Agent": UA}) as mis_client:
-                sess_r = await mis_client.get(f"{MIS_BASE}/stock/index.jsp",
-                    headers={"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"})
-                cookies_got = dict(mis_client.cookies)
-                price_r = await mis_client.get(
-                    f"{MIS_BASE}/stock/api/getStockInfo.jsp",
-                    headers={"Accept": "application/json, text/javascript, */*; q=0.01",
-                             "Referer": f"{MIS_BASE}/stock/index.jsp",
-                             "X-Requested-With": "XMLHttpRequest"},
-                    params={"ex_ch": "tse_2303.tw|tse_3481.tw|otc_5314.tw", "json": "1", "delay": "0",
-                            "_": str(int(_time.time() * 1000))},
-                )
-                items = price_r.json().get("msgArray", []) if price_r.status_code == 200 else []
-                out["mis_session"] = {
-                    "session_status": sess_r.status_code,
-                    "cookies": list(cookies_got.keys()),
-                    "price_status": price_r.status_code,
-                    "items_count": len(items),
-                    "items": [{
-                        "c": i.get("c"), "n": i.get("n"),
-                        "z": i.get("z"), "y": i.get("y"),
-                        "nf": i.get("nf"),
-                    } for i in items],
-                }
+            fm_r = await client.get(
+                "https://api.finmindtrade.com/api/v4/data",
+                params={"dataset": "TaiwanStockPriceMinute", "stock_id": "2303",
+                        "start_date": today_str, "token": FINMIND_TOKEN},
+            )
+            fm_data = fm_r.json() if fm_r.status_code == 200 else {}
+            fm_rows = fm_data.get("data", [])
+            out["finmind_minute"] = {
+                "status": fm_r.status_code,
+                "rows": len(fm_rows),
+                "latest": fm_rows[-1] if fm_rows else None,
+                "msg": fm_data.get("msg", ""),
+            }
         except Exception as e:
-            out["mis_session"] = {"error": str(e)}
+            out["finmind_minute"] = {"error": str(e)}
 
     # 也順帶重置快取，強制下次重新抓
     global _PRICE_ALL_TS
