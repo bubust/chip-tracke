@@ -396,7 +396,7 @@
 
 <!-- ═══════════════════════ Regime 面板 ═══════════════════════ -->
 <div id="tab-regime" class="tab" style="display:none">
-  <iframe src="/regime/" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
+  <iframe id="regime-iframe" src="/regime/static/index.html" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;" onload="if(this.contentDocument&&this.contentDocument.body&&!this.contentDocument.body.innerHTML.trim())this.src=this.src"></iframe>
 </div>
 
 <!-- ═══════════════════════ 設定 ═══════════════════════ -->
