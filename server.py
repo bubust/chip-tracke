@@ -38,8 +38,9 @@ BASE_DIR = Path(__file__).parent
 
 import time as _time
 
-# ── 全市場即時現價快取（TWSE MI_INDEX + TPEX）────────────────────────────────
-# 20 秒 TTL：MI_INDEX 盤中每筆成交即更新，快取避免頻繁打 API
+# ── 觀察清單即時現價快取（MIS with session）────────────────────────────────────
+# MIS 需要先 visit index.jsp 建立 session，否則 z 欄位回傳 "-"（盤中無成交假象）
+# MI_INDEX type=ALLBUT0999 是「每日收盤行情」盤後報表，盤中只有昨日資料，不適用
 _PRICE_ALL: dict = {}
 _PRICE_ALL_TS: float = 0.0
 _PRICE_ALL_TTL: float = 20.0
@@ -51,122 +52,61 @@ def _sf_price(s) -> "float | None":
     except Exception:
         return None
 
-async def _fetch_all_prices() -> dict:
+async def _fetch_mis_prices(stock_ids: list, mkt_map: dict) -> dict:
     """
-    從 TWSE MI_INDEX（上市即時）+ TPEX（上櫃即時）一次抓全市場現價。
-    - MI_INDEX type=ALLBUT0999：回傳 JSON，key 為 `data`（單表），每筆成交即更新
-    - TPEX tradinginfo（盤中）/ aftertrading（盤後）
-    - 20s TTL 快取
-    回傳 {stock_id: {"close": float, "change_pct": float}}
-    """
-    global _PRICE_ALL, _PRICE_ALL_TS
-    now = _time.time()
-    if now - _PRICE_ALL_TS < _PRICE_ALL_TTL and _PRICE_ALL:
-        return _PRICE_ALL
-
-    result: dict = {}
-    hdrs = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Referer": "https://www.twse.com.tw/",
-    }
-
-    async with httpx.AsyncClient(headers=hdrs, timeout=25, follow_redirects=True,
-                                  verify=False) as client:
-        # ── 上市 TSE：MI_INDEX（回傳 tables 陣列，第 8 張表「每日收盤行情」含個股資料）──
-        # 欄位：[代號(0), 名稱(1), 成交量(2), 筆數(3), 金額(4),
-        #        開盤(5), 最高(6), 最低(7), 收盤(8), 漲跌方向(9), 漲跌(10), ...]
-        tse_ok = 0
-        try:
-            r = await client.get(
-                "https://www.twse.com.tw/exchangeReport/MI_INDEX",
-                params={"response": "json", "type": "ALLBUT0999"},
-            )
-            if r.status_code == 200:
-                data = r.json()
-                rows = []
-                # 先找標題含「收盤行情」的表（最可靠）
-                for tbl in (data.get("tables") or []):
-                    if not isinstance(tbl, dict):
-                        continue
-                    if "收盤行情" in tbl.get("title", ""):
-                        rows = tbl.get("data") or []
-                        break
-                # Fallback：找資料量最多的表（應為個股行情表）
-                if not rows:
-                    best, best_len = [], 0
-                    for tbl in (data.get("tables") or []):
-                        if not isinstance(tbl, dict):
-                            continue
-                        tbl_data = tbl.get("data") or []
-                        if len(tbl_data) > best_len:
-                            best_len = len(tbl_data)
-                            best = tbl_data
-                    rows = best
-                print(f"[PRICES] MI_INDEX rows={len(rows)}")
-                for row in rows:
-                    if len(row) < 11:
-                        continue
-                    sid = str(row[0]).strip()
-                    if not sid or not sid[:4].isdigit():
-                        continue
-                    close = _sf_price(row[8])
-                    change_raw = _sf_price(row[10])
-                    if close is None or close <= 0:
-                        continue
-                    if change_raw is not None:
-                        direction = str(row[9])
-                        is_neg = "green" in direction.lower()
-                        change_val = -change_raw if is_neg else change_raw
-                        prev = close - change_val
-                        pct = round(change_val / prev * 100, 2) if prev > 0 else 0.0
-                    else:
-                        pct = 0.0
-                    result[sid] = {"close": round(close, 2), "change_pct": pct}
-                    tse_ok += 1
-                print(f"[PRICES] MI_INDEX TSE parsed={tse_ok} 支")
-        except Exception as e:
-            print(f"[PRICES] MI_INDEX 失敗: {e}")
-
-        # TPEX 所有端點從 Render 均無法連線，OTC 股票改由呼叫端用 MIS 補充查詢
-
-    if result:
-        _PRICE_ALL = result
-        _PRICE_ALL_TS = now
-        print(f"[PRICES] 快取更新：{len(result)} 支（TSE={tse_ok}）")
-    return result
-
-
-async def _mis_prices_otc(stock_ids: list, mkt_map: dict) -> dict:
-    """
-    用 TWSE MIS 查詢指定 OTC 股票的現價。
-    MIS 對 Render 可連；z="-" 表示當天尚未成交，fallback 用昨收 y（change_pct=None）。
+    TWSE MIS 即時報價（盤中每筆成交更新）。
+    先 GET index.jsp 建立 session，再查 getStockInfo.jsp，讓 z 欄位回傳真實成交價。
+    TSE → tse_XXXX.tw；OTC → otc_XXXX.tw
+    z（成交價）有值 → 顯示真實漲跌；z="-" → 顯示昨收 y + change_pct=None（前端顯示 --）
     """
     if not stock_ids:
         return {}
-    parts = [f"otc_{sid}.tw" for sid in stock_ids if mkt_map.get(sid) == "tpex"]
-    if not parts:
-        return {}
-    MIS_URL = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
-    MIS_HDR = {
-        "User-Agent":       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Referer":          "https://mis.twse.com.tw/stock/index.jsp",
-        "Accept":           "application/json, text/javascript, */*; q=0.01",
-        "X-Requested-With": "XMLHttpRequest",
-    }
-    try:
-        async with httpx.AsyncClient(headers=MIS_HDR, timeout=10,
-                                     follow_redirects=True, verify=False) as client:
-            r = await client.get(MIS_URL, params={
-                "ex_ch": "|".join(parts), "json": "1", "delay": "0",
-                "_": str(int(_time.time() * 1000)),
-            })
+    parts = []
+    for sid in stock_ids:
+        prefix = "otc" if mkt_map.get(sid) == "tpex" else "tse"
+        parts.append(f"{prefix}_{sid}.tw")
+
+    MIS_BASE = "https://mis.twse.com.tw"
+    UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+    async with httpx.AsyncClient(
+        timeout=15, follow_redirects=True, verify=False,
+        headers={"User-Agent": UA},
+    ) as client:
+        # Step 1: 建立 session（取得 JSESSIONID cookie）
+        try:
+            await client.get(
+                f"{MIS_BASE}/stock/index.jsp",
+                headers={"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+            )
+        except Exception as e:
+            print(f"[MIS] session 建立失敗: {e}")
+
+        # Step 2: 查即時報價
+        try:
+            r = await client.get(
+                f"{MIS_BASE}/stock/api/getStockInfo.jsp",
+                headers={
+                    "Accept":           "application/json, text/javascript, */*; q=0.01",
+                    "Referer":          f"{MIS_BASE}/stock/index.jsp",
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+                params={
+                    "ex_ch": "|".join(parts),
+                    "json":  "1",
+                    "delay": "0",
+                    "_":     str(int(_time.time() * 1000)),
+                },
+            )
             r.raise_for_status()
             items = r.json().get("msgArray", [])
-    except Exception as e:
-        print(f"[MIS-OTC] 失敗: {e}")
-        return {}
+            print(f"[MIS] 回傳 {len(items)} 筆")
+        except Exception as e:
+            print(f"[MIS] 查詢失敗: {e}")
+            return {}
+
     result = {}
+    z_ok = 0
     for item in items:
         sid = item.get("c", "")
         if not sid:
@@ -178,8 +118,15 @@ async def _mis_prices_otc(stock_ids: list, mkt_map: dict) -> dict:
             continue
         pct = round((z - y) / y * 100, 2) if (z is not None and y and y > 0) else None
         result[sid] = {"close": round(price, 2), "change_pct": pct}
-    print(f"[MIS-OTC] parsed={len(result)} 支")
+        if z is not None:
+            z_ok += 1
+    print(f"[MIS] parsed={len(result)} 支，其中即時成交={z_ok} 支")
     return result
+
+
+async def _fetch_all_prices() -> dict:
+    """為相容其他呼叫點保留，實際上回傳空 dict（watchlist 端點改用 _fetch_mis_prices）"""
+    return _PRICE_ALL
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -381,26 +328,15 @@ async def api_update_note(stock_id: str, request: Request):
 
 @app.get("/api/watchlist/prices")
 async def api_watchlist_prices():
-    """輕量端點：TSE 用 MI_INDEX，OTC 用 MIS，供自動刷新用。"""
+    """輕量端點：MIS 即時現價（先建 session），供自動刷新用。"""
     from yahoo_price import get_stock_list
     conn = get_conn()
     rows = conn.execute("SELECT stock_id FROM watchlist").fetchall()
     conn.close()
-    stock_ids = {r["stock_id"] for r in rows}
-
-    # TSE：MI_INDEX 全市場快取，過濾觀察清單
-    tse_prices = await _fetch_all_prices()
-    result = {sid: v for sid, v in tse_prices.items() if sid in stock_ids}
-
-    # OTC：MIS 補充（觀察清單中未被 MI_INDEX 覆蓋的 tpex 股票）
+    stock_ids = list({r["stock_id"] for r in rows})
     stocks_df = get_stock_list()
     mkt_map = dict(zip(stocks_df["stock_id"], stocks_df["type"]))
-    otc_ids = [sid for sid in stock_ids if sid not in result and mkt_map.get(sid) == "tpex"]
-    if otc_ids:
-        otc_prices = await _mis_prices_otc(otc_ids, mkt_map)
-        result.update(otc_prices)
-
-    return result
+    return await _fetch_mis_prices(stock_ids, mkt_map)
 
 @app.get("/api/watchlist/summary")
 async def api_watchlist_summary():
@@ -450,13 +386,8 @@ async def api_watchlist_summary():
         conn.commit()
         conn.close()
 
-    # 現價：TSE 用 MI_INDEX（快取），OTC 用 MIS 補充
-    tse_prices = await _fetch_all_prices()
-    latest_prices = {sid: tse_prices[sid] for sid in stock_ids if sid in tse_prices}
-    otc_ids = [sid for sid in stock_ids if sid not in latest_prices and mkt_map.get(sid) == "tpex"]
-    if otc_ids:
-        otc_prices = await _mis_prices_otc(otc_ids, mkt_map)
-        latest_prices.update(otc_prices)
+    # 現價：MIS 即時報價（先建 session，TSE + OTC 一起查）
+    latest_prices = await _fetch_mis_prices(stock_ids, mkt_map)
 
     result = []
     for r in rows:
@@ -1209,22 +1140,37 @@ async def debug_prices():
         except Exception as e:
             out["mi_index"] = {"error": str(e)}
 
-        # TPEX OpenAPI
+        # MIS with session — 測試 2303/3481/5314 三支（TSE+OTC）
         try:
-            r = await client.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_perday_quotes")
-            if r.status_code == 200:
-                arr = r.json()
-                sample = arr[0] if arr else {}
-                out["tpex_openapi"] = {
-                    "status": r.status_code,
-                    "rows_count": len(arr),
-                    "sample_keys": list(sample.keys()) if sample else [],
-                    "sample_row": sample,
+            MIS_BASE = "https://mis.twse.com.tw"
+            UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True, verify=False,
+                                         headers={"User-Agent": UA}) as mis_client:
+                sess_r = await mis_client.get(f"{MIS_BASE}/stock/index.jsp",
+                    headers={"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"})
+                cookies_got = dict(mis_client.cookies)
+                price_r = await mis_client.get(
+                    f"{MIS_BASE}/stock/api/getStockInfo.jsp",
+                    headers={"Accept": "application/json, text/javascript, */*; q=0.01",
+                             "Referer": f"{MIS_BASE}/stock/index.jsp",
+                             "X-Requested-With": "XMLHttpRequest"},
+                    params={"ex_ch": "tse_2303.tw|tse_3481.tw|otc_5314.tw", "json": "1", "delay": "0",
+                            "_": str(int(_time.time() * 1000))},
+                )
+                items = price_r.json().get("msgArray", []) if price_r.status_code == 200 else []
+                out["mis_session"] = {
+                    "session_status": sess_r.status_code,
+                    "cookies": list(cookies_got.keys()),
+                    "price_status": price_r.status_code,
+                    "items_count": len(items),
+                    "items": [{
+                        "c": i.get("c"), "n": i.get("n"),
+                        "z": i.get("z"), "y": i.get("y"),
+                        "nf": i.get("nf"),
+                    } for i in items],
                 }
-            else:
-                out["tpex_openapi"] = {"status": r.status_code}
         except Exception as e:
-            out["tpex_openapi"] = {"error": str(e)}
+            out["mis_session"] = {"error": str(e)}
 
     # 也順帶重置快取，強制下次重新抓
     global _PRICE_ALL_TS
