@@ -23,6 +23,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from warrant.router import router as warrant_router, init_warrant, start_warrant_scheduler, stop_warrant_scheduler
+from regime.router import router as regime_router
+from regime.db import init_db as regime_init_db
 
 from chip_tracker_v2 import (
     DATA_DIR, DB_PATH,
@@ -140,6 +142,7 @@ async def _fetch_all_prices() -> dict:
 async def lifespan(app: FastAPI):
     init_db()
     init_warrant()
+    regime_init_db()
     start_warrant_scheduler()
     yield
     stop_warrant_scheduler()
@@ -149,9 +152,22 @@ app = FastAPI(title="籌碼追蹤系統", lifespan=lifespan)
 # 掛載 warrant 路由（prefix=/warrant）
 app.include_router(warrant_router, prefix="/warrant")
 
+# 掛載 regime 路由
+app.include_router(regime_router, prefix="/regime")
+
 # 掛載 warrant 前端靜態檔
 WARRANT_FRONTEND = BASE_DIR / "warrant-frontend"
 app.mount("/warrant/static", StaticFiles(directory=str(WARRANT_FRONTEND)), name="warrant_static")
+
+# 掛載 regime 前端靜態檔
+REGIME_FRONTEND = BASE_DIR / "regime-frontend"
+app.mount("/regime/static", StaticFiles(directory=str(REGIME_FRONTEND)), name="regime_static")
+
+
+@app.get("/regime/", include_in_schema=False)
+def regime_index():
+    from fastapi.responses import FileResponse
+    return FileResponse(str(REGIME_FRONTEND / "index.html"))
 
 app.add_middleware(
     CORSMiddleware,
