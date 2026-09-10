@@ -38,17 +38,24 @@ BASE_DIR = Path(__file__).parent
 
 import time as _time
 
-# ── 全市場現價快取（TWSE + TPEX OpenAPI）─────────────────────────────────────
-# 20 秒 TTL：TWSE OpenAPI 盤中約每 5-20 秒更新，快取避免每次刷新都打 API
+# ── 全市場即時現價快取（TWSE MI_INDEX + TPEX）────────────────────────────────
+# 20 秒 TTL：MI_INDEX 盤中每筆成交即更新，快取避免頻繁打 API
 _PRICE_ALL: dict = {}
 _PRICE_ALL_TS: float = 0.0
 _PRICE_ALL_TTL: float = 20.0
 
+def _sf_price(s) -> "float | None":
+    try:
+        v = str(s).replace(",", "").strip()
+        return float(v) if v and v not in ("-", "--", "N/A", "+", "-", "除", "X", "") else None
+    except Exception:
+        return None
+
 async def _fetch_all_prices() -> dict:
     """
-    從 TWSE OpenAPI（上市）+ TPEX OpenAPI（上櫃）一次抓全市場現價。
-    - 不受 Render IP 封鎖
-    - 盤中即時更新（含漲跌幅欄位）
+    從 TWSE MI_INDEX（上市即時）+ TPEX（上櫃即時）一次抓全市場現價。
+    - MI_INDEX：盤中每筆成交都更新，是 TWSE 最即時的個股報價來源
+    - TPEX：盤中即時行情
     - 20s TTL 快取，多個端點共用
     回傳 {stock_id: {"close": float, "change_pct": float}}
     """
@@ -57,70 +64,97 @@ async def _fetch_all_prices() -> dict:
     if now - _PRICE_ALL_TS < _PRICE_ALL_TTL and _PRICE_ALL:
         return _PRICE_ALL
 
-    def _sf(s):
-        try:
-            v = str(s).replace(",", "").strip()
-            return float(v) if v and v not in ("-", "--", "N/A", "+", "除", "X", "") else None
-        except Exception:
-            return None
-
     result: dict = {}
-    hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "application/json"}
+    hdrs = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+        "Referer": "https://www.twse.com.tw/",
+    }
 
     async with httpx.AsyncClient(headers=hdrs, timeout=25, follow_redirects=True,
                                   verify=False) as client:
-        # ── 上市（TSE）──
+        # ── 上市 TSE：MI_INDEX（盤中即時，每筆成交更新）──
+        # data8 欄位順序：[代號(0), 名稱(1), 成交量(2), 筆數(3), 金額(4),
+        #                  開盤(5), 最高(6), 最低(7), 收盤(8), 漲跌方向(9), 漲跌(10), ...]
         try:
             r = await client.get(
-                "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
+                "https://www.twse.com.tw/exchangeReport/MI_INDEX",
+                params={"response": "json", "type": "ALLBUT0999"},
             )
             if r.status_code == 200:
-                for row in r.json():
-                    sid = str(row.get("Code", "")).strip()
+                data = r.json()
+                rows = data.get("data8") or []   # MI_INDEX 個股即時表
+                if not rows:
+                    # 備援：部分時段回傳在 tables 陣列裡
+                    for tbl in (data.get("tables") or []):
+                        if isinstance(tbl, dict) and len(tbl.get("data", [])) > 100:
+                            rows = tbl["data"]
+                            break
+                tse_ok = 0
+                for row in rows:
+                    if len(row) < 11:
+                        continue
+                    sid = str(row[0]).strip()
                     if not sid or not sid[:4].isdigit():
                         continue
-                    close = _sf(row.get("ClosingPrice"))
+                    close = _sf_price(row[8])
+                    change_raw = _sf_price(row[10])
                     if close is None or close <= 0:
                         continue
-                    change = _sf(row.get("Change"))
-                    if change is not None:
-                        prev = close - change
-                        pct = round(change / prev * 100, 2) if prev > 0 else 0.0
+                    if change_raw is not None:
+                        direction = str(row[9])
+                        # <p style= color:green> 表示跌；red 表示漲
+                        is_neg = "green" in direction.lower()
+                        change_val = -change_raw if is_neg else change_raw
+                        prev = close - change_val
+                        pct = round(change_val / prev * 100, 2) if prev > 0 else 0.0
                     else:
                         pct = 0.0
                     result[sid] = {"close": round(close, 2), "change_pct": pct}
+                    tse_ok += 1
+                print(f"[PRICES] MI_INDEX TSE OK: {tse_ok} 支")
         except Exception as e:
-            print(f"[PRICES] TWSE OpenAPI 失敗: {e}")
+            print(f"[PRICES] MI_INDEX 失敗: {e}")
 
-        # ── 上櫃（OTC/TPEX）──
-        try:
-            r = await client.get(
-                "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_perday_quotes"
-            )
-            if r.status_code == 200:
-                for row in r.json():
-                    sid = str(row.get("SecuritiesCompanyCode", "") or
-                              row.get("Code", "")).strip()
-                    if not sid or not sid[:4].isdigit():
-                        continue
-                    close = _sf(row.get("Close") or row.get("ClosingPrice"))
-                    if close is None or close <= 0:
-                        continue
-                    change = _sf(row.get("Change") or row.get("PriceChange")
-                                 or row.get("NetChange"))
-                    if change is not None:
-                        prev = close - change
-                        pct = round(change / prev * 100, 2) if prev > 0 else 0.0
-                    else:
-                        pct = 0.0
-                    result[sid] = {"close": round(close, 2), "change_pct": pct}
-        except Exception as e:
-            print(f"[PRICES] TPEX OpenAPI 失敗: {e}")
+        # ── 上櫃 OTC：TPEX 即時行情（aaData）──
+        # 嘗試盤中 → 盤後兩個端點
+        # aaData 欄位順序：[代號(0), 名稱(1), 收盤(2), 漲跌(3), 開盤(4), 最高(5), 最低(6), ...]
+        tpex_urls = [
+            "https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php",
+        ]
+        for tpex_url in tpex_urls:
+            try:
+                r = await client.get(tpex_url, params={"l": "zh-tw", "o": "json", "se": "AL"})
+                if r.status_code == 200:
+                    aa = r.json().get("aaData") or []
+                    otc_ok = 0
+                    for row in aa:
+                        if len(row) < 4:
+                            continue
+                        sid = str(row[0]).strip()
+                        if not sid or not sid[:4].isdigit():
+                            continue
+                        close = _sf_price(row[2])
+                        change = _sf_price(row[3])
+                        if close is None or close <= 0:
+                            continue
+                        if change is not None:
+                            prev = close - change
+                            pct = round(change / prev * 100, 2) if prev > 0 else 0.0
+                        else:
+                            pct = 0.0
+                        result[sid] = {"close": round(close, 2), "change_pct": pct}
+                        otc_ok += 1
+                    print(f"[PRICES] TPEX OK: {otc_ok} 支")
+                    if otc_ok > 0:
+                        break
+            except Exception as e:
+                print(f"[PRICES] TPEX {tpex_url} 失敗: {e}")
 
     if result:
         _PRICE_ALL = result
         _PRICE_ALL_TS = now
+        print(f"[PRICES] 快取更新：{len(result)} 支")
     return result
 
 
@@ -321,71 +355,15 @@ async def api_update_note(stock_id: str, request: Request):
     conn.close()
     return {"ok": True}
 
-async def _mis_prices(stock_ids: list, mkt_map: dict) -> dict:
-    """
-    TWSE MIS 即時報價（盤中最即時）。
-    TSE 用 tse_XXXX.tw，OTC 用 otc_XXXX.tw。
-    已成交 → change_pct = 真實漲跌；
-    未成交（z="-"）→ close = 昨收(y)，change_pct = None（前端顯示 --）。
-    """
-    if not stock_ids:
-        return {}
-    parts = []
-    for sid in stock_ids:
-        prefix = "otc" if mkt_map.get(sid) == "tpex" else "tse"
-        parts.append(f"{prefix}_{sid}.tw")
-    ex_ch = "|".join(parts)
-    MIS_URL = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
-    MIS_HDR = {
-        "User-Agent":       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Referer":          "https://mis.twse.com.tw/stock/index.jsp",
-        "Accept":           "application/json, text/javascript, */*; q=0.01",
-        "X-Requested-With": "XMLHttpRequest",
-    }
-    try:
-        async with httpx.AsyncClient(headers=MIS_HDR, timeout=10,
-                                     follow_redirects=True, verify=False) as client:
-            r = await client.get(MIS_URL, params={
-                "ex_ch": ex_ch, "json": "1", "delay": "0",
-                "_": str(int(_time.time() * 1000)),
-            })
-            r.raise_for_status()
-            items = r.json().get("msgArray", [])
-    except Exception as e:
-        print(f"[MIS] 失敗: {e}")
-        return {}
-
-    def _sf(s):
-        try: return float(s) if s and s not in ("-", "") else None
-        except: return None
-
-    result = {}
-    for item in items:
-        sid = item.get("c", "")
-        if not sid:
-            continue
-        z = _sf(item.get("z"))   # 即時成交價（未成交時為 None）
-        y = _sf(item.get("y"))   # 昨收參考價
-        price = z if z is not None else y
-        if price is None:
-            continue
-        # 只在真的有成交時才計算漲跌，否則 None（前端顯示 --）
-        pct = round((z - y) / y * 100, 2) if (z is not None and y and y > 0) else None
-        result[sid] = {"close": round(price, 2), "change_pct": pct}
-    return result
-
-
 @app.get("/api/watchlist/prices")
 async def api_watchlist_prices():
-    """輕量端點：MIS 即時盤中價，供自動刷新用。"""
-    from yahoo_price import get_stock_list
-    stocks_df = get_stock_list()
-    mkt_map   = dict(zip(stocks_df["stock_id"], stocks_df["type"]))
+    """輕量端點：MI_INDEX+TPEX 即時現價，供自動刷新用。"""
     conn = get_conn()
     rows = conn.execute("SELECT stock_id FROM watchlist").fetchall()
     conn.close()
-    stock_ids = [r["stock_id"] for r in rows]
-    return await _mis_prices(stock_ids, mkt_map)
+    stock_ids = {r["stock_id"] for r in rows}
+    all_prices = await _fetch_all_prices()
+    return {sid: v for sid, v in all_prices.items() if sid in stock_ids}
 
 @app.get("/api/watchlist/summary")
 async def api_watchlist_summary():
@@ -405,10 +383,9 @@ async def api_watchlist_summary():
         conn.commit()
         conn.close()
 
-    # stocks.csv → 備用股名 + 市場類型
+    # stocks.csv → 備用股名
     stocks_df  = get_stock_list()
     csv_names  = dict(zip(stocks_df["stock_id"], stocks_df["stock_name"]))
-    mkt_map    = dict(zip(stocks_df["stock_id"], stocks_df["type"]))
 
     conn = get_conn()
     rows = conn.execute("SELECT stock_id, name, note, memo FROM watchlist ORDER BY added_at").fetchall()
@@ -435,8 +412,9 @@ async def api_watchlist_summary():
         conn.commit()
         conn.close()
 
-    # 現價：MIS 即時盤中價（TSE+OTC，未成交回傳昨收+None change_pct）
-    latest_prices = await _mis_prices(stock_ids, mkt_map)
+    # 現價：MI_INDEX+TPEX 全市場即時現價（20s TTL 快取）
+    all_prices = await _fetch_all_prices()
+    latest_prices = {sid: all_prices[sid] for sid in stock_ids if sid in all_prices}
 
     result = []
     for r in rows:

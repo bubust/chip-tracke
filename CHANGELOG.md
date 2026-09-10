@@ -4,14 +4,22 @@
 
 ## 2026-09-10
 
-### commit 29bfb4c — fix: 現價改用 TWSE+TPEX OpenAPI（全市場覆蓋，20s TTL快取）
-**問題：** MIS API 只回傳已成交股票的即時價，當天還沒成交的股票顯示 0.00%，造成「只有部分股票會跳現價」。
-**根本原因：** MIS 的 `z`（成交價）欄位在股票尚未成交時為 "-"，fallback 用昨收 `y` 計算漲跌 = 0%。
+### commit (pending) — fix: 現價改用 TWSE MI_INDEX + TPEX 盤中即時行情
+**問題：** 上一版改用 TWSE/TPEX OpenAPI，但這兩個是「昨日收盤」資料，不是盤中即時價；MIS API 的 `z` 欄位盤中對大多數股票仍回傳 "-"（成交前為空），造成「只有少數股票有現價」。
+**根本原因：** TWSE OpenAPI (`STOCK_DAY_ALL`) 每日盤後才更新一次，非盤中即時。MIS 按個別股票查詢，部分股票未開始成交時 z="-"，無法全市場覆蓋。
 **修改：**
-- 新增模組級 `_fetch_all_prices()` helper：同時呼叫 TWSE OpenAPI（上市）+ TPEX OpenAPI（上櫃），一次拿全市場現價 + 漲跌幅
-- 20 秒 TTL 快取（`_PRICE_ALL`）：多個端點共用，避免每次刷新都打 API
-- `api_watchlist_prices` 和 `api_watchlist_summary` 統一使用此 helper
-- TWSE/TPEX OpenAPI 特點：政府官方、Render 不封鎖、盤中每 5-20 秒更新、有真正的漲跌幅欄位 `Change`
+- `server.py` → `_fetch_all_prices()` 改為兩個真正的即時來源：
+  - **TSE（上市）**：`TWSE MI_INDEX`（`www.twse.com.tw/exchangeReport/MI_INDEX?response=json&type=ALLBUT0999`）→ `data8` 陣列，每筆成交後即更新，盤中最即時
+  - **OTC（上櫃）**：`TPEX stk_wn1430`（`www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php`）→ `aaData` 陣列
+- MI_INDEX `data8` 欄位：`[代號(0), 名稱(1), 成交量(2), ..., 收盤(8), 漲跌方向(9), 漲跌(10)]`
+- 漲跌方向判斷：`color:green` = 跌（取負值）；`color:red` = 漲（取正值）
+- change_pct = 漲跌值 / (收盤 - 漲跌值) × 100
+- `api_watchlist_prices` / `api_watchlist_summary` 統一使用此 helper，刪除 `_mis_prices()`
+- 保留 20s TTL 快取避免頻繁打 API
+
+### commit 29bfb4c — fix: 現價改用 TWSE+TPEX OpenAPI（全市場覆蓋，20s TTL快取）（已被上版取代）
+**問題：** MIS API 只回傳已成交股票的即時價，大多數股票 z="-" 造成現價不更新。
+**根本原因（事後發現）：** 改用的 TWSE/TPEX OpenAPI 其實是昨日收盤資料，不是真正即時。
 
 
 
