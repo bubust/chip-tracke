@@ -2080,12 +2080,51 @@ function setDrawMode(mode) {
 function clearDrawings() {
   _drawings.forEach(d => {
     try {
-      if (d.type === 'hline' && _drawSeries) _drawSeries.removePriceLine(d.priceLine);
+      if ((d.type === 'hline' || d.type === '_hint') && _drawSeries) _drawSeries.removePriceLine(d.priceLine);
       if (d.type === 'tline' && _drawChart) _drawChart.removeSeries(d.series);
     } catch(e) {}
   });
   _drawings = [];
   _drawPoints = [];
+  if (_chartStockId) localStorage.removeItem('chip_draw_' + _chartStockId);
+}
+
+function _saveDrawings(sid) {
+  if (!sid) return;
+  const data = {
+    hlines: _drawings.filter(d => d.type === 'hline').map(d => ({ price: d.priceLine.options ? d.priceLine.options().price : d._price })),
+    tlines: _drawings.filter(d => d.type === 'tline').map(d => ({ p1: d.p1, p2: d.p2 })),
+  };
+  try { localStorage.setItem('chip_draw_' + sid, JSON.stringify(data)); } catch(e) {}
+}
+
+function _restoreDrawings(sid) {
+  if (!sid || !_drawChart || !_drawSeries) return;
+  let data;
+  try { data = JSON.parse(localStorage.getItem('chip_draw_' + sid) || 'null'); } catch(e) { return; }
+  if (!data) return;
+  (data.hlines || []).forEach(h => {
+    try {
+      const pl = _drawSeries.createPriceLine({
+        price: h.price, color: '#f97316', lineWidth: 2, lineStyle: 1,
+        axisLabelVisible: true, title: Number(h.price).toFixed(2),
+      });
+      _drawings.push({ type: 'hline', priceLine: pl });
+    } catch(e) {}
+  });
+  (data.tlines || []).forEach(t => {
+    try {
+      const ls = _drawChart.addLineSeries({
+        color: '#c084fc', lineWidth: 2, lineStyle: 0,
+        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+      });
+      ls.setData([
+        { time: t.p1.time, value: t.p1.price },
+        { time: t.p2.time, value: t.p2.price },
+      ]);
+      _drawings.push({ type: 'tline', series: ls, p1: t.p1, p2: t.p2 });
+    } catch(e) {}
+  });
 }
 
 function openWlChart(sid)     { _frozenChartList = [..._wlChartList];     _frozenChartIdx = _frozenChartList.indexOf(sid); openChart(sid); }
@@ -2291,6 +2330,7 @@ async function openChart(stockId, savedRange = null) {
     // 儲存繪圖用參考
     _drawChart  = cChart;
     _drawSeries = cSeries;
+    _restoreDrawings(_chartStockId);
 
     // ── 繪圖點擊事件 ──────────────────────────────────────────────────────
     cEl.addEventListener('click', e => {
@@ -2303,10 +2343,11 @@ async function openChart(stockId, savedRange = null) {
 
       if (_drawMode === 'hline') {
         const pl = cSeries.createPriceLine({
-          price, color: '#fbbf24', lineWidth: 1, lineStyle: 2,
+          price, color: '#f97316', lineWidth: 2, lineStyle: 1,
           axisLabelVisible: true, title: price.toFixed(2),
         });
         _drawings.push({ type: 'hline', priceLine: pl });
+        _saveDrawings(_chartStockId);
       } else if (_drawMode === 'tline') {
         const time = cChart.timeScale().coordinateToTime(x);
         if (!time) return;
@@ -2314,22 +2355,22 @@ async function openChart(stockId, savedRange = null) {
         if (_drawPoints.length === 2) {
           const [p1, p2] = _drawPoints.sort((a, b) => a.time < b.time ? -1 : 1);
           const ls = cChart.addLineSeries({
-            color: '#a78bfa', lineWidth: 1, lineStyle: 0,
+            color: '#c084fc', lineWidth: 2, lineStyle: 0,
             priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
           });
           ls.setData([
             { time: p1.time, value: p1.price },
             { time: p2.time, value: p2.price },
           ]);
-          _drawings.push({ type: 'tline', series: ls });
+          _drawings.push({ type: 'tline', series: ls, p1, p2 });
+          _saveDrawings(_chartStockId);
           _drawPoints = [];
         } else {
-          // 第一點提示
           const hint = cSeries.createPriceLine({
-            price, color: '#a78bfa', lineWidth: 1, lineStyle: 3,
+            price, color: '#c084fc', lineWidth: 1, lineStyle: 3,
             axisLabelVisible: false, title: '①',
           });
-          _drawings.push({ type: 'hline', priceLine: hint });
+          _drawings.push({ type: '_hint', priceLine: hint });
         }
       }
     });

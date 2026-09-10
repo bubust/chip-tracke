@@ -138,7 +138,32 @@ def get_futures(
         ).fetchone()
 
     if not ul_row:
-        raise HTTPException(404, f"股票 {stock_id} 不在資料庫，請先透過權證選擇器搜尋一次以建立紀錄")
+        # 嘗試從 stocks.csv 補建 underlyings 記錄
+        import os, pandas as pd
+        _csv = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "stocks.csv")
+        try:
+            _df = pd.read_csv(_csv, dtype=str, encoding="utf-8")
+            _row = _df[_df["stock_id"] == stock_id]
+            if _row.empty:
+                raise HTTPException(404, f"找不到股票 {stock_id}")
+            _name   = str(_row.iloc[0]["stock_name"])
+            _market = "TSE" if str(_row.iloc[0]["type"]) == "twse" else "OTC"
+            with _db.db() as conn:
+                conn.execute("""
+                    INSERT OR IGNORE INTO underlyings(code, name, market, updated_at)
+                    VALUES(?, ?, ?, datetime('now'))
+                """, (stock_id, _name, _market))
+            with _db.db() as conn:
+                ul_row = conn.execute(
+                    "SELECT code, name, market FROM underlyings WHERE code=?", (stock_id,)
+                ).fetchone()
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(404, f"股票 {stock_id} 不在資料庫") from e
+
+    if not ul_row:
+        raise HTTPException(404, f"找不到股票 {stock_id}")
 
     stock_name = ul_row["name"]
     market     = ul_row["market"]

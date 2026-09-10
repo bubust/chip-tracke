@@ -253,6 +253,13 @@ def search(q: str = Query(..., min_length=1)):
         """, (f"{q}%", f"%{q}%")).fetchall()
         for r in rows:
             results.append({"code": r["code"], "name": r["name"], "market": r["market"], "warrant_count": r["warrant_count"], "matched_by": "UNDERLYING"})
+
+    # 若搜尋結果為空，回傳初始化狀態提示
+    if not results:
+        with _db.db() as conn:
+            cnt = conn.execute("SELECT COUNT(*) FROM underlyings").fetchone()[0]
+        if cnt == 0:
+            return {"results": [], "initializing": True, "message": "資料庫初始化中，請稍後 1~2 分鐘再試"}
     return {"results": results}
 
 @router.get("/api/warrants")
