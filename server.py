@@ -229,23 +229,64 @@ async def api_update_note(stock_id: str, request: Request):
 
 @app.get("/api/watchlist/prices")
 async def api_watchlist_prices():
-    """輕量端點：只回傳觀察清單各股的最新現價，用於自動刷新。"""
-    from yahoo_price import get_stock_list, fetch_prices_for_stocks
+    """輕量端點：只回傳觀察清單各股的最新現價，用於自動刷新。
+    改用 TWSE MIS 即時報價（Yahoo Finance 在 Cloud 端常被封 IP）。
+    """
+    import time as _time
+    from yahoo_price import get_stock_list
     stocks_df = get_stock_list()
     mkt_map   = dict(zip(stocks_df["stock_id"], stocks_df["type"]))
     conn = get_conn()
     rows = conn.execute("SELECT stock_id FROM watchlist").fetchall()
     conn.close()
     stock_ids = [r["stock_id"] for r in rows]
-    stock_list = [(sid, mkt_map.get(sid, "twse")) for sid in stock_ids]
-    latest_prices = await fetch_prices_for_stocks(stock_list)
-    return {
-        sid: {
-            "close":      info.get("close"),
-            "change_pct": info.get("change_pct"),
-        }
-        for sid, info in latest_prices.items()
+    if not stock_ids:
+        return {}
+
+    # 依上市/上櫃組成 ex_ch 字串
+    parts = []
+    for sid in stock_ids:
+        prefix = "otc" if mkt_map.get(sid) == "tpex" else "tse"
+        parts.append(f"{prefix}_{sid}.tw")
+    ex_ch = "|".join(parts)
+
+    MIS_URL = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
+    MIS_HEADERS = {
+        "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer":         "https://mis.twse.com.tw/stock/index.jsp",
+        "Accept":          "application/json, text/javascript, */*; q=0.01",
+        "X-Requested-With":"XMLHttpRequest",
     }
+    try:
+        async with httpx.AsyncClient(headers=MIS_HEADERS, timeout=10,
+                                     follow_redirects=True, verify=False) as client:
+            r = await client.get(MIS_URL, params={
+                "ex_ch": ex_ch, "json": "1", "delay": "0",
+                "_": str(int(_time.time() * 1000)),
+            })
+            r.raise_for_status()
+            items = r.json().get("msgArray", [])
+    except Exception as e:
+        print(f"[PRICES] MIS 失敗: {e}")
+        return {}
+
+    def _sf(s):
+        try: return float(s) if s and s not in ("-", "") else None
+        except: return None
+
+    result = {}
+    for item in items:
+        sid = item.get("c", "")
+        if not sid:
+            continue
+        z = _sf(item.get("z"))   # 成交價（盤中即時）
+        y = _sf(item.get("y"))   # 昨收（參考價）
+        price = z if z is not None else y
+        if price is None:
+            continue
+        pct = round((price - y) / y * 100, 2) if (y and y > 0) else 0.0
+        result[sid] = {"close": round(price, 2), "change_pct": pct}
+    return result
 
 @app.get("/api/watchlist/summary")
 async def api_watchlist_summary():
