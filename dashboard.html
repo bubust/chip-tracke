@@ -642,7 +642,8 @@ function renderWatchlist() {
   tbody.innerHTML = _wlData.map(s => {
     const priceCell = (() => {
       if (s.close == null) return `<td id="price-${s.stock_id}" class="muted">—</td>`;
-      const pct = s.change_pct ?? 0;
+      if (s.change_pct == null) return `<td id="price-${s.stock_id}" class="muted">${s.close} <small style="opacity:.45">--</small></td>`;
+      const pct = s.change_pct;
       const cls = pct > 0 ? 'pos' : pct < 0 ? 'neg' : '';
       const sign = pct > 0 ? '+' : '';
       return `<td id="price-${s.stock_id}" class="${cls}">${s.close} <small style="opacity:.7">${sign}${pct.toFixed(2)}%</small></td>`;
@@ -775,12 +776,18 @@ function _renderPriceCell(sid, close, change_pct) {
     td.innerHTML = '—';
     return;
   }
-  const pct = change_pct ?? 0;
+  if (change_pct == null) {
+    // 昨收（未成交），不閃爍不上色
+    td.className = 'muted';
+    td.innerHTML = `${close} <small style="opacity:.45">--</small>`;
+    return;
+  }
+  const pct = change_pct;
   const cls = pct > 0 ? 'pos' : pct < 0 ? 'neg' : '';
   const sign = pct > 0 ? '+' : '';
   td.className = cls;
   td.innerHTML = `${close} <small style="opacity:.7">${sign}${pct.toFixed(2)}%</small>`;
-  // 閃爍提示更新
+  // 閃爍提示更新（只在有真實成交時）
   td.style.transition = 'background .15s';
   td.style.background = pct > 0 ? 'rgba(239,83,80,.18)' : pct < 0 ? 'rgba(38,166,154,.18)' : 'rgba(255,255,255,.08)';
   setTimeout(() => { td.style.background = ''; }, 600);
