@@ -73,7 +73,7 @@ async def _fetch_all_prices() -> dict:
 
     async with httpx.AsyncClient(headers=hdrs, timeout=25, follow_redirects=True,
                                   verify=False) as client:
-        # ── 上市 TSE：MI_INDEX（type=ALLBUT0999 回傳 `data` key，非 data8）──
+        # ── 上市 TSE：MI_INDEX（回傳 tables 陣列，第 8 張表「每日收盤行情」含個股資料）──
         # 欄位：[代號(0), 名稱(1), 成交量(2), 筆數(3), 金額(4),
         #        開盤(5), 最高(6), 最低(7), 收盤(8), 漲跌方向(9), 漲跌(10), ...]
         tse_ok = 0
@@ -82,24 +82,28 @@ async def _fetch_all_prices() -> dict:
                 "https://www.twse.com.tw/exchangeReport/MI_INDEX",
                 params={"response": "json", "type": "ALLBUT0999"},
             )
-            print(f"[PRICES] MI_INDEX status={r.status_code}")
             if r.status_code == 200:
                 data = r.json()
-                print(f"[PRICES] MI_INDEX keys={list(data.keys())[:10]}, stat={data.get('stat')}")
-                # type=ALLBUT0999 → 單表，key 是 "data"
-                # 不帶 type 的完整報告 → 多表，key 是 "data8" 等
-                rows = (data.get("data") or
-                        data.get("data8") or
-                        data.get("data9") or
-                        [])
+                rows = []
+                # 先找標題含「收盤行情」的表（最可靠）
+                for tbl in (data.get("tables") or []):
+                    if not isinstance(tbl, dict):
+                        continue
+                    if "收盤行情" in tbl.get("title", ""):
+                        rows = tbl.get("data") or []
+                        break
+                # Fallback：找資料量最多的表（應為個股行情表）
                 if not rows:
-                    # 部分時段 TWSE 回傳 tables 陣列
+                    best, best_len = [], 0
                     for tbl in (data.get("tables") or []):
-                        if isinstance(tbl, dict) and len(tbl.get("data", [])) > 50:
-                            rows = tbl["data"]
-                            break
-                if rows:
-                    print(f"[PRICES] MI_INDEX rows={len(rows)}, sample={rows[0][:5] if rows else []}")
+                        if not isinstance(tbl, dict):
+                            continue
+                        tbl_data = tbl.get("data") or []
+                        if len(tbl_data) > best_len:
+                            best_len = len(tbl_data)
+                            best = tbl_data
+                    rows = best
+                print(f"[PRICES] MI_INDEX rows={len(rows)}")
                 for row in rows:
                     if len(row) < 11:
                         continue
@@ -124,43 +128,33 @@ async def _fetch_all_prices() -> dict:
         except Exception as e:
             print(f"[PRICES] MI_INDEX 失敗: {e}")
 
-        # ── 上櫃 OTC：TPEX（盤中 tradinginfo → 盤後 aftertrading）──
-        # aaData 欄位：[代號(0), 名稱(1), 收盤(2), 漲跌(3), 開盤(4), 最高(5), 最低(6), ...]
-        tpex_urls = [
-            "https://www.tpex.org.tw/web/stock/tradinginfo/otc_quotes_no1430/stk_wn1430_result.php",
-            "https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php",
-        ]
-        for tpex_url in tpex_urls:
-            try:
-                r = await client.get(tpex_url, params={"l": "zh-tw", "o": "json", "se": "AL"})
-                print(f"[PRICES] TPEX {tpex_url.split('/')[-3]} status={r.status_code}")
-                if r.status_code == 200:
-                    jdata = r.json()
-                    aa = jdata.get("aaData") or []
-                    print(f"[PRICES] TPEX aaData rows={len(aa)}, sample={aa[0][:5] if aa else []}")
-                    otc_ok = 0
-                    for row in aa:
-                        if len(row) < 4:
-                            continue
-                        sid = str(row[0]).strip()
-                        if not sid or not sid[:4].isdigit():
-                            continue
-                        close = _sf_price(row[2])
-                        change = _sf_price(row[3])
-                        if close is None or close <= 0:
-                            continue
-                        if change is not None:
-                            prev = close - change
-                            pct = round(change / prev * 100, 2) if prev > 0 else 0.0
-                        else:
-                            pct = 0.0
-                        result[sid] = {"close": round(close, 2), "change_pct": pct}
-                        otc_ok += 1
-                    print(f"[PRICES] TPEX parsed={otc_ok} 支")
-                    if otc_ok > 0:
-                        break
-            except Exception as e:
-                print(f"[PRICES] TPEX {tpex_url} 失敗: {e}")
+        # ── 上櫃 OTC：TPEX OpenAPI（Render 可連，盤後更新）──
+        # 欄位名稱：SecuritiesCompanyCode / Close / Change
+        try:
+            r = await client.get(
+                "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_perday_quotes"
+            )
+            print(f"[PRICES] TPEX OpenAPI status={r.status_code}")
+            if r.status_code == 200:
+                otc_ok = 0
+                for row in r.json():
+                    sid = str(row.get("SecuritiesCompanyCode") or row.get("Code") or "").strip()
+                    if not sid or not sid[:4].isdigit():
+                        continue
+                    close = _sf_price(row.get("Close") or row.get("ClosingPrice"))
+                    change = _sf_price(row.get("Change") or row.get("PriceChange"))
+                    if close is None or close <= 0:
+                        continue
+                    if change is not None:
+                        prev = close - change
+                        pct = round(change / prev * 100, 2) if prev > 0 else 0.0
+                    else:
+                        pct = 0.0
+                    result[sid] = {"close": round(close, 2), "change_pct": pct}
+                    otc_ok += 1
+                print(f"[PRICES] TPEX OpenAPI parsed={otc_ok} 支")
+        except Exception as e:
+            print(f"[PRICES] TPEX OpenAPI 失敗: {e}")
 
     if result:
         _PRICE_ALL = result
@@ -1178,27 +1172,22 @@ async def debug_prices():
         except Exception as e:
             out["mi_index"] = {"error": str(e)}
 
-        # TPEX tradinginfo
+        # TPEX OpenAPI
         try:
-            r = await client.get(
-                "https://www.tpex.org.tw/web/stock/tradinginfo/otc_quotes_no1430/stk_wn1430_result.php",
-                params={"l": "zh-tw", "o": "json", "se": "AL"},
-            )
-            jdata = r.json() if r.status_code == 200 else {}
-            out["tpex_trading"] = _inspect("tpex_trading", r.status_code, jdata)
+            r = await client.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_perday_quotes")
+            if r.status_code == 200:
+                arr = r.json()
+                sample = arr[0] if arr else {}
+                out["tpex_openapi"] = {
+                    "status": r.status_code,
+                    "rows_count": len(arr),
+                    "sample_keys": list(sample.keys()) if sample else [],
+                    "sample_row": sample,
+                }
+            else:
+                out["tpex_openapi"] = {"status": r.status_code}
         except Exception as e:
-            out["tpex_trading"] = {"error": str(e)}
-
-        # TPEX aftertrading
-        try:
-            r = await client.get(
-                "https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php",
-                params={"l": "zh-tw", "o": "json", "se": "AL"},
-            )
-            jdata = r.json() if r.status_code == 200 else {}
-            out["tpex_after"] = _inspect("tpex_after", r.status_code, jdata)
-        except Exception as e:
-            out["tpex_after"] = {"error": str(e)}
+            out["tpex_openapi"] = {"error": str(e)}
 
     # 也順帶重置快取，強制下次重新抓
     global _PRICE_ALL_TS
