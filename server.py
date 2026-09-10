@@ -297,7 +297,8 @@ async def api_watchlist_prices():
 
 @app.get("/api/watchlist/summary")
 async def api_watchlist_summary():
-    from yahoo_price import get_stock_list, fetch_prices_for_stocks
+    import time as _time
+    from yahoo_price import get_stock_list
 
     # Supabase 優先：Render 重啟後 SQLite 是空的，從 Supabase 同步回來
     sb_rows = sb.wl_list()
@@ -343,9 +344,44 @@ async def api_watchlist_summary():
         conn.commit()
         conn.close()
 
-    # 批次抓最新收盤價
-    stock_list   = [(sid, mkt_map.get(sid, "twse")) for sid in stock_ids]
-    latest_prices = await fetch_prices_for_stocks(stock_list)
+    # 批次抓最新現價（TWSE MIS 即時報價，Yahoo Finance 在 Render 被封 IP）
+    _mis_parts = []
+    for sid in stock_ids:
+        prefix = "otc" if mkt_map.get(sid) == "tpex" else "tse"
+        _mis_parts.append(f"{prefix}_{sid}.tw")
+    _mis_ex_ch = "|".join(_mis_parts)
+    _MIS_URL = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
+    _MIS_HDR = {
+        "User-Agent":       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer":          "https://mis.twse.com.tw/stock/index.jsp",
+        "Accept":           "application/json, text/javascript, */*; q=0.01",
+        "X-Requested-With": "XMLHttpRequest",
+    }
+    latest_prices: dict = {}
+    try:
+        async with httpx.AsyncClient(headers=_MIS_HDR, timeout=10,
+                                     follow_redirects=True, verify=False) as _c:
+            _r = await _c.get(_MIS_URL, params={
+                "ex_ch": _mis_ex_ch, "json": "1", "delay": "0",
+                "_": str(int(_time.time() * 1000)),
+            })
+            _r.raise_for_status()
+            def _sf(s):
+                try: return float(s) if s and s not in ("-", "") else None
+                except: return None
+            for _item in _r.json().get("msgArray", []):
+                _sid = _item.get("c", "")
+                if not _sid:
+                    continue
+                _z = _sf(_item.get("z"))
+                _y = _sf(_item.get("y"))
+                _p = _z if _z is not None else _y
+                if _p is None:
+                    continue
+                _pct = round((_p - _y) / _y * 100, 2) if (_y and _y > 0) else 0.0
+                latest_prices[_sid] = {"close": round(_p, 2), "change_pct": _pct}
+    except Exception as _e:
+        print(f"[SUMMARY] MIS 失敗: {_e}")
 
     result = []
     for r in rows:

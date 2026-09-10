@@ -541,7 +541,22 @@ let _detailSid = '';
 let _wlData    = [];  // cached summary
 
 // ── localStorage 自選清單備份 ──
-const WL_LS_KEY = 'chip_tracker_watchlist_v1';
+const WL_LS_KEY      = 'chip_tracker_watchlist_v1';
+const SCREEN_LS_KEY  = 'chip_tracker_screen_v1';
+const MKT_LS_KEY     = 'chip_tracker_mkt_v1';
+
+function lsSaveScreen(results) {
+  try { localStorage.setItem(SCREEN_LS_KEY, JSON.stringify(results)); } catch(e) {}
+}
+function lsLoadScreen() {
+  try { return JSON.parse(localStorage.getItem(SCREEN_LS_KEY) || '{}'); } catch(e) { return {}; }
+}
+function lsSaveMkt(mktData) {
+  try { localStorage.setItem(MKT_LS_KEY, JSON.stringify(mktData)); } catch(e) {}
+}
+function lsLoadMkt() {
+  try { return JSON.parse(localStorage.getItem(MKT_LS_KEY) || '{"buyers":[],"sellers":[]}'); } catch(e) { return {buyers:[],sellers:[]}; }
+}
 
 function lsSaveWatchlist(list) {
   // list: [{stock_id, name, memo}]
@@ -1316,7 +1331,7 @@ async function refreshWatchlistTdcc() {
 }
 
 // ═════════════════════════════ MARKET SCAN ═════════════════════════════
-let _mkt = { buyers: [], sellers: [] };
+let _mkt = lsLoadMkt();   // 頁面重整後從 localStorage 恢復
 let _mktView = 'buyers';
 
 async function scanMarket() {
@@ -1329,6 +1344,7 @@ async function scanMarket() {
     const r = await api('GET', '/api/market/scan?top=50');
     _mkt.buyers  = r.top_buyers  || [];
     _mkt.sellers = r.top_sellers || [];
+    lsSaveMkt(_mkt);
     const now = new Date().toLocaleTimeString('zh-TW');
     document.getElementById('scan-meta').textContent =
       `${r.date} · 共 ${r.total} 支上市股票 · 掃描完成 ${now}`;
@@ -1821,6 +1837,7 @@ async function pollScreenStatus() {
         document.getElementById('screen-placeholder').style.display = 'none';
         const r = await api('GET', '/api/screen/results');
         _screenAllResults = r.results || {};
+        lsSaveScreen(_screenAllResults);
         renderStratBar();
         // 自動顯示第一個有資料的策略
         const first = Object.keys(STRATEGY_LABELS).find(k => (_screenAllResults[k] || []).length > 0);
@@ -1980,6 +1997,25 @@ async function warmupServer() {
 
 (async function init() {
   await warmupServer();
+
+  // 從 localStorage 恢復策略掃描結果（重整後不消失）
+  const _savedScreen = lsLoadScreen();
+  const _savedScreenTotal = Object.values(_savedScreen).reduce((s, a) => s + a.length, 0);
+  if (_savedScreenTotal > 0) {
+    _screenAllResults = _savedScreen;
+    document.getElementById('screen-placeholder').style.display = 'none';
+    renderStratBar();
+    const _first = Object.keys(STRATEGY_LABELS).find(k => (_screenAllResults[k] || []).length > 0);
+    if (_first) viewStrategy(_first);
+  }
+
+  // 從 localStorage 恢復全市場排行結果
+  const _savedMkt = lsLoadMkt();
+  if ((_savedMkt.buyers || []).length > 0) {
+    _mkt = _savedMkt;
+    renderMarket();
+  }
+
   await loadWatchlist();
   await loadPill();
   renderQueryHistory();
