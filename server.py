@@ -1175,26 +1175,43 @@ async def debug_prices():
             except Exception as e:
                 out["mis_session"][entry_url] = {"error": str(e)}
 
-        # FinMind — 測試今日分鐘資料（若可取得則可做即時現價）
+        # FinMind — 測試今日收盤 + 分鐘資料
         import datetime as _dt
         today_str = _dt.date.today().strftime("%Y-%m-%d")
         FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0.LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
-        try:
-            fm_r = await client.get(
-                "https://api.finmindtrade.com/api/v4/data",
-                params={"dataset": "TaiwanStockPriceMinute", "stock_id": "2303",
-                        "start_date": today_str, "token": FINMIND_TOKEN},
-            )
-            fm_data = fm_r.json() if fm_r.status_code == 200 else {}
-            fm_rows = fm_data.get("data", [])
-            out["finmind_minute"] = {
-                "status": fm_r.status_code,
-                "rows": len(fm_rows),
-                "latest": fm_rows[-1] if fm_rows else None,
-                "msg": fm_data.get("msg", ""),
-            }
-        except Exception as e:
-            out["finmind_minute"] = {"error": str(e)}
+        for fm_dataset in ["TaiwanStockPrice", "TaiwanStockPriceMinute"]:
+            try:
+                fm_r = await client.get(
+                    "https://api.finmindtrade.com/api/v4/data",
+                    params={"dataset": fm_dataset, "stock_id": "2303",
+                            "start_date": today_str, "token": FINMIND_TOKEN},
+                )
+                fm_data = fm_r.json() if fm_r.status_code == 200 else {}
+                fm_rows = fm_data.get("data", [])
+                out[f"finmind_{fm_dataset}"] = {
+                    "status": fm_r.status_code,
+                    "rows": len(fm_rows),
+                    "latest": fm_rows[-1] if fm_rows else None,
+                    "msg": fm_data.get("msg", ""),
+                }
+            except Exception as e:
+                out[f"finmind_{fm_dataset}"] = {"error": str(e)}
+
+        # Fugle — 台灣券商即時 API（demo key 有限制但免費）
+        for fugle_url in [
+            "https://api.fugle.tw/realtime/v0.3/intraday/quote?symbolId=2303&apiToken=demo",
+            "https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/2303",
+        ]:
+            try:
+                fg_r = await client.get(fugle_url, headers={"X-API-KEY": "demo"})
+                fg_data = fg_r.json() if fg_r.status_code == 200 else {}
+                out[f"fugle_{fugle_url.split('/')[-1].split('?')[0]}"] = {
+                    "status": fg_r.status_code,
+                    "keys": list(fg_data.keys())[:10],
+                    "sample": str(fg_data)[:300],
+                }
+            except Exception as e:
+                out[f"fugle_{fugle_url.split('/')[-1].split('?')[0]}"] = {"error": str(e)}
 
     # 也順帶重置快取，強制下次重新抓
     global _PRICE_ALL_TS
