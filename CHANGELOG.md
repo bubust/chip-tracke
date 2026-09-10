@@ -4,6 +4,17 @@
 
 ## 2026-09-10
 
+### commit 29bfb4c — fix: 現價改用 TWSE+TPEX OpenAPI（全市場覆蓋，20s TTL快取）
+**問題：** MIS API 只回傳已成交股票的即時價，當天還沒成交的股票顯示 0.00%，造成「只有部分股票會跳現價」。
+**根本原因：** MIS 的 `z`（成交價）欄位在股票尚未成交時為 "-"，fallback 用昨收 `y` 計算漲跌 = 0%。
+**修改：**
+- 新增模組級 `_fetch_all_prices()` helper：同時呼叫 TWSE OpenAPI（上市）+ TPEX OpenAPI（上櫃），一次拿全市場現價 + 漲跌幅
+- 20 秒 TTL 快取（`_PRICE_ALL`）：多個端點共用，避免每次刷新都打 API
+- `api_watchlist_prices` 和 `api_watchlist_summary` 統一使用此 helper
+- TWSE/TPEX OpenAPI 特點：政府官方、Render 不封鎖、盤中每 5-20 秒更新、有真正的漲跌幅欄位 `Change`
+
+
+
 ### commit c16f58d — fix: summary改MIS價格 + 策略/市場掃描結果localStorage持久化
 **問題：** 現價仍顯示 0.00%（summary 端點還在用 Yahoo Finance，Render 被封 IP）；策略篩選和全市場排行結果在頁面重整後消失。
 **修改：**
