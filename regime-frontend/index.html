@@ -18,8 +18,16 @@
   .score-card .label { font-size: .75rem; color: #8b949e; margin-bottom: 6px; }
   .score-card .value { font-size: 2.2rem; font-weight: 700; }
   .score-card .sub { font-size: .72rem; color: #8b949e; margin-top: 4px; }
-  .regime-box { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+  .regime-box { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
   .regime-label { font-size: 1.3rem; font-weight: 700; text-align: center; padding: 12px; }
+  /* 操作建議 */
+  .suggest-box { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+  .suggest-title { font-size: .75rem; color: #8b949e; margin-bottom: 6px; }
+  .suggest-action { font-size: 1rem; font-weight: 600; margin-bottom: 6px; }
+  .suggest-desc { font-size: .82rem; color: #8b949e; line-height: 1.5; }
+  .suggest-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .tag { padding: 2px 8px; border-radius: 10px; font-size: .72rem; border: 1px solid; }
+  /* 因子 */
   .factors-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
   .factor-row { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 12px; }
   .factor-row .name { font-size: .78rem; color: #8b949e; margin-bottom: 4px; }
@@ -27,9 +35,22 @@
   .factor-row .bar { height: 100%; border-radius: 4px; transition: width .4s; }
   .factor-row .num { font-size: .9rem; font-weight: 600; margin-top: 4px; }
   .green { color: #3fb950; } .red { color: #f85149; } .yellow { color: #d29922; }
-  .series-list { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 16px; }
+  /* 數據列表 */
+  .series-list { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
   .series-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #21262d; font-size: .85rem; }
   .series-row:last-child { border-bottom: none; }
+  /* 歷史圖表 */
+  .chart-box { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+  .chart-legend { display: flex; gap: 16px; margin-bottom: 10px; font-size: .75rem; }
+  .chart-legend span { display: flex; align-items: center; gap: 4px; }
+  .chart-legend i { display: inline-block; width: 20px; height: 3px; border-radius: 2px; }
+  canvas { width: 100%; height: 180px; display: block; }
+  /* Regime 歷史記錄 */
+  .history-table { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 16px; margin-bottom: 20px; overflow-x: auto; }
+  .history-table table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+  .history-table th { color: #8b949e; padding: 4px 8px; text-align: left; border-bottom: 1px solid #21262d; font-weight: 400; }
+  .history-table td { padding: 5px 8px; border-bottom: 1px solid #161b22; }
+  /* 其他 */
   .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #30363d; border-top-color: #58a6ff; border-radius: 50%; animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   #status-bar { font-size: .75rem; color: #8b949e; text-align: right; margin-bottom: 8px; }
@@ -45,6 +66,7 @@
 </div>
 <div id="status-bar">資料載入中...</div>
 
+<!-- 三大核心分數 -->
 <div class="grid3">
   <div class="score-card" id="card-dir">
     <div class="label">方向 Direction</div>
@@ -64,7 +86,7 @@
 </div>
 
 <!-- 廣度進度條 -->
-<div style="background:#161b22;border:1px solid #21262d;border-radius:10px;padding:14px 16px;margin-bottom:20px">
+<div style="background:#161b22;border:1px solid #21262d;border-radius:10px;padding:14px 16px;margin-bottom:16px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
     <span style="font-size:.8rem;color:#8b949e">廣度 — 站上50日均線比例</span>
     <span id="breadth-pct" style="font-size:1rem;font-weight:700;color:#e6edf3">—</span>
@@ -77,9 +99,35 @@
   </div>
 </div>
 
+<!-- 市場狀態 -->
 <div class="regime-box">
   <div class="label" style="text-align:center;font-size:.75rem;color:#8b949e;margin-bottom:4px">市場狀態</div>
   <div class="regime-label" id="regime-label">載入中…</div>
+</div>
+
+<!-- 操作建議 Sprint 3 -->
+<div class="suggest-box">
+  <div class="suggest-title">💡 操作建議</div>
+  <div class="suggest-action" id="suggest-action">—</div>
+  <div class="suggest-desc" id="suggest-desc">—</div>
+  <div class="suggest-tags" id="suggest-tags"></div>
+</div>
+
+<!-- 歷史走勢圖 Sprint 3 -->
+<h2>60 日走勢圖</h2>
+<div class="chart-box">
+  <div class="chart-legend">
+    <span><i style="background:#3fb950"></i> Direction 方向</span>
+    <span><i style="background:#f85149"></i> Risk Score 風險</span>
+    <span><i style="background:#d29922"></i> Exhaustion 竭盡</span>
+  </div>
+  <canvas id="history-chart"></canvas>
+</div>
+
+<!-- Regime 標籤歷史 Sprint 3 -->
+<h2>近期市場狀態記錄</h2>
+<div class="history-table" id="history-table">
+  <div style="color:#8b949e;font-size:.82rem;text-align:center;padding:12px">載入中...</div>
 </div>
 
 <h2>四大方向因子</h2>
@@ -117,9 +165,78 @@ function colorRisk(v) {
   if (v > 50) return '#d29922';
   return '#3fb950';
 }
-function barColor(v, invert = false) {
-  const good = invert ? v < 50 : v > 50;
-  return good ? '#3fb950' : '#f85149';
+
+// ── 操作建議 Sprint 3 ────────────────────────────────────────────────
+const SUGGESTIONS = [
+  {
+    match: d => d.regime_label && d.regime_label.includes('健康多頭'),
+    action: '✅ 積極布局，趨勢向上',
+    desc: '市場方向明確向上，風險可控。適合持有強勢股，設定合理停損，順勢加碼。',
+    tags: [
+      { text: '順勢操作', color: '#3fb950' },
+      { text: '持股比例 70~100%', color: '#3fb950' },
+      { text: '重點：強勢板塊', color: '#58a6ff' },
+    ],
+  },
+  {
+    match: d => d.regime_label && d.regime_label.includes('多頭過熱'),
+    action: '⚠️ 縮手觀望，注意回檔',
+    desc: '市場方向偏多但風險偏高，可能出現技術性回調。不宜追高，可適度減碼或設緊停損。',
+    tags: [
+      { text: '謹慎追高', color: '#d29922' },
+      { text: '持股比例 40~60%', color: '#d29922' },
+      { text: '注意出場訊號', color: '#f0883e' },
+    ],
+  },
+  {
+    match: d => d.regime_label && d.regime_label.includes('恐慌竭盡'),
+    action: '🟡 分批承接，逢低布局',
+    desc: '市場恐慌程度達到極端，出現竭盡訊號。可考慮分批低接優質標的，但需耐心等待確認訊號。',
+    tags: [
+      { text: '逢低分批', color: '#d29922' },
+      { text: '持股比例 20~40%', color: '#d29922' },
+      { text: '等待確認訊號', color: '#58a6ff' },
+    ],
+  },
+  {
+    match: d => d.regime_label && d.regime_label.includes('極端風險'),
+    action: '🚨 降低部位，嚴控風險',
+    desc: '市場處於極端風險狀態，系統性風險偏高。建議大幅降低持股比例，持現金觀望。',
+    tags: [
+      { text: '大幅減碼', color: '#f85149' },
+      { text: '持股比例 < 20%', color: '#f85149' },
+      { text: '保留現金', color: '#8b949e' },
+    ],
+  },
+  {
+    match: d => d.regime_label && d.regime_label.includes('空頭'),
+    action: '🔴 空倉觀望，避免抄底',
+    desc: '市場趨勢向下，空頭力道強勁。避免逆勢操作，等待趨勢明確反轉後再布局。',
+    tags: [
+      { text: '空倉為主', color: '#f85149' },
+      { text: '持股比例 0~20%', color: '#f85149' },
+      { text: '等待趨勢反轉', color: '#8b949e' },
+    ],
+  },
+  {
+    match: () => true,  // 震盪中性 fallback
+    action: '🟡 選股操作，控制部位',
+    desc: '市場方向不明確，處於震盪整理。以個股操作為主，控制整體部位，避免大額押注。',
+    tags: [
+      { text: '選股為主', color: '#d29922' },
+      { text: '持股比例 30~50%', color: '#d29922' },
+      { text: '控制單一部位', color: '#58a6ff' },
+    ],
+  },
+];
+
+function renderSuggestion(data) {
+  const sg = SUGGESTIONS.find(s => s.match(data)) || SUGGESTIONS[SUGGESTIONS.length - 1];
+  document.getElementById('suggest-action').textContent = sg.action;
+  document.getElementById('suggest-desc').textContent = sg.desc;
+  document.getElementById('suggest-tags').innerHTML = sg.tags.map(t =>
+    `<span class="tag" style="color:${t.color};border-color:${t.color}33;background:${t.color}11">${t.text}</span>`
+  ).join('');
 }
 
 function renderToday(data) {
@@ -139,6 +256,8 @@ function renderToday(data) {
   document.getElementById('ex-val').textContent = ex;
   document.getElementById('regime-label').textContent = data.regime_label || '—';
 
+  renderSuggestion(data);
+
   // Factors
   const factors = [
     { name: 'Trend 趨勢',       key: 'trend',       dir: true },
@@ -152,7 +271,7 @@ function renderToday(data) {
 
   document.getElementById('factors-grid').innerHTML = factors.map(f => {
     const v = data[f.key] ?? 0;
-    const pct = f.dir ? (v + 100) / 2 : v;  // direction: -100~+100 → 0~100
+    const pct = f.dir ? (v + 100) / 2 : v;
     const col = f.dir ? colorDir(v) : colorRisk(v);
     const display = f.dir ? ((v >= 0 ? '+' : '') + v) : v;
     return `<div class="factor-row">
@@ -164,6 +283,126 @@ function renderToday(data) {
 
   document.getElementById('status-bar').textContent = `最後更新：${new Date().toLocaleTimeString('zh-TW')}`;
   document.getElementById('status-bar').className = '';
+}
+
+// ── 歷史圖表 Sprint 3 ────────────────────────────────────────────────
+function drawHistoryChart(history) {
+  const canvas = document.getElementById('history-chart');
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.offsetWidth || 600;
+  const H = 180;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  if (!history || history.length < 2) {
+    ctx.fillStyle = '#484f58';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('歷史資料不足', W / 2, H / 2);
+    return;
+  }
+
+  const PAD = { top: 10, right: 12, bottom: 30, left: 36 };
+  const cW = W - PAD.left - PAD.right;
+  const cH = H - PAD.top - PAD.bottom;
+
+  // 背景
+  ctx.fillStyle = '#161b22';
+  ctx.fillRect(0, 0, W, H);
+
+  // 網格線（-100, -50, 0, 50, 100 for dir; 0,50,100 for risk mapped to same scale）
+  const toY = v => PAD.top + cH - ((v + 100) / 200) * cH;  // -100~+100 → canvas Y
+  const GRID_LINES = [-100, -50, 0, 50, 100];
+  ctx.strokeStyle = '#21262d';
+  ctx.lineWidth = 1;
+  GRID_LINES.forEach(g => {
+    const y = toY(g);
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
+    ctx.fillStyle = '#484f58';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(g, PAD.left - 4, y + 3);
+  });
+
+  const n = history.length;
+  const xOf = i => PAD.left + (i / (n - 1)) * cW;
+
+  // Risk 軸轉換（0~100 → -100~+100 scale）
+  const riskToY = v => toY(v * 2 - 100);
+
+  // 繪製三條線
+  const LINES = [
+    { key: 'direction',   color: '#3fb950', toY: toY,    label: 'Direction' },
+    { key: 'risk_score',  color: '#f85149', toY: riskToY, label: 'Risk' },
+    { key: 'exhaustion',  color: '#d29922', toY: riskToY, label: 'Exhaustion' },
+  ];
+
+  LINES.forEach(({ key, color, toY: yFn }) => {
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.8;
+    ctx.lineJoin = 'round';
+    let first = true;
+    history.forEach((d, i) => {
+      const v = d[key] ?? 0;
+      const x = xOf(i), y = yFn(v);
+      if (first) { ctx.moveTo(x, y); first = false; }
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  });
+
+  // 中心線 0
+  ctx.strokeStyle = '#30363d';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  const y0 = toY(0);
+  ctx.beginPath(); ctx.moveTo(PAD.left, y0); ctx.lineTo(PAD.left + cW, y0); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // X 軸日期標籤（取首、中、末）
+  ctx.fillStyle = '#484f58';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+  [0, Math.floor(n / 2), n - 1].forEach(i => {
+    const x = xOf(i);
+    const label = history[i].date ? history[i].date.slice(5) : '';  // MM-DD
+    ctx.fillText(label, x, H - PAD.bottom + 14);
+  });
+}
+
+// ── Regime 歷史表格 Sprint 3 ─────────────────────────────────────────
+function renderHistoryTable(history) {
+  if (!history || !history.length) {
+    document.getElementById('history-table').innerHTML =
+      '<div style="color:#8b949e;font-size:.82rem;text-align:center;padding:12px">無歷史資料</div>';
+    return;
+  }
+  // 顯示最近 20 筆，最新在上
+  const rows = [...history].reverse().slice(0, 20);
+  const html = `<table>
+    <tr>
+      <th>日期</th><th>狀態</th><th>方向</th><th>風險</th><th>廣度</th><th>竭盡</th>
+    </tr>
+    ${rows.map(d => {
+      const dir = d.direction ?? 0;
+      const risk = d.risk_score ?? 0;
+      const dColor = dir > 30 ? '#3fb950' : dir < -30 ? '#f85149' : '#d29922';
+      const rColor = risk > 70 ? '#f85149' : risk > 50 ? '#d29922' : '#3fb950';
+      return `<tr>
+        <td style="color:#8b949e">${d.date || ''}</td>
+        <td>${d.regime_label || '—'}</td>
+        <td style="color:${dColor}">${(dir >= 0 ? '+' : '') + dir}</td>
+        <td style="color:${rColor}">${risk}</td>
+        <td style="color:#8b949e">${d.breadth ?? '—'}</td>
+        <td style="color:#8b949e">${d.exhaustion ?? '—'}</td>
+      </tr>`;
+    }).join('')}
+  </table>`;
+  document.getElementById('history-table').innerHTML = html;
 }
 
 async function loadBreadth() {
@@ -185,7 +424,6 @@ async function loadSeries() {
                 'BREADTH_50MA','AD_LINE','MEDIAN_RET'];
   const rows = await Promise.all(KEYS.map(k => api(`/api/regime/series/${k}?days=2`)));
   const el = document.getElementById('series-list');
-  // 這些 key 顯示絕對值（不適合算%變化）
   const ABS_KEYS = new Set(['BREADTH_50MA', 'AD_LINE', 'MEDIAN_RET', 'MARGIN_BALANCE', 'FOREIGN_NET_LOT', 'FOREIGN_FUTURES_NET']);
   el.innerHTML = KEYS.map((k, i) => {
     const data = rows[i];
@@ -194,7 +432,6 @@ async function loadSeries() {
     const prev   = data.length > 1 ? data[data.length - 2] : null;
     let valStr, chgStr = '', col = '';
     if (ABS_KEYS.has(k)) {
-      // 顯示值 + 絕對變化
       const diff = prev ? latest.value - prev.value : null;
       valStr = k === 'BREADTH_50MA' ? latest.value.toFixed(1) + '%'
              : k === 'MEDIAN_RET'   ? (latest.value >= 0 ? '+' : '') + latest.value.toFixed(3) + '%'
@@ -219,15 +456,25 @@ async function loadSeries() {
   }).join('');
 }
 
+// ── 歷史資料載入 Sprint 3 ─────────────────────────────────────────────
+async function loadHistory() {
+  try {
+    const history = await api('/api/regime/history?days=60');
+    if (history && history.length > 0) {
+      drawHistoryChart(history);
+      renderHistoryTable(history);
+    }
+  } catch(e) {}
+}
+
 let _noDataWarned = false;
 
 async function load() {
   try {
     const today = await api('/api/regime/today');
     renderToday(today);
-    // 若資料為空（DB 尚未抓取）自動觸發一次更新
     const isEmpty = !today.date || (today.direction === 0 && today.risk_score <= 15 && !_noDataWarned);
-    await Promise.all([loadSeries(), loadBreadth()]);
+    await Promise.all([loadSeries(), loadBreadth(), loadHistory()]);
     if (isEmpty && !_noDataWarned) {
       _noDataWarned = true;
       const sb = document.getElementById('status-bar');
@@ -250,6 +497,10 @@ async function refresh() {
 
 load();
 setInterval(load, 60000);
+// 視窗 resize 時重繪圖表
+window.addEventListener('resize', () => {
+  api('/api/regime/history?days=60').then(h => { if (h) drawHistoryChart(h); }).catch(()=>{});
+});
 </script>
 </body>
 </html>
