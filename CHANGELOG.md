@@ -4,7 +4,13 @@
 
 ## 2026-09-10
 
-### commit (pending) — fix: 現價改用 TWSE MI_INDEX + TPEX 盤中即時行情
+### commit d4332dc — fix: 觀察清單現價改回 Yahoo Finance（與 K 線同源）
+**問題：** 一系列 MIS/MI_INDEX 嘗試均失敗（MI_INDEX 是盤後報表、MIS z="-" 部分封鎖、TPEX 全封鎖）。
+**突破：** K 線圖的現價一直是正確的，因為它用 Yahoo Finance `regularMarketPrice`（chart meta）。
+**修改：** `api_watchlist_prices` 和 `api_watchlist_summary` 改回 `fetch_prices_for_stocks`（Yahoo Finance v8 chart API），與 K 線圖同一來源。
+**調查結論：** Yahoo Finance 個別股票查詢從 Render 可連；MIS 對 TSE 股票 z 欄位封鎖；MI_INDEX 是盤後報表非即時；TPEX 全封鎖。
+
+### commit (廢棄系列) — MIS/MI_INDEX/TPEX 各種嘗試
 **問題：** 上一版改用 TWSE/TPEX OpenAPI，但這兩個是「昨日收盤」資料，不是盤中即時價；MIS API 的 `z` 欄位盤中對大多數股票仍回傳 "-"（成交前為空），造成「只有少數股票有現價」。
 **根本原因：** TWSE OpenAPI (`STOCK_DAY_ALL`) 每日盤後才更新一次，非盤中即時。MIS 按個別股票查詢，部分股票未開始成交時 z="-"，無法全市場覆蓋。
 **修改：**
