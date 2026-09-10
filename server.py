@@ -1135,23 +1135,46 @@ async def debug_prices():
         "Referer": "https://www.twse.com.tw/",
     }
     async with httpx.AsyncClient(headers=hdrs, timeout=20, follow_redirects=True, verify=False) as client:
+        def _inspect(label, r_status, jdata):
+            """解析回傳的 JSON，找出所有可能藏資料的位置"""
+            info = {"status": r_status, "top_keys": list(jdata.keys()),
+                    "stat": jdata.get("stat"), "date": jdata.get("date")}
+            # 檢查 tables 陣列
+            tables = jdata.get("tables") or []
+            info["tables_count"] = len(tables)
+            info["tables_summary"] = []
+            all_rows = []
+            for i, tbl in enumerate(tables):
+                if not isinstance(tbl, dict):
+                    info["tables_summary"].append({"i": i, "type": str(type(tbl))})
+                    continue
+                tbl_data = tbl.get("data") or tbl.get("rows") or []
+                info["tables_summary"].append({
+                    "i": i,
+                    "title": tbl.get("title", ""),
+                    "keys": list(tbl.keys()),
+                    "data_rows": len(tbl_data),
+                    "fields": tbl.get("fields", [])[:5],
+                    "sample": tbl_data[0] if tbl_data else None,
+                })
+                all_rows.extend(tbl_data)
+            # 也檢查根層的 data/data8/aaData
+            for k in ["data", "data8", "data9", "aaData"]:
+                v = jdata.get(k) or []
+                if v:
+                    info[f"root_{k}_count"] = len(v)
+                    info[f"root_{k}_sample"] = v[0] if v else None
+            info["total_rows_found"] = len(all_rows)
+            return info
+
         # MI_INDEX
         try:
             r = await client.get(
                 "https://www.twse.com.tw/exchangeReport/MI_INDEX",
                 params={"response": "json", "type": "ALLBUT0999"},
             )
-            data = r.json() if r.status_code == 200 else {}
-            rows = data.get("data") or data.get("data8") or []
-            out["mi_index"] = {
-                "status": r.status_code,
-                "keys": list(data.keys()),
-                "stat": data.get("stat"),
-                "date": data.get("date"),
-                "rows_count": len(rows),
-                "sample_row": rows[0] if rows else None,
-                "sample_2303": next((row for row in rows if str(row[0]).strip() == "2303"), None),
-            }
+            jdata = r.json() if r.status_code == 200 else {}
+            out["mi_index"] = _inspect("mi_index", r.status_code, jdata)
         except Exception as e:
             out["mi_index"] = {"error": str(e)}
 
@@ -1162,13 +1185,7 @@ async def debug_prices():
                 params={"l": "zh-tw", "o": "json", "se": "AL"},
             )
             jdata = r.json() if r.status_code == 200 else {}
-            aa = jdata.get("aaData") or []
-            out["tpex_trading"] = {
-                "status": r.status_code,
-                "keys": list(jdata.keys()),
-                "rows_count": len(aa),
-                "sample_row": aa[0] if aa else None,
-            }
+            out["tpex_trading"] = _inspect("tpex_trading", r.status_code, jdata)
         except Exception as e:
             out["tpex_trading"] = {"error": str(e)}
 
@@ -1179,13 +1196,7 @@ async def debug_prices():
                 params={"l": "zh-tw", "o": "json", "se": "AL"},
             )
             jdata = r.json() if r.status_code == 200 else {}
-            aa = jdata.get("aaData") or []
-            out["tpex_after"] = {
-                "status": r.status_code,
-                "keys": list(jdata.keys()),
-                "rows_count": len(aa),
-                "sample_row": aa[0] if aa else None,
-            }
+            out["tpex_after"] = _inspect("tpex_after", r.status_code, jdata)
         except Exception as e:
             out["tpex_after"] = {"error": str(e)}
 
