@@ -1398,15 +1398,24 @@ function renderMarket() {
 async function addFromMarket(sid, note = '') {
   // 先存進 localStorage 防止 Render 重啟遺失
   const lsBefore = lsLoadWatchlist();
-  if (!lsBefore.find(x => x.stock_id === sid)) {
+  const lsItem = lsBefore.find(x => x.stock_id === sid);
+  if (!lsItem) {
     lsBefore.push({ stock_id: sid, name: '', memo: '', note });
+    lsSaveWatchlist(lsBefore);
+  } else if (note) {
+    lsItem.note = note;
     lsSaveWatchlist(lsBefore);
   }
   try {
     await api('POST', '/api/watchlist', { stock_id: sid, name: '', note });
-    toast(`已加入觀察清單：${sid}${note ? '（' + note + '）' : ''}`);
-    if (!_wlData.find(x => x.stock_id === sid))
+    const existing = _wlData.find(x => x.stock_id === sid);
+    if (!existing) {
       _wlData.push({ stock_id: sid, name: '', memo: '', note, has_data: false });
+      toast(`已加入觀察清單：${sid}${note ? '（' + note + '）' : ''}`);
+    } else {
+      if (note) existing.note = note;
+      toast(`已更新來源：${sid}${note ? '（' + note + '）' : ''}`);
+    }
   } catch (e) { toast(e.message, true); }
 }
 

@@ -176,10 +176,17 @@ def api_add_watchlist(item: WatchlistItem):
     now  = datetime.now().isoformat()
     sb.wl_add(sid, name, now, note)
     conn = get_conn()
-    conn.execute(
-        "INSERT OR IGNORE INTO watchlist (stock_id, name, added_at, note) VALUES (?,?,?,?)",
-        (sid, name, now, note)
-    )
+    existing = conn.execute("SELECT note FROM watchlist WHERE stock_id=?", (sid,)).fetchone()
+    if existing is None:
+        # 新股票：直接插入
+        conn.execute(
+            "INSERT INTO watchlist (stock_id, name, added_at, note) VALUES (?,?,?,?)",
+            (sid, name, now, note)
+        )
+    elif note:
+        # 已存在 + 帶有策略來源：更新 note（Supabase 也同步）
+        conn.execute("UPDATE watchlist SET note=? WHERE stock_id=?", (note, sid))
+        sb.wl_update_note(sid, note)
     conn.commit()
     conn.close()
     return {"ok": True}
