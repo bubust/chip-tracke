@@ -33,6 +33,7 @@
   .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #30363d; border-top-color: #58a6ff; border-radius: 50%; animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   #status-bar { font-size: .75rem; color: #8b949e; text-align: right; margin-bottom: 8px; }
+  #status-bar.warn { color: #d29922; font-size: .82rem; text-align: left; padding: 6px 10px; background: rgba(210,153,34,.1); border: 1px solid rgba(210,153,34,.3); border-radius: 6px; }
 </style>
 </head>
 <body>
@@ -46,19 +47,33 @@
 
 <div class="grid3">
   <div class="score-card" id="card-dir">
-    <div class="label">Direction</div>
+    <div class="label">方向 Direction</div>
     <div class="value" id="dir-val">—</div>
     <div class="sub">市場方向（-100~+100）</div>
   </div>
   <div class="score-card" id="card-risk">
-    <div class="label">Risk Score</div>
+    <div class="label">風險 Risk Score</div>
     <div class="value" id="risk-val">—</div>
     <div class="sub">市場脆弱度（0~100）</div>
   </div>
   <div class="score-card" id="card-ex">
-    <div class="label">Exhaustion</div>
+    <div class="label">竭盡 Exhaustion</div>
     <div class="value" id="ex-val">—</div>
     <div class="sub">極端竭盡（0~100）</div>
+  </div>
+</div>
+
+<!-- 廣度進度條 -->
+<div style="background:#161b22;border:1px solid #21262d;border-radius:10px;padding:14px 16px;margin-bottom:20px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <span style="font-size:.8rem;color:#8b949e">廣度 — 站上50日均線比例</span>
+    <span id="breadth-pct" style="font-size:1rem;font-weight:700;color:#e6edf3">—</span>
+  </div>
+  <div style="background:#0d1117;border-radius:4px;height:10px;overflow:hidden">
+    <div id="breadth-bar" style="height:100%;border-radius:4px;transition:width .5s;width:0%"></div>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:.7rem;color:#484f58;margin-top:4px">
+    <span>0%（全市場跌破均線）</span><span>50%（中性）</span><span>100%（全站上）</span>
   </div>
 </div>
 
@@ -83,6 +98,8 @@ const SERIES_LABELS = {
   SOX: 'SOX 半導體', VIX: 'VIX 恐慌', US10Y: '美債10Y(%)',
   USDTWD: 'USD/TWD', TSM_ADR: 'TSM ADR', NASDAQ: 'Nasdaq',
   MARGIN_BALANCE: '融資餘額(股)', FOREIGN_NET_LOT: '外資現貨(張)',
+  BREADTH_50MA: '站上50MA比例(%)', AD_LINE: '漲跌家數差',
+  MEDIAN_RET: '全市場中位數漲跌(%)', FOREIGN_FUTURES_NET: '外資期貨淨部位(張)',
 };
 
 async function api(path) {
@@ -146,32 +163,79 @@ function renderToday(data) {
   }).join('');
 
   document.getElementById('status-bar').textContent = `最後更新：${new Date().toLocaleTimeString('zh-TW')}`;
+  document.getElementById('status-bar').className = '';
+}
+
+async function loadBreadth() {
+  try {
+    const data = await api('/api/regime/series/BREADTH_50MA?days=2');
+    if (!data || !data.length) return;
+    const val = data[data.length - 1].value;
+    document.getElementById('breadth-pct').textContent = val.toFixed(1) + '%';
+    const col = val > 70 ? '#3fb950' : val > 50 ? '#d29922' : val > 30 ? '#f0883e' : '#f85149';
+    document.getElementById('breadth-bar').style.width = val + '%';
+    document.getElementById('breadth-bar').style.background = col;
+    document.getElementById('breadth-pct').style.color = col;
+  } catch(e) {}
 }
 
 async function loadSeries() {
-  const KEYS = ['TAIEX','OTC','SP500','SOX','VIX','US10Y','USDTWD','TSM_ADR','FOREIGN_NET_LOT','MARGIN_BALANCE'];
+  const KEYS = ['TAIEX','OTC','SP500','SOX','VIX','US10Y','USDTWD','TSM_ADR',
+                'FOREIGN_NET_LOT','FOREIGN_FUTURES_NET','MARGIN_BALANCE',
+                'BREADTH_50MA','AD_LINE','MEDIAN_RET'];
   const rows = await Promise.all(KEYS.map(k => api(`/api/regime/series/${k}?days=2`)));
   const el = document.getElementById('series-list');
+  // 這些 key 顯示絕對值（不適合算%變化）
+  const ABS_KEYS = new Set(['BREADTH_50MA', 'AD_LINE', 'MEDIAN_RET', 'MARGIN_BALANCE', 'FOREIGN_NET_LOT', 'FOREIGN_FUTURES_NET']);
   el.innerHTML = KEYS.map((k, i) => {
     const data = rows[i];
     if (!data || !data.length) return `<div class="series-row"><span>${SERIES_LABELS[k]||k}</span><span class="yellow">—</span></div>`;
     const latest = data[data.length - 1];
     const prev   = data.length > 1 ? data[data.length - 2] : null;
-    const chg    = prev ? ((latest.value - prev.value) / prev.value * 100) : null;
-    const chgStr = chg != null ? ((chg >= 0 ? '+' : '') + chg.toFixed(2) + '%') : '';
-    const col    = chg == null ? '' : (chg >= 0 ? 'green' : 'red');
+    let valStr, chgStr = '', col = '';
+    if (ABS_KEYS.has(k)) {
+      // 顯示值 + 絕對變化
+      const diff = prev ? latest.value - prev.value : null;
+      valStr = k === 'BREADTH_50MA' ? latest.value.toFixed(1) + '%'
+             : k === 'MEDIAN_RET'   ? (latest.value >= 0 ? '+' : '') + latest.value.toFixed(3) + '%'
+             : Number(latest.value).toLocaleString();
+      if (diff != null) {
+        col = diff >= 0 ? 'green' : 'red';
+        chgStr = (diff >= 0 ? '+' : '') + (k === 'BREADTH_50MA' || k === 'MEDIAN_RET'
+          ? diff.toFixed(1) : Math.round(diff).toLocaleString());
+      }
+    } else {
+      const chg = prev ? ((latest.value - prev.value) / Math.max(Math.abs(prev.value), 0.01) * 100) : null;
+      valStr = Number(latest.value).toLocaleString();
+      if (chg != null) {
+        col = chg >= 0 ? 'green' : 'red';
+        chgStr = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
+      }
+    }
     return `<div class="series-row">
       <span>${SERIES_LABELS[k]||k}</span>
-      <span>${Number(latest.value).toLocaleString()} <span class="${col}">${chgStr}</span></span>
+      <span>${valStr} <span class="${col}" style="font-size:.8rem">${chgStr}</span></span>
     </div>`;
   }).join('');
 }
+
+let _noDataWarned = false;
 
 async function load() {
   try {
     const today = await api('/api/regime/today');
     renderToday(today);
-    await loadSeries();
+    // 若資料為空（DB 尚未抓取）自動觸發一次更新
+    const isEmpty = !today.date || (today.direction === 0 && today.risk_score <= 15 && !_noDataWarned);
+    await Promise.all([loadSeries(), loadBreadth()]);
+    if (isEmpty && !_noDataWarned) {
+      _noDataWarned = true;
+      const sb = document.getElementById('status-bar');
+      sb.className = 'warn';
+      sb.textContent = '⚠️ 資料庫尚無歷史資料，自動觸發首次更新（約需 30 秒）…';
+      await fetch('/regime/api/regime/refresh', { method: 'POST' });
+      setTimeout(load, 35000);
+    }
   } catch(e) {
     document.getElementById('status-bar').textContent = '載入失敗：' + e.message;
   }
@@ -179,6 +243,7 @@ async function load() {
 
 async function refresh() {
   document.getElementById('status-bar').textContent = '更新中...';
+  _noDataWarned = true;
   await fetch('/regime/api/regime/refresh', { method: 'POST' });
   setTimeout(load, 3000);
 }

@@ -157,7 +157,7 @@
   <button onclick="switchTab('market')">全市場排行</button>
   <button onclick="switchTab('screen')">策略篩選</button>
   <button onclick="switchTab('warrant')">権証股期選択器</button>
-  <button onclick="switchTab('regime')">📊 Regime 面板</button>
+  <button onclick="switchTab('regime')">📊 總經面板</button>
   <button onclick="switchTab('settings')">設定</button>
 </nav>
 
@@ -619,6 +619,21 @@ async function loadWatchlist() {
       }
       _wlData = await api('GET', '/api/watchlist/summary');
     }
+    // 合併本機備份 note：伺服器沒有 note（Supabase 欄位缺失）時，從 localStorage 補回並推回伺服器
+    const noteBackup = lsLoadWatchlist();
+    const noteRestoreTasks = [];
+    for (const item of _wlData) {
+      if (!item.note) {
+        const lsItem = noteBackup.find(x => x.stock_id === item.stock_id);
+        if (lsItem && lsItem.note) {
+          item.note = lsItem.note;
+          noteRestoreTasks.push(
+            api('POST', `/api/watchlist/${item.stock_id}/note`, { note: lsItem.note }).catch(() => {})
+          );
+        }
+      }
+    }
+    if (noteRestoreTasks.length > 0) await Promise.all(noteRestoreTasks);
     // 更新本機備份（合併後的完整清單）
     if (_wlData.length > 0) {
       lsSaveWatchlist(_wlData.map(x => ({ stock_id: x.stock_id, name: x.name || '', memo: x.memo || '', note: x.note || '' })));

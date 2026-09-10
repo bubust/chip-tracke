@@ -74,7 +74,12 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
         us10y = _get_series(conn, "US10Y", 300)
         usdtwd = _get_series(conn, "USDTWD", 300)
         margin = _get_series(conn, "MARGIN_BALANCE", 300)
-        foreign_net = _get_series(conn, "FOREIGN_NET_LOT", 300)
+        foreign_net    = _get_series(conn, "FOREIGN_NET_LOT", 300)
+        # Sprint 2
+        breadth_50ma   = _get_series(conn, "BREADTH_50MA", 300)
+        ad_line        = _get_series(conn, "AD_LINE", 300)
+        median_ret     = _get_series(conn, "MEDIAN_RET", 300)
+        foreign_futures = _get_series(conn, "FOREIGN_FUTURES_NET", 300)
 
     # ── T1/T2: TAIEX Risk-adjusted Momentum ──────────────────────────────
     taiex_px = [v for _, v in taiex]
@@ -97,11 +102,27 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
     else:
         trend_score = 0.0
 
-    # ── Breadth (placeholder — from scanner.py breadth scan) ─────────────
-    # TODO Sprint 2: integrate with scanner breadth output
-    breadth_score = 0.0
+    # ── Breadth (Sprint 2: % stocks above 50MA + AD趨勢) ─────────────────
+    if breadth_50ma and len(breadth_50ma) >= 5:
+        b_vals = [v for _, v in breadth_50ma[-20:]]
+        cur_b = b_vals[-1]  # 0~100，例如 60 = 60% 股票站上50MA
+        # 轉換為 -100~+100 方向分數：50% 為中性
+        b_dir = _pct_to_direction(cur_b)
+        # A/D 趨勢加權（A/D 5日均vs20日均，方向一致加分）
+        ad_boost = 0.0
+        if ad_line and len(ad_line) >= 20:
+            ad_vals = [v for _, v in ad_line[-20:]]
+            ad_5d = sum(ad_vals[-5:]) / 5
+            ad_20d = sum(ad_vals) / 20
+            if ad_5d > 0 and ad_20d > 0:
+                ad_boost = min(20, ad_5d / max(abs(ad_20d), 1) * 10)
+            elif ad_5d < 0 and ad_20d < 0:
+                ad_boost = max(-20, ad_5d / max(abs(ad_20d), 1) * 10)
+        breadth_score = round(max(-100, min(100, b_dir + ad_boost)), 1)
+    else:
+        breadth_score = 0.0
 
-    # ── Positioning: Foreign Spot ─────────────────────────────────────────
+    # ── Positioning: Foreign Spot + Futures ──────────────────────────────
     if foreign_net and len(foreign_net) >= 5:
         fn_vals = [v for _, v in foreign_net[-20:]]
         fn_5d = sum(fn_vals[-5:])
@@ -110,7 +131,15 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
     else:
         fn_score = 0.0
 
-    positioning_score = fn_score
+    # 外資期貨淨部位方向（正=多頭傾向，負=空頭傾向）
+    ff_score = 0.0
+    if foreign_futures and len(foreign_futures) >= 3:
+        ff_vals = [v for _, v in foreign_futures[-10:]]
+        ff_5d = sum(ff_vals[-5:]) / len(ff_vals[-5:])
+        ff_score = _zscore_to_score(ff_5d / max(abs(sum(ff_vals) / len(ff_vals)), 1) * 2)
+
+    # 加權合成 (現貨 60%，期貨 40%)
+    positioning_score = round(fn_score * 0.6 + ff_score * 0.4, 1)
 
     # ── Macro Factor ──────────────────────────────────────────────────────
     sp500_px = [v for _, v in sp500]
@@ -159,7 +188,21 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
         1
     )
 
-    exhaustion = 0.0  # TODO Sprint 2
+    # ── Exhaustion (Sprint 2: 極端漲跌後的竭盡訊號) ─────────────────────
+    # 使用中位數漲跌幅 + 市場廣度 + VIX 峰值識別極端狀態
+    exhaustion = 0.0
+    if median_ret and len(median_ret) >= 20 and breadth_50ma and len(breadth_50ma) >= 20:
+        med_vals = [v for _, v in median_ret[-20:]]
+        b_vals_ex = [v for _, v in breadth_50ma[-20:]]
+        # 最近5日中位數漲幅均值（正=過熱傾向，負=恐慌傾向）
+        med_5d_avg = sum(med_vals[-5:]) / 5
+        # 廣度極端：>85% 或 <15% 代表可能竭盡
+        cur_breadth = b_vals_ex[-1]
+        breadth_extreme = max(0, cur_breadth - 75) / 25 * 50 if cur_breadth > 75 else max(0, 25 - cur_breadth) / 25 * 50
+        # VIX 極端（已在 vix_risk 計算過，這裡取高 VIX 竭盡）
+        vix_extreme = min(50, max(0, vix_risk - 50)) if vix_risk > 50 else 0
+        # 綜合竭盡：廣度極端 + VIX 極端，最高100
+        exhaustion = round(min(100, breadth_extreme * 0.6 + vix_extreme * 0.4), 1)
 
     # ── Regime Label ──────────────────────────────────────────────────────
     if direction > 50 and risk_score < 50:
@@ -175,6 +218,25 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
     else:
         label = "🟡 震盪中性"
 
+    # ── Concentration (集中度：指數 vs 全市場中位數，Sprint 2) ───────────
+    # 若中位數漲跌幅遠小於指數動能，代表集中度高（少數股撐盤）
+    concentration = 0.0
+    if median_ret and len(median_ret) >= 5 and t1 is not None:
+        med_recent = [v for _, v in median_ret[-10:]]
+        med_avg = sum(med_recent) / len(med_recent)
+        if abs(med_avg) > 0:
+            divergence_ratio = abs(t1 * 100 - med_avg) / max(abs(med_avg), 0.1)
+            concentration = round(min(100, divergence_ratio * 20), 1)
+
+    # ── Divergence (背離：廣度與指數方向不一致) ──────────────────────────
+    divergence = 0.0
+    if breadth_50ma and len(breadth_50ma) >= 10 and taiex and len(taiex) >= 10:
+        b_trend = (breadth_50ma[-1][1] - breadth_50ma[-10][1]) if len(breadth_50ma) >= 10 else 0
+        t_trend = (taiex[-1][1] - taiex[-10][1]) / max(taiex[-10][1], 1) * 100 if len(taiex) >= 10 else 0
+        # 背離：指數漲但廣度跌（或反之）
+        if (t_trend > 0 and b_trend < -5) or (t_trend < 0 and b_trend > 5):
+            divergence = round(min(100, abs(t_trend) * 5 + abs(b_trend)), 1)
+
     result = {
         "date": today,
         "trend": round(trend_score, 1),
@@ -183,8 +245,8 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
         "macro_factor": round(macro_score, 1),
         "direction": round(direction, 1),
         "leverage_risk": round(margin_risk, 1),
-        "concentration": 0.0,   # TODO
-        "divergence": 0.0,      # TODO
+        "concentration": concentration,
+        "divergence": divergence,
         "risk_score": round(risk_score, 1),
         "exhaustion": round(exhaustion, 1),
         "regime_label": label,
@@ -203,6 +265,7 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
                 trend=excluded.trend, breadth=excluded.breadth,
                 positioning=excluded.positioning, macro_factor=excluded.macro_factor,
                 direction=excluded.direction, leverage_risk=excluded.leverage_risk,
+                concentration=excluded.concentration, divergence=excluded.divergence,
                 risk_score=excluded.risk_score, exhaustion=excluded.exhaustion,
                 regime_label=excluded.regime_label, updated_at=excluded.updated_at
         """, result)

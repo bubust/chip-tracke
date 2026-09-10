@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter
 
 from .db import db, init_db
-from .fetcher import fetch_all, fetch_twse_margin, fetch_twse_foreign_spot
+from .fetcher import fetch_all, fetch_twse_margin, fetch_twse_foreign_spot, fetch_breadth_ad, fetch_taifex_foreign_futures
 from .factor import calculate_factors
 
 log = logging.getLogger(__name__)
@@ -68,6 +68,8 @@ def regime_refresh():
             fetch_all(days=90)
             fetch_twse_margin()
             fetch_twse_foreign_spot()
+            fetch_breadth_ad(lookback=90)
+            fetch_taifex_foreign_futures()
             calculate_factors()
             log.info("[regime] 更新完成")
         except Exception as e:
