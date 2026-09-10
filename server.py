@@ -331,15 +331,15 @@ async def api_update_note(stock_id: str, request: Request):
 
 @app.get("/api/watchlist/prices")
 async def api_watchlist_prices():
-    """輕量端點：MIS 即時現價（先建 session），供自動刷新用。"""
-    from yahoo_price import get_stock_list
+    """輕量端點：Yahoo Finance regularMarketPrice（與 K 線圖同一來源），供自動刷新用。"""
+    from yahoo_price import get_stock_list, fetch_prices_for_stocks
     conn = get_conn()
     rows = conn.execute("SELECT stock_id FROM watchlist").fetchall()
     conn.close()
-    stock_ids = list({r["stock_id"] for r in rows})
     stocks_df = get_stock_list()
     mkt_map = dict(zip(stocks_df["stock_id"], stocks_df["type"]))
-    return await _fetch_mis_prices(stock_ids, mkt_map)
+    stock_list = [(r["stock_id"], mkt_map.get(r["stock_id"], "twse")) for r in rows]
+    return await fetch_prices_for_stocks(stock_list)
 
 @app.get("/api/watchlist/summary")
 async def api_watchlist_summary():
@@ -389,8 +389,10 @@ async def api_watchlist_summary():
         conn.commit()
         conn.close()
 
-    # 現價：MIS 即時報價（先建 session，TSE + OTC 一起查）
-    latest_prices = await _fetch_mis_prices(stock_ids, mkt_map)
+    # 現價：Yahoo Finance regularMarketPrice（與 K 線同源，Render 可連）
+    from yahoo_price import fetch_prices_for_stocks
+    stock_list = [(sid, mkt_map.get(sid, "twse")) for sid in stock_ids]
+    latest_prices = await fetch_prices_for_stocks(stock_list)
 
     result = []
     for r in rows:
