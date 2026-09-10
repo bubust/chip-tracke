@@ -70,41 +70,37 @@ async def _fetch_mis_prices(stock_ids: list, mkt_map: dict) -> dict:
     MIS_BASE = "https://mis.twse.com.tw"
     UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
+    # 分批查詢（每批 4 支），降低單次 batch 觸發 z="-" 的機率
+    BATCH = 4
+    batches = [parts[i:i+BATCH] for i in range(0, len(parts), BATCH)]
+    all_items = []
+
     async with httpx.AsyncClient(
         timeout=15, follow_redirects=True, verify=False,
         headers={"User-Agent": UA},
     ) as client:
-        # Step 1: 建立 session（取得 JSESSIONID cookie）
-        try:
-            await client.get(
-                f"{MIS_BASE}/stock/index.jsp",
-                headers={"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
-            )
-        except Exception as e:
-            print(f"[MIS] session 建立失敗: {e}")
-
-        # Step 2: 查即時報價
-        try:
-            r = await client.get(
-                f"{MIS_BASE}/stock/api/getStockInfo.jsp",
-                headers={
-                    "Accept":           "application/json, text/javascript, */*; q=0.01",
-                    "Referer":          f"{MIS_BASE}/stock/index.jsp",
-                    "X-Requested-With": "XMLHttpRequest",
-                },
-                params={
-                    "ex_ch": "|".join(parts),
-                    "json":  "1",
-                    "delay": "0",
-                    "_":     str(int(_time.time() * 1000)),
-                },
-            )
-            r.raise_for_status()
-            items = r.json().get("msgArray", [])
-            print(f"[MIS] 回傳 {len(items)} 筆")
-        except Exception as e:
-            print(f"[MIS] 查詢失敗: {e}")
-            return {}
+        for batch in batches:
+            try:
+                r = await client.get(
+                    f"{MIS_BASE}/stock/api/getStockInfo.jsp",
+                    headers={
+                        "Accept":           "application/json, text/javascript, */*; q=0.01",
+                        "Referer":          f"{MIS_BASE}/",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                    params={
+                        "ex_ch": "|".join(batch),
+                        "json":  "1",
+                        "delay": "0",
+                        "_":     str(int(_time.time() * 1000)),
+                    },
+                )
+                r.raise_for_status()
+                all_items.extend(r.json().get("msgArray", []))
+            except Exception as e:
+                print(f"[MIS] batch 查詢失敗: {e}")
+    items = all_items
+    print(f"[MIS] 回傳 {len(items)} 筆")
 
     result = {}
     z_ok = 0
