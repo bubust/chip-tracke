@@ -606,6 +606,44 @@ async def api_market_scan(top: int = 50):
         })
 
     merged.sort(key=lambda x: x["whale_flow_lots"], reverse=True)
+
+    # 從策略掃描快取補充 signal 資訊
+    try:
+        from yahoo_price import get_scan_results
+        scan_res = get_scan_results()
+        _SIG_MAP = {
+            "S10":          (10, "🚀", "漲停",    3),
+            "CHIP":         (9,  "💎", "主力籌碼", 3),
+            "S1":           (8,  "📈", "雙MACD多", 2),
+            "S2":           (7,  "📈", "W底確認",  2),
+            "S5":           (6,  "📈", "站上均線", 2),
+            "S1_SHORT":     (5,  "📉", "雙MACD空", 2),
+            "S17A":         (4,  "🔍", "底部翻試", 1),
+            "S17B":         (3,  "🔍", "撈底加碼", 1),
+            "S_VOLX":       (2,  "💥", "量爆拉升", 1),
+            "S_VOLX_SHORT": (2,  "💥", "量爆下殺", 1),
+            "S_PB":         (1,  "📊", "均線拉回", 1),
+        }
+        best_sig: dict = {}
+        for strategy_key, results in scan_res.items():
+            if strategy_key not in _SIG_MAP:
+                continue
+            entry = _SIG_MAP[strategy_key]
+            for r in results:
+                sid = r.get("stock_id", "")
+                if not sid:
+                    continue
+                if sid not in best_sig or entry[0] > best_sig[sid][0]:
+                    best_sig[sid] = entry
+        for item in merged:
+            sig = best_sig.get(item["stock_id"])
+            if sig:
+                item["signal_emoji"] = sig[1]
+                item["signal_title"] = sig[2]
+                item["signal_level"] = sig[3]
+    except Exception:
+        pass
+
     return {
         "date":        used_date_str,
         "total":       len(merged),

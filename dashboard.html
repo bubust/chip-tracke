@@ -57,6 +57,7 @@
   .btn.ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
   .strat-cnt { display:inline-block;min-width:18px;padding:0 4px;background:var(--accent);color:#fff;border-radius:8px;font-size:.72rem;font-weight:700;margin-left:4px;text-align:center; }
   .strat-cnt:empty { display:none; }
+  .draw-btn.active { border-color:#a78bfa!important;color:#a78bfa!important;background:rgba(167,139,250,.12)!important; }
   .screen-strat-btn.active { border-color:var(--accent);color:var(--accent); }
   .btn.green { background: var(--green); }
   .btn.danger { background: var(--red); }
@@ -2056,6 +2057,37 @@ let _frozenChartIdx  = -1;
 let _chartStockName = '';  // 目前開啟的股名
 let _chartNames = {};  // stock_id → name 快取
 
+// ── 繪圖工具狀態 ──────────────────────────────────────────────────────────
+let _drawMode    = null;  // null | 'hline' | 'tline'
+let _drawPoints  = [];    // 趨勢線第一點暫存
+let _drawings    = [];    // [{type, priceLine|series}]
+let _drawChart   = null;  // 目前繪圖用的主圖 chart 實例
+let _drawSeries  = null;  // 目前繪圖用的蠟燭 series 實例
+
+function setDrawMode(mode) {
+  _drawMode = (_drawMode === mode) ? null : mode;
+  _drawPoints = [];
+  document.querySelectorAll('.draw-btn').forEach(b => b.classList.remove('active'));
+  if (_drawMode) {
+    const el = document.getElementById('draw-btn-' + mode);
+    if (el) el.classList.add('active');
+  }
+  // 指標切換
+  const container = document.getElementById('chart-tv-container');
+  if (container) container.style.cursor = _drawMode ? 'crosshair' : '';
+}
+
+function clearDrawings() {
+  _drawings.forEach(d => {
+    try {
+      if (d.type === 'hline' && _drawSeries) _drawSeries.removePriceLine(d.priceLine);
+      if (d.type === 'tline' && _drawChart) _drawChart.removeSeries(d.series);
+    } catch(e) {}
+  });
+  _drawings = [];
+  _drawPoints = [];
+}
+
 function openWlChart(sid)     { _frozenChartList = [..._wlChartList];     _frozenChartIdx = _frozenChartList.indexOf(sid); openChart(sid); }
 function openMktChart(sid)    { _frozenChartList = [..._mktChartList];    _frozenChartIdx = _frozenChartList.indexOf(sid); openChart(sid); }
 function openScreenChart(sid) { _frozenChartList = [..._screenChartList]; _frozenChartIdx = _frozenChartList.indexOf(sid); openChart(sid); }
@@ -2191,6 +2223,11 @@ async function openChart(stockId, savedRange = null) {
   const title     = document.getElementById('chart-modal-title');
   const container = document.getElementById('chart-tv-container');
 
+  // 切換股票時清除舊畫線
+  clearDrawings();
+  _drawChart  = null;
+  _drawSeries = null;
+
   _lwcCharts.forEach(c => { try { c.remove(); } catch(e){} });
   _lwcCharts = [];
   _chartStockId   = stockId;
@@ -2250,6 +2287,52 @@ async function openChart(stockId, savedRange = null) {
     cSeries.setData(ohlcv.map(r => ({
       time: _toDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close
     })));
+
+    // 儲存繪圖用參考
+    _drawChart  = cChart;
+    _drawSeries = cSeries;
+
+    // ── 繪圖點擊事件 ──────────────────────────────────────────────────────
+    cEl.addEventListener('click', e => {
+      if (!_drawMode) return;
+      const rect  = cEl.getBoundingClientRect();
+      const x     = e.clientX - rect.left;
+      const y     = e.clientY - rect.top;
+      const price = cSeries.coordinateToPrice(y);
+      if (price == null) return;
+
+      if (_drawMode === 'hline') {
+        const pl = cSeries.createPriceLine({
+          price, color: '#fbbf24', lineWidth: 1, lineStyle: 2,
+          axisLabelVisible: true, title: price.toFixed(2),
+        });
+        _drawings.push({ type: 'hline', priceLine: pl });
+      } else if (_drawMode === 'tline') {
+        const time = cChart.timeScale().coordinateToTime(x);
+        if (!time) return;
+        _drawPoints.push({ time, price });
+        if (_drawPoints.length === 2) {
+          const [p1, p2] = _drawPoints.sort((a, b) => a.time < b.time ? -1 : 1);
+          const ls = cChart.addLineSeries({
+            color: '#a78bfa', lineWidth: 1, lineStyle: 0,
+            priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+          });
+          ls.setData([
+            { time: p1.time, value: p1.price },
+            { time: p2.time, value: p2.price },
+          ]);
+          _drawings.push({ type: 'tline', series: ls });
+          _drawPoints = [];
+        } else {
+          // 第一點提示
+          const hint = cSeries.createPriceLine({
+            price, color: '#a78bfa', lineWidth: 1, lineStyle: 3,
+            axisLabelVisible: false, title: '①',
+          });
+          _drawings.push({ type: 'hline', priceLine: hint });
+        }
+      }
+    });
 
     // MA 線
     const MA_CFG = [
@@ -2477,6 +2560,11 @@ async function openChart(stockId, savedRange = null) {
 function closeChart() {
   _stopChartAutoRefresh();
   _chartStockId = null;
+  _drawings = [];
+  _drawPoints = [];
+  _drawChart  = null;
+  _drawSeries = null;
+  setDrawMode(null);
   document.getElementById('chart-modal').style.display = 'none';
   _lwcCharts.forEach(c => { try { c.remove(); } catch(e){} });
   _lwcCharts = [];
@@ -2679,6 +2767,11 @@ async function saveAllStratParams() {
       <button id="chart-next-btn" class="btn sm ghost" onclick="chartNav(+1)" title="下一檔" style="padding:4px 10px">下一檔 ▶</button>
       <strong id="chart-modal-title" style="font-size:.95rem;flex:1;color:#d1d4dc;text-align:center"></strong>
       <span style="font-size:.72rem;color:#6b7280;white-space:nowrap">K線＋量＋小MACD＋大MACD（Yahoo Finance）</span>
+      <span style="display:flex;gap:4px;align-items:center">
+        <button id="draw-btn-hline" class="btn sm ghost draw-btn" onclick="setDrawMode('hline')" title="水平線（點K線加上）" style="font-size:.8rem;padding:3px 8px">📏 水平線</button>
+        <button id="draw-btn-tline" class="btn sm ghost draw-btn" onclick="setDrawMode('tline')" title="趨勢線（點兩個K線點）" style="font-size:.8rem;padding:3px 8px">📐 趨勢線</button>
+        <button class="btn sm ghost" onclick="clearDrawings()" title="清除所有畫線" style="font-size:.8rem;padding:3px 8px">🗑️</button>
+      </span>
       <button id="chart-wl-btn" class="btn sm ghost" onclick="addChartToWl()" style="color:#22c55e;white-space:nowrap">+ 觀察清單</button>
       <button class="btn sm ghost" onclick="closeChart()">✕ 關閉</button>
     </div>
