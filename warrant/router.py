@@ -109,8 +109,14 @@ def _build_warrant_card(w_row, mis_item: dict, underlying_price: float, cfg: dic
     bid_lots = q_price["bid_lots"]
     ask_lots = q_price["ask_lots"]
 
+    # 盤後用前日收盤代替 bid（已在主流程過濾，這裡做保底）
     if bid is None or bid <= 0:
-        return None
+        prev = q_price.get("prev_close")
+        if prev and prev > 0:
+            bid = prev
+            ask = prev
+        else:
+            return None
 
     warrant_price = (bid + ask) / 2 if ask else bid
 
@@ -340,9 +346,19 @@ def get_warrants(
         bid_lots = price_data.get("bid_lots", 0)
         ask_lots = price_data.get("ask_lots", 0)
 
-        if bid is None or bid <= 0:
+        # 盤後/週末無 bid → 用前日收盤價代替（仍可計算理論值）
+        if (bid is None or bid <= 0) and m_state == "AFTER_HOURS":
+            prev = price_data.get("prev_close")
+            if prev and prev > 0:
+                bid = prev
+                ask = prev
+            else:
+                excluded["NO_BID"] = excluded.get("NO_BID", 0) + 1
+                continue
+        elif bid is None or bid <= 0:
             excluded["NO_BID"] = excluded.get("NO_BID", 0) + 1
             continue
+
         if ask is None:
             ask = bid
         if ask < _filters["min_ask_price"]:
@@ -398,7 +414,7 @@ def get_warrants(
         "warrants": results,
         "excluded_count": excluded_count,
         "excluded_reasons": excluded_reasons,
-        "warnings": [],
+        "warnings": ["盤後模式：以前日收盤價計算，僅供參考"] if m_state == "AFTER_HOURS" and results else [],
     }
 
 @router.get("/api/excluded")
