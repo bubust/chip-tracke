@@ -239,15 +239,24 @@ def fetch_mi5mins():
 
 
 def fetch_twse_foreign_spot():
-    """TWSE T86 外資現貨買賣超 → series: FOREIGN_NET_LOT (張)"""
+    """TWSE T86 外資現貨買賣超 → series: FOREIGN_NET_LOT (張)
+    假日/休市時自動往前找最近一個交易日。"""
     url = "https://www.twse.com.tw/rwd/zh/fund/T86"
-    from datetime import date as _date
-    dt_str = _date.today().strftime("%Y%m%d")
     try:
         with httpx.Client(timeout=20, headers={"User-Agent": _UA, "Referer": "https://www.twse.com.tw/"}, verify=False) as c:
-            r = c.get(url, params={"date": dt_str, "selectType": "ALL", "response": "json"})
-            t86 = r.json()
-        if t86.get("stat") != "OK":
+            t86 = None
+            for offset in range(5):
+                candidate = date.today() - timedelta(days=offset)
+                if candidate.weekday() >= 5:  # 跳過週末
+                    continue
+                dt_str = candidate.strftime("%Y%m%d")
+                r = c.get(url, params={"date": dt_str, "selectType": "ALL", "response": "json"})
+                data = r.json()
+                if data.get("stat") == "OK" and data.get("data"):
+                    t86 = data
+                    break
+        if not t86:
+            log.info("[fetcher] T86: 近期無資料")
             return
         total_foreign_net = 0
         for row in t86.get("data", []):
@@ -258,7 +267,7 @@ def fetch_twse_foreign_spot():
         dt = f"{dt_str[:4]}-{dt_str[4:6]}-{dt_str[6:]}"
         with db() as conn:
             upsert_series(conn, dt, "FOREIGN_NET_LOT", round(total_foreign_net), "TWSE_T86")
-        log.info(f"[fetcher] FOREIGN_NET_LOT: {round(total_foreign_net)} 張")
+        log.info(f"[fetcher] FOREIGN_NET_LOT: {round(total_foreign_net)} 張 ({dt})")
     except Exception as e:
         log.warning(f"[fetcher] T86 失敗: {e}")
 
@@ -518,35 +527,45 @@ def fetch_twse_market_breadth(lookback: int = 90):
 def fetch_taifex_foreign_futures():
     """
     TAIFEX 外資期貨未平倉淨部位 → series: FOREIGN_FUTURES_NET (張)
-    資料來源: TAIFEX 盤後資訊 - 交易人期貨與選擇權未平倉量彙整表
+    回傳 MS950 編碼 CSV，取「外資及陸資」列的多空未平倉淨額口數(col 13)。
+    假日/休市時自動往前找最近一個交易日。
     """
-    today_str = date.today().strftime("%Y/%m/%d")
     url = "https://www.taifex.com.tw/cht/3/futContractsDateDown"
     try:
-        with httpx.Client(timeout=20, headers={"User-Agent": _UA, "Referer": "https://www.taifex.com.tw/"}, verify=False) as c:
-            r = c.post(url, data={
-                "queryStartDate": today_str,
-                "queryEndDate": today_str,
-                "commodityId": "TXF",  # 台指期
-            })
-        # 解析 CSV (TAIFEX 回傳格式為 CSV)
-        lines = r.text.strip().split("\n")
-        net_lot = None
-        for line in lines:
-            if "外資" in line or "Foreign" in line.lower():
-                parts = line.replace('"', '').split(",")
-                # 外資買方 - 賣方未平倉
-                try:
-                    # 典型格式: 日期, 商品名稱, 身份別, 多方口數, 多方契約金額, 空方口數, 空方契約金額, 多空淨額口數, ...
-                    net_str = parts[7].replace(",", "").strip()
-                    net_lot = int(net_str)
-                    break
-                except Exception:
+        with httpx.Client(timeout=20, verify=False, headers={
+            "User-Agent": _UA,
+            "Referer": "https://www.taifex.com.tw/cht/3/futContractsDate",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }) as c:
+            for offset in range(5):
+                candidate = date.today() - timedelta(days=offset)
+                if candidate.weekday() >= 5:
                     continue
-        if net_lot is not None:
-            dt = date.today().strftime("%Y-%m-%d")
-            with db() as conn:
-                upsert_series(conn, dt, "FOREIGN_FUTURES_NET", net_lot, "TAIFEX")
-            log.info(f"[fetcher] FOREIGN_FUTURES_NET: {net_lot} 張")
+                today_str = candidate.strftime("%Y/%m/%d")
+                r = c.post(url, data={
+                    "queryStartDate": today_str,
+                    "queryEndDate": today_str,
+                    "commodityId": "TXF",
+                })
+                # TAIFEX 回傳 MS950 編碼 CSV
+                text = r.content.decode("ms950", errors="replace")
+                lines = text.strip().split("\n")
+                net_lot = None
+                for line in lines:
+                    if "外資" in line:
+                        parts = line.replace('"', '').split(",")
+                        try:
+                            # col 13 = 多空未平倉淨額口數
+                            net_lot = int(parts[13].replace(",", "").strip())
+                            break
+                        except Exception:
+                            continue
+                if net_lot is not None:
+                    dt = candidate.strftime("%Y-%m-%d")
+                    with db() as conn:
+                        upsert_series(conn, dt, "FOREIGN_FUTURES_NET", net_lot, "TAIFEX")
+                    log.info(f"[fetcher] FOREIGN_FUTURES_NET: {net_lot} 張 ({dt})")
+                    return
+        log.info("[fetcher] TAIFEX 外資期貨: 近期無資料")
     except Exception as e:
         log.warning(f"[fetcher] TAIFEX 外資期貨 失敗: {e}")

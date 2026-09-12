@@ -63,12 +63,11 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   #status-bar { font-size: .75rem; color: #8b949e; text-align: right; margin-bottom: 8px; }
   #status-bar.warn { color: #d29922; font-size: .82rem; text-align: left; padding: 6px 10px; background: rgba(210,153,34,.1); border: 1px solid rgba(210,153,34,.3); border-radius: 6px; }
-  /* Tooltip */
-  .tip-wrap { position: relative; display: inline-block; }
-  .tip-icon { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; background: #30363d; color: #8b949e; font-size: 10px; cursor: default; margin-left: 4px; vertical-align: middle; user-select: none; }
-  .tip-box { display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: #1c2128; border: 1px solid #30363d; border-radius: 8px; padding: 8px 10px; font-size: .75rem; color: #c9d1d9; line-height: 1.5; white-space: pre-wrap; width: 220px; z-index: 100; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
-  .tip-wrap:hover .tip-box { display: block; }
-  .score-card .label { font-size: .75rem; color: #8b949e; margin-bottom: 6px; display: flex; align-items: center; justify-content: center; gap: 2px; }
+  /* 說明文字 */
+  .score-card .label { font-size: .75rem; color: #8b949e; margin-bottom: 6px; }
+  .score-card .desc { font-size: .7rem; color: #484f58; line-height: 1.5; margin-top: 6px; text-align: left; }
+  .factor-row .desc { font-size: .7rem; color: #484f58; line-height: 1.5; margin-top: 5px; }
+  .oh-card .desc { font-size: .7rem; color: #484f58; line-height: 1.5; margin-top: 5px; }
 </style>
 </head>
 <body>
@@ -83,28 +82,22 @@
 <!-- 三大核心分數 -->
 <div class="grid3">
   <div class="score-card" id="card-dir">
-    <div class="label">方向 Direction <span class="tip-wrap"><span class="tip-icon">?</span><span class="tip-box">由七大因子加權合成的市場多空方向。
-正值 → 偏多，可積極選股
-負值 → 偏空，降低持倉
-建議：持續 &lt; -30 時避免主動做多</span></span></div>
+    <div class="label">方向 Direction</div>
     <div class="value" id="dir-val">—</div>
     <div class="sub">市場方向（-100~+100）</div>
+    <div class="desc">七大因子加權合成。正值偏多、負值偏空。<br>持續 &lt; −30 時避免主動做多</div>
   </div>
   <div class="score-card" id="card-risk">
-    <div class="label">風險 Risk Score <span class="tip-wrap"><span class="tip-icon">?</span><span class="tip-box">綜合市場脆弱程度。分數越低代表風險越高。
-&gt; 60 → 市場相對穩健
-40~60 → 中等風險，留意停損
-&lt; 40 → 高風險，建議減碼</span></span></div>
+    <div class="label">風險 Risk Score</div>
     <div class="value" id="risk-val">—</div>
     <div class="sub">市場脆弱度（0~100）</div>
+    <div class="desc">分數越低風險越高。<br>&gt;60 穩健｜40~60 留意停損｜&lt;40 建議減碼</div>
   </div>
   <div class="score-card" id="card-ex">
-    <div class="label">竭盡 Exhaustion <span class="tip-wrap"><span class="tip-icon">?</span><span class="tip-box">跌勢/賣壓是否接近竭盡。
-越接近 -100 → 空方力道快用盡，可能反彈
-越接近 +100 → 買盤過度樂觀，可能見頂
-極端值出現後往往是短線轉折訊號</span></span></div>
+    <div class="label">竭盡 Exhaustion</div>
     <div class="value" id="ex-val">—</div>
-    <div class="sub">極端竭盡（0~100）</div>
+    <div class="sub">極端竭盡（-100~+100）</div>
+    <div class="desc">接近 −100 → 賣壓耗盡，可能反彈<br>接近 +100 → 買盤過熱，可能見頂</div>
   </div>
 </div>
 
@@ -125,16 +118,18 @@
 <!-- 過熱/恐慌指數 -->
 <div class="oh-grid">
   <div class="oh-card" id="card-overheating">
-    <div class="label">過熱指數 Overheating <span class="tip-wrap"><span class="tip-icon">?</span><span class="tip-box">公式：累積成交量 ÷ 累積委買量<br>反映買盤是否已被充分消化。<br>&gt; 50% → 市場過熱，買單被大量成交，追漲風險高<br>&lt; 30% → 委買掛單多但成交少，買方仍在觀望</span></span></div>
+    <div class="label">過熱指數 Overheating</div>
     <div class="value" id="oh-val">—</div>
     <div class="bar-wrap"><div class="bar" id="oh-bar" style="width:0%"></div></div>
-    <div class="threshold">過熱閾值 50% | 成交量/委買量</div>
+    <div class="threshold">過熱閾值 50% | 公式：成交量 ÷ 委買量</div>
+    <div class="desc">&gt;50% 買盤被大量消化，追漲風險高<br>&lt;30% 委買多但觀望，市場謹慎</div>
   </div>
   <div class="oh-card" id="card-panic">
-    <div class="label">恐慌指數 Panic <span class="tip-wrap"><span class="tip-icon">?</span><span class="tip-box">公式：累積成交量 ÷ 累積委賣量<br>反映賣壓是否正在被大量消化。<br>&gt; 75% → 恐慌！賣單幾乎全部成交，市場在恐慌殺盤<br>&lt; 50% → 委賣掛單多但未成交，賣壓尚未爆發</span></span></div>
+    <div class="label">恐慌指數 Panic</div>
     <div class="value" id="pa-val">—</div>
     <div class="bar-wrap"><div class="bar" id="pa-bar" style="width:0%"></div></div>
-    <div class="threshold">恐慌閾值 75% | 成交量/委賣量</div>
+    <div class="threshold">恐慌閾值 75% | 公式：成交量 ÷ 委賣量</div>
+    <div class="desc">&gt;75% 賣單幾乎全成交，市場恐慌殺盤<br>&lt;50% 委賣多但未成交，賣壓尚未爆發</div>
   </div>
 </div>
 
@@ -338,19 +333,19 @@ function renderToday(data) {
   // Factors
   const factors = [
     { name: 'Trend 趨勢',        key: 'trend',        dir: true,
-      desc: '大盤指數的均線排列與 MACD 方向。\n正值 → 均線多頭排列，趨勢向上\n負值 → 均線空頭排列，趨勢向下\n參考：持續負值時避免逆勢做多' },
+      desc: '均線排列與 MACD 方向。正值多頭、負值空頭' },
     { name: 'Breadth 廣度',      key: 'breadth',      dir: true,
-      desc: '全市場中站上 50 日均線的股票比例。\n> +50 → 超過 75% 股票站上均線，市場健康\n< -50 → 不到 25% 站上均線，賣壓擴散全市場\n重要：廣度差時個股容易被輪流殺，選股難度高' },
+      desc: '全市場站上50日均線比例。&lt;−50 代表賣壓擴散，選股難度高' },
     { name: 'Positioning 籌碼',  key: 'positioning',  dir: true,
-      desc: '外資現貨買賣超、外資期貨淨部位、融資餘額的綜合方向。\n正值 → 外資持續買進，籌碼偏多\n負值 → 外資賣超或融資減少，籌碼偏空\n籌碼跟趨勢方向一致時，訊號更可靠' },
+      desc: '外資現貨+期貨+融資的綜合方向。正值外資買進、負值賣超' },
     { name: 'Macro 總經',        key: 'macro_factor', dir: true,
-      desc: '美股、美債、美元、VIX 等總經環境的綜合評分。\n正值 → VIX 低、半導體強、美股上漲，外部環境佳\n負值 → VIX 高、美債殖利率飆升，外部風險升高\n台股與美股高度連動，總經轉差時要特別謹慎' },
+      desc: 'VIX、美債、美元、SOX 半導體等外部環境。負值代表外部風險升高' },
     { name: 'Leverage 槓桿風險', key: 'leverage_risk',dir: false,
-      desc: '市場整體槓桿程度（主要看融資餘額水位）。\n0~40 → 槓桿低，市場較健康\n40~70 → 中等槓桿，留意反轉風險\n> 70 → 槓桿過高，一旦下跌容易引發斷頭潮\n目前數值越低越安全' },
+      desc: '融資餘額水位。&gt;70 槓桿過高，下跌易引爆斷頭潮' },
     { name: 'Concentration 集中',key: 'concentration',dir: false,
-      desc: '市場漲幅集中在少數大型股的程度（如台積電獨撐指數）。\n0~30 → 資金擴散，選股機會多\n> 70 → 高度集中，多數股票其實在跌\n集中度 100 = 最危險：指數看起來好，底下一片哀鴻' },
+      desc: '漲幅集中少數股(如台積電)的程度。100 = 指數假象，底下多數股在跌' },
     { name: 'Divergence 背離',   key: 'divergence',   dir: false,
-      desc: '指數走勢與市場廣度/籌碼之間的落差。\n正值 → 正背離：廣度比指數更強，底部訊號\n負值 → 負背離：指數創高但廣度萎縮，見頂警訊\n背離訊號通常需要幾天確認，不宜單獨操作' },
+      desc: '指數與廣度的落差。正值為底部訊號、負值為見頂警訊' },
   ];
 
   document.getElementById('factors-grid').innerHTML = factors.map(f => {
@@ -360,11 +355,12 @@ function renderToday(data) {
     const pct = f.dir ? (v + 100) / 2 : v;
     const col = isNull ? '#484f58' : (f.dir ? colorDir(v) : colorRisk(v));
     const display = isNull ? '無資料' : (f.dir ? ((v >= 0 ? '+' : '') + v) : v);
-    const tipHtml = f.desc ? `<span class="tip-wrap"><span class="tip-icon">?</span><span class="tip-box">${f.desc.replace(/\n/g,'<br>')}</span></span>` : '';
+    const descHtml = f.desc ? `<div class="desc">${f.desc.replace(/\n/g,'<br>')}</div>` : '';
     return `<div class="factor-row">
-      <div class="name">${f.name}${tipHtml}</div>
+      <div class="name">${f.name}</div>
       <div class="bar-wrap"><div class="bar" style="width:${isNull ? 0 : Math.min(100,Math.max(0,pct))}%;background:${col}"></div></div>
       <div class="num" style="color:${col}">${display}</div>
+      ${descHtml}
     </div>`;
   }).join('');
 
