@@ -200,21 +200,20 @@ def fetch_mi5mins():
         fields = data.get("fields", [])
         log.debug(f"[fetcher] MI_5MINS fields: {fields}")
 
-        # 累計所有列的數值
-        trade_vol = 0
-        buy_order = 0
-        sell_order = 0
+        # MI_5MINS 每列已是累積值，直接取最後一列
+        # 欄位順序: 時間, 累積委託買進筆數, 累積委託買進數量, 累積委託賣出筆數, 累積委託賣出數量, 累積成交筆數, 累積成交數量, 累積成交金額
+        last = rows[-1]
+        if len(last) < 7:
+            log.info("[fetcher] MI_5MINS: 最後列欄位不足")
+            return None, None
 
-        for row in rows:
-            try:
-                # 典型欄位順序: 時間, 成交股數, 成交金額, 成交筆數, 買進委託股數, 買進委託筆數, 賣出委託股數, 賣出委託筆數
-                if len(row) < 7:
-                    continue
-                trade_vol  += int(str(row[1]).replace(",", "").strip() or "0")
-                buy_order  += int(str(row[4]).replace(",", "").strip() or "0")
-                sell_order += int(str(row[6]).replace(",", "").strip() or "0")
-            except Exception:
-                continue
+        try:
+            buy_order  = int(str(last[2]).replace(",", "").strip() or "0")   # 累積委託買進數量
+            sell_order = int(str(last[4]).replace(",", "").strip() or "0")   # 累積委託賣出數量
+            trade_vol  = int(str(last[6]).replace(",", "").strip() or "0")   # 累積成交數量
+        except Exception as e:
+            log.warning(f"[fetcher] MI_5MINS: 解析最後列失敗: {e}")
+            return None, None
 
         if buy_order == 0 or sell_order == 0:
             log.info("[fetcher] MI_5MINS: 委買/委賣為 0，跳過")
