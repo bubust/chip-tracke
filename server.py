@@ -27,6 +27,9 @@ from regime.router import router as regime_router
 from regime.db import init_db as regime_init_db
 from regime.fetcher import fetch_all as regime_fetch_all, fetch_twse_margin, fetch_twse_foreign_spot, fetch_twse_market_breadth, fetch_taifex_foreign_futures, fetch_mi5mins
 from regime.factor import calculate_factors as regime_calc_factors, backfill_factors as regime_backfill_factors
+from sector.router import router as sector_router
+from sector.db import init_db as sector_init_db
+from sector.universe import fetch_and_build_mapping as sector_build_mapping, is_initialized as sector_is_initialized
 
 from chip_tracker_v2 import (
     DATA_DIR, DB_PATH,
@@ -145,6 +148,7 @@ async def lifespan(app: FastAPI):
     init_db()
     init_warrant()
     regime_init_db()
+    sector_init_db()
     start_warrant_scheduler()
     # 若 regime.db 無資料，背景啟動初始更新
     import threading
@@ -173,6 +177,14 @@ async def lifespan(app: FastAPI):
             except Exception as _e:
                 import logging; logging.getLogger(__name__).error(f"[regime_backfill] {_e}")
         threading.Thread(target=_regime_backfill, daemon=True).start()
+    # 若 sector_master 為空，背景初始化產業對照表
+    if not sector_is_initialized():
+        def _sector_init():
+            try:
+                sector_build_mapping()
+            except Exception as _e:
+                import logging; logging.getLogger(__name__).error(f"[sector_init] {_e}")
+        threading.Thread(target=_sector_init, daemon=True).start()
     yield
     stop_warrant_scheduler()
 
@@ -183,6 +195,9 @@ app.include_router(warrant_router, prefix="/warrant")
 
 # 掛載 regime 路由
 app.include_router(regime_router, prefix="/regime")
+
+# 掛載 sector 路由
+app.include_router(sector_router, prefix="/sector")
 
 # 掛載 warrant 前端靜態檔
 WARRANT_FRONTEND = BASE_DIR / "warrant-frontend"
@@ -197,6 +212,16 @@ app.mount("/regime/static", StaticFiles(directory=str(REGIME_FRONTEND)), name="r
 def regime_index():
     from fastapi.responses import FileResponse
     return FileResponse(str(REGIME_FRONTEND / "index.html"))
+
+
+# 掛載 sector 前端靜態檔
+SECTOR_FRONTEND = BASE_DIR / "sector-frontend"
+app.mount("/sector/static", StaticFiles(directory=str(SECTOR_FRONTEND)), name="sector_static")
+
+
+@app.get("/sector/", include_in_schema=False)
+def sector_index():
+    return FileResponse(str(SECTOR_FRONTEND / "index.html"))
 
 app.add_middleware(
     CORSMiddleware,

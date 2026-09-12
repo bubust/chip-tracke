@@ -158,6 +158,7 @@
   <button onclick="switchTab('screen')">策略篩選</button>
   <button onclick="switchTab('warrant')">權證股期選擇器</button>
   <button onclick="switchTab('regime')">📊 總經面板</button>
+  <button onclick="switchTab('sector')">🔄 產業輪動</button>
   <button onclick="switchTab('settings')">設定</button>
 </nav>
 
@@ -397,6 +398,11 @@
 <!-- ═══════════════════════ Regime 面板 ═══════════════════════ -->
 <div id="tab-regime" class="tab">
   <iframe id="regime-iframe" src="/regime/" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
+</div>
+
+<!-- ═══════════════════════ 產業輪動 ═══════════════════════ -->
+<div id="tab-sector" class="tab">
+  <iframe id="sector-iframe" src="/sector/" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
 </div>
 
 <!-- ═══════════════════════ 設定 ═══════════════════════ -->
