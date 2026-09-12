@@ -25,8 +25,8 @@ from pydantic import BaseModel
 from warrant.router import router as warrant_router, init_warrant, start_warrant_scheduler, stop_warrant_scheduler
 from regime.router import router as regime_router
 from regime.db import init_db as regime_init_db
-from regime.fetcher import fetch_all as regime_fetch_all, fetch_twse_margin, fetch_twse_foreign_spot, fetch_twse_market_breadth, fetch_taifex_foreign_futures
-from regime.factor import calculate_factors as regime_calc_factors
+from regime.fetcher import fetch_all as regime_fetch_all, fetch_twse_margin, fetch_twse_foreign_spot, fetch_twse_market_breadth, fetch_taifex_foreign_futures, fetch_mi5mins
+from regime.factor import calculate_factors as regime_calc_factors, backfill_factors as regime_backfill_factors
 
 from chip_tracker_v2 import (
     DATA_DIR, DB_PATH,
@@ -159,10 +159,20 @@ async def lifespan(app: FastAPI):
                 fetch_twse_foreign_spot()
                 fetch_twse_market_breadth(lookback=90)
                 fetch_taifex_foreign_futures()
+                fetch_mi5mins()
                 regime_calc_factors()
+                regime_backfill_factors(days=120)
             except Exception as _e:
                 import logging; logging.getLogger(__name__).error(f"[regime_init] {_e}")
         threading.Thread(target=_regime_init, daemon=True).start()
+    else:
+        # 已有資料：背景補算缺失的歷史因子
+        def _regime_backfill():
+            try:
+                regime_backfill_factors(days=120)
+            except Exception as _e:
+                import logging; logging.getLogger(__name__).error(f"[regime_backfill] {_e}")
+        threading.Thread(target=_regime_backfill, daemon=True).start()
     yield
     stop_warrant_scheduler()
 

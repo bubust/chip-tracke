@@ -35,6 +35,14 @@
   .factor-row .bar { height: 100%; border-radius: 4px; transition: width .4s; }
   .factor-row .num { font-size: .9rem; font-weight: 600; margin-top: 4px; }
   .green { color: #3fb950; } .red { color: #f85149; } .yellow { color: #d29922; }
+  /* 過熱/恐慌指數卡片 */
+  .oh-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
+  .oh-card { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 14px 16px; }
+  .oh-card .label { font-size: .75rem; color: #8b949e; margin-bottom: 4px; }
+  .oh-card .value { font-size: 1.6rem; font-weight: 700; margin-bottom: 6px; }
+  .oh-card .bar-wrap { background: #0d1117; border-radius: 4px; height: 8px; overflow: hidden; margin-bottom: 4px; }
+  .oh-card .bar { height: 100%; border-radius: 4px; transition: width .5s; }
+  .oh-card .threshold { font-size: .7rem; color: #484f58; }
   /* 數據列表 */
   .series-list { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
   .series-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #21262d; font-size: .85rem; }
@@ -99,6 +107,22 @@
   </div>
 </div>
 
+<!-- 過熱/恐慌指數 -->
+<div class="oh-grid">
+  <div class="oh-card" id="card-overheating">
+    <div class="label">過熱指數 Overheating</div>
+    <div class="value" id="oh-val">—</div>
+    <div class="bar-wrap"><div class="bar" id="oh-bar" style="width:0%"></div></div>
+    <div class="threshold">過熱閾值 50% | 成交量/委買量</div>
+  </div>
+  <div class="oh-card" id="card-panic">
+    <div class="label">恐慌指數 Panic</div>
+    <div class="value" id="pa-val">—</div>
+    <div class="bar-wrap"><div class="bar" id="pa-bar" style="width:0%"></div></div>
+    <div class="threshold">恐慌閾值 75% | 成交量/委賣量</div>
+  </div>
+</div>
+
 <!-- 市場狀態 -->
 <div class="regime-box">
   <div class="label" style="text-align:center;font-size:.75rem;color:#8b949e;margin-bottom:4px">市場狀態</div>
@@ -148,6 +172,8 @@ const SERIES_LABELS = {
   MARGIN_BALANCE: '融資餘額(股)', FOREIGN_NET_LOT: '外資現貨(張)',
   BREADTH_50MA: '站上50MA比例(%)', AD_LINE: '漲跌家數差',
   MEDIAN_RET: '全市場中位數漲跌(%)', FOREIGN_FUTURES_NET: '外資期貨淨部位(張)',
+  OVERHEATING_INDEX: '過熱指數 (成交/委買)',
+  PANIC_INDEX: '恐慌指數 (成交/委賣)',
 };
 
 async function api(path) {
@@ -239,11 +265,47 @@ function renderSuggestion(data) {
   ).join('');
 }
 
+function renderOverheating(oh, pa) {
+  // 過熱指數
+  const ohEl = document.getElementById('oh-val');
+  const ohBar = document.getElementById('oh-bar');
+  if (oh != null) {
+    const ohPct = (oh * 100).toFixed(1);
+    const ohAlert = oh >= 0.5;
+    ohEl.textContent = ohPct + '%';
+    ohEl.style.color = ohAlert ? '#f85149' : '#3fb950';
+    ohBar.style.width = Math.min(100, oh * 100) + '%';
+    ohBar.style.background = ohAlert ? '#f85149' : '#3fb950';
+  } else {
+    ohEl.textContent = '—';
+    ohEl.style.color = '#8b949e';
+    ohBar.style.width = '0%';
+  }
+  // 恐慌指數
+  const paEl = document.getElementById('pa-val');
+  const paBar = document.getElementById('pa-bar');
+  if (pa != null) {
+    const paPct = (pa * 100).toFixed(1);
+    const paAlert = pa >= 0.75;
+    paEl.textContent = paPct + '%';
+    paEl.style.color = paAlert ? '#f85149' : '#3fb950';
+    paBar.style.width = Math.min(100, pa * 100) + '%';
+    paBar.style.background = paAlert ? '#f85149' : '#3fb950';
+  } else {
+    paEl.textContent = '—';
+    paEl.style.color = '#8b949e';
+    paBar.style.width = '0%';
+  }
+}
+
 function renderToday(data) {
   document.getElementById('regime-date').textContent = data.date || '';
   const dir = data.direction ?? 0;
   const risk = data.risk_score ?? 0;
   const ex = data.exhaustion ?? 0;
+
+  // 過熱/恐慌指數（從 today 回應中取得）
+  renderOverheating(data.overheating ?? null, data.panic ?? null);
 
   const dEl = document.getElementById('dir-val');
   dEl.textContent = (dir >= 0 ? '+' : '') + dir;
@@ -270,13 +332,15 @@ function renderToday(data) {
   ];
 
   document.getElementById('factors-grid').innerHTML = factors.map(f => {
-    const v = data[f.key] ?? 0;
+    const raw = data[f.key];
+    const isNull = raw == null;
+    const v = isNull ? 0 : raw;
     const pct = f.dir ? (v + 100) / 2 : v;
-    const col = f.dir ? colorDir(v) : colorRisk(v);
-    const display = f.dir ? ((v >= 0 ? '+' : '') + v) : v;
+    const col = isNull ? '#484f58' : (f.dir ? colorDir(v) : colorRisk(v));
+    const display = isNull ? '無資料' : (f.dir ? ((v >= 0 ? '+' : '') + v) : v);
     return `<div class="factor-row">
       <div class="name">${f.name}</div>
-      <div class="bar-wrap"><div class="bar" style="width:${Math.min(100,Math.max(0,pct))}%;background:${col}"></div></div>
+      <div class="bar-wrap"><div class="bar" style="width:${isNull ? 0 : Math.min(100,Math.max(0,pct))}%;background:${col}"></div></div>
       <div class="num" style="color:${col}">${display}</div>
     </div>`;
   }).join('');
@@ -421,17 +485,37 @@ async function loadBreadth() {
 async function loadSeries() {
   const KEYS = ['TAIEX','OTC','SP500','SOX','VIX','US10Y','USDTWD','TSM_ADR',
                 'FOREIGN_NET_LOT','FOREIGN_FUTURES_NET','MARGIN_BALANCE',
-                'BREADTH_50MA','AD_LINE','MEDIAN_RET'];
+                'BREADTH_50MA','AD_LINE','MEDIAN_RET',
+                'OVERHEATING_INDEX','PANIC_INDEX'];
   const rows = await Promise.all(KEYS.map(k => api(`/api/regime/series/${k}?days=2`)));
   const el = document.getElementById('series-list');
   const ABS_KEYS = new Set(['BREADTH_50MA', 'AD_LINE', 'MEDIAN_RET', 'MARGIN_BALANCE', 'FOREIGN_NET_LOT', 'FOREIGN_FUTURES_NET']);
+  const PCT_RATIO_KEYS = new Set(['OVERHEATING_INDEX', 'PANIC_INDEX']); // 0~1 的比率，顯示為 %
+  const THRESHOLDS = { OVERHEATING_INDEX: 0.5, PANIC_INDEX: 0.75 };
+
   el.innerHTML = KEYS.map((k, i) => {
     const data = rows[i];
     if (!data || !data.length) return `<div class="series-row"><span>${SERIES_LABELS[k]||k}</span><span class="yellow">—</span></div>`;
     const latest = data[data.length - 1];
     const prev   = data.length > 1 ? data[data.length - 2] : null;
-    let valStr, chgStr = '', col = '';
-    if (ABS_KEYS.has(k)) {
+    let valStr, chgStr = '', col = '', badge = '';
+
+    if (PCT_RATIO_KEYS.has(k)) {
+      // 比率型：顯示百分比，根據閾值著色
+      const pct = latest.value * 100;
+      const threshold = THRESHOLDS[k] * 100;
+      const isAlert = pct >= threshold;
+      col = isAlert ? 'red' : 'green';
+      valStr = pct.toFixed(1) + '%';
+      badge = isAlert
+        ? `<span style="font-size:.65rem;padding:1px 5px;background:#f8514922;color:#f85149;border:1px solid #f8514966;border-radius:3px;margin-left:4px">${k === 'OVERHEATING_INDEX' ? '過熱' : '恐慌'}</span>`
+        : `<span style="font-size:.65rem;padding:1px 5px;background:#3fb95022;color:#3fb950;border:1px solid #3fb95066;border-radius:3px;margin-left:4px">正常</span>`;
+      if (prev) {
+        const diff = (latest.value - prev.value) * 100;
+        chgStr = (diff >= 0 ? '+' : '') + diff.toFixed(1) + '%';
+        col = isAlert ? 'red' : 'green';
+      }
+    } else if (ABS_KEYS.has(k)) {
       const diff = prev ? latest.value - prev.value : null;
       valStr = k === 'BREADTH_50MA' ? latest.value.toFixed(1) + '%'
              : k === 'MEDIAN_RET'   ? (latest.value >= 0 ? '+' : '') + latest.value.toFixed(3) + '%'
@@ -450,8 +534,8 @@ async function loadSeries() {
       }
     }
     return `<div class="series-row">
-      <span>${SERIES_LABELS[k]||k}</span>
-      <span>${valStr} <span class="${col}" style="font-size:.8rem">${chgStr}</span></span>
+      <span>${SERIES_LABELS[k]||k}${badge}</span>
+      <span class="${col}">${valStr} <span style="font-size:.8rem;opacity:.7">${chgStr}</span></span>
     </div>`;
   }).join('');
 }
@@ -489,10 +573,14 @@ async function load() {
 }
 
 async function refresh() {
-  document.getElementById('status-bar').textContent = '更新中...';
+  document.getElementById('status-bar').textContent = '更新中（含歷史回填）...';
   _noDataWarned = true;
   await fetch('/regime/api/regime/refresh', { method: 'POST' });
-  setTimeout(load, 3000);
+  // 資料抓取約需 30 秒，等候後重新載入
+  setTimeout(() => {
+    document.getElementById('status-bar').textContent = '資料更新中，補算歷史因子...';
+  }, 5000);
+  setTimeout(load, 35000);
 }
 
 load();

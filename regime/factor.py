@@ -1,5 +1,6 @@
 """
-Regime Engine — 因子計算引擎 (V1.0)
+Regime Engine — 因子計算引擎 (V1.1)
+Sprint 4: backfill_factors(), target_date support, positioning/concentration fallbacks
 """
 import math
 import logging
@@ -10,12 +11,20 @@ from .db import db, upsert_series
 
 log = logging.getLogger(__name__)
 
-def _get_series(conn, series: str, limit: int = 252) -> list[tuple[str, float]]:
-    rows = conn.execute("""
-        SELECT date, value FROM market_daily
-        WHERE series=? AND value IS NOT NULL
-        ORDER BY date DESC LIMIT ?
-    """, (series, limit)).fetchall()
+def _get_series(conn, series: str, limit: int = 252, up_to_date: str = None) -> list[tuple[str, float]]:
+    """取 series 資料。若指定 up_to_date，只取該日期以前的資料。"""
+    if up_to_date:
+        rows = conn.execute("""
+            SELECT date, value FROM market_daily
+            WHERE series=? AND value IS NOT NULL AND date <= ?
+            ORDER BY date DESC LIMIT ?
+        """, (series, up_to_date, limit)).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT date, value FROM market_daily
+            WHERE series=? AND value IS NOT NULL
+            ORDER BY date DESC LIMIT ?
+        """, (series, limit)).fetchall()
     return [(r["date"], r["value"]) for r in reversed(rows)]
 
 def _rolling_pct(values: list[float], window: int = 252) -> list[float]:
@@ -61,25 +70,26 @@ def _pct_to_direction(pct: Optional[float]) -> float:
 def calculate_factors(target_date: Optional[str] = None) -> dict:
     """
     計算指定日期的 Regime 因子。
+    target_date: 若指定，只使用 <= target_date 的市場資料（供歷史回填用）
     回傳 dict with keys: trend, breadth, positioning, macro, direction, risk_score, exhaustion, regime_label
     """
     today = target_date or date.today().strftime("%Y-%m-%d")
 
     with db() as conn:
-        taiex = _get_series(conn, "TAIEX", 300)
-        otc   = _get_series(conn, "OTC",   300)
-        sp500 = _get_series(conn, "SP500", 300)
-        sox   = _get_series(conn, "SOX",   300)
-        vix   = _get_series(conn, "VIX",   300)
-        us10y = _get_series(conn, "US10Y", 300)
-        usdtwd = _get_series(conn, "USDTWD", 300)
-        margin = _get_series(conn, "MARGIN_BALANCE", 300)
-        foreign_net    = _get_series(conn, "FOREIGN_NET_LOT", 300)
+        taiex  = _get_series(conn, "TAIEX",   300, up_to_date=today)
+        otc    = _get_series(conn, "OTC",     300, up_to_date=today)
+        sp500  = _get_series(conn, "SP500",   300, up_to_date=today)
+        sox    = _get_series(conn, "SOX",     300, up_to_date=today)
+        vix    = _get_series(conn, "VIX",     300, up_to_date=today)
+        us10y  = _get_series(conn, "US10Y",   300, up_to_date=today)
+        usdtwd = _get_series(conn, "USDTWD",  300, up_to_date=today)
+        margin = _get_series(conn, "MARGIN_BALANCE",    300, up_to_date=today)
+        foreign_net     = _get_series(conn, "FOREIGN_NET_LOT",    300, up_to_date=today)
         # Sprint 2
-        breadth_50ma   = _get_series(conn, "BREADTH_50MA", 300)
-        ad_line        = _get_series(conn, "AD_LINE", 300)
-        median_ret     = _get_series(conn, "MEDIAN_RET", 300)
-        foreign_futures = _get_series(conn, "FOREIGN_FUTURES_NET", 300)
+        breadth_50ma    = _get_series(conn, "BREADTH_50MA",       300, up_to_date=today)
+        ad_line         = _get_series(conn, "AD_LINE",            300, up_to_date=today)
+        median_ret      = _get_series(conn, "MEDIAN_RET",         300, up_to_date=today)
+        foreign_futures = _get_series(conn, "FOREIGN_FUTURES_NET", 300, up_to_date=today)
 
     # ── T1/T2: TAIEX Risk-adjusted Momentum ──────────────────────────────
     taiex_px = [v for _, v in taiex]
@@ -123,23 +133,37 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
         breadth_score = 0.0
 
     # ── Positioning: Foreign Spot + Futures ──────────────────────────────
-    if foreign_net and len(foreign_net) >= 5:
-        fn_vals = [v for _, v in foreign_net[-20:]]
-        fn_5d = sum(fn_vals[-5:])
-        fn_20d = sum(fn_vals[-20:] if len(fn_vals) >= 20 else fn_vals)
-        fn_score = _zscore_to_score((fn_5d / max(abs(fn_20d), 1)) * 2)
-    else:
-        fn_score = 0.0
+    fn_score = 0.0
+    if foreign_net and len(foreign_net) >= 2:
+        fn_vals = [v for _, v in foreign_net]
+        if len(fn_vals) >= 10:
+            # 正常路徑：z-score
+            fn_5d  = sum(fn_vals[-5:])
+            fn_20d = sum(fn_vals[-20:] if len(fn_vals) >= 20 else fn_vals)
+            fn_score = _zscore_to_score((fn_5d / max(abs(fn_20d), 1)) * 2)
+        else:
+            # 資料不足：用最近幾日的方向（正=買超，負=賣超）
+            recent_sum = sum(fn_vals[-5:] if len(fn_vals) >= 5 else fn_vals)
+            fn_score = 50.0 if recent_sum > 0 else -50.0
+            log.debug(f"[factor] FOREIGN_NET_LOT 資料不足({len(fn_vals)}筆)，使用方向 fallback: {fn_score}")
 
     # 外資期貨淨部位方向（正=多頭傾向，負=空頭傾向）
     ff_score = 0.0
-    if foreign_futures and len(foreign_futures) >= 3:
-        ff_vals = [v for _, v in foreign_futures[-10:]]
-        ff_5d = sum(ff_vals[-5:]) / len(ff_vals[-5:])
-        ff_score = _zscore_to_score(ff_5d / max(abs(sum(ff_vals) / len(ff_vals)), 1) * 2)
+    if foreign_futures and len(foreign_futures) >= 2:
+        ff_vals = [v for _, v in foreign_futures]
+        if len(ff_vals) >= 3:
+            ff_5d = sum(ff_vals[-5:]) / len(ff_vals[-5:])
+            ff_score = _zscore_to_score(ff_5d / max(abs(sum(ff_vals) / len(ff_vals)), 1) * 2)
+        else:
+            # 資料不足：用方向
+            ff_score = 50.0 if ff_vals[-1] > 0 else -50.0
+            log.debug(f"[factor] FOREIGN_FUTURES_NET 資料不足({len(ff_vals)}筆)，使用方向 fallback: {ff_score}")
 
     # 加權合成 (現貨 60%，期貨 40%)
-    positioning_score = round(fn_score * 0.6 + ff_score * 0.4, 1)
+    if foreign_net or foreign_futures:
+        positioning_score = round(fn_score * 0.6 + ff_score * 0.4, 1)
+    else:
+        positioning_score = 0.0
 
     # ── Macro Factor ──────────────────────────────────────────────────────
     sp500_px = [v for _, v in sp500]
@@ -203,6 +227,13 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
         vix_extreme = min(50, max(0, vix_risk - 50)) if vix_risk > 50 else 0
         # 綜合竭盡：廣度極端 + VIX 極端，最高100
         exhaustion = round(min(100, breadth_extreme * 0.6 + vix_extreme * 0.4), 1)
+    elif breadth_50ma and len(breadth_50ma) >= 5:
+        # median_ret 不足時，僅用廣度 + VIX
+        b_vals_ex = [v for _, v in breadth_50ma[-10:]]
+        cur_breadth = b_vals_ex[-1]
+        breadth_extreme = max(0, cur_breadth - 75) / 25 * 50 if cur_breadth > 75 else max(0, 25 - cur_breadth) / 25 * 50
+        vix_extreme = min(50, max(0, vix_risk - 50)) if vix_risk > 50 else 0
+        exhaustion = round(min(100, breadth_extreme * 0.6 + vix_extreme * 0.4), 1)
 
     # ── Regime Label ──────────────────────────────────────────────────────
     if direction > 50 and risk_score < 50:
@@ -220,13 +251,26 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
 
     # ── Concentration (集中度：指數 vs 全市場中位數，Sprint 2) ───────────
     # 若中位數漲跌幅遠小於指數動能，代表集中度高（少數股撐盤）
-    concentration = 0.0
+    concentration = None  # None = 無資料，前端顯示 —
     if median_ret and len(median_ret) >= 5 and t1 is not None:
         med_recent = [v for _, v in median_ret[-10:]]
         med_avg = sum(med_recent) / len(med_recent)
         if abs(med_avg) > 0:
             divergence_ratio = abs(t1 * 100 - med_avg) / max(abs(med_avg), 0.1)
             concentration = round(min(100, divergence_ratio * 20), 1)
+        else:
+            concentration = 0.0
+    elif breadth_50ma and len(breadth_50ma) >= 5 and t1 is not None:
+        # MEDIAN_RET 無資料：用廣度變化代理集中度
+        b_recent = [v for _, v in breadth_50ma[-10:]]
+        b_avg = sum(b_recent) / len(b_recent)
+        # 廣度遠低於 50% 且指數向上 → 集中度高
+        if t1 > 0 and b_avg < 45:
+            concentration = round(min(100, (45 - b_avg) * 3), 1)
+        elif t1 < 0 and b_avg > 55:
+            concentration = round(min(100, (b_avg - 55) * 3), 1)
+        else:
+            concentration = 0.0
 
     # ── Divergence (背離：廣度與指數方向不一致) ──────────────────────────
     divergence = 0.0
@@ -245,14 +289,14 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
         "macro_factor": round(macro_score, 1),
         "direction": round(direction, 1),
         "leverage_risk": round(margin_risk, 1),
-        "concentration": concentration,
+        "concentration": concentration,  # may be None
         "divergence": divergence,
         "risk_score": round(risk_score, 1),
         "exhaustion": round(exhaustion, 1),
         "regime_label": label,
     }
 
-    # Store factors in DB
+    # Store factors in DB（concentration 為 None 時儲存 NULL）
     with db() as conn:
         conn.execute("""
             INSERT INTO factors(date, trend, breadth, positioning, macro_factor,
@@ -271,3 +315,50 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
         """, result)
 
     return result
+
+
+def backfill_factors(days: int = 120):
+    """
+    為所有有 market_daily 資料但尚未計算 factors 的歷史日期補算因子。
+    最多回溯 days 天。
+    """
+    try:
+        with db() as conn:
+            # 取最近 days 天內有資料的日期（以 TAIEX 為基準，有 TAIEX 才算可計算）
+            dates_with_data = [
+                row[0] for row in conn.execute(
+                    "SELECT DISTINCT date FROM market_daily WHERE series='TAIEX' ORDER BY date DESC LIMIT ?",
+                    (days,)
+                ).fetchall()
+            ]
+
+            # 已有 factors 的日期
+            dates_with_factors = set(
+                row[0] for row in conn.execute(
+                    "SELECT DISTINCT date FROM factors"
+                ).fetchall()
+            )
+
+        missing_dates = [d for d in dates_with_data if d not in dates_with_factors]
+        missing_dates.sort()  # 由舊到新計算
+
+        if not missing_dates:
+            log.info("[factor] backfill_factors: 無需回填")
+            return 0
+
+        log.info(f"[factor] backfill_factors: 待補 {len(missing_dates)} 天")
+        count = 0
+        for target_date in missing_dates:
+            try:
+                calculate_factors(target_date=target_date)
+                count += 1
+                log.debug(f"[factor] backfill {target_date} OK")
+            except Exception as e:
+                log.warning(f"[factor] backfill {target_date} 失敗: {e}")
+
+        log.info(f"[factor] backfill_factors 完成: 補算 {count} 天")
+        return count
+
+    except Exception as e:
+        log.error(f"[factor] backfill_factors 錯誤: {e}")
+        return 0

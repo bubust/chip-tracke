@@ -3,6 +3,7 @@ Regime Engine — 資料抓取
 Sprint 1: Yahoo Finance TAIEX/OTC/SOX/VIX/US10Y/USDTWD/TSM_ADR/SP500/NASDAQ
 Sprint 2: 市場廣度(>50MA%) + A/D線 + TAIFEX外資期貨 + 中位數漲跌幅
 Sprint 3: TWSE MI_INDEX 直接抓漲跌家數（不依賴 price_daily）
+Sprint 4: MI_5MINS 過熱/恐慌指數，MI_MARGN 更健壯解析
 """
 import logging
 import sqlite3
@@ -71,30 +72,171 @@ def fetch_all(days: int = 60):
 
 
 def fetch_twse_margin(days: int = 5):
-    """TWSE MI_MARGN — 融資餘額 (市場合計) → series: MARGIN_BALANCE"""
-    url = "https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN"
+    """TWSE MI_MARGN — 融資餘額 (市場合計) → series: MARGIN_BALANCE
+    嘗試多個端點，更健壯的解析邏輯。
+    """
+    # 嘗試 openapi 端點（回傳 JSON array）
+    urls_to_try = [
+        ("openapi", "https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN"),
+        ("twse_json", "https://www.twse.com.tw/exchangeReport/MI_MARGN?response=json"),
+    ]
+
+    for source_tag, url in urls_to_try:
+        try:
+            with httpx.Client(timeout=20, headers={"User-Agent": _UA}, verify=False) as c:
+                r = c.get(url)
+                r.raise_for_status()
+                content_type = r.headers.get("content-type", "")
+
+            # openapi 回傳 JSON array
+            if source_tag == "openapi":
+                rows = r.json()
+                if not isinstance(rows, list):
+                    log.warning(f"[fetcher] MI_MARGN openapi 非陣列格式")
+                    continue
+                inserted = 0
+                with db() as conn:
+                    for row in rows:
+                        date_str = str(row.get("Date", "")).strip()
+                        # 格式 YYYYMMDD
+                        if len(date_str) == 8 and date_str.isdigit():
+                            dt = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
+                        else:
+                            continue
+                        # MarginPurchaseAmount = 融資買進 (股)
+                        # 嘗試多個欄位名稱
+                        val = None
+                        for field in ["MarginPurchaseAmount", "MarginBalance", "TotalMarginPurchaseAmount"]:
+                            raw = str(row.get(field, "")).replace(",", "").strip()
+                            if raw and raw not in ("", "-", "--"):
+                                try:
+                                    val = float(raw)
+                                    break
+                                except Exception:
+                                    pass
+                        if val is None:
+                            continue
+                        upsert_series(conn, dt, "MARGIN_BALANCE", val, f"TWSE_{source_tag.upper()}")
+                        inserted += 1
+                log.info(f"[fetcher] MARGIN_BALANCE ({source_tag}): {inserted} 筆")
+                if inserted > 0:
+                    return  # 成功就不再嘗試下一個端點
+
+            # twse_json 端點：回傳包含 data/fields 的結構
+            elif source_tag == "twse_json":
+                jdata = r.json()
+                if jdata.get("stat") != "OK":
+                    continue
+                fields = jdata.get("fields", [])
+                data_rows = jdata.get("data", [])
+                if not data_rows:
+                    continue
+                # 找 融資餘額 欄位索引
+                margin_idx = None
+                date_idx = 0  # 通常第一欄是日期
+                for i, f in enumerate(fields):
+                    if "融資" in str(f) and ("餘額" in str(f) or "買進" in str(f)):
+                        margin_idx = i
+                        break
+                if margin_idx is None and len(fields) >= 3:
+                    margin_idx = 2  # 通常第3欄
+                inserted = 0
+                with db() as conn:
+                    for row in data_rows[-days:]:
+                        try:
+                            date_raw = str(row[date_idx]).strip()
+                            # 可能是 民國年 格式 如 "115/01/02"
+                            if "/" in date_raw:
+                                parts = date_raw.split("/")
+                                year = int(parts[0]) + 1911
+                                dt = f"{year}-{parts[1].zfill(2)}-{parts[2].zfill(2)}"
+                            elif len(date_raw) == 8 and date_raw.isdigit():
+                                dt = f"{date_raw[:4]}-{date_raw[4:6]}-{date_raw[6:]}"
+                            else:
+                                continue
+                            if margin_idx is not None:
+                                val_raw = str(row[margin_idx]).replace(",", "").strip()
+                                val = float(val_raw)
+                                upsert_series(conn, dt, "MARGIN_BALANCE", val, "TWSE_JSON")
+                                inserted += 1
+                        except Exception:
+                            continue
+                log.info(f"[fetcher] MARGIN_BALANCE (twse_json): {inserted} 筆")
+                if inserted > 0:
+                    return
+
+        except Exception as e:
+            log.warning(f"[fetcher] MI_MARGN ({source_tag}) 失敗: {e}")
+
+    log.warning("[fetcher] MARGIN_BALANCE: 所有端點均失敗")
+
+
+def fetch_mi5mins():
+    """
+    TWSE MI_5MINS — 盤中5分鐘資料，取累計值計算：
+    - 過熱指數 OVERHEATING_INDEX = 成交股數 / 委買股數 (threshold: 0.5)
+    - 恐慌指數 PANIC_INDEX       = 成交股數 / 委賣股數 (threshold: 0.75)
+    回傳 (overheating_ratio, panic_ratio) 或 (None, None)
+    """
+    url = "https://www.twse.com.tw/exchangeReport/MI_5MINS"
+    params = {"response": "json"}
     try:
-        with httpx.Client(timeout=20, headers={"User-Agent": _UA}) as c:
-            r = c.get(url)
-            rows = r.json()
+        with httpx.Client(timeout=15, headers={
+            "User-Agent": _UA,
+            "Referer": "https://www.twse.com.tw/",
+        }, verify=False) as c:
+            r = c.get(url, params=params)
+            data = r.json()
+
+        if data.get("stat") != "OK":
+            log.info(f"[fetcher] MI_5MINS stat={data.get('stat')} (市場休市或尚未開盤)")
+            return None, None
+
+        rows = data.get("data", [])
+        if not rows:
+            log.info("[fetcher] MI_5MINS: 無資料列")
+            return None, None
+
+        fields = data.get("fields", [])
+        log.debug(f"[fetcher] MI_5MINS fields: {fields}")
+
+        # 累計所有列的數值
+        trade_vol = 0
+        buy_order = 0
+        sell_order = 0
+
+        for row in rows:
+            try:
+                # 典型欄位順序: 時間, 成交股數, 成交金額, 成交筆數, 買進委託股數, 買進委託筆數, 賣出委託股數, 賣出委託筆數
+                if len(row) < 7:
+                    continue
+                trade_vol  += int(str(row[1]).replace(",", "").strip() or "0")
+                buy_order  += int(str(row[4]).replace(",", "").strip() or "0")
+                sell_order += int(str(row[6]).replace(",", "").strip() or "0")
+            except Exception:
+                continue
+
+        if buy_order == 0 or sell_order == 0:
+            log.info("[fetcher] MI_5MINS: 委買/委賣為 0，跳過")
+            return None, None
+
+        overheating = round(trade_vol / buy_order, 4)
+        panic = round(trade_vol / sell_order, 4)
+
+        log.info(f"[fetcher] MI_5MINS: 成交={trade_vol:,} 委買={buy_order:,} 委賣={sell_order:,}"
+                 f" → 過熱={overheating:.4f} 恐慌={panic:.4f}")
+
+        # 寫入 DB
+        dt = date.today().strftime("%Y-%m-%d")
         with db() as conn:
-            for row in rows:
-                date_str = row.get("Date", "")
-                # date format: YYYYMMDD
-                if len(date_str) == 8:
-                    dt = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
-                else:
-                    continue
-                # 融資餘額 (股)
-                val_str = str(row.get("MarginPurchaseAmount", "0")).replace(",", "")
-                try:
-                    val = float(val_str)
-                except Exception:
-                    continue
-                upsert_series(conn, dt, "MARGIN_BALANCE", val, "TWSE")
-        log.info(f"[fetcher] MARGIN_BALANCE: OK")
+            upsert_series(conn, dt, "OVERHEATING_INDEX", overheating, "TWSE_MI5MINS")
+            upsert_series(conn, dt, "PANIC_INDEX", panic, "TWSE_MI5MINS")
+
+        return overheating, panic
+
     except Exception as e:
-        log.warning(f"[fetcher] MI_MARGN 失敗: {e}")
+        log.warning(f"[fetcher] MI_5MINS 失敗: {e}")
+        return None, None
 
 
 def fetch_twse_foreign_spot():
@@ -283,6 +425,7 @@ def fetch_twse_market_breadth(lookback: int = 90):
     寫入:
     - AD_LINE: 上漲家數(TSE+OTC) - 下跌家數(TSE+OTC)
     - BREADTH_50MA: 上漲/(上漲+下跌+持平)*100（當 price_daily 無資料時的代理指標）
+    - MEDIAN_RET_PROXY: 若 MEDIAN_RET 缺失，使用 (up-down)/total*2 作為代理
     """
     import time as _time
 
@@ -293,6 +436,11 @@ def fetch_twse_market_breadth(lookback: int = 90):
         existing_ad = set(
             r[0] for r in conn.execute(
                 "SELECT date FROM market_daily WHERE series='AD_LINE'"
+            ).fetchall()
+        )
+        existing_median = set(
+            r[0] for r in conn.execute(
+                "SELECT date FROM market_daily WHERE series='MEDIAN_RET'"
             ).fetchall()
         )
 
@@ -332,7 +480,8 @@ def fetch_twse_market_breadth(lookback: int = 90):
                 continue
 
             ad_val      = up - down
-            breadth_pct = round(up / max(up + down + flat, 1) * 100, 2)
+            total       = max(up + down + flat, 1)
+            breadth_pct = round(up / total * 100, 2)
 
             with db() as conn:
                 upsert_series(conn, dt_iso, "AD_LINE", ad_val, "TWSE_MI")
@@ -343,6 +492,17 @@ def fetch_twse_market_breadth(lookback: int = 90):
                 ).fetchone()
                 if not has_b:
                     upsert_series(conn, dt_iso, "BREADTH_50MA", breadth_pct, "TWSE_MI_PROXY")
+
+                # MEDIAN_RET 代理：若 price_daily 無資料時補充
+                if dt_iso not in existing_median:
+                    # (上漲-下跌) / 總家數 * 2 → 粗估中位數方向 (-1 ~ +1 之間)
+                    median_proxy = round((up - down) / total * 2, 4)
+                    has_m = conn.execute(
+                        "SELECT 1 FROM market_daily WHERE date=? AND series='MEDIAN_RET'",
+                        (dt_iso,)
+                    ).fetchone()
+                    if not has_m:
+                        upsert_series(conn, dt_iso, "MEDIAN_RET", median_proxy, "TWSE_MI_PROXY")
 
             inserted += 1
             log.debug(f"[fetcher] {dt_iso} 上漲:{up} 下跌:{down} 持平:{flat} "
