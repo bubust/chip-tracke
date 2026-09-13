@@ -468,8 +468,15 @@ def del_watchlist(code: str):
 
 @router.post("/api/ingest/now")
 def trigger_ingest():
-    n = ingester.ingest_contracts()
-    return {"warrants_upserted": n}
+    import threading
+    def _bg():
+        try:
+            n = ingester.ingest_contracts()
+            log.info(f"[warrant] 手動更新合約完成: {n} 筆")
+        except Exception as e:
+            log.error(f"[warrant] 手動更新合約失敗: {e}")
+    threading.Thread(target=_bg, daemon=True).start()
+    return {"ok": True, "message": "更新已啟動，約 2 分鐘後完成"}
 
 @router.get("/api/warrant-status")
 def warrant_status():

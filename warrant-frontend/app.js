@@ -440,12 +440,11 @@ async function reingestContracts() {
   try {
     const r = await fetch('/warrant/api/ingest/now', { method: 'POST' });
     const d = await r.json();
-    btn.textContent = `✅ ${d.warrants_upserted || 0} 筆`;
-    showToast(`合約已更新：${d.warrants_upserted || 0} 筆`);
-    setTimeout(() => { btn.textContent = '🔄 更新合約'; btn.style.pointerEvents = ''; }, 3000);
+    showToast('合約更新已啟動，約 2 分鐘後完成');
+    setTimeout(() => { btn.textContent = '🔄 更新合約'; btn.style.pointerEvents = ''; }, 5000);
   } catch (e) {
     btn.textContent = '❌ 失敗';
-    btn.style.pointerEvents = '';
+    setTimeout(() => { btn.textContent = '🔄 更新合約'; btn.style.pointerEvents = ''; }, 3000);
   }
 }
 

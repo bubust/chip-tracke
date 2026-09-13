@@ -168,30 +168,63 @@ def fetch_twse_margin(days: int = 5):
                 if inserted > 0:
                     return
 
-            # twse_json 端點：回傳包含 data/fields 的結構
+            # twse_json 端點：rwd 格式 {"stat":"OK","date":"YYYYMMDD","tables":[...]}
             elif source_tag == "twse_json":
                 jdata = r.json()
                 if jdata.get("stat") != "OK":
                     continue
+
+                # rwd 格式：date 在頂層，資料在 tables[0]
+                date_str = jdata.get("date", "")
+                tables = jdata.get("tables", [])
+
+                if tables and date_str and len(date_str) == 8:
+                    try:
+                        dt = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
+                        table0 = tables[0]
+                        fields = table0.get("fields", [])
+                        data_rows = table0.get("data", [])
+                        # fields 通常: ["項目","買進","賣出","現金(券)償還","前日餘額","今日餘額"]
+                        # data[0]: ["融資(交易單位)", "314,089", ..., "9,130,044"]
+                        today_idx = len(fields) - 1  # 最後一欄 = 今日餘額
+                        for i, f in enumerate(fields):
+                            if "今日餘額" in str(f) or "今日" in str(f):
+                                today_idx = i
+                                break
+                        for row in data_rows:
+                            if not row:
+                                continue
+                            label = str(row[0]).strip()
+                            # 找「融資(交易單位)」列
+                            if "融資" in label and ("交易" in label or "單位" in label):
+                                val_raw = str(row[today_idx]).replace(",", "").strip()
+                                val = float(val_raw)
+                                if val > 0:
+                                    with db() as conn:
+                                        upsert_series(conn, dt, "MARGIN_BALANCE", val, "TWSE_RWD")
+                                    log.info(f"[fetcher] MARGIN_BALANCE (rwd): {val:,.0f} 張 ({dt})")
+                                    return
+                    except Exception as e:
+                        log.warning(f"[fetcher] MI_MARGN rwd parse: {e}")
+                    continue
+
+                # 舊格式 fallback：data/fields 在頂層
                 fields = jdata.get("fields", [])
                 data_rows = jdata.get("data", [])
                 if not data_rows:
                     continue
-                # 找 融資餘額 欄位索引
                 margin_idx = None
-                date_idx = 0  # 通常第一欄是日期
                 for i, f in enumerate(fields):
                     if "融資" in str(f) and ("餘額" in str(f) or "買進" in str(f)):
                         margin_idx = i
                         break
                 if margin_idx is None and len(fields) >= 3:
-                    margin_idx = 2  # 通常第3欄
+                    margin_idx = 2
                 inserted = 0
                 with db() as conn:
                     for row in data_rows[-days:]:
                         try:
-                            date_raw = str(row[date_idx]).strip()
-                            # 可能是 民國年 格式 如 "115/01/02"
+                            date_raw = str(row[0]).strip()
                             if "/" in date_raw:
                                 parts = date_raw.split("/")
                                 year = int(parts[0]) + 1911

@@ -75,29 +75,31 @@ async def fetch_taifex_inst_futures(target_date: date | None = None) -> dict:
 
     reader = csv.reader(io.StringIO(text))
     for row in reader:
-        if len(row) < 13:
+        # format: date[0], contract[1], identity[2], trade_long[3], trade_long_val[4],
+        #         trade_short[5], trade_short_val[6], trade_net[7], trade_net_val[8],
+        #         oi_long[9], oi_long_val[10], oi_short[11], oi_short_val[12], oi_net[13]
+        if len(row) < 14:
             continue
-        identity = row[0].strip()
-        contract = row[1].strip()
+        contract = row[1].strip()   # 商品名稱
+        identity = row[2].strip()   # 身份別
         if not identity or not contract:
             continue
-        # Only care about TX, MTX (小型臺指), TMF (臺灣永續)
         key = None
-        if "臺股期貨" in contract or contract == "TX":
+        if "臺股期貨" in contract:
             key = (identity, "TX")
-        elif "小型臺指" in contract or "MXF" in contract:
+        elif "小型臺指" in contract:
             key = (identity, "MTX")
-        elif "永續" in contract or "TMF" in contract:
+        elif "永續" in contract:
             key = (identity, "TMF")
         else:
             continue
         rows_out[key] = {
-            "trade_long": _int(row[2]) if len(row) > 2 else None,
-            "trade_short": _int(row[4]) if len(row) > 4 else None,
-            "trade_net": _int(row[6]) if len(row) > 6 else None,
-            "oi_long": _int(row[8]) if len(row) > 8 else None,
-            "oi_short": _int(row[10]) if len(row) > 10 else None,
-            "oi_net": _int(row[12]) if len(row) > 12 else None,
+            "trade_long": _int(row[3]),
+            "trade_short": _int(row[5]),
+            "trade_net": _int(row[7]),
+            "oi_long": _int(row[9]),
+            "oi_short": _int(row[11]),
+            "oi_net": _int(row[13]),
         }
     return rows_out, dt_str
 
@@ -164,104 +166,80 @@ async def fetch_taifex_large_trader(target_date: date | None = None) -> dict:
 async def fetch_taifex_inst_options(target_date: date | None = None) -> dict:
     """
     Download 三大法人選擇權未平倉 from optContractsDateDown.
-    Also compute PCR-OI from total call/put across all series.
+    Same 15-col CSV format as futContractsDateDown — no call/put split.
+    商品名稱 is "臺指選擇權" (combined). Only extracts 外資 net OI.
     """
     dt_str = _fmt(_to_trading_day(target_date)) if target_date else _last_trading_day_str()
     url = "https://www.taifex.com.tw/cht/3/optContractsDateDown"
     payload = {"queryStartDate": dt_str, "queryEndDate": dt_str}
-
-    inst_result = {}   # keyed by identity
-    pcr_data = {}      # ALL / NEAR
 
     async with httpx.AsyncClient(headers=HEADERS, timeout=30) as client:
         r = await client.post(url, data=payload)
         text = r.content.decode("ms950", errors="replace")
 
     reader = csv.reader(io.StringIO(text))
-    # optContractsDateDown columns:
-    # row[0]=身份別, row[1]=買賣權別(CALL/PUT), row[2]=多方OI, row[3]=多方金額,
-    # row[4]=空方OI, row[5]=空方金額, row[6]=淨額OI, row[7]=淨額金額
-    # (The CSV has separate rows for CALL and PUT per institution)
+    # Same 15-col format: date[0], contract[1], identity[2], trade_long[3], trade_long_val[4],
+    #   trade_short[5], trade_short_val[6], trade_net[7], trade_net_val[8],
+    #   oi_long[9], oi_long_val[10], oi_short[11], oi_short_val[12], oi_net[13]
+    foreign_oi_long = None
+    foreign_oi_short = None
+    foreign_oi_net = None
 
-    call_oi_all = 0
-    put_oi_all = 0
-    call_vol_all = 0
-    put_vol_all = 0
+    for row in reader:
+        if len(row) < 14:
+            continue
+        contract = row[1].strip()
+        identity = row[2].strip()
+        if "臺指選擇權" not in contract and "TXO" not in contract:
+            continue
+        if "外資" not in identity:
+            continue
+        foreign_oi_long = _int(row[9])
+        foreign_oi_short = _int(row[11])
+        foreign_oi_net = _int(row[13])
 
+    return {
+        "foreign": {
+            "oi_long": foreign_oi_long,
+            "oi_short": foreign_oi_short,
+            "oi_net": foreign_oi_net,
+        },
+    }, dt_str
+
+
+async def fetch_taifex_pcr(target_date: date | None = None) -> dict:
+    """
+    Fetch PCR (Put/Call Ratio) from TAIFEX pcRatioDown endpoint.
+    Returns pcr_oi_all (%), call_oi_all, put_oi_all.
+    """
+    dt_str = _fmt(_to_trading_day(target_date)) if target_date else _last_trading_day_str()
+    url = "https://www.taifex.com.tw/cht/3/pcRatioDown"
+    payload = {"queryStartDate": dt_str, "queryEndDate": dt_str}
+
+    async with httpx.AsyncClient(headers=HEADERS, timeout=30) as client:
+        r = await client.post(url, data=payload)
+        text = r.content.decode("ms950", errors="replace")
+
+    reader = csv.reader(io.StringIO(text))
+    # pcRatioDown columns (typical TAIFEX format):
+    # date[0], put_vol[1], call_vol[2], pcr_vol%[3], put_oi[4], call_oi[5], pcr_oi%[6]
     for row in reader:
         if len(row) < 7:
             continue
-        identity = row[0].strip()
-        cp = row[1].strip()  # CALL or PUT
-
-        is_call = "CALL" in cp.upper() or "買權" in cp
-        is_put = "PUT" in cp.upper() or "賣權" in cp
-
-        if not (is_call or is_put):
+        try:
+            put_oi = _int(row[4])
+            call_oi = _int(row[5])
+            pcr_oi = _float(row[6])
+            if pcr_oi is not None and call_oi:
+                return {
+                    "pcr_oi_all": pcr_oi,
+                    "call_oi_all": call_oi,
+                    "put_oi_all": put_oi,
+                }
+        except Exception:
             continue
 
-        long_oi = _int(row[2]) or 0
-        long_val = _int(row[3]) or 0
-        short_oi = _int(row[4]) or 0
-        short_val = _int(row[5]) or 0
-        net_oi = _int(row[6]) or 0
-        net_val = _int(row[7]) if len(row) > 7 else 0
-
-        # Aggregate for PCR
-        if is_call:
-            call_oi_all += long_oi + short_oi
-        else:
-            put_oi_all += long_oi + short_oi
-
-        # Foreign institutional options
-        if "外資" in identity:
-            if identity not in inst_result:
-                inst_result[identity] = {
-                    "buy_call_oi": 0, "sell_call_oi": 0,
-                    "buy_put_oi": 0, "sell_put_oi": 0,
-                    "buy_call_value": 0, "sell_call_value": 0,
-                    "buy_put_value": 0, "sell_put_value": 0,
-                }
-            d = inst_result[identity]
-            if is_call:
-                d["buy_call_oi"] += long_oi
-                d["sell_call_oi"] += short_oi
-                d["buy_call_value"] += long_val
-                d["sell_call_value"] += short_val
-            else:
-                d["buy_put_oi"] += long_oi
-                d["sell_put_oi"] += short_oi
-                d["buy_put_value"] += long_val
-                d["sell_put_value"] += short_val
-
-    # PCR-OI
-    pcr_oi_all = (put_oi_all / call_oi_all * 100) if call_oi_all else None
-
-    # Foreign net:
-    # Bullish: buy call + sell put (收取 put 權利金 = 空方保護)
-    # Bearish: sell call + buy put
-    foreign_row = None
-    for k, v in inst_result.items():
-        if "外資" in k:
-            # net_value: (buy_call_value - sell_call_value) + (sell_put_value - buy_put_value)
-            v["net_value"] = (
-                (v["buy_call_value"] - v["sell_call_value"])
-                + (v["sell_put_value"] - v["buy_put_value"])
-            )
-            # net_oi_value proxy (using OI counts as proxy)
-            v["net_oi_value"] = (
-                (v["buy_call_oi"] - v["sell_call_oi"])
-                + (v["sell_put_oi"] - v["buy_put_oi"])
-            )
-            foreign_row = v
-            break
-
-    return {
-        "pcr_oi_all": pcr_oi_all,
-        "call_oi_all": call_oi_all,
-        "put_oi_all": put_oi_all,
-        "foreign": foreign_row or {},
-    }, dt_str
+    return {"pcr_oi_all": None, "call_oi_all": None, "put_oi_all": None}
 
 
 # ── TWSE: institutional spot (T86) ───────────────────────────────────────────
@@ -340,42 +318,19 @@ async def fetch_twse_institutional_spot(target_date: date | None = None) -> dict
 
 # ── TAIFEX: total OI per contract ─────────────────────────────────────────────
 
-async def fetch_taifex_total_oi(target_date: date | None = None) -> dict:
+def _derive_total_oi_from_large_trader(large_trader: dict) -> dict:
     """
-    Fetch total market OI for TX, MTX, TMF from futContractsDateDown
-    using the 全市場 row (not institutional).
-    Also extracts market-wide volumes.
+    Derive total market OI from large_trader data (market_long = total long OI).
+    largeTraderFutDown 市場未平倉口數 = the only reliable source of total market OI.
     """
-    dt_str = _fmt(_to_trading_day(target_date)) if target_date else _last_trading_day_str()
-    url = "https://www.taifex.com.tw/cht/3/futContractsDateDown"
-    payload = {"queryStartDate": dt_str, "queryEndDate": dt_str}
-
-    result = {"total_tx_oi": None, "total_mtx_oi": None, "total_tmf_oi": None}
-
-    async with httpx.AsyncClient(headers=HEADERS, timeout=30) as client:
-        r = await client.post(url, data=payload)
-        text = r.content.decode("ms950", errors="replace")
-
-    reader = csv.reader(io.StringIO(text))
-    for row in reader:
-        if len(row) < 9:
-            continue
-        identity = row[0].strip()
-        contract = row[1].strip()
-        # "全市場" row
-        if "全市場" not in identity and identity != "":
-            continue
-        long_oi = _int(row[8]) if len(row) > 8 else None
-        short_oi = _int(row[10]) if len(row) > 10 else None
-        total = (long_oi or 0) + (short_oi or 0)
-        if "臺股期貨" in contract:
-            result["total_tx_oi"] = long_oi  # use long as proxy for total OI (symmetrical)
-        elif "小型臺指" in contract:
-            result["total_mtx_oi"] = long_oi
-        elif "永續" in contract:
-            result["total_tmf_oi"] = long_oi
-
-    return result, dt_str
+    tx = large_trader.get("TX", {})
+    mtx = large_trader.get("MTX", {})
+    tmf = large_trader.get("TMF", {})
+    return {
+        "total_tx_oi": tx.get("market_long"),
+        "total_mtx_oi": mtx.get("market_long"),
+        "total_tmf_oi": tmf.get("market_long"),
+    }
 
 
 # ── Orchestrator ──────────────────────────────────────────────────────────────
@@ -395,13 +350,15 @@ async def fetch_all(target_date: date | None = None) -> dict:
 
     # Parallel fetch
     (inst_fut, dt_str1), (large_trader, dt_str2), (options_data, dt_str3), \
-    spot_data, (total_oi, dt_str4) = await asyncio.gather(
+    spot_data, pcr_data = await asyncio.gather(
         fetch_taifex_inst_futures(target_date),
         fetch_taifex_large_trader(target_date),
         fetch_taifex_inst_options(target_date),
         fetch_twse_institutional_spot(target_date),
-        fetch_taifex_total_oi(target_date),
+        fetch_taifex_pcr(target_date),
     )
+
+    total_oi = _derive_total_oi_from_large_trader(large_trader)
 
     # ── Store raw institutional futures ──
     for (identity, contract), vals in inst_fut.items():
@@ -449,7 +406,7 @@ async def fetch_all(target_date: date | None = None) -> dict:
             ON CONFLICT(observation_date, scope) DO UPDATE SET
             call_oi=excluded.call_oi, put_oi=excluded.put_oi
         """, (td_str, "ALL",
-              options_data.get("call_oi_all"), options_data.get("put_oi_all")))
+              pcr_data.get("call_oi_all"), pcr_data.get("put_oi_all")))
     except Exception as e:
         log.warning(f"raw options pcr insert error: {e}")
 
@@ -546,21 +503,21 @@ async def fetch_all(target_date: date | None = None) -> dict:
         "top10_long_oi": tx_lt.get("top10_long"),
         "top10_short_oi": tx_lt.get("top10_short"),
         "top10_net_oi": (tx_lt.get("top10_long") or 0) - (tx_lt.get("top10_short") or 0),
-        # PCR
-        "pcr_oi_all": options_data.get("pcr_oi_all"),
-        "pcr_oi_near": None,  # V1: use ALL as proxy
-        "pcr_volume_all": None,  # V1: not separately available from this endpoint
-        # Foreign options
-        "foreign_option_long_value": foreign_opt.get("buy_call_value"),
-        "foreign_option_short_value": foreign_opt.get("sell_call_value"),
-        "foreign_option_net_value": foreign_opt.get("net_value"),
-        "foreign_option_net_oi_value": foreign_opt.get("net_oi_value"),
+        # PCR (from pcRatioDown)
+        "pcr_oi_all": pcr_data.get("pcr_oi_all"),
+        "pcr_oi_near": None,
+        "pcr_volume_all": None,
+        # Foreign options net OI (from optContractsDateDown)
+        "foreign_option_long_value": foreign_opt.get("oi_long"),
+        "foreign_option_short_value": foreign_opt.get("oi_short"),
+        "foreign_option_net_value": foreign_opt.get("oi_net"),
+        "foreign_option_net_oi_value": foreign_opt.get("oi_net"),
         # Retail
         "retail_mtx_long": retail_long,
         "retail_mtx_short": retail_short,
         "retail_mtx_net": retail_net,
         "retail_mtx_ratio": round(retail_ratio, 2) if retail_ratio is not None else None,
-        # Total OI
+        # Total OI (from large_trader market_long)
         "total_tx_oi": total_oi.get("total_tx_oi"),
         "total_mtx_oi": total_oi.get("total_mtx_oi"),
         "total_tmf_oi": total_oi.get("total_tmf_oi"),
