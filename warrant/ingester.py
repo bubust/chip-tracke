@@ -178,7 +178,16 @@ def _parse_warrant_row(row: dict, market: str, sinopac_map: dict, name_to_code: 
     if not underlying_code:
         underlying_code = row.get("標的代號", "").strip() or \
                           row.get("標的證券代號", "").strip() or None
-    # fallback 2: 從標的名稱查 name_to_code
+    # fallback 2: 從「標的有價證券代號及名稱」解析（格式 "2330 台積電" 或 "2330　台積電"）
+    if not underlying_code:
+        combined = row.get("標的有價證券代號及名稱", "").strip() or \
+                   row.get("標的證券代號及名稱", "").strip()
+        if combined:
+            for part in re.split(r"[\s\u3000]+", combined):
+                if re.match(r"^\d{4,6}$", part):
+                    underlying_code = part
+                    break
+    # fallback 3: 從標的名稱查 name_to_code
     if not underlying_code:
         ul_name = row.get("標的證券/指數", "").strip()
         if ul_name:

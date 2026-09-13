@@ -46,6 +46,13 @@ def _last_trading_day_str() -> str:
     return date.today().strftime("%Y/%m/%d")
 
 
+def _to_trading_day(d: date) -> date:
+    """If d is a weekend, return the previous weekday."""
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d
+
+
 def _fmt(d: date) -> str:
     return d.strftime("%Y/%m/%d")
 
@@ -57,7 +64,7 @@ async def fetch_taifex_inst_futures(target_date: date | None = None) -> dict:
     Download 三大法人期貨未平倉 from futContractsDateDown.
     Returns raw rows keyed by (identity, contract).
     """
-    dt_str = _fmt(target_date) if target_date else _last_trading_day_str()
+    dt_str = _fmt(_to_trading_day(target_date)) if target_date else _last_trading_day_str()
     url = "https://www.taifex.com.tw/cht/3/futContractsDateDown"
     payload = {"queryStartDate": dt_str, "queryEndDate": dt_str}
 
@@ -102,7 +109,7 @@ async def fetch_taifex_large_trader(target_date: date | None = None) -> dict:
     Download 期貨大額交易人未平倉 from largeTraderFutDown.
     Returns top5/top10 long/short and market total for TX-equivalent contracts.
     """
-    dt_str = _fmt(target_date) if target_date else _last_trading_day_str()
+    dt_str = _fmt(_to_trading_day(target_date)) if target_date else _last_trading_day_str()
     url = "https://www.taifex.com.tw/cht/3/largeTraderFutDown"
     payload = {"queryStartDate": dt_str, "queryEndDate": dt_str}
 
@@ -159,7 +166,7 @@ async def fetch_taifex_inst_options(target_date: date | None = None) -> dict:
     Download 三大法人選擇權未平倉 from optContractsDateDown.
     Also compute PCR-OI from total call/put across all series.
     """
-    dt_str = _fmt(target_date) if target_date else _last_trading_day_str()
+    dt_str = _fmt(_to_trading_day(target_date)) if target_date else _last_trading_day_str()
     url = "https://www.taifex.com.tw/cht/3/optContractsDateDown"
     payload = {"queryStartDate": dt_str, "queryEndDate": dt_str}
 
@@ -339,7 +346,7 @@ async def fetch_taifex_total_oi(target_date: date | None = None) -> dict:
     using the 全市場 row (not institutional).
     Also extracts market-wide volumes.
     """
-    dt_str = _fmt(target_date) if target_date else _last_trading_day_str()
+    dt_str = _fmt(_to_trading_day(target_date)) if target_date else _last_trading_day_str()
     url = "https://www.taifex.com.tw/cht/3/futContractsDateDown"
     payload = {"queryStartDate": dt_str, "queryEndDate": dt_str}
 
@@ -381,6 +388,9 @@ async def fetch_all(target_date: date | None = None) -> dict:
     from .db import get_conn
     conn = get_conn()
     td = target_date or date.today()
+    # Adjust to last weekday (TAIFEX has no data on weekends)
+    while td.weekday() >= 5:
+        td -= timedelta(days=1)
     td_str = td.strftime("%Y-%m-%d")
 
     # Parallel fetch

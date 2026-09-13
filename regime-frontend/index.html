@@ -79,10 +79,16 @@
 </div>
 <div id="status-bar">資料載入中...</div>
 
-<!-- 市場狀態（最頂部） -->
+<!-- 市場狀態 + 操作建議（最頂部，只顯示一組） -->
 <div class="regime-box" style="margin-bottom:16px">
   <div class="label" style="text-align:center;font-size:.8rem;color:#8b949e;margin-bottom:4px">市場狀態</div>
   <div class="regime-label" id="regime-label-top">載入中…</div>
+</div>
+<div class="suggest-box" style="margin-bottom:16px">
+  <div class="suggest-title">💡 操作建議</div>
+  <div class="suggest-action" id="suggest-action">—</div>
+  <div class="suggest-desc" id="suggest-desc">—</div>
+  <div class="suggest-tags" id="suggest-tags"></div>
 </div>
 
 <!-- 三大核心分數 -->
@@ -139,20 +145,6 @@
   </div>
 </div>
 
-<!-- 市場狀態 -->
-<div class="regime-box">
-  <div class="label" style="text-align:center;font-size:.75rem;color:#8b949e;margin-bottom:4px">市場狀態</div>
-  <div class="regime-label" id="regime-label">載入中…</div>
-</div>
-
-<!-- 操作建議 Sprint 3 -->
-<div class="suggest-box">
-  <div class="suggest-title">💡 操作建議</div>
-  <div class="suggest-action" id="suggest-action">—</div>
-  <div class="suggest-desc" id="suggest-desc">—</div>
-  <div class="suggest-tags" id="suggest-tags"></div>
-</div>
-
 <!-- 歷史走勢圖 Sprint 3 -->
 <h2>60 日走勢圖</h2>
 <div class="chart-box">
@@ -162,6 +154,11 @@
     <span><i style="background:#d29922"></i> Exhaustion 竭盡</span>
   </div>
   <canvas id="history-chart"></canvas>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;font-size:.78rem;color:#8b949e;border-top:1px solid #21262d;padding-top:8px">
+    <div><b style="color:#3fb950">Direction 方向</b><br>七大因子加權合成（-100~+100）<br>正值代表多頭傾向，負值代表空頭傾向。&lt;-30 時避免主動做多</div>
+    <div><b style="color:#f85149">Risk Score 風險</b><br>市場脆弱度（0~100）<br>數值越低代表風險越高。&gt;60 穩健｜40~60 留意停損｜&lt;40 建議減碼</div>
+    <div><b style="color:#d29922">Exhaustion 竭盡</b><br>極端竭盡指標（-100~+100）<br>接近 -100 → 賣壓耗盡可能反彈；接近 +100 → 買盤過熱可能見頂</div>
+  </div>
 </div>
 
 <!-- Regime 標籤歷史 Sprint 3 -->
@@ -333,7 +330,6 @@ function renderToday(data) {
 
   document.getElementById('ex-val').textContent = ex;
   const regimeLabel = data.regime_label || '—';
-  document.getElementById('regime-label').textContent = regimeLabel;
   document.getElementById('regime-label-top').textContent = regimeLabel;
 
   renderSuggestion(data);

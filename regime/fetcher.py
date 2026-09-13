@@ -78,6 +78,7 @@ def fetch_twse_margin(days: int = 5):
     # 嘗試 openapi 端點（回傳 JSON array）
     urls_to_try = [
         ("openapi", "https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN"),
+        ("twse_json", "https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?response=json"),
         ("twse_json", "https://www.twse.com.tw/exchangeReport/MI_MARGN?response=json"),
     ]
 
@@ -88,61 +89,84 @@ def fetch_twse_margin(days: int = 5):
                 r.raise_for_status()
                 content_type = r.headers.get("content-type", "")
 
-            # openapi 回傳 JSON array
+            # openapi 回傳 JSON array（欄位可能是中文或英文）
             if source_tag == "openapi":
                 rows = r.json()
                 if not isinstance(rows, list):
-                    log.warning(f"[fetcher] MI_MARGN openapi 非陣列格式")
+                    log.warning(f"[fetcher] MI_MARGN openapi 非陣列格式: {type(rows)}")
                     continue
+                if rows:
+                    log.info(f"[fetcher] MI_MARGN openapi 欄位: {list(rows[0].keys())[:10]}")
                 inserted = 0
                 with db() as conn:
                     for row in rows:
-                        date_str = str(row.get("Date", "")).strip()
-                        # 格式 YYYYMMDD
-                        if len(date_str) == 8 and date_str.isdigit():
-                            dt = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
-                        else:
+                        # 日期欄位嘗試多種名稱和格式
+                        dt = None
+                        for date_key in ["Date", "date", "日期", "交易日期"]:
+                            date_str = str(row.get(date_key, "")).strip()
+                            if not date_str:
+                                continue
+                            # YYYYMMDD
+                            if len(date_str) == 8 and date_str.isdigit():
+                                dt = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
+                                break
+                            # 民國年 "1151002"
+                            if len(date_str) == 7 and date_str.isdigit():
+                                yr = int(date_str[:3]) + 1911
+                                dt = f"{yr}-{date_str[3:5]}-{date_str[5:7]}"
+                                break
+                            # "115/09/13"
+                            if "/" in date_str:
+                                parts = date_str.split("/")
+                                if len(parts) == 3:
+                                    try:
+                                        yr = int(parts[0]) + (1911 if int(parts[0]) < 200 else 0)
+                                        dt = f"{yr}-{parts[1].zfill(2)}-{parts[2].zfill(2)}"
+                                        break
+                                    except Exception:
+                                        pass
+                        if not dt:
                             continue
-                        # MarginPurchaseAmount = 融資買進 (股)
-                        # 嘗試多個欄位名稱
+                        # 融資餘額欄位嘗試：英文/中文/自動偵測
                         val = None
                         for field in [
-                            "MarginPurchaseTodayBalance",   # 今日餘額（正確欄位）
+                            "MarginPurchaseTodayBalance",
                             "MarginPurchaseBalance",
                             "MarginBalance",
                             "MarginPurchaseAmount",
-                            "TotalMarginPurchaseAmount",
-                            "marginPurchaseTodayBalance",
+                            "融資(今日餘額)",
+                            "融資今日餘額",
+                            "融資餘額",
+                            "今日餘額",
                         ]:
                             raw = str(row.get(field, "")).replace(",", "").strip()
                             if raw and raw not in ("", "-", "--", "0"):
                                 try:
-                                    val = float(raw)
-                                    if val > 0:
+                                    fv = float(raw)
+                                    if fv > 0:
+                                        val = fv
                                         break
                                 except Exception:
                                     pass
-                        # 如果所有已知欄位都失敗，嘗試自動偵測第一個大數值欄位
+                        # 自動偵測：任意欄位值 > 10000（融資餘額通常數億股）
                         if val is None:
                             for k, v in row.items():
-                                if k == "Date":
-                                    continue
                                 raw = str(v).replace(",", "").strip()
                                 try:
                                     fv = float(raw)
-                                    if fv > 100000:  # 融資餘額通常超過百萬股
+                                    if fv > 10000:
                                         val = fv
-                                        log.info(f"[fetcher] MI_MARGN auto-detect field: {k}={fv}")
+                                        log.info(f"[fetcher] MI_MARGN auto-detect: {k}={fv}")
                                         break
                                 except Exception:
                                     pass
                         if val is None:
                             continue
-                        upsert_series(conn, dt, "MARGIN_BALANCE", val, f"TWSE_{source_tag.upper()}")
+                        upsert_series(conn, dt, "MARGIN_BALANCE", val, "TWSE_OPENAPI")
                         inserted += 1
-                log.info(f"[fetcher] MARGIN_BALANCE ({source_tag}): {inserted} 筆")
+                log.info(f"[fetcher] MARGIN_BALANCE (openapi): {inserted} 筆")
                 if inserted > 0:
-                    return  # 成功就不再嘗試下一個端點
+                    return
 
             # twse_json 端點：回傳包含 data/fields 的結構
             elif source_tag == "twse_json":
