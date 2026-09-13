@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>市場關聯研究 V1</title>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+:root {
+  --bg: #0d1117; --card: #161b22; --border: #30363d;
+  --text: #e6edf3; --muted: #8b949e; --green: #3fb950;
+  --red: #f85149; --yellow: #d29922; --blue: #388bfd;
+  --purple: #bc8cff; --orange: #db6d28;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI','PingFang TC',sans-serif; font-size: 14px; }
+.header { background: var(--card); border-bottom: 1px solid var(--border); padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.header h1 { font-size: 1rem; font-weight: 600; }
+.header .status { font-size: .78rem; color: var(--muted); }
+.btn { padding: 5px 12px; background: #21262d; border: 1px solid var(--border); border-radius: 5px; color: var(--text); cursor: pointer; font-size: .8rem; }
+.btn:hover { border-color: var(--blue); color: var(--blue); }
+.btn.accent { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+.period-bar { display: flex; gap: 6px; padding: 8px 16px; background: var(--card); border-bottom: 1px solid var(--border); }
+.period-btn { padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; font-size: .78rem; }
+.period-btn.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+.top-stats { display: flex; gap: 0; background: var(--card); border-bottom: 1px solid var(--border); }
+.stat-cell { padding: 8px 16px; border-right: 1px solid var(--border); }
+.stat-cell:last-child { border-right: none; }
+.stat-label { font-size: .72rem; color: var(--muted); }
+.stat-val { font-size: 1rem; font-weight: 700; }
+.pos { color: var(--green); } .neg { color: var(--red); } .neu { color: var(--muted); }
+.layout { display: grid; grid-template-columns: 1fr 300px; gap: 0; height: calc(100vh - 120px); overflow: hidden; }
+.charts-col { display: flex; flex-direction: column; overflow: hidden; }
+.chart-section { flex: 2; border-bottom: 1px solid var(--border); }
+.chart-section.small { flex: 1; }
+.chart-label { font-size: .72rem; color: var(--muted); padding: 6px 12px; background: var(--card); border-bottom: 1px solid var(--border); }
+#chart-taiex, #chart-tx { width: 100%; }
+.event-timeline { padding: 6px 12px; background: var(--card); border-top: 1px solid var(--border); display: flex; gap: 4px; overflow-x: auto; align-items: center; min-height: 32px; }
+.ev-dot { width: 8px; height: 8px; border-radius: 50%; cursor: pointer; flex-shrink: 0; title: ''; }
+.ev-dot.lv3 { width: 12px; height: 12px; }
+.side-panel { border-left: 1px solid var(--border); overflow-y: auto; background: var(--card); }
+.panel-section { padding: 12px; border-bottom: 1px solid var(--border); }
+.panel-section h3 { font-size: .8rem; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; }
+.detail-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: .82rem; }
+.detail-label { color: var(--muted); }
+.badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: .72rem; font-weight: 600; }
+.badge-bull { background: rgba(63,185,80,.2); color: var(--green); }
+.badge-bear { background: rgba(248,81,73,.2); color: var(--red); }
+.badge-neutral { background: rgba(139,148,158,.2); color: var(--muted); }
+.badge-notable { background: rgba(210,153,34,.2); color: var(--yellow); }
+.badge-important { background: rgba(188,140,255,.2); color: var(--purple); }
+.event-item { padding: 5px 0; border-bottom: 1px solid #21262d; font-size: .8rem; }
+.event-item:last-child { border-bottom: none; }
+.event-date { color: var(--muted); font-size: .72rem; }
+.research-panel { padding: 12px 16px; }
+.research-panel h2 { font-size: .9rem; margin-bottom: 10px; }
+select { background: #21262d; color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: .8rem; width: 100%; margin-bottom: 8px; }
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.stats-card { background: #21262d; border-radius: 6px; padding: 8px; text-align: center; }
+.stats-card .period { font-size: .72rem; color: var(--muted); }
+.stats-card .avg { font-size: 1rem; font-weight: 700; }
+.stats-card .wr { font-size: .72rem; color: var(--muted); }
+.occ-table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+.occ-table th { color: var(--muted); padding: 4px 6px; text-align: left; border-bottom: 1px solid var(--border); }
+.occ-table td { padding: 4px 6px; border-bottom: 1px solid #21262d; }
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 768px) {
+  .layout { grid-template-columns: 1fr; height: auto; }
+  .side-panel { height: 400px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1>📊 市場關聯研究 V1</h1>
+  <span class="status" id="hdr-status">載入中...</span>
+  <button class="btn accent" onclick="doRefresh()" id="btn-refresh">🔄 更新</button>
+  <button class="btn" onclick="showResearch()" id="btn-research">🔬 研究模式</button>
+</div>
+
+<!-- Period selector -->
+<div class="period-bar">
+  <span style="font-size:.78rem;color:var(--muted);margin-right:4px">觀察期：</span>
+  <button class="period-btn" onclick="setPeriod(30, this)">30D</button>
+  <button class="period-btn" onclick="setPeriod(60, this)">60D</button>
+  <button class="period-btn active" onclick="setPeriod(90, this)">90D</button>
+  <button class="period-btn" onclick="setPeriod(180, this)">180D</button>
+  <span style="margin-left:auto;font-size:.72rem;color:var(--muted)" id="crosshair-date">滑鼠移到圖表查看日期資料</span>
+</div>
+
+<!-- Top stats bar -->
+<div class="top-stats" id="top-stats">
+  <div class="stat-cell"><div class="stat-label">台股加權</div><div class="stat-val" id="s-taiex">—</div></div>
+  <div class="stat-cell"><div class="stat-label">台指期</div><div class="stat-val" id="s-tx">—</div></div>
+  <div class="stat-cell"><div class="stat-label">期現差（相對）</div><div class="stat-val" id="s-txrel">—</div></div>
+  <div class="stat-cell"><div class="stat-label">OI 狀態</div><div class="stat-val" id="s-oi-state">—</div></div>
+  <div class="stat-cell"><div class="stat-label">今日事件</div><div class="stat-val" id="s-today-events">—</div></div>
+</div>
+
+<!-- Main layout -->
+<div class="layout" id="main-layout">
+  <div class="charts-col">
+    <div class="chart-section">
+      <div class="chart-label">🇹🇼 加權指數 — MA20 / MA60</div>
+      <div id="chart-taiex"></div>
+    </div>
+    <div class="chart-section small">
+      <div class="chart-label">📈 台指期（連續月）</div>
+      <div id="chart-tx"></div>
+    </div>
+    <!-- Event timeline -->
+    <div class="event-timeline" id="event-timeline">
+      <span style="font-size:.72rem;color:var(--muted);white-space:nowrap">事件時間軸：</span>
+    </div>
+  </div>
+
+  <!-- Side panel -->
+  <div class="side-panel" id="side-panel">
+    <div class="panel-section">
+      <h3 id="detail-date-title">選擇日期</h3>
+      <div id="detail-market">
+        <div style="color:var(--muted);font-size:.82rem">點擊圖表任意日期查看詳細資料</div>
+      </div>
+    </div>
+    <div class="panel-section">
+      <h3>當日事件</h3>
+      <div id="detail-events"><div style="color:var(--muted);font-size:.82rem">—</div></div>
+    </div>
+    <div class="panel-section">
+      <h3>近期重大事件</h3>
+      <div id="recent-events"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Research panel (hidden by default) -->
+<div id="research-panel" style="display:none;padding:16px;background:var(--bg)">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+    <h2 style="font-size:1rem">🔬 事件歷史研究</h2>
+    <button class="btn" onclick="hideResearch()">← 返回圖表</button>
+  </div>
+  <select id="research-event-select" onchange="loadResearch()">
+    <option value="">選擇事件類型...</option>
+  </select>
+  <div id="research-result"></div>
+</div>
+
+<script>
+const BASE = '';
+let _period = 90;
+let _data = [];
+let _events = [];
+let _taiexChart = null, _txChart = null;
+let _taiexSeries = null, _txSeries = null;
+let _ma20Series = null, _ma60Series = null;
+let _taiexMarkers = [];
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  initCharts();
+  await Promise.all([loadData(), loadRecentEvents()]);
+  loadEventTypes();
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+function initCharts() {
+  const chartOpts = {
+    layout: { background: { color: '#161b22' }, textColor: '#8b949e' },
+    grid: { vertLines: { color: '#21262d' }, horzLines: { color: '#21262d' } },
+    crosshair: { mode: 1 },
+    rightPriceScale: { borderColor: '#30363d' },
+    timeScale: { borderColor: '#30363d', timeVisible: true },
+  };
+
+  const taiexEl = document.getElementById('chart-taiex');
+  taiexEl.style.height = '280px';
+  _taiexChart = LightweightCharts.createChart(taiexEl, { ...chartOpts, height: 280 });
+  _taiexSeries = _taiexChart.addCandlestickSeries({
+    upColor: '#3fb950', downColor: '#f85149',
+    borderUpColor: '#3fb950', borderDownColor: '#f85149',
+    wickUpColor: '#3fb950', wickDownColor: '#f85149',
+  });
+  _ma20Series = _taiexChart.addLineSeries({ color: '#58a6ff', lineWidth: 1, priceLineVisible: false });
+  _ma60Series = _taiexChart.addLineSeries({ color: '#d29922', lineWidth: 1, priceLineVisible: false });
+
+  const txEl = document.getElementById('chart-tx');
+  txEl.style.height = '180px';
+  _txChart = LightweightCharts.createChart(txEl, { ...chartOpts, height: 180 });
+  _txSeries = _txChart.addCandlestickSeries({
+    upColor: '#3fb950', downColor: '#f85149',
+    borderUpColor: '#3fb950', borderDownColor: '#f85149',
+    wickUpColor: '#3fb950', wickDownColor: '#f85149',
+  });
+
+  // Sync time scales
+  _taiexChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+    if (range) _txChart.timeScale().setVisibleLogicalRange(range);
+  });
+  _txChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+    if (range) _taiexChart.timeScale().setVisibleLogicalRange(range);
+  });
+
+  // Crosshair sync
+  _taiexChart.subscribeCrosshairMove(param => {
+    if (!param.time) return;
+    _txChart.setCrosshairPosition(param.point?.x ?? 0, param.point?.y ?? 0, _txSeries);
+    onCrosshairMove(param.time);
+  });
+}
+
+function setPeriod(days, btn) {
+  _period = days;
+  document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  loadData();
+}
+
+// ── Data loading ──────────────────────────────────────────────────────────────
+async function loadData() {
+  try {
+    const [mRes, eRes] = await Promise.all([
+      fetch(`${BASE}/api/relationship/history?days=${_period}`),
+      fetch(`${BASE}/api/relationship/events?days=${_period}&level=1`),
+    ]);
+    const mData = await mRes.json();
+    const eData = await eRes.json();
+    _data = mData.data || [];
+    _events = eData.events || [];
+    renderCharts();
+    renderTimeline();
+    updateTopStats();
+  } catch(e) { console.error(e); }
+}
+
+async function loadStatus() {
+  try {
+    const r = await fetch(`${BASE}/api/relationship/status`);
+    const d = await r.json();
+    document.getElementById('hdr-status').textContent =
+      `${d.rows || 0} 天資料 | 最新 ${d.latest || '—'} | ${d.events || 0} 事件`;
+  } catch(e) {}
+}
+
+// ── Chart rendering ───────────────────────────────────────────────────────────
+function renderCharts() {
+  if (!_data.length) return;
+
+  const taiexCandles = [], txCandles = [], ma20Pts = [], ma60Pts = [];
+
+  _data.forEach((d, i) => {
+    const t = d.observation_date;
+    if (d.taiex_close) {
+      taiexCandles.push({ time: t, open: d.taiex_open||d.taiex_close, high: d.taiex_high||d.taiex_close, low: d.taiex_low||d.taiex_close, close: d.taiex_close });
+    }
+    if (d.tx_close) {
+      txCandles.push({ time: t, open: d.tx_open||d.tx_close, high: d.tx_high||d.tx_close, low: d.tx_low||d.tx_close, close: d.tx_close });
+    }
+    if (d.taiex_ma20) ma20Pts.push({ time: t, value: d.taiex_ma20 });
+    if (d.taiex_ma60) ma60Pts.push({ time: t, value: d.taiex_ma60 });
+  });
+
+  _taiexSeries.setData(taiexCandles);
+  _txSeries.setData(txCandles);
+  if (ma20Pts.length) _ma20Series.setData(ma20Pts);
+  if (ma60Pts.length) _ma60Series.setData(ma60Pts);
+
+  // Event markers
+  const markerMap = {};
+  _events.forEach(e => {
+    if (!markerMap[e.observation_date]) markerMap[e.observation_date] = [];
+    markerMap[e.observation_date].push(e);
+  });
+  const markers = Object.entries(markerMap).map(([dt, evts]) => {
+    const maxLvl = Math.max(...evts.map(e => e.event_level || 1));
+    const color = maxLvl >= 3 ? '#bc8cff' : maxLvl >= 2 ? '#d29922' : '#8b949e';
+    return { time: dt, position: 'aboveBar', color, shape: 'circle', text: evts.length > 1 ? `${evts.length}事件` : '', size: maxLvl >= 3 ? 2 : 1 };
+  });
+  _taiexSeries.setMarkers(markers.sort((a,b) => a.time.localeCompare(b.time)));
+}
+
+function renderTimeline() {
+  const tl = document.getElementById('event-timeline');
+  const existing = [...tl.children].slice(1); // keep first span
+  existing.forEach(e => e.remove());
+
+  const dateMap = {};
+  _events.forEach(e => {
+    if (!dateMap[e.observation_date]) dateMap[e.observation_date] = [];
+    dateMap[e.observation_date].push(e);
+  });
+
+  const dates = Object.keys(dateMap).sort();
+  dates.forEach(dt => {
+    const evts = dateMap[dt];
+    const maxLvl = Math.max(...evts.map(e => e.event_level || 1));
+    const color = maxLvl >= 3 ? '#bc8cff' : maxLvl >= 2 ? '#d29922' : '#8b949e';
+    const dot = document.createElement('div');
+    dot.className = `ev-dot${maxLvl >= 3 ? ' lv3' : ''}`;
+    dot.style.background = color;
+    dot.title = `${dt}: ${evts.map(e => e.description || e.event_type).join(', ')}`;
+    dot.onclick = () => loadDateDetail(dt);
+    tl.appendChild(dot);
+  });
+}
+
+function updateTopStats() {
+  const last = _data[_data.length - 1];
+  if (!last) return;
+  const taiexEl = document.getElementById('s-taiex');
+  const txEl = document.getElementById('s-tx');
+  const txRelEl = document.getElementById('s-txrel');
+  const oiStateEl = document.getElementById('s-oi-state');
+  const todayEvEl = document.getElementById('s-today-events');
+
+  if (last.taiex_close) {
+    const ret = last.taiex_return_1d;
+    const cls = ret > 0 ? 'pos' : ret < 0 ? 'neg' : 'neu';
+    taiexEl.innerHTML = `<span class="${cls}">${last.taiex_close.toLocaleString()}</span>`;
+    if (ret !== null && ret !== undefined) taiexEl.innerHTML += ` <span class="${cls}" style="font-size:.8rem">${ret > 0 ? '+' : ''}${ret.toFixed(2)}%</span>`;
+  }
+  if (last.tx_close) {
+    const ret = last.tx_return_1d;
+    const cls = ret > 0 ? 'pos' : ret < 0 ? 'neg' : 'neu';
+    txEl.innerHTML = `<span class="${cls}">${last.tx_close.toLocaleString()}</span>`;
+  }
+  if (last.tx_relative_return !== null && last.tx_relative_return !== undefined) {
+    const v = last.tx_relative_return;
+    txRelEl.innerHTML = `<span class="${v > 0.1 ? 'pos' : v < -0.1 ? 'neg' : 'neu'}">${v > 0 ? '+' : ''}${v.toFixed(2)}%</span>`;
+  }
+  const oiState = last.oi_state || '—';
+  const oiColors = { PRICE_UP_OI_UP: 'pos', PRICE_UP_OI_DOWN: 'neu', PRICE_DOWN_OI_UP: 'neg', PRICE_DOWN_OI_DOWN: 'neg' };
+  const oiLabels = { PRICE_UP_OI_UP: '上漲增倉', PRICE_UP_OI_DOWN: '上漲減倉', PRICE_DOWN_OI_UP: '下跌增倉', PRICE_DOWN_OI_DOWN: '下跌減倉' };
+  oiStateEl.innerHTML = `<span class="${oiColors[oiState] || 'neu'}">${oiLabels[oiState] || oiState}</span>`;
+
+  const todayDt = last.observation_date;
+  const todayEvts = _events.filter(e => e.observation_date === todayDt);
+  todayEvEl.textContent = todayEvts.length ? `${todayEvts.length} 件` : '—';
+}
+
+// ── Crosshair / Detail ────────────────────────────────────────────────────────
+function onCrosshairMove(time) {
+  if (!time) return;
+  const dt = typeof time === 'string' ? time : new Date(time * 1000).toISOString().slice(0, 10);
+  document.getElementById('crosshair-date').textContent = dt;
+  loadDateDetail(dt);
+}
+
+async function loadDateDetail(dt) {
+  document.getElementById('detail-date-title').textContent = dt;
+  try {
+    const r = await fetch(`${BASE}/api/relationship/date/${dt}`);
+    const d = await r.json();
+    renderDetailMarket(d.market);
+    renderDetailEvents(d.events);
+  } catch(e) {}
+}
+
+function renderDetailMarket(m) {
+  if (!m) { document.getElementById('detail-market').innerHTML = '<div style="color:var(--muted);font-size:.82rem">無資料</div>'; return; }
+  const rows = [
+    ['加權收盤', m.taiex_close ? m.taiex_close.toLocaleString() : '—'],
+    ['加權漲跌', m.taiex_return_1d != null ? `${m.taiex_return_1d > 0 ? '+' : ''}${m.taiex_return_1d.toFixed(2)}%` : '—'],
+    ['台指期收盤', m.tx_close ? m.tx_close.toLocaleString() : '—'],
+    ['期現相對', m.tx_relative_return != null ? `${m.tx_relative_return > 0 ? '+' : ''}${m.tx_relative_return.toFixed(2)}%` : '—'],
+    ['OI 狀態', m.oi_state || '—'],
+    ['OI 變化', m.oi_change_1d != null ? `${m.oi_change_1d > 0 ? '+' : ''}${Math.round(m.oi_change_1d).toLocaleString()}` : '—'],
+  ];
+  document.getElementById('detail-market').innerHTML = rows.map(([l, v]) =>
+    `<div class="detail-row"><span class="detail-label">${l}</span><span>${v}</span></div>`
+  ).join('');
+}
+
+function renderDetailEvents(events) {
+  if (!events || !events.length) {
+    document.getElementById('detail-events').innerHTML = '<div style="color:var(--muted);font-size:.82rem">無事件</div>';
+    return;
+  }
+  const lvlColor = { 1: 'badge-neutral', 2: 'badge-notable', 3: 'badge-important' };
+  document.getElementById('detail-events').innerHTML = events.map(e =>
+    `<div class="event-item">
+      <span class="badge ${lvlColor[e.event_level] || 'badge-neutral'}">L${e.event_level}</span>
+      <span style="margin-left:6px">${e.description || e.event_type}</span>
+    </div>`
+  ).join('');
+}
+
+async function loadRecentEvents() {
+  try {
+    const r = await fetch(`${BASE}/api/relationship/events?days=30&level=2`);
+    const d = await r.json();
+    const el = document.getElementById('recent-events');
+    if (!d.events || !d.events.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:.82rem">暫無重大事件</div>';
+      return;
+    }
+    const lvlColor = { 1: 'badge-neutral', 2: 'badge-notable', 3: 'badge-important' };
+    el.innerHTML = d.events.slice(0, 10).map(e =>
+      `<div class="event-item">
+        <div class="event-date">${e.observation_date}</div>
+        <span class="badge ${lvlColor[e.event_level] || 'badge-neutral'}">L${e.event_level}</span>
+        <span style="margin-left:6px;font-size:.8rem">${e.description || e.event_type}</span>
+      </div>`
+    ).join('');
+  } catch(e) {}
+}
+
+// ── Research mode ─────────────────────────────────────────────────────────────
+function showResearch() {
+  document.getElementById('main-layout').style.display = 'none';
+  document.getElementById('research-panel').style.display = '';
+}
+function hideResearch() {
+  document.getElementById('research-panel').style.display = 'none';
+  document.getElementById('main-layout').style.display = '';
+}
+
+async function loadEventTypes() {
+  try {
+    const r = await fetch(`${BASE}/api/relationship/event_types`);
+    const types = await r.json();
+    const sel = document.getElementById('research-event-select');
+    types.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.type;
+      opt.textContent = `[L${t.level}] ${t.description} (${t.type})`;
+      sel.appendChild(opt);
+    });
+  } catch(e) {}
+}
+
+async function loadResearch() {
+  const etype = document.getElementById('research-event-select').value;
+  if (!etype) return;
+  const el = document.getElementById('research-result');
+  el.innerHTML = '<div><span class="spinner"></span> 計算中...</div>';
+  try {
+    const r = await fetch(`${BASE}/api/relationship/research/${etype}?days=500`);
+    const d = await r.json();
+    const s = d.stats;
+    const fmt5 = s['5d'] ? `${s['5d'].avg > 0 ? '+' : ''}${s['5d'].avg}%` : '—';
+    const fmt10 = s['10d'] ? `${s['10d'].avg > 0 ? '+' : ''}${s['10d'].avg}%` : '—';
+    const fmt20 = s['20d'] ? `${s['20d'].avg > 0 ? '+' : ''}${s['20d'].avg}%` : '—';
+    const wr5 = s['5d'] ? `勝率${s['5d'].win_rate}%` : '';
+    const wr10 = s['10d'] ? `勝率${s['10d'].win_rate}%` : '';
+    const wr20 = s['20d'] ? `勝率${s['20d'].win_rate}%` : '';
+
+    const occRows = (d.occurrences || []).slice(0, 30).map(o => {
+      const r5 = o.future_return_5d != null ? `${o.future_return_5d > 0 ? '+' : ''}${o.future_return_5d.toFixed(2)}%` : '—';
+      const r10 = o.future_return_10d != null ? `${o.future_return_10d > 0 ? '+' : ''}${o.future_return_10d.toFixed(2)}%` : '—';
+      return `<tr>
+        <td>${o.observation_date}</td>
+        <td class="${o.future_return_5d > 0 ? 'pos' : o.future_return_5d < 0 ? 'neg' : 'neu'}">${r5}</td>
+        <td class="${o.future_return_10d > 0 ? 'pos' : o.future_return_10d < 0 ? 'neg' : 'neu'}">${r10}</td>
+      </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div style="font-size:.9rem;font-weight:600;margin-bottom:8px">${d.description}</div>
+      <div style="font-size:.78rem;color:var(--muted);margin-bottom:10px">樣本數：${d.total_occurrences} 次</div>
+      <div class="stats-grid">
+        <div class="stats-card"><div class="period">5日後</div><div class="avg ${s['5d']?.avg > 0 ? 'pos' : 'neg'}">${fmt5}</div><div class="wr">${wr5}</div></div>
+        <div class="stats-card"><div class="period">10日後</div><div class="avg ${s['10d']?.avg > 0 ? 'pos' : 'neg'}">${fmt10}</div><div class="wr">${wr10}</div></div>
+        <div class="stats-card"><div class="period">20日後</div><div class="avg ${s['20d']?.avg > 0 ? 'pos' : 'neg'}">${fmt20}</div><div class="wr">${wr20}</div></div>
+      </div>
+      <table class="occ-table">
+        <thead><tr><th>日期</th><th>+5D</th><th>+10D</th></tr></thead>
+        <tbody>${occRows}</tbody>
+      </table>`;
+  } catch(e) { el.textContent = '載入失敗'; }
+}
+
+async function doRefresh() {
+  const btn = document.getElementById('btn-refresh');
+  btn.disabled = true; btn.textContent = '更新中...';
+  try {
+    await fetch(`${BASE}/api/relationship/refresh`, { method: 'POST' });
+    await new Promise(r => setTimeout(r, 5000));
+    await Promise.all([loadData(), loadStatus(), loadRecentEvents()]);
+  } finally {
+    btn.disabled = false; btn.textContent = '🔄 更新';
+  }
+}
+
+init();
+loadStatus();
+</script>
+</body>
+</html>

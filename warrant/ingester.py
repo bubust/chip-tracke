@@ -76,19 +76,37 @@ def load_sinopac_basic() -> dict:
         text = r.content.decode("big5", errors="replace")
 
         # Parse: w={ s:'064692', n:'...', k:'C', xLa:T, d:'元大', i:'2330' };
-        pattern = re.compile(
-            r"w=\{[^}]*s:'(\w+)'[^}]*n:'([^']*)'[^}]*k:'([CP])'[^}]*d:'([^']*)'[^}]*i:'([^']*)'",
-        )
+        # 使用欄位獨立萃取，不依賴順序
+        block_pat = re.compile(r"w=\{([^}]*)\}")
+        field_pat = re.compile(r"(\w+):'([^']*)'")
         result = {}
-        for m in pattern.finditer(text):
-            code, name, k, issuer, underlying = m.groups()
+        for bm in block_pat.finditer(text):
+            block = bm.group(1)
+            fields = dict(field_pat.findall(block))
+            code = fields.get("s", "")
+            if not code:
+                continue
             result[code] = {
                 "code": code,
-                "name": name,
-                "kind": "CALL" if k == "C" else "PUT",
-                "issuer": issuer,
-                "underlying_code": underlying,
+                "name": fields.get("n", ""),
+                "kind": "CALL" if fields.get("k") == "C" else "PUT",
+                "issuer": fields.get("d", ""),
+                "underlying_code": fields.get("i", "") or None,
             }
+        # 如果新格式解析失敗，嘗試舊格式
+        if not result:
+            old_pat = re.compile(
+                r"w=\{[^}]*s:'(\w+)'[^}]*n:'([^']*)'[^}]*k:'([CP])'[^}]*d:'([^']*)'[^}]*i:'([^']*)'",
+            )
+            for m in old_pat.finditer(text):
+                code, name, k, issuer, underlying = m.groups()
+                result[code] = {
+                    "code": code,
+                    "name": name,
+                    "kind": "CALL" if k == "C" else "PUT",
+                    "issuer": issuer,
+                    "underlying_code": underlying or None,
+                }
         _sinopac_warrant_map = result
         _sinopac_loaded_at = datetime.now()
         log.info(f"[ingester] basic.js 載入 {len(result)} 筆")
@@ -153,9 +171,14 @@ def _parse_warrant_row(row: dict, market: str, sinopac_map: dict, name_to_code: 
     if not last_trade_date:
         return None
 
-    # 標的代號：優先永豐 basic.js（有 code），fallback 從標的名稱查 price_daily
+    # 標的代號：優先永豐 basic.js（有 code），fallback 從標的名稱查
     sp = sinopac_map.get(code, {})
     underlying_code = sp.get("underlying_code") or None
+    # fallback 1: TWSE/TPEx 直接欄位（部分格式有 標的代號）
+    if not underlying_code:
+        underlying_code = row.get("標的代號", "").strip() or \
+                          row.get("標的證券代號", "").strip() or None
+    # fallback 2: 從標的名稱查 name_to_code
     if not underlying_code:
         ul_name = row.get("標的證券/指數", "").strip()
         if ul_name:
@@ -204,7 +227,23 @@ def ingest_contracts():
         ul_name = warrant_to_ul_name.get(w_code, "")
         if ul_code and ul_name and ul_name not in name_to_code:
             name_to_code[ul_name] = ul_code
-    log.info(f"[ingester] name_to_code: {len(name_to_code)} 個標的")
+
+    # fallback: 從 stocks.csv 建立股名→股號對照（涵蓋 sinopac 未覆蓋的股票）
+    try:
+        import csv as _csv
+        from pathlib import Path as _Path
+        _csv_path = _Path(__file__).parent.parent / "stocks.csv"
+        if _csv_path.exists():
+            with open(_csv_path, encoding="utf-8") as _f:
+                for _row in _csv.DictReader(_f):
+                    _sid = _row.get("stock_id", "").strip()
+                    _sname = _row.get("stock_name", "").strip()
+                    if _sid and _sname and _sname not in name_to_code:
+                        name_to_code[_sname] = _sid
+    except Exception as _e:
+        log.warning(f"[ingester] stocks.csv fallback 失敗: {_e}")
+
+    log.info(f"[ingester] name_to_code: {len(name_to_code)} 個標的（含 stocks.csv）")
 
     today_str = date.today().strftime("%Y-%m-%d")
     warrants_upserted = 0

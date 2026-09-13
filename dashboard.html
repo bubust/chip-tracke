@@ -150,6 +150,7 @@
   <h1>📈 大戶選股</h1>
   <span class="sub">台股籌碼追蹤</span>
   <div class="pill-status" id="status-pill" onclick="loadPill()">載入中...</div>
+  <button id="btn-global-refresh" onclick="globalRefreshAll()" style="margin-left:auto;padding:6px 14px;background:#238636;border:1px solid #2ea043;border-radius:6px;color:#fff;cursor:pointer;font-size:.82rem;white-space:nowrap">🔄 全系統更新</button>
 </header>
 
 <nav>
@@ -159,6 +160,8 @@
   <button onclick="switchTab('warrant')">權證股期選擇器</button>
   <button onclick="switchTab('regime')">📊 總經面板</button>
   <button onclick="switchTab('sector')">🔄 產業輪動</button>
+  <button onclick="switchTab('positioning')">📍 籌碼定位</button>
+  <button onclick="switchTab('relationship')">📊 市場關聯</button>
   <button onclick="switchTab('settings')">設定</button>
 </nav>
 
@@ -405,6 +408,16 @@
   <iframe id="sector-iframe" src="/sector/" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
 </div>
 
+<!-- ═══════════════════════ 籌碼定位 ═══════════════════════ -->
+<div id="tab-positioning" class="tab">
+  <iframe id="positioning-iframe" src="" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
+</div>
+
+<!-- ═══════════════════════ 市場關聯研究 ═══════════════════════ -->
+<div id="tab-relationship" class="tab">
+  <iframe id="relationship-iframe" src="" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
+</div>
+
 <!-- ═══════════════════════ 設定 ═══════════════════════ -->
 <div id="tab-settings" class="tab">
 
@@ -534,10 +547,14 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  const idx = { watchlist: 0, market: 1, screen: 2, warrant: 3, regime: 4, settings: 5 };
-  document.querySelectorAll('nav button')[idx[name]].classList.add('active');
+  const idx = { watchlist: 0, market: 1, screen: 2, warrant: 3, regime: 4, sector: 5, positioning: 6, relationship: 7, settings: 8 };
+  const navIdx = idx[name];
+  if (navIdx !== undefined) document.querySelectorAll('nav button')[navIdx].classList.add('active');
   if (name === 'settings') { loadSysStatus(); loadPushLog(); loadTGSettings(); loadParams(); loadAllStratParams(); updateLocalWlInfo(); }
   if (name === 'regime') { const rf = document.getElementById('regime-iframe'); if (rf && !rf.dataset.loaded) { rf.dataset.loaded = '1'; rf.src = '/regime/'; } }
+  if (name === 'sector') { const sf = document.getElementById('sector-iframe'); if (sf && !sf.dataset.loaded) { sf.dataset.loaded = '1'; sf.src = '/sector/'; } }
+  if (name === 'positioning') { const pf = document.getElementById('positioning-iframe'); if (pf && !pf.dataset.loaded) { pf.dataset.loaded = '1'; pf.src = '/positioning/'; } }
+  if (name === 'relationship') { const rf2 = document.getElementById('relationship-iframe'); if (rf2 && !rf2.dataset.loaded) { rf2.dataset.loaded = '1'; rf2.src = '/relationship/'; } }
   if (name !== 'watchlist') { _stopPriceRefreshIfActive(); }
 }
 
@@ -1029,6 +1046,26 @@ async function saveMemo(sid, memo) {
     const item = _wlData.find(x => x.stock_id === sid);
     if (item) item.memo = memo;
   } catch (e) { toast('備註儲存失敗', true); }
+}
+
+// ── 全系統更新（Regime + Positioning + Sector 一鍵觸發）──
+async function globalRefreshAll() {
+  const btn = document.getElementById('btn-global-refresh');
+  btn.disabled = true;
+  btn.textContent = '⏳ 更新中...';
+  try {
+    const r = await api('POST', '/api/refresh_all');
+    toast(`✅ ${r.message}`);
+    // 同步更新籌碼資料
+    await refreshAll();
+  } catch (e) {
+    toast('全系統更新失敗：' + e.message, true);
+  } finally {
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = '🔄 全系統更新';
+    }, 5000);  // 背景執行中，5秒後解鎖按鈕
+  }
 }
 
 // ── 全部更新 ──

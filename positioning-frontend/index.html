@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>市場籌碼定位 — Positioning Engine V1</title>
+  <style>
+    /* Dark theme, card-based layout */
+    :root {
+      --bg: #0d1117; --card: #161b22; --border: #30363d;
+      --text: #c9d1d9; --muted: #8b949e; --green: #3fb950;
+      --red: #f85149; --yellow: #d29922; --blue: #388bfd;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', monospace; padding: 16px; }
+    h1 { color: var(--blue); font-size: 1.4rem; margin-bottom: 16px; }
+    h2 { font-size: 1rem; color: var(--muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+    .row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
+    .row:last-child { border-bottom: none; }
+    .label { color: var(--muted); font-size: 0.85rem; }
+    .val { font-size: 0.95rem; font-weight: 600; }
+    .pos { color: var(--green); }
+    .neg { color: var(--red); }
+    .neu { color: var(--muted); }
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
+    .badge-green { background: rgba(63,185,80,.2); color: var(--green); }
+    .badge-red { background: rgba(248,81,73,.2); color: var(--red); }
+    .badge-yellow { background: rgba(210,153,34,.2); color: var(--yellow); }
+    .badge-blue { background: rgba(56,139,253,.2); color: var(--blue); }
+    .badge-gray { background: rgba(139,148,158,.2); color: var(--muted); }
+    .state-card { text-align: center; padding: 20px; }
+    .state-title { font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+    .state-value { font-size: 1.1rem; font-weight: 700; }
+    .summary-box { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-top: 12px; line-height: 1.7; font-size: 0.9rem; }
+    .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+    .btn { background: var(--blue); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+    .btn:hover { opacity: 0.85; }
+    .btn-sm { padding: 4px 10px; font-size: 0.75rem; background: #30363d; }
+    .date-label { color: var(--muted); font-size: 0.85rem; }
+    .pct-bar { display: inline-block; width: 60px; height: 8px; background: #30363d; border-radius: 4px; vertical-align: middle; margin-left: 6px; overflow: hidden; }
+    .pct-fill { height: 100%; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th { text-align: left; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--border); }
+    td { padding: 6px 8px; border-bottom: 1px solid #21262d; }
+    tr:hover td { background: #1c2128; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+    .tab { padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; background: #21262d; color: var(--muted); border: 1px solid var(--border); }
+    .tab.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+  </style>
+</head>
+<body>
+
+<div class="header-bar">
+  <div>
+    <h1>📊 市場籌碼定位引擎 V1</h1>
+    <span class="date-label" id="update-date">載入中...</span>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button class="btn btn-sm" onclick="sendTelegram()">📨 Telegram</button>
+    <button class="btn" onclick="doRefresh()">🔄 更新資料</button>
+  </div>
+</div>
+
+<!-- State Cards -->
+<div class="grid" id="state-cards" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+  <div class="card state-card">
+    <div class="state-title">定位狀態</div>
+    <div class="state-value" id="s-state">—</div>
+  </div>
+  <div class="card state-card">
+    <div class="state-title">趨勢方向</div>
+    <div class="state-value" id="s-transition">—</div>
+  </div>
+  <div class="card state-card">
+    <div class="state-title">背離訊號</div>
+    <div class="state-value" id="s-divergence">—</div>
+  </div>
+  <div class="card state-card">
+    <div class="state-title">極端狀態</div>
+    <div class="state-value" id="s-exhaustion">—</div>
+  </div>
+</div>
+
+<!-- Main Sections -->
+<div class="grid">
+  <!-- Cash Institutions -->
+  <div class="card">
+    <h2>現貨法人</h2>
+    <div class="row">
+      <span class="label">外資 今日</span>
+      <span class="val" id="foreign-cash-net">—</span>
+    </div>
+    <div class="row">
+      <span class="label">外資 3日累計</span>
+      <span class="val" id="foreign-cash-3d">—</span>
+    </div>
+    <div class="row">
+      <span class="label">外資 5日累計</span>
+      <span class="val" id="foreign-cash-5d">—</span>
+    </div>
+    <div class="row">
+      <span class="label">外資 10日累計</span>
+      <span class="val" id="foreign-cash-10d">—</span>
+    </div>
+    <div class="row">
+      <span class="label">投信 今日</span>
+      <span class="val" id="trust-cash-net">—</span>
+    </div>
+    <div class="row">
+      <span class="label">自營商 今日</span>
+      <span class="val" id="dealer-cash-net">—</span>
+    </div>
+  </div>
+
+  <!-- Futures -->
+  <div class="card">
+    <h2>期貨籌碼</h2>
+    <div class="row">
+      <span class="label">外資期貨淨OI</span>
+      <span class="val" id="ff-net">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Δ1D / Δ5D</span>
+      <span class="val" id="ff-delta">—</span>
+    </div>
+    <div class="row">
+      <span class="label">歷史分位（250D）</span>
+      <span class="val" id="ff-pct">—</span>
+    </div>
+    <div class="row">
+      <span class="label">前五大淨OI</span>
+      <span class="val" id="t5-net">—</span>
+    </div>
+    <div class="row">
+      <span class="label">前五大 Δ1D / Δ5D</span>
+      <span class="val" id="t5-delta">—</span>
+    </div>
+    <div class="row">
+      <span class="label">前十大淨OI</span>
+      <span class="val" id="t10-net">—</span>
+    </div>
+    <div class="row">
+      <span class="label">總OI（TX約當）</span>
+      <span class="val" id="oi-total">—</span>
+    </div>
+    <div class="row">
+      <span class="label">OI Δ1D</span>
+      <span class="val" id="oi-delta">—</span>
+    </div>
+  </div>
+
+  <!-- Options -->
+  <div class="card">
+    <h2>選擇權</h2>
+    <div class="row">
+      <span class="label">PCR-OI（全）</span>
+      <span class="val" id="pcr-oi-all">—</span>
+    </div>
+    <div class="row">
+      <span class="label">PCR 歷史分位（250D）</span>
+      <span class="val" id="pcr-pct">—</span>
+    </div>
+    <div class="row">
+      <span class="label">外資選擇權淨值</span>
+      <span class="val" id="foreign-opt-net">—</span>
+    </div>
+    <div class="row">
+      <span class="label">外資選擇權淨OI值</span>
+      <span class="val" id="foreign-opt-oi">—</span>
+    </div>
+  </div>
+
+  <!-- Retail -->
+  <div class="card">
+    <h2>散戶小台（推估）</h2>
+    <div class="row">
+      <span class="label">散戶多空比</span>
+      <span class="val" id="retail-ratio">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Δ1D</span>
+      <span class="val" id="retail-delta">—</span>
+    </div>
+    <div class="row">
+      <span class="label">歷史分位（250D）</span>
+      <span class="val" id="retail-pct">—</span>
+    </div>
+    <div class="row">
+      <span class="label">散戶多單（推估）</span>
+      <span class="val" id="retail-long">—</span>
+    </div>
+    <div class="row">
+      <span class="label">散戶空單（推估）</span>
+      <span class="val" id="retail-short">—</span>
+    </div>
+  </div>
+</div>
+
+<!-- Summary -->
+<div class="summary-box" id="summary-box">—</div>
+
+<!-- History Table -->
+<div class="card" style="margin-top:16px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <h2 style="margin:0">歷史記錄</h2>
+    <select id="hist-days" onchange="loadHistory()" style="background:#21262d;color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:0.8rem">
+      <option value="20">20天</option>
+      <option value="40" selected>40天</option>
+      <option value="60">60天</option>
+    </select>
+  </div>
+  <div style="overflow-x:auto">
+    <table id="hist-table">
+      <thead>
+        <tr>
+          <th>日期</th>
+          <th>外資期貨</th>
+          <th>Δ1D</th>
+          <th>前五大</th>
+          <th>PCR</th>
+          <th>散戶比</th>
+          <th>狀態</th>
+          <th>趨勢</th>
+        </tr>
+      </thead>
+      <tbody id="hist-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const BASE = '';
+
+function colorVal(v, unit='億', dec=1) {
+  if (v == null) return '<span class="neu">N/A</span>';
+  const cls = v > 0 ? 'pos' : v < 0 ? 'neg' : 'neu';
+  const sign = v > 0 ? '+' : '';
+  return `<span class="${cls}">${sign}${Number(v).toFixed(dec)}${unit}</span>`;
+}
+
+function pctBar(pct) {
+  if (pct == null) return '';
+  const color = pct > 70 ? '#3fb950' : pct < 30 ? '#f85149' : '#d29922';
+  return `<span class="pct-bar"><span class="pct-fill" style="width:${pct}%;background:${color}"></span></span>`;
+}
+
+function stateBadge(state) {
+  if (!state) return '<span class="badge badge-gray">N/A</span>';
+  const map = {
+    BULLISH_CONFIRMATION: ['badge-green', '多頭確認'],
+    BULLISH_DIVERGENCE: ['badge-yellow', '多頭背離'],
+    BEARISH_CONFIRMATION: ['badge-red', '空頭確認'],
+    BEARISH_EXHAUSTION: ['badge-yellow', '空頭耗竭'],
+    SHORT_COVERING: ['badge-blue', '空單回補'],
+    LONG_LIQUIDATION: ['badge-red', '多單退出'],
+    POSITIONING_NEUTRAL: ['badge-gray', '中性'],
+    IMPROVING: ['badge-green', '改善中'],
+    RAPIDLY_IMPROVING: ['badge-green', '快速改善'],
+    STABLE: ['badge-gray', '穩定'],
+    WEAKENING: ['badge-yellow', '轉弱中'],
+    RAPIDLY_WEAKENING: ['badge-red', '快速轉弱'],
+    REVERSING_BULLISH: ['badge-blue', '轉多訊號'],
+    REVERSING_BEARISH: ['badge-yellow', '轉空訊號'],
+    OVERHEATED: ['badge-red', '過熱'],
+    CAPITULATION_CANDIDATE: ['badge-yellow', '恐慌候選'],
+    NORMAL: ['badge-gray', '正常'],
+    NONE: ['badge-gray', '無背離'],
+    UNKNOWN: ['badge-gray', '未知'],
+  };
+  // Handle pipe-separated divergences
+  if (state.includes('|')) {
+    const parts = state.split('|').filter(p => p !== 'NONE');
+    if (parts.length === 0) return '<span class="badge badge-gray">無背離</span>';
+    return parts.map(p => {
+      const [cls, label] = map[p] || ['badge-yellow', p];
+      return `<span class="badge ${cls}">${label}</span>`;
+    }).join(' ');
+  }
+  const [cls, label] = map[state] || ['badge-gray', state];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+async function loadToday() {
+  try {
+    const r = await fetch('/api/positioning/today');
+    const d = await r.json();
+    if (!d || !d.observation_date) {
+      document.getElementById('update-date').textContent = '尚無資料，請先點擊「更新資料」';
+      return;
+    }
+
+    document.getElementById('update-date').textContent = `資料日期：${d.observation_date}`;
+
+    // State cards
+    document.getElementById('s-state').innerHTML = stateBadge(d.positioning_state);
+    document.getElementById('s-transition').innerHTML = stateBadge(d.positioning_transition);
+    document.getElementById('s-divergence').innerHTML = stateBadge(d.positioning_divergence);
+    document.getElementById('s-exhaustion').innerHTML = stateBadge(d.positioning_exhaustion);
+
+    // Cash
+    document.getElementById('foreign-cash-net').innerHTML = colorVal(d.foreign_cash_net);
+    document.getElementById('foreign-cash-3d').innerHTML = colorVal(d.foreign_cash_3d);
+    document.getElementById('foreign-cash-5d').innerHTML = colorVal(d.foreign_cash_5d);
+    document.getElementById('foreign-cash-10d').innerHTML = colorVal(d.foreign_cash_10d);
+    document.getElementById('trust-cash-net').innerHTML = colorVal(d.trust_cash_net);
+    document.getElementById('dealer-cash-net').innerHTML = colorVal(d.dealer_cash_net);
+
+    // Futures
+    const ffPct = d.foreign_futures_pct250;
+    document.getElementById('ff-net').innerHTML = colorVal(d.foreign_futures_net_oi, '口', 0);
+    document.getElementById('ff-delta').innerHTML = `${colorVal(d.delta_foreign_futures_1d, '口', 0)} / ${colorVal(d.delta_foreign_futures_5d, '口', 0)}`;
+    document.getElementById('ff-pct').innerHTML = ffPct != null ? `${ffPct}th ${pctBar(ffPct)}` : 'N/A';
+    document.getElementById('t5-net').innerHTML = colorVal(d.top5_net_oi, '口', 0);
+    document.getElementById('t5-delta').innerHTML = `${colorVal(d.delta_top5_1d, '口', 0)} / ${colorVal(d.delta_top5_5d, '口', 0)}`;
+    document.getElementById('t10-net').innerHTML = colorVal(d.top10_net_oi, '口', 0);
+    document.getElementById('oi-total').innerHTML = d.tx_equivalent_total_oi != null ? `${Math.round(d.tx_equivalent_total_oi).toLocaleString()}口` : 'N/A';
+    document.getElementById('oi-delta').innerHTML = colorVal(d.delta_oi_1d, '口', 0);
+
+    // Options
+    const pcrPct = d.pcr_pct250;
+    document.getElementById('pcr-oi-all').innerHTML = d.pcr_oi_all != null ? `${d.pcr_oi_all.toFixed(1)}` : 'N/A';
+    document.getElementById('pcr-pct').innerHTML = pcrPct != null ? `${pcrPct}th ${pctBar(pcrPct)}` : 'N/A';
+    document.getElementById('foreign-opt-net').innerHTML = colorVal(d.foreign_option_net_value, '千元', 0);
+    document.getElementById('foreign-opt-oi').innerHTML = colorVal(d.foreign_option_net_oi_value, '', 0);
+
+    // Retail
+    const rPct = d.retail_pct250;
+    document.getElementById('retail-ratio').innerHTML = d.retail_mtx_ratio != null ? `${d.retail_mtx_ratio > 0 ? '+' : ''}${d.retail_mtx_ratio.toFixed(1)}% ${pctBar(rPct)}` : 'N/A';
+    document.getElementById('retail-delta').innerHTML = colorVal(d.delta_retail_1d, '%', 1);
+    document.getElementById('retail-pct').innerHTML = rPct != null ? `${rPct}th ${pctBar(rPct)}` : 'N/A';
+    document.getElementById('retail-long').innerHTML = d.retail_mtx_long != null ? `${d.retail_mtx_long.toLocaleString()}口` : 'N/A';
+    document.getElementById('retail-short').innerHTML = d.retail_mtx_short != null ? `${d.retail_mtx_short.toLocaleString()}口` : 'N/A';
+
+    // Summary
+    document.getElementById('summary-box').textContent = d.positioning_summary || '—';
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+async function loadHistory() {
+  const days = document.getElementById('hist-days').value;
+  try {
+    const r = await fetch(`/api/positioning/history?days=${days}`);
+    const rows = await r.json();
+    const tbody = document.getElementById('hist-body');
+    tbody.innerHTML = rows.map(d => {
+      const ffNet = d.foreign_futures_net_oi;
+      const ffCls = ffNet > 0 ? 'pos' : ffNet < 0 ? 'neg' : 'neu';
+      const delta = d.delta_foreign_futures_1d;
+      const deltaCls = delta > 0 ? 'pos' : delta < 0 ? 'neg' : 'neu';
+      const t5 = d.top5_net_oi;
+      const t5Cls = t5 > 0 ? 'pos' : t5 < 0 ? 'neg' : 'neu';
+      const retail = d.retail_mtx_ratio;
+      const rCls = retail > 0 ? 'pos' : retail < 0 ? 'neg' : 'neu';
+      return `<tr>
+        <td>${d.observation_date}</td>
+        <td class="${ffCls}">${ffNet != null ? (ffNet > 0 ? '+' : '') + Math.round(ffNet).toLocaleString() : 'N/A'}</td>
+        <td class="${deltaCls}">${delta != null ? (delta > 0 ? '+' : '') + Math.round(delta).toLocaleString() : '—'}</td>
+        <td class="${t5Cls}">${t5 != null ? (t5 > 0 ? '+' : '') + t5.toLocaleString() : 'N/A'}</td>
+        <td>${d.pcr_oi_all != null ? d.pcr_oi_all.toFixed(1) : 'N/A'}</td>
+        <td class="${rCls}">${retail != null ? (retail > 0 ? '+' : '') + retail.toFixed(1) + '%' : 'N/A'}</td>
+        <td>${stateBadge(d.positioning_state)}</td>
+        <td>${stateBadge(d.positioning_transition)}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) { console.error(e); }
+}
+
+async function doRefresh() {
+  const btn = event.target;
+  btn.textContent = '更新中...';
+  btn.disabled = true;
+  try {
+    await fetch('/api/positioning/refresh', { method: 'POST' });
+    await new Promise(r => setTimeout(r, 4000));
+    await loadToday();
+    await loadHistory();
+  } finally {
+    btn.textContent = '🔄 更新資料';
+    btn.disabled = false;
+  }
+}
+
+async function sendTelegram() {
+  try {
+    await fetch('/api/positioning/telegram', { method: 'POST' });
+    alert('Telegram 報告已發送');
+  } catch(e) { alert('發送失敗: ' + e.message); }
+}
+
+// Init
+loadToday();
+loadHistory();
+</script>
+</body>
+</html>

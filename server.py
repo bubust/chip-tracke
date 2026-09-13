@@ -30,6 +30,10 @@ from regime.factor import calculate_factors as regime_calc_factors, backfill_fac
 from sector.router import router as sector_router
 from sector.db import init_db as sector_init_db
 from sector.universe import fetch_and_build_mapping as sector_build_mapping, is_initialized as sector_is_initialized
+from positioning.router import router as positioning_router, _run_refresh as positioning_run_refresh
+from positioning.db import init_db as init_positioning_db
+from relationship.router import router as relationship_router
+from relationship.db import init_db as init_relationship_db
 
 from chip_tracker_v2 import (
     DATA_DIR, DB_PATH,
@@ -149,6 +153,8 @@ async def lifespan(app: FastAPI):
     init_warrant()
     regime_init_db()
     sector_init_db()
+    init_positioning_db()
+    init_relationship_db()
     start_warrant_scheduler()
     # 若 regime.db 無資料，背景啟動初始更新
     import threading
@@ -185,6 +191,23 @@ async def lifespan(app: FastAPI):
             except Exception as _e:
                 import logging; logging.getLogger(__name__).error(f"[sector_init] {_e}")
         threading.Thread(target=_sector_init, daemon=True).start()
+    # 啟動 positioning 排程（每個交易日 16:45 自動更新）
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        import pytz
+        _pos_scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Taipei"))
+        _pos_scheduler.add_job(
+            lambda: positioning_run_refresh(),
+            "cron",
+            day_of_week="mon-fri",
+            hour=16,
+            minute=45,
+            id="positioning_daily",
+            replace_existing=True,
+        )
+        _pos_scheduler.start()
+    except Exception as _e:
+        import logging; logging.getLogger(__name__).warning(f"[positioning_scheduler] {_e}")
     yield
     stop_warrant_scheduler()
 
@@ -222,6 +245,18 @@ app.mount("/sector/static", StaticFiles(directory=str(SECTOR_FRONTEND)), name="s
 @app.get("/sector/", include_in_schema=False)
 def sector_index():
     return FileResponse(str(SECTOR_FRONTEND / "index.html"))
+
+# 掛載 positioning 路由與前端靜態檔
+app.include_router(positioning_router)
+app.mount("/positioning", StaticFiles(directory="positioning-frontend", html=True), name="positioning-frontend")
+
+# 掛載 relationship 路由與前端靜態檔
+app.include_router(relationship_router)
+app.mount("/relationship/static", StaticFiles(directory="relationship-frontend"), name="relationship_static")
+
+@app.get("/relationship/", include_in_schema=False)
+def relationship_index():
+    return FileResponse(str(BASE_DIR / "relationship-frontend" / "index.html"))
 
 app.add_middleware(
     CORSMiddleware,
@@ -559,6 +594,46 @@ async def api_refresh(body: RefreshBody):
     results = await update_stocks(stock_ids, days=days, end_date=end_dt)
     settings_set("last_refresh", datetime.now().isoformat())
     return {"ok": True, "updated": list(results.keys()), "days": days}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 全系統更新 API（一鍵更新所有引擎）
+# ════════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/refresh_all")
+async def api_refresh_all():
+    """一鍵觸發所有引擎更新：Regime / Positioning / Sector（背景執行）"""
+    import threading, asyncio as _asyncio
+
+    def _run_all():
+        # 1. Regime
+        try:
+            regime_fetch_all(days=5)
+            fetch_twse_margin()
+            fetch_twse_foreign_spot()
+            fetch_twse_market_breadth(lookback=5)
+            fetch_taifex_foreign_futures()
+            fetch_mi5mins()
+            regime_calc_factors()
+            regime_backfill_factors(days=30)
+        except Exception as e:
+            import logging; logging.getLogger(__name__).error(f"[refresh_all] regime: {e}")
+
+        # 2. Positioning
+        try:
+            _asyncio.run(positioning_run_refresh())
+        except Exception as e:
+            import logging; logging.getLogger(__name__).error(f"[refresh_all] positioning: {e}")
+
+        # 3. Sector（只更新計算，不重新初始化）
+        try:
+            from sector.engine import run_sector_engine
+            run_sector_engine(days_back=5)
+        except Exception as e:
+            import logging; logging.getLogger(__name__).error(f"[refresh_all] sector: {e}")
+
+    threading.Thread(target=_run_all, daemon=True).start()
+    return {"ok": True, "message": "全系統更新已啟動（背景執行）"}
 
 
 # ════════════════════════════════════════════════════════════════════════════

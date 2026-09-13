@@ -106,12 +106,34 @@ def fetch_twse_margin(days: int = 5):
                         # MarginPurchaseAmount = 融資買進 (股)
                         # 嘗試多個欄位名稱
                         val = None
-                        for field in ["MarginPurchaseAmount", "MarginBalance", "TotalMarginPurchaseAmount"]:
+                        for field in [
+                            "MarginPurchaseTodayBalance",   # 今日餘額（正確欄位）
+                            "MarginPurchaseBalance",
+                            "MarginBalance",
+                            "MarginPurchaseAmount",
+                            "TotalMarginPurchaseAmount",
+                            "marginPurchaseTodayBalance",
+                        ]:
                             raw = str(row.get(field, "")).replace(",", "").strip()
-                            if raw and raw not in ("", "-", "--"):
+                            if raw and raw not in ("", "-", "--", "0"):
                                 try:
                                     val = float(raw)
-                                    break
+                                    if val > 0:
+                                        break
+                                except Exception:
+                                    pass
+                        # 如果所有已知欄位都失敗，嘗試自動偵測第一個大數值欄位
+                        if val is None:
+                            for k, v in row.items():
+                                if k == "Date":
+                                    continue
+                                raw = str(v).replace(",", "").strip()
+                                try:
+                                    fv = float(raw)
+                                    if fv > 100000:  # 融資餘額通常超過百萬股
+                                        val = fv
+                                        log.info(f"[fetcher] MI_MARGN auto-detect field: {k}={fv}")
+                                        break
                                 except Exception:
                                     pass
                         if val is None:

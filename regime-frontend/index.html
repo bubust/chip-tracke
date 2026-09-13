@@ -65,9 +65,9 @@
   #status-bar.warn { color: #d29922; font-size: .82rem; text-align: left; padding: 6px 10px; background: rgba(210,153,34,.1); border: 1px solid rgba(210,153,34,.3); border-radius: 6px; }
   /* 說明文字 */
   .score-card .label { font-size: .75rem; color: #8b949e; margin-bottom: 6px; }
-  .score-card .desc { font-size: .7rem; color: #484f58; line-height: 1.5; margin-top: 6px; text-align: left; }
-  .factor-row .desc { font-size: .7rem; color: #484f58; line-height: 1.5; margin-top: 5px; }
-  .oh-card .desc { font-size: .7rem; color: #484f58; line-height: 1.5; margin-top: 5px; }
+  .score-card .desc { font-size: .82rem; color: #8b949e; line-height: 1.6; margin-top: 8px; text-align: left; }
+  .factor-row .desc { font-size: .8rem; color: #8b949e; line-height: 1.6; margin-top: 6px; }
+  .oh-card .desc { font-size: .8rem; color: #8b949e; line-height: 1.6; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -78,6 +78,12 @@
   <button class="btn" onclick="refresh()">🔄 更新資料</button>
 </div>
 <div id="status-bar">資料載入中...</div>
+
+<!-- 市場狀態（最頂部） -->
+<div class="regime-box" style="margin-bottom:16px">
+  <div class="label" style="text-align:center;font-size:.8rem;color:#8b949e;margin-bottom:4px">市場狀態</div>
+  <div class="regime-label" id="regime-label-top">載入中…</div>
+</div>
 
 <!-- 三大核心分數 -->
 <div class="grid3">
@@ -326,7 +332,9 @@ function renderToday(data) {
   rEl.style.color = colorRisk(risk);
 
   document.getElementById('ex-val').textContent = ex;
-  document.getElementById('regime-label').textContent = data.regime_label || '—';
+  const regimeLabel = data.regime_label || '—';
+  document.getElementById('regime-label').textContent = regimeLabel;
+  document.getElementById('regime-label-top').textContent = regimeLabel;
 
   renderSuggestion(data);
 

@@ -526,6 +526,7 @@ function showLoading(show) {
     document.getElementById("sectors-panel").style.display = "none";
   } else {
     el.style.display = "none";
+    document.getElementById("sectors-panel").style.display = "";
   }
 }
 
