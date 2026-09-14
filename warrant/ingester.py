@@ -118,17 +118,45 @@ def load_sinopac_basic() -> dict:
 
 # ── TWSE / TPEx 合約檔 ──────────────────────────────────────────────
 def fetch_twse_warrants() -> list[dict]:
-    url = "https://openapi.twse.com.tw/v1/opendata/t187ap37_L"
-    log.info("[ingester] 抓 TWSE t187ap37_L ...")
-    r = requests.get(url, headers=HEADERS, timeout=90)
-    return json.loads(r.content.decode("utf-8"))
+    urls = [
+        "https://openapi.twse.com.tw/v1/opendata/t187ap37_L",
+        "https://www.twse.com.tw/rwd/zh/warrant/t187ap37_L?response=json",
+    ]
+    for url in urls:
+        try:
+            log.info(f"[ingester] 抓 TWSE 權證: {url}")
+            r = requests.get(url, headers=HEADERS, timeout=90)
+            r.raise_for_status()
+            data = r.json() if "json" in r.headers.get("content-type","") else json.loads(r.content.decode("utf-8", errors="replace"))
+            if isinstance(data, list) and data:
+                return data
+            if isinstance(data, dict) and data.get("data"):
+                fields = data.get("fields", [])
+                return [dict(zip(fields, row)) for row in data["data"]] if fields else data["data"]
+        except Exception as e:
+            log.warning(f"[ingester] TWSE {url} 失敗: {e}")
+    raise RuntimeError("TWSE 所有端點均失敗")
 
 
 def fetch_tpex_warrants() -> list[dict]:
-    url = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap37_O"
-    log.info("[ingester] 抓 TPEx t187ap37_O ...")
-    r = requests.get(url, headers=HEADERS, timeout=90)
-    return json.loads(r.content.decode("utf-8"))
+    urls = [
+        "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap37_O",
+        "https://www.tpex.org.tw/web/bond/warrant/q_warrant/warrant_detail_lists.php?o=json",
+    ]
+    for url in urls:
+        try:
+            log.info(f"[ingester] 抓 TPEx 權證: {url}")
+            r = requests.get(url, headers=HEADERS, timeout=90)
+            r.raise_for_status()
+            data = r.json() if "json" in r.headers.get("content-type","") else json.loads(r.content.decode("utf-8", errors="replace"))
+            if isinstance(data, list) and data:
+                return data
+            if isinstance(data, dict) and data.get("data"):
+                fields = data.get("fields", [])
+                return [dict(zip(fields, row)) for row in data["data"]] if fields else data["data"]
+        except Exception as e:
+            log.warning(f"[ingester] TPEx {url} 失敗: {e}")
+    raise RuntimeError("TPEx 所有端點均失敗")
 
 
 def _parse_warrant_row(row: dict, market: str, sinopac_map: dict, name_to_code: dict = {}) -> Optional[dict]:
@@ -214,10 +242,33 @@ def _parse_warrant_row(row: dict, market: str, sinopac_map: dict, name_to_code: 
 
 def ingest_contracts():
     """每日 08:00：更新合約檔"""
-    sinopac_map = load_sinopac_basic()
+    # 永豐 basic.js（失敗不中斷，繼續用 TWSE 欄位解析）
+    try:
+        sinopac_map = load_sinopac_basic()
+    except Exception as e:
+        log.warning(f"[ingester] sinopac basic.js 失敗，繼續: {e}")
+        sinopac_map = {}
 
-    twse_rows = fetch_twse_warrants()
-    tpex_rows = fetch_tpex_warrants()
+    # TWSE 權證合約（失敗則用空列表繼續）
+    try:
+        twse_rows = fetch_twse_warrants()
+        log.info(f"[ingester] TWSE 合約: {len(twse_rows)} 筆")
+    except Exception as e:
+        log.error(f"[ingester] TWSE 合約抓取失敗: {e}")
+        twse_rows = []
+
+    # TPEx 權證合約（失敗則用空列表繼續）
+    try:
+        tpex_rows = fetch_tpex_warrants()
+        log.info(f"[ingester] TPEx 合約: {len(tpex_rows)} 筆")
+    except Exception as e:
+        log.error(f"[ingester] TPEx 合約抓取失敗: {e}")
+        tpex_rows = []
+
+    if not twse_rows and not tpex_rows:
+        log.error("[ingester] TWSE 與 TPEx 皆無資料，嘗試用現有 DB 重建 underlyings")
+        rebuild_underlyings_from_warrants()
+        return 0
 
     # ── 建立 標的名稱 → 標的代號 對照表 ────────────────────────────────
     # 方法：用 TWSE/TPEx 的 '標的證券/指數'（名稱）+ 永豐 basic.js（代號）交叉比對
