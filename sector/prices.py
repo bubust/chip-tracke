@@ -225,41 +225,144 @@ def fetch_and_store_today() -> dict:
 
 def backfill(days: int = 120) -> dict:
     """
-    補抓歷史價格（最近 days 個自然日，跳過已有資料的日期）。
-    只查 TWSE + TPEx 批次端點，每天 2 個請求，間隔 1 秒。
+    初始化歷史價格：用 Yahoo Finance async 批次抓全市場股票近 days 天資料。
+    每支股票只需 1 個 HTTP request（Yahoo 回傳完整歷史），並行度 120。
     """
+    import asyncio
+    import httpx as _httpx
+    from pathlib import Path as _Path
+    import pandas as _pd
+
     init_db()
-    total_stored = 0
-    skipped = 0
 
-    # 查已有哪些日期
+    # 查已有幾天資料
     with db() as conn:
-        existing = {row[0] for row in conn.execute("SELECT DISTINCT date FROM sector_stock_daily")}
+        existing_dates = conn.execute(
+            "SELECT COUNT(DISTINCT date) FROM sector_stock_daily"
+        ).fetchone()[0]
 
-    target_days = []
-    for i in range(1, days + 1):
-        d = date.today() - timedelta(days=i)
-        # 跳過週末
-        if d.weekday() >= 5:
-            continue
-        ds = d.strftime("%Y%m%d")
-        if ds in existing:
-            skipped += 1
-            continue
-        target_days.append(ds)
+    if existing_dates >= days // 2:
+        log.info(f"[prices] DB 已有 {existing_dates} 天，跳過 backfill")
+        return {"skipped": True, "existing_dates": existing_dates}
 
-    log.info(f"[prices] 補抓 {len(target_days)} 天（已有 {skipped} 天跳過）")
+    # 讀 stocks.csv 取得所有股票
+    try:
+        import pandas as _pd
+        stocks_csv = _Path(__file__).parent.parent / "stocks.csv"
+        sdf = _pd.read_csv(str(stocks_csv), dtype=str, encoding="utf-8")
+        stock_list = [(r["stock_id"], r.get("type", "twse")) for _, r in sdf.iterrows()]
+    except Exception as e:
+        log.error(f"[prices] 無法讀取 stocks.csv: {e}")
+        return {"error": str(e)}
 
-    for ds in target_days:
-        twse = _fetch_twse_hist(ds)
-        tpex = _fetch_tpex_hist(ds)
-        all_rec = twse + tpex
-        if all_rec:
-            n = store_prices(ds, all_rec)
-            total_stored += n
-        time.sleep(1.0)
+    log.info(f"[prices] 開始 Yahoo backfill：{len(stock_list)} 支股票，{days} 天")
 
-    return {"backfilled_days": len(target_days), "stored": total_stored, "skipped": skipped}
+    now_ts = int(time.time())
+    p1 = now_ts - (days + 30) * 86400  # 多抓 30 天 buffer
+    _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
+
+    async def _fetch_one(client, stock_id, mkt):
+        suffixes = [".TW"] if mkt == "twse" else [".TWO", ".TW"]
+        params = {"interval": "1d", "period1": p1, "period2": now_ts}
+        for suffix in suffixes:
+            for host in ["query2", "query1"]:
+                url = f"https://{host}.finance.yahoo.com/v8/finance/chart/{stock_id}{suffix}"
+                try:
+                    r = await client.get(url, params=params)
+                    if r.status_code != 200:
+                        continue
+                    data = r.json()
+                    result_list = (data.get("chart") or {}).get("result") or []
+                    if not result_list:
+                        continue
+                    res = result_list[0]
+                    quote = res["indicators"]["quote"][0]
+                    ts = res.get("timestamp", [])
+                    if not ts:
+                        continue
+                    import pandas as _pd2
+                    _TW = _pd2.Timedelta(hours=8)
+                    idx = (_pd2.to_datetime(ts, unit="s", utc=True) + _TW).tz_localize(None)
+                    closes = quote.get("close", [])
+                    opens  = quote.get("open",  [])
+                    highs  = quote.get("high",  [])
+                    lows   = quote.get("low",   [])
+                    vols   = quote.get("volume",[])
+                    rows = []
+                    for i, dt in enumerate(idx):
+                        try:
+                            c = float(closes[i]) if closes[i] is not None else None
+                        except Exception:
+                            c = None
+                        if not c or c <= 0:
+                            continue
+                        def _g(arr, j):
+                            try: return float(arr[j]) if arr[j] is not None else c
+                            except: return c
+                        rows.append({
+                            "date":     dt.strftime("%Y%m%d"),
+                            "stock_id": stock_id,
+                            "open":     _g(opens,  i),
+                            "high":     _g(highs,  i),
+                            "low":      _g(lows,   i),
+                            "close":    c,
+                            "volume":   _g(vols,   i),
+                        })
+                    return rows
+                except Exception:
+                    continue
+        return []
+
+    async def _run_all():
+        limits = _httpx.Limits(max_connections=150, max_keepalive_connections=80)
+        timeout = _httpx.Timeout(connect=3.0, read=10.0, write=3.0, pool=3.0)
+        sem = asyncio.Semaphore(120)
+        all_rows = []
+
+        async def _fetch_with_sem(sid, mkt):
+            async with sem:
+                return await _fetch_one(client, sid, mkt)
+
+        async with _httpx.AsyncClient(
+            headers={"User-Agent": _UA, "Accept": "application/json"},
+            verify=False,
+            timeout=timeout,
+            limits=limits,
+            follow_redirects=True,
+        ) as client:
+            tasks = [_fetch_with_sem(sid, mkt) for sid, mkt in stock_list]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for res in results:
+                if isinstance(res, list):
+                    all_rows.extend(res)
+        return all_rows
+
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        all_rows = loop.run_until_complete(_run_all())
+        loop.close()
+    except Exception as e:
+        log.error(f"[prices] backfill async 失敗: {e}")
+        return {"error": str(e)}
+
+    # 按日期分組存入 DB
+    if not all_rows:
+        log.warning("[prices] backfill: 沒有取得任何資料")
+        return {"stored": 0}
+
+    by_date: dict = {}
+    for row in all_rows:
+        d = row["date"]
+        by_date.setdefault(d, []).append(row)
+
+    total_stored = 0
+    for d, rows in sorted(by_date.items()):
+        n = store_prices(d, rows)
+        total_stored += n
+
+    log.info(f"[prices] backfill 完成：{len(by_date)} 天，{total_stored} 筆")
+    return {"backfilled_days": len(by_date), "stored": total_stored}
 
 
 def load_prices_from_db(stock_ids: list[str], min_dates: int = 60) -> dict:
