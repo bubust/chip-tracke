@@ -151,6 +151,19 @@
   <span class="sub">台股籌碼追蹤</span>
   <div class="pill-status" id="status-pill" onclick="loadPill()">載入中...</div>
   <button id="btn-global-refresh" onclick="globalRefreshAll()" style="margin-left:auto;padding:6px 14px;background:#238636;border:1px solid #2ea043;border-radius:6px;color:#fff;cursor:pointer;font-size:.82rem;white-space:nowrap">🔄 全系統更新</button>
+
+<!-- 全系統更新進度 Modal -->
+<div id="refresh-progress-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:24px;min-width:340px;max-width:420px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <b style="font-size:1rem">🔄 全系統更新進度</b>
+      <button onclick="document.getElementById('refresh-progress-modal').style.display='none'"
+              style="background:none;border:none;color:#8b949e;cursor:pointer;font-size:1.1rem">✕</button>
+    </div>
+    <div id="refresh-steps-list" style="display:flex;flex-direction:column;gap:8px;font-size:.85rem"></div>
+    <div id="refresh-all-done-msg" style="display:none;margin-top:14px;color:#3fb950;font-weight:600;text-align:center">✅ 全系統更新完成！</div>
+  </div>
+</div>
 </header>
 
 <nav>
@@ -1051,20 +1064,55 @@ async function saveMemo(sid, memo) {
 // ── 全系統更新（Regime + Positioning + Sector 一鍵觸發）──
 async function globalRefreshAll() {
   const btn = document.getElementById('btn-global-refresh');
+  const modal = document.getElementById('refresh-progress-modal');
+  const stepsList = document.getElementById('refresh-steps-list');
+  const doneMsg = document.getElementById('refresh-all-done-msg');
+
   btn.disabled = true;
   btn.textContent = '⏳ 更新中...';
+  doneMsg.style.display = 'none';
+  stepsList.innerHTML = '';
+  modal.style.display = 'flex';
+
   try {
     const r = await api('POST', '/api/refresh_all');
-    toast(`✅ ${r.message}`);
-    // 同步更新籌碼資料
-    await refreshAll();
-  } catch (e) {
-    toast('全系統更新失敗：' + e.message, true);
-  } finally {
-    setTimeout(() => {
+    if (!r.ok && r.message) {
+      toast(r.message, true);
+      modal.style.display = 'none';
       btn.disabled = false;
       btn.textContent = '🔄 全系統更新';
-    }, 5000);  // 背景執行中，5秒後解鎖按鈕
+      return;
+    }
+
+    // 開始輪詢進度
+    const statusIcons = { pending: '⏳', running: '🔄', done: '✅', error: '❌' };
+    const poll = setInterval(async () => {
+      try {
+        const st = await api('GET', '/api/refresh_all/status');
+        const steps = st.steps || {};
+        stepsList.innerHTML = Object.entries(steps).map(([k, v]) => `
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#0d1117;border-radius:6px">
+            <span style="font-size:1rem">${statusIcons[v.status] || '⏳'}</span>
+            <span style="flex:1;color:${v.status==='done'?'#3fb950':v.status==='error'?'#f85149':v.status==='running'?'#d29922':'#8b949e'}">${v.label}</span>
+            <span style="color:#8b949e;font-size:.75rem">${v.status==='running'?'進行中...':v.status==='done'?'完成':v.status==='error'?'錯誤':'等待中'}</span>
+          </div>`).join('');
+
+        if (!st.running) {
+          clearInterval(poll);
+          doneMsg.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = '🔄 全系統更新';
+          await loadWatchlist();
+          await loadPill();
+        }
+      } catch (_) {}
+    }, 3000);
+
+  } catch (e) {
+    toast('全系統更新失敗：' + e.message, true);
+    modal.style.display = 'none';
+    btn.disabled = false;
+    btn.textContent = '🔄 全系統更新';
   }
 }
 

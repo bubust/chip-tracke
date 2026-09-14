@@ -278,6 +278,14 @@ def ingest_contracts():
 
     log.info(f"[ingester] 合約檔更新完成: {warrants_upserted} 筆, "
              f"{len(underlyings_upserted)} 個標的")
+
+    # 若 underlyings 幾乎為空（可能因 API 欄位變動），自動從 warrants 重建
+    with db() as conn:
+        ul_cnt = conn.execute("SELECT COUNT(*) FROM underlyings").fetchone()[0]
+    if ul_cnt < len(underlyings_upserted) * 0.5 or ul_cnt < 10:
+        log.warning(f"[ingester] underlyings 僅 {ul_cnt} 筆，自動 rebuild...")
+        rebuild_underlyings_from_warrants()
+
     return warrants_upserted
 
 
@@ -336,6 +344,44 @@ def backfill_biv_for_underlyings(underlying_codes: list[str]):
 
     log.info(f"[ingester] BIV backfill 完成: {total} 筆")
     return total
+
+
+def rebuild_underlyings_from_warrants() -> int:
+    """
+    從 warrants 表重建 underlyings 表（當 ingest_contracts 無法取得標的代號時的補救措施）。
+    使用 stocks.csv 補充股名。
+    """
+    import csv as _csv
+    from pathlib import Path as _Path
+
+    name_map: dict = {}
+    try:
+        csv_path = _Path(__file__).parent.parent / "stocks.csv"
+        with open(csv_path, encoding="utf-8") as f:
+            for row in _csv.DictReader(f):
+                sid  = row.get("stock_id", "").strip()
+                name = row.get("stock_name", "").strip()
+                if sid and name:
+                    name_map[sid] = name
+    except Exception as e:
+        log.warning(f"[ingester] stocks.csv 讀取失敗: {e}")
+
+    rebuilt = 0
+    with db() as conn:
+        rows = conn.execute("""
+            SELECT DISTINCT underlying_code, market FROM warrants
+            WHERE underlying_code IS NOT NULL AND underlying_code != ''
+              AND is_active=1
+        """).fetchall()
+        for r in rows:
+            code = r["underlying_code"]
+            mkt  = "TSE" if r["market"] == "TSE" else "OTC"
+            uname = name_map.get(code, code)
+            upsert_underlying(conn, code, uname, mkt)
+            rebuilt += 1
+
+    log.info(f"[ingester] rebuild_underlyings_from_warrants: {rebuilt} 個標的")
+    return rebuilt
 
 
 def get_active_underlying_codes() -> list[str]:

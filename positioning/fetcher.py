@@ -134,8 +134,8 @@ async def fetch_taifex_large_trader(target_date: date | None = None) -> dict:
         contract_raw = row[1].strip()
         month = row[2].strip()
 
-        # Only use "所有序列" / combined row (month=="所有序列" or "全部" or blank)
-        is_all = month in ("", "所有序列", "全部", "全月份")
+        # Only use "所有序列" / combined row
+        is_all = (not month) or any(kw in month for kw in ("所有", "全部", "全月"))
         if not is_all:
             continue
 
@@ -249,9 +249,14 @@ async def fetch_twse_institutional_spot(target_date: date | None = None) -> dict
     Fetch 三大法人現貨 from TWSE T86.
     Returns foreign/trust/dealer net in 億元.
     """
+    td = target_date or date.today()
+    while td.weekday() >= 5:
+        td -= timedelta(days=1)
+    dt_str = td.strftime("%Y%m%d")
+
     urls = [
         "https://openapi.twse.com.tw/v1/exchangeReport/T86",
-        "https://www.twse.com.tw/rwd/zh/fund/T86?response=json&selectType=ALL",
+        f"https://www.twse.com.tw/rwd/zh/fund/T86?date={dt_str}&selectType=ALL&response=json",
     ]
 
     data = None
@@ -333,6 +338,49 @@ def _derive_total_oi_from_large_trader(large_trader: dict) -> dict:
     }
 
 
+# ── TAIEX close price ─────────────────────────────────────────────────────────
+
+async def fetch_taiex_close(target_date: date | None = None) -> float | None:
+    """Fetch TAIEX (加權指數) closing price."""
+    td = target_date or date.today()
+    while td.weekday() >= 5:
+        td -= timedelta(days=1)
+
+    async with httpx.AsyncClient(headers=HEADERS, timeout=20) as client:
+        # 1. TWSE openapi
+        try:
+            r = await client.get("https://openapi.twse.com.tw/v1/exchangeReport/MI_INDEX?type=TW")
+            if r.status_code == 200:
+                for item in r.json():
+                    idx_name = item.get("Index", "") or item.get("指數名稱", "")
+                    if "加權" in idx_name or "發行量" in idx_name:
+                        raw = item.get("ClosingIndex") or item.get("收盤指數") or item.get("收盤")
+                        if raw:
+                            v = float(str(raw).replace(",", ""))
+                            if v > 0:
+                                return v
+        except Exception as e:
+            log.warning(f"[positioning] TAIEX openapi failed: {e}")
+
+        # 2. Yahoo Finance fallback
+        try:
+            r = await client.get(
+                "https://query1.finance.yahoo.com/v8/finance/chart/%5ETWII?interval=1d&range=5d",
+                headers={**HEADERS, "User-Agent": "Mozilla/5.0"},
+            )
+            if r.status_code == 200:
+                result = (r.json().get("chart", {}).get("result") or [])
+                if result:
+                    closes = result[0]["indicators"]["quote"][0].get("close", [])
+                    closes = [c for c in closes if c is not None]
+                    if closes:
+                        return round(float(closes[-1]), 2)
+        except Exception as e:
+            log.warning(f"[positioning] TAIEX Yahoo failed: {e}")
+
+    return None
+
+
 # ── Orchestrator ──────────────────────────────────────────────────────────────
 
 async def fetch_all(target_date: date | None = None) -> dict:
@@ -350,12 +398,13 @@ async def fetch_all(target_date: date | None = None) -> dict:
 
     # Parallel fetch
     (inst_fut, dt_str1), (large_trader, dt_str2), (options_data, dt_str3), \
-    spot_data, pcr_data = await asyncio.gather(
+    spot_data, pcr_data, taiex_close = await asyncio.gather(
         fetch_taifex_inst_futures(target_date),
         fetch_taifex_large_trader(target_date),
         fetch_taifex_inst_options(target_date),
         fetch_twse_institutional_spot(target_date),
         fetch_taifex_pcr(target_date),
+        fetch_taiex_close(target_date),
     )
 
     total_oi = _derive_total_oi_from_large_trader(large_trader)
@@ -488,6 +537,8 @@ async def fetch_all(target_date: date | None = None) -> dict:
 
     result = {
         "observation_date": td_str,
+        # Market index
+        "taiex_close": taiex_close,
         # Cash
         "foreign_cash_net": spot_data.get("foreign_cash_net"),
         "trust_cash_net": spot_data.get("trust_cash_net"),

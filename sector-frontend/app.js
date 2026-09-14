@@ -387,54 +387,66 @@ function sortTable(key) {
 
 // ── Actions ──────────────────────────────────────────────────────────────────
 
-async function triggerRefresh() {
-  const btn = document.getElementById("btn-refresh");
+async function triggerSmartRefresh() {
+  const btn = document.getElementById("btn-smart-refresh");
   btn.disabled = true;
-  btn.textContent = "計算中...";
+
   try {
+    // 先查狀態
+    const st = await fetch(`${BASE}/sector/api/status`).then(r => r.json()).catch(() => null);
+
+    if (!st || !st.initialized) {
+      // 未初始化：先 init 再等待，然後 refresh
+      btn.textContent = "初始化中...";
+      showToast("尚未初始化，開始從 FinMind 建立產業對照表...", "ok");
+      await fetch(`${BASE}/sector/api/init`, { method: "POST" });
+
+      // 輪詢等待初始化完成（最多 5 分鐘）
+      let waited = 0;
+      await new Promise(resolve => {
+        const poll = setInterval(async () => {
+          waited += 10;
+          const s = await fetch(`${BASE}/sector/api/status`).then(r => r.json()).catch(() => null);
+          if ((s && s.initialized) || waited > 300) {
+            clearInterval(poll);
+            resolve();
+          }
+        }, 10000);
+      });
+    }
+
+    // 執行更新計算
+    btn.textContent = "計算中...";
     const r = await fetch(`${BASE}/sector/api/refresh?days_back=120`, { method: "POST" });
     const d = await r.json();
     if (d.ok) {
       showToast("引擎已開始計算（約需 3~10 分鐘）", "ok");
-      // 每 10s 輪詢狀態，完成後自動刷新
       const poll = setInterval(async () => {
-        const st = await fetch(`${BASE}/sector/api/status`).then(r => r.json()).catch(() => null);
-        if (st && !st.engine_running) {
+        const s = await fetch(`${BASE}/sector/api/status`).then(r => r.json()).catch(() => null);
+        if (s && !s.engine_running) {
           clearInterval(poll);
           btn.disabled = false;
-          btn.textContent = "🔄 更新計算";
+          btn.textContent = "🔄 初始化/更新";
           await loadStatus();
           await loadSectors(_currentTab);
-          showToast("計算完成！", "ok");
+          showToast("更新完成！", "ok");
         }
       }, 10000);
     } else {
       showToast(d.message || "啟動失敗", "err");
       btn.disabled = false;
-      btn.textContent = "🔄 更新計算";
+      btn.textContent = "🔄 初始化/更新";
     }
   } catch (e) {
     showToast("請求失敗：" + e.message, "err");
     btn.disabled = false;
-    btn.textContent = "🔄 更新計算";
+    btn.textContent = "🔄 初始化/更新";
   }
 }
 
-async function triggerInit() {
-  if (!confirm("確定要從 FinMind 重新建立產業對照表？（需要有效的 FINMIND_TOKEN）")) return;
-  const btn = document.getElementById("btn-init");
-  btn.disabled = true;
-  try {
-    const r = await fetch(`${BASE}/sector/api/init`, { method: "POST" });
-    const d = await r.json();
-    showToast(d.message || "初始化已開始", "ok");
-    setTimeout(loadStatus, 5000);
-  } catch (e) {
-    showToast("請求失敗：" + e.message, "err");
-  } finally {
-    btn.disabled = false;
-  }
-}
+// 保留舊名稱相容
+async function triggerRefresh() { return triggerSmartRefresh(); }
+async function triggerInit()    { return triggerSmartRefresh(); }
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
 

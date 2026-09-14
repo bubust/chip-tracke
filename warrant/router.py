@@ -45,8 +45,10 @@ def init_warrant():
     _db.init_db()
     import threading
     with _db.db() as conn:
-        cnt = conn.execute("SELECT COUNT(*) FROM warrants").fetchone()[0]
-    if cnt == 0:
+        w_cnt = conn.execute("SELECT COUNT(*) FROM warrants").fetchone()[0]
+        ul_cnt = conn.execute("SELECT COUNT(*) FROM underlyings").fetchone()[0]
+
+    if w_cnt == 0:
         log.info("[warrant] DB 為空，背景初始化合約檔...")
         def _bg_init():
             try:
@@ -55,6 +57,15 @@ def init_warrant():
             except Exception as e:
                 log.error(f"[warrant] 初始合約檔失敗: {e}")
         threading.Thread(target=_bg_init, daemon=True).start()
+    elif ul_cnt < 10:
+        # 有權證但 underlyings 幾乎為空 → 自動 rebuild
+        log.info(f"[warrant] warrants={w_cnt} 但 underlyings={ul_cnt}，自動 rebuild...")
+        def _bg_rebuild():
+            try:
+                ingester.rebuild_underlyings_from_warrants()
+            except Exception as e:
+                log.error(f"[warrant] rebuild_underlyings 失敗: {e}")
+        threading.Thread(target=_bg_rebuild, daemon=True).start()
 
 def start_warrant_scheduler():
     scheduler.add_job(lambda: ingester.ingest_contracts(), "cron", hour=8, minute=0, id="w_contracts", replace_existing=True)
@@ -260,12 +271,20 @@ def search(q: str = Query(..., min_length=1)):
         for r in rows:
             results.append({"code": r["code"], "name": r["name"], "market": r["market"], "warrant_count": r["warrant_count"], "matched_by": "UNDERLYING"})
 
-    # 若搜尋結果為空，回傳初始化狀態提示
+    # 若搜尋結果為空，檢查是否需要 rebuild
     if not results:
         with _db.db() as conn:
-            cnt = conn.execute("SELECT COUNT(*) FROM underlyings").fetchone()[0]
-        if cnt == 0:
-            return {"results": [], "initializing": True, "message": "資料庫初始化中，請稍後 1~2 分鐘再試"}
+            ul_cnt = conn.execute("SELECT COUNT(*) FROM underlyings").fetchone()[0]
+            w_cnt  = conn.execute("SELECT COUNT(*) FROM warrants WHERE is_active=1").fetchone()[0]
+        if ul_cnt == 0 and w_cnt > 0:
+            # 有權證但無標的 → 背景 rebuild
+            import threading
+            threading.Thread(target=ingester.rebuild_underlyings_from_warrants, daemon=True).start()
+            return {"results": [], "initializing": True,
+                    "message": "標的資料重建中（約 10 秒），請稍後再試"}
+        if ul_cnt == 0:
+            return {"results": [], "initializing": True,
+                    "message": "資料庫初始化中，請稍後 1~2 分鐘再試"}
     return {"results": results}
 
 @router.get("/api/warrants")
@@ -285,6 +304,28 @@ def get_warrants(
 
     with _db.db() as conn:
         ul_row = conn.execute("SELECT * FROM underlyings WHERE code=?", (underlying,)).fetchone()
+        if not ul_row:
+            # 嘗試從 warrants 表中動態建立 underlying stub
+            w_sample = conn.execute(
+                "SELECT market FROM warrants WHERE underlying_code=? AND is_active=1 LIMIT 1",
+                (underlying,)
+            ).fetchone()
+            if w_sample:
+                import csv as _csv
+                from pathlib import Path as _Path
+                name = underlying
+                try:
+                    _csv_path = _Path(__file__).parent.parent / "stocks.csv"
+                    with open(_csv_path, encoding="utf-8") as _f:
+                        for _r in _csv.DictReader(_f):
+                            if _r.get("stock_id", "").strip() == underlying:
+                                name = _r.get("stock_name", underlying).strip()
+                                break
+                except Exception:
+                    pass
+                mkt = w_sample["market"] or "TSE"
+                _db.upsert_underlying(conn, underlying, name, mkt)
+                ul_row = conn.execute("SELECT * FROM underlyings WHERE code=?", (underlying,)).fetchone()
     if not ul_row:
         raise HTTPException(404, f"標的 {underlying} 不存在")
 

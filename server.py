@@ -600,37 +600,115 @@ async def api_refresh(body: RefreshBody):
 # 全系統更新 API（一鍵更新所有引擎）
 # ════════════════════════════════════════════════════════════════════════════
 
+_refresh_all_status: dict = {
+    "running": False,
+    "started_at": None,
+    "steps": {
+        "watchlist":   {"label": "觀察清單股票",    "status": "pending"},
+        "regime":      {"label": "總經 Regime 引擎", "status": "pending"},
+        "tdcc":        {"label": "千張大戶 TDCC",    "status": "pending"},
+        "positioning": {"label": "籌碼定位引擎",     "status": "pending"},
+        "sector":      {"label": "產業輪動引擎",     "status": "pending"},
+        "warrant":     {"label": "權證合約更新",     "status": "pending"},
+    },
+}
+
+def _set_step(step: str, status: str):
+    _refresh_all_status["steps"][step]["status"] = status
+
+@app.get("/api/refresh_all/status")
+def api_refresh_all_status():
+    return _refresh_all_status
+
 @app.post("/api/refresh_all")
 async def api_refresh_all():
-    """一鍵觸發所有引擎更新：Regime / Positioning / Sector（背景執行）"""
+    """一鍵觸發所有引擎更新（背景執行），包含千張大戶、Regime、Positioning、Sector、權證"""
     import threading, asyncio as _asyncio
+    from datetime import datetime as _dt
+
+    if _refresh_all_status["running"]:
+        return {"ok": False, "message": "更新已在執行中，請稍候"}
+
+    # 重置狀態
+    _refresh_all_status["running"] = True
+    _refresh_all_status["started_at"] = _dt.now().isoformat()
+    for k in _refresh_all_status["steps"]:
+        _refresh_all_status["steps"][k]["status"] = "pending"
 
     def _run_all():
-        # 1. Regime
+        import logging as _log
+        lg = _log.getLogger(__name__)
+
+        # 0. 觀察清單股票（優先更新，供後續引擎使用）
         try:
+            _set_step("watchlist", "running")
+            conn = get_conn()
+            rows = conn.execute("SELECT stock_id FROM watchlist").fetchall()
+            conn.close()
+            stock_ids = [r["stock_id"] for r in rows]
+            if stock_ids:
+                _asyncio.run(update_stocks(stock_ids, days=30))
+            _set_step("watchlist", "done")
+        except Exception as e:
+            lg.error(f"[refresh_all] watchlist: {e}")
+            _set_step("watchlist", "error")
+
+        # 1. Regime（增加 breadth lookback 確保歷史夠長）
+        try:
+            _set_step("regime", "running")
             regime_fetch_all(days=5)
             fetch_twse_margin()
             fetch_twse_foreign_spot()
-            fetch_twse_market_breadth(lookback=5)
+            fetch_twse_market_breadth(lookback=90)
             fetch_taifex_foreign_futures()
             fetch_mi5mins()
             regime_calc_factors()
-            regime_backfill_factors(days=30)
+            regime_backfill_factors(days=90)
+            _set_step("regime", "done")
         except Exception as e:
-            import logging; logging.getLogger(__name__).error(f"[refresh_all] regime: {e}")
+            lg.error(f"[refresh_all] regime: {e}")
+            _set_step("regime", "error")
 
-        # 2. Positioning
+        # 2. 千張大戶 TDCC
         try:
-            _asyncio.run(positioning_run_refresh())
+            _set_step("tdcc", "running")
+            from tdcc_chip import refresh_for_stocks
+            refresh_for_stocks()
+            _set_step("tdcc", "done")
         except Exception as e:
-            import logging; logging.getLogger(__name__).error(f"[refresh_all] positioning: {e}")
+            lg.error(f"[refresh_all] tdcc: {e}")
+            _set_step("tdcc", "error")
 
-        # 3. Sector（只更新計算，不重新初始化）
+        # 3. Positioning（positioning_run_refresh 是同步函數，內部自行處理 asyncio）
         try:
+            _set_step("positioning", "running")
+            positioning_run_refresh()
+            _set_step("positioning", "done")
+        except Exception as e:
+            lg.error(f"[refresh_all] positioning: {e}")
+            _set_step("positioning", "error")
+
+        # 4. Sector（只更新計算，不重新初始化）
+        try:
+            _set_step("sector", "running")
             from sector.engine import run_sector_engine
             run_sector_engine(days_back=5)
+            _set_step("sector", "done")
         except Exception as e:
-            import logging; logging.getLogger(__name__).error(f"[refresh_all] sector: {e}")
+            lg.error(f"[refresh_all] sector: {e}")
+            _set_step("sector", "error")
+
+        # 5. 權證合約更新
+        try:
+            _set_step("warrant", "running")
+            from warrant.ingester import ingest_contracts
+            ingest_contracts()
+            _set_step("warrant", "done")
+        except Exception as e:
+            lg.error(f"[refresh_all] warrant: {e}")
+            _set_step("warrant", "error")
+
+        _refresh_all_status["running"] = False
 
     threading.Thread(target=_run_all, daemon=True).start()
     return {"ok": True, "message": "全系統更新已啟動（背景執行）"}

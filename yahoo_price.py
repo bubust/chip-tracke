@@ -222,6 +222,36 @@ _scan_status: dict = {
     "error":        None,
 }
 
+# 掃描結果持久化路徑
+import json as _json
+from pathlib import Path as _Path
+_SCAN_CACHE_FILE = _Path(__file__).parent / "chip_data" / "scan_results_cache.json"
+
+
+def _save_scan_cache(results: dict):
+    """將掃描結果存到磁碟，重啟後可還原訊號"""
+    try:
+        _SCAN_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(_SCAN_CACHE_FILE, "w", encoding="utf-8") as f:
+            _json.dump(results, f, ensure_ascii=False)
+    except Exception as e:
+        print(f"[SCAN] 儲存快取失敗: {e}")
+
+
+def _load_scan_cache() -> dict:
+    """啟動時載入上次掃描結果（讓訊號重啟後不消失）"""
+    try:
+        if _SCAN_CACHE_FILE.exists():
+            with open(_SCAN_CACHE_FILE, "r", encoding="utf-8") as f:
+                return _json.load(f)
+    except Exception as e:
+        print(f"[SCAN] 載入快取失敗: {e}")
+    return {}
+
+
+# 啟動時自動載入快取
+_scan_status["results"] = _load_scan_cache()
+
 
 def get_scan_status() -> dict:
     counts = {k: len(v) for k, v in _scan_status["results"].items()} if _scan_status["results"] else {}
@@ -363,6 +393,7 @@ async def run_market_scan(concurrency: int = 100, strategy_params: dict = None):
             print("[SCAN] CHIP 跳過（無 MA 預篩通過股票）")
 
         _scan_status["results"] = all_results
+        _save_scan_cache(all_results)  # 持久化，重啟後訊號不消失
 
     except Exception as e:
         _scan_status["error"] = str(e)
