@@ -5,7 +5,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-SECTOR_DB_PATH = Path(__file__).parent.parent / "sector_data" / "sector.db"
+SECTOR_DB_PATH = Path(__file__).parent.parent / "chip_data" / "sector.db"
 
 
 @contextmanager
@@ -113,4 +113,16 @@ CREATE TABLE IF NOT EXISTS sector_meta (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+CREATE TABLE IF NOT EXISTS sector_stock_daily (
+    date       TEXT NOT NULL,
+    stock_id   TEXT NOT NULL,
+    open       REAL,
+    high       REAL,
+    low        REAL,
+    close      REAL,
+    volume     REAL,
+    PRIMARY KEY (date, stock_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ssd_stock ON sector_stock_daily(stock_id, date);
         """)

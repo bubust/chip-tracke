@@ -230,7 +230,17 @@ def api_refresh(background_tasks: BackgroundTasks, days_back: int = Query(120, g
     def _run():
         global _engine_running
         try:
+            from .prices import fetch_and_store_today, backfill
+            from .db import db as _sdb, init_db as _sector_init_db
             from .engine import run_sector_engine
+            _sector_init_db()
+            with _sdb() as _sc:
+                _cnt = _sc.execute("SELECT COUNT(DISTINCT date) FROM sector_stock_daily").fetchone()[0]
+            if _cnt < 60:
+                log.info(f"[sector] sector_stock_daily 只有 {_cnt} 天，開始補抓歷史...")
+                backfill(days=130)
+            else:
+                fetch_and_store_today()
             run_sector_engine(days_back=days_back)
         except Exception as e:
             log.error(f"[sector] 引擎錯誤: {e}", exc_info=True)

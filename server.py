@@ -695,10 +695,21 @@ async def api_refresh_all():
             lg.error(f"[refresh_all] positioning: {e}")
             _set_step("positioning", "error")
 
-        # 4. Sector（只更新計算，不重新初始化）
+        # 4. Sector（先抓今日全市場價格存入DB，再執行引擎計算）
         try:
             _set_step("sector", "running")
+            from sector.prices import fetch_and_store_today, backfill
             from sector.engine import run_sector_engine
+            # 先確保 DB 有足夠歷史（首次補抓 120 天，之後只抓今日）
+            from sector.db import db as _sdb, init_db as _sector_init_db
+            _sector_init_db()
+            with _sdb() as _sc:
+                _cnt = _sc.execute("SELECT COUNT(DISTINCT date) FROM sector_stock_daily").fetchone()[0]
+            if _cnt < 60:
+                lg.info(f"[sector] sector_stock_daily 只有 {_cnt} 天，開始補抓歷史...")
+                backfill(days=130)
+            else:
+                fetch_and_store_today()
             run_sector_engine(days_back=5)
             _set_step("sector", "done")
         except Exception as e:

@@ -19,122 +19,16 @@ log = logging.getLogger(__name__)
 CHIP_DATA = Path(__file__).parent.parent / "chip_data"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 股價載入（Yahoo Finance）
+# 股價載入（從 sector_stock_daily DB，不依賴 Yahoo）
 # ─────────────────────────────────────────────────────────────────────────────
 
-_PRICE_CACHE: dict[str, pd.DataFrame] = {}
-_PRICE_CACHE_TS: float = 0.0
-_PRICE_CACHE_TTL: float = 3600.0  # 1 小時內不重抓
-
-
-def _load_stock_prices_yahoo(stock_id: str, market: str = "twse", min_dates: int = 60) -> Optional[pd.DataFrame]:
+def load_all_prices_from_db(stock_ids: list, min_dates: int = 60) -> dict:
     """
-    用 Yahoo Finance 抓取個股 OHLCV。
-    回傳 DataFrame(date:str, open, high, low, close, volume) 或 None。
-    date 格式：'YYYYMMDD'
+    從 sector_stock_daily 批次讀取所有股票的價格 DataFrame。
+    回傳 {stock_id: DataFrame(date, open, high, low, close, volume)}
     """
-    import httpx
-    import time as _time
-
-    suffixes = [".TW"] if market == "twse" else [".TWO", ".TW"]
-    now = int(_time.time())
-    p1 = now - 400 * 86400  # 抓 ~13 個月
-    params = {"interval": "1d", "period1": p1, "period2": now}
-    UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
-
-    for suffix in suffixes:
-        for host in ["query1", "query2"]:
-            url = f"https://{host}.finance.yahoo.com/v8/finance/chart/{stock_id}{suffix}"
-            try:
-                with httpx.Client(
-                    headers={"User-Agent": UA, "Accept": "application/json"},
-                    verify=False,
-                    timeout=10.0,
-                    follow_redirects=True,
-                ) as client:
-                    r = client.get(url, params=params)
-                    r.raise_for_status()
-                    data = r.json()
-
-                result_list = data.get("chart", {}).get("result") or []
-                if not result_list:
-                    continue
-                result = result_list[0]
-                meta = result.get("meta", {})
-                quote = result["indicators"]["quote"][0]
-                timestamps = result.get("timestamp", [])
-
-                _TW_OFFSET = pd.Timedelta(hours=8)
-                tw_idx = (
-                    pd.to_datetime(timestamps, unit="s", utc=True) + _TW_OFFSET
-                ).tz_localize(None)
-
-                df = pd.DataFrame(
-                    {
-                        "open": quote.get("open", []),
-                        "high": quote.get("high", []),
-                        "low": quote.get("low", []),
-                        "close": quote.get("close", []),
-                        "volume": quote.get("volume", []),
-                    },
-                    index=tw_idx,
-                )
-                df = df.dropna(subset=["close"])
-                df = df[df["close"] > 0]
-                df["date"] = df.index.strftime("%Y%m%d")
-                df = df.reset_index(drop=True)[
-                    ["date", "open", "high", "low", "close", "volume"]
-                ]
-
-                # 補最新盤中 meta
-                try:
-                    rmp = meta.get("regularMarketPrice")
-                    rmt = meta.get("regularMarketTime")
-                    rmv = meta.get("regularMarketVolume") or 0
-                    if rmp and rmt and float(rmp) > 0:
-                        from datetime import datetime as _dt2, timedelta as _td
-                        last_dt = datetime.utcfromtimestamp(int(rmt)) + timedelta(hours=8)
-                        last_date = last_dt.strftime("%Y%m%d")
-                        if df.empty or df.iloc[-1]["date"] != last_date:
-                            rmo = float(meta.get("regularMarketOpen") or rmp)
-                            rmh = float(meta.get("regularMarketDayHigh") or rmp)
-                            rml = float(meta.get("regularMarketDayLow") or rmp)
-                            new_row = pd.DataFrame(
-                                [
-                                    {
-                                        "date": last_date,
-                                        "open": rmo,
-                                        "high": rmh,
-                                        "low": rml,
-                                        "close": float(rmp),
-                                        "volume": int(rmv),
-                                    }
-                                ]
-                            )
-                            df = pd.concat([df, new_row], ignore_index=True)
-                except Exception:
-                    pass
-
-                if len(df) >= min_dates:
-                    return df
-            except Exception:
-                continue
-
-    return None
-
-
-def load_stock_prices(stock_id: str, market: str = "twse", min_dates: int = 60) -> Optional[pd.DataFrame]:
-    """
-    載入股票價格，先查快取，miss 再從 Yahoo 抓。
-    """
-    cached = _PRICE_CACHE.get(stock_id)
-    if cached is not None and (time.time() - _PRICE_CACHE_TS) < _PRICE_CACHE_TTL:
-        return cached if len(cached) >= min_dates else None
-
-    df = _load_stock_prices_yahoo(stock_id, market=market, min_dates=min_dates)
-    if df is not None:
-        _PRICE_CACHE[stock_id] = df
-    return df
+    from .prices import load_prices_from_db
+    return load_prices_from_db(stock_ids, min_dates=min_dates)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -666,25 +560,11 @@ def run_sector_engine(days_back: int = 120) -> dict:
 
     log.info(f"[engine] 共 {len(all_stock_ids)} 支股票需要載入價格")
 
-    # ── 批次載入所有股票價格（帶快取）────────────────────────────────────────
-    global _PRICE_CACHE_TS
-    price_data: dict[str, pd.DataFrame] = {}
-    loaded = 0
-    failed = 0
-    for stock_id in sorted(all_stock_ids):
-        mkt = market_map.get(stock_id, "twse")
-        df = load_stock_prices(stock_id, market=mkt, min_dates=60)
-        if df is not None:
-            price_data[stock_id] = df
-            loaded += 1
-        else:
-            failed += 1
-        # 避免太快打 Yahoo（每 20 支小延遲）
-        if (loaded + failed) % 20 == 0:
-            time.sleep(0.5)
-
-    _PRICE_CACHE_TS = time.time()
-    log.info(f"[engine] 價格載入完成：成功={loaded}，失敗={failed}")
+    # ── 批次從 DB 讀取所有股票價格（單一 SQL 查詢，不打 Yahoo）──────────────
+    price_data = load_all_prices_from_db(list(all_stock_ids), min_dates=60)
+    loaded = len(price_data)
+    failed = len(all_stock_ids) - loaded
+    log.info(f"[engine] 價格載入完成：成功={loaded}，失敗={failed}（無 DB 資料）")
 
     # ── 計算各產業指數 ────────────────────────────────────────────────────────
     sector_index_series: dict[str, pd.Series] = {}  # sector_id → index_level series
