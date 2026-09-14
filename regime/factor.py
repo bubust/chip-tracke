@@ -234,6 +234,13 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
         breadth_extreme = max(0, cur_breadth - 75) / 25 * 50 if cur_breadth > 75 else max(0, 25 - cur_breadth) / 25 * 50
         vix_extreme = min(50, max(0, vix_risk - 50)) if vix_risk > 50 else 0
         exhaustion = round(min(100, breadth_extreme * 0.6 + vix_extreme * 0.4), 1)
+    else:
+        # 無廣度資料：純 VIX 竭盡（VIX>20 開始計分，VIX 35=50，VIX 50+=100）
+        if vix:
+            vix_vals = [v for _, v in vix[-60:]]
+            cur_vix = vix_vals[-1]
+            vix_score = min(100, max(0, (cur_vix - 20) / 15 * 50))
+            exhaustion = round(vix_score, 1)
 
     # ── Regime Label ──────────────────────────────────────────────────────
     if direction > 50 and risk_score < 50:

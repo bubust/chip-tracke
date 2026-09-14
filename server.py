@@ -831,6 +831,7 @@ async def api_market_scan(top: int = 50):
     merged.sort(key=lambda x: x["whale_flow_lots"], reverse=True)
 
     # 從策略掃描快取補充 signal 資訊
+    best_sig: dict = {}
     try:
         from yahoo_price import get_scan_results
         scan_res = get_scan_results()
@@ -847,7 +848,6 @@ async def api_market_scan(top: int = 50):
             "S_VOLX_SHORT": (2,  "💥", "量爆下殺", 1),
             "S_PB":         (1,  "📊", "均線拉回", 1),
         }
-        best_sig: dict = {}
         for strategy_key, results in scan_res.items():
             if strategy_key not in _SIG_MAP:
                 continue
@@ -866,6 +866,29 @@ async def api_market_scan(top: int = 50):
                 item["signal_level"] = sig[3]
     except Exception:
         pass
+
+    # 若無策略掃描訊號，以法人買賣超流向產生基礎訊號
+    for item in merged:
+        if item["signal_title"] != "—":
+            continue
+        wf = item.get("whale_flow_lots", 0) or 0
+        fgn = item.get("foreign_lots", 0) or 0
+        if wf >= 2000 or fgn >= 1500:
+            item["signal_emoji"] = "📈"
+            item["signal_title"] = "強力買超"
+            item["signal_level"] = 1
+        elif wf >= 500:
+            item["signal_emoji"] = "📈"
+            item["signal_title"] = "法人買超"
+            item["signal_level"] = 1
+        elif wf <= -2000 or fgn <= -1500:
+            item["signal_emoji"] = "📉"
+            item["signal_title"] = "強力賣超"
+            item["signal_level"] = 1
+        elif wf <= -500:
+            item["signal_emoji"] = "📉"
+            item["signal_title"] = "法人賣超"
+            item["signal_level"] = 1
 
     return {
         "date":        used_date_str,

@@ -12,7 +12,12 @@ from .db import db
 
 log = logging.getLogger(__name__)
 
-FINMIND_TOKEN = os.environ.get("FINMIND_TOKEN", "")
+_FALLBACK_FM_TOKEN = (
+    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
+    ".eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0"
+    ".LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
+)
+FINMIND_TOKEN = os.environ.get("FINMIND_TOKEN", "") or _FALLBACK_FM_TOKEN
 FINMIND_URL = "https://api.finmindtrade.com/api/v4/data"
 
 # 排除的 industry_category 關鍵字

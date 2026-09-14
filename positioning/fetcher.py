@@ -340,13 +340,21 @@ def _derive_total_oi_from_large_trader(large_trader: dict) -> dict:
 
 # ── TAIEX close price ─────────────────────────────────────────────────────────
 
+_FM_TOKEN = (
+    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
+    ".eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0"
+    ".LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
+)
+
+
 async def fetch_taiex_close(target_date: date | None = None) -> float | None:
-    """Fetch TAIEX (加權指數) closing price."""
+    """Fetch TAIEX (加權指數) closing price. Tries 4 sources in order."""
     td = target_date or date.today()
     while td.weekday() >= 5:
         td -= timedelta(days=1)
+    dt_str = td.strftime("%Y%m%d")
 
-    async with httpx.AsyncClient(headers=HEADERS, timeout=20) as client:
+    async with httpx.AsyncClient(headers=HEADERS, timeout=20, follow_redirects=True) as client:
         # 1. TWSE openapi
         try:
             r = await client.get("https://openapi.twse.com.tw/v1/exchangeReport/MI_INDEX?type=TW")
@@ -357,27 +365,77 @@ async def fetch_taiex_close(target_date: date | None = None) -> float | None:
                         raw = item.get("ClosingIndex") or item.get("收盤指數") or item.get("收盤")
                         if raw:
                             v = float(str(raw).replace(",", ""))
-                            if v > 0:
+                            if v > 1000:
                                 return v
         except Exception as e:
             log.warning(f"[positioning] TAIEX openapi failed: {e}")
 
-        # 2. Yahoo Finance fallback
+        # 2. Yahoo Finance query1 / query2
+        for yhost in ("query1", "query2"):
+            try:
+                r = await client.get(
+                    f"https://{yhost}.finance.yahoo.com/v8/finance/chart/%5ETWII",
+                    params={"interval": "1d", "range": "5d"},
+                    headers={**HEADERS, "User-Agent": "Mozilla/5.0"},
+                )
+                if r.status_code == 200:
+                    result = (r.json().get("chart", {}).get("result") or [])
+                    if result:
+                        closes = result[0]["indicators"]["quote"][0].get("close", [])
+                        closes = [c for c in closes if c is not None]
+                        if closes:
+                            return round(float(closes[-1]), 2)
+            except Exception as e:
+                log.warning(f"[positioning] TAIEX Yahoo {yhost} failed: {e}")
+
+        # 3. TWSE afterTrading MI_INDEX (rwd endpoint, same as regime fetcher uses)
         try:
             r = await client.get(
-                "https://query1.finance.yahoo.com/v8/finance/chart/%5ETWII?interval=1d&range=5d",
-                headers={**HEADERS, "User-Agent": "Mozilla/5.0"},
+                "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX",
+                params={"date": dt_str, "type": "ALLBUT0999", "response": "json"},
+                headers={**HEADERS, "Referer": "https://www.twse.com.tw/"},
             )
             if r.status_code == 200:
-                result = (r.json().get("chart", {}).get("result") or [])
-                if result:
-                    closes = result[0]["indicators"]["quote"][0].get("close", [])
-                    closes = [c for c in closes if c is not None]
-                    if closes:
-                        return round(float(closes[-1]), 2)
+                data = r.json()
+                if data.get("stat") == "OK":
+                    for table in data.get("tables", []):
+                        for row in table.get("data", []):
+                            if len(row) < 2:
+                                continue
+                            label = str(row[0]).strip()
+                            if "加權" in label or "發行量" in label:
+                                for col in row[1:]:
+                                    val_s = str(col).replace(",", "").strip()
+                                    try:
+                                        v = float(val_s)
+                                        if v > 1000:
+                                            return v
+                                    except Exception:
+                                        pass
         except Exception as e:
-            log.warning(f"[positioning] TAIEX Yahoo failed: {e}")
+            log.warning(f"[positioning] TAIEX TWSE afterTrading failed: {e}")
 
+        # 4. FinMind TaiwanStockMarketInfo (TAIEX closing)
+        try:
+            r = await client.get(
+                "https://api.finmindtrade.com/api/v4/data",
+                params={
+                    "dataset": "TaiwanStockMarketInfo",
+                    "start_date": td.strftime("%Y-%m-%d"),
+                    "token": _FM_TOKEN,
+                },
+            )
+            if r.status_code == 200:
+                rows = r.json().get("data", [])
+                for row in reversed(rows):
+                    if "TAIEX" in str(row.get("type", "")) or "加權" in str(row.get("type", "")):
+                        v = float(row.get("price", 0) or 0)
+                        if v > 1000:
+                            return round(v, 2)
+        except Exception as e:
+            log.warning(f"[positioning] TAIEX FinMind failed: {e}")
+
+    log.error("[positioning] fetch_taiex_close: 所有來源均失敗")
     return None
 
 
