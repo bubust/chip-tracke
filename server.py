@@ -642,12 +642,19 @@ async def api_refresh_all():
         # 0. 觀察清單股票（優先更新，供後續引擎使用）
         try:
             _set_step("watchlist", "running")
-            conn = get_conn()
-            rows = conn.execute("SELECT stock_id FROM watchlist").fetchall()
-            conn.close()
-            stock_ids = [r["stock_id"] for r in rows]
+            sb_ids = sb.wl_get_ids()
+            if sb_ids:
+                stock_ids = sb_ids
+            else:
+                conn = get_conn()
+                rows = conn.execute("SELECT stock_id FROM watchlist").fetchall()
+                conn.close()
+                stock_ids = [r["stock_id"] for r in rows]
             if stock_ids:
-                _asyncio.run(update_stocks(stock_ids, days=30))
+                try:
+                    _asyncio.run(update_stocks(stock_ids, days=30))
+                except Exception as _we:
+                    lg.warning(f"[refresh_all] watchlist update_stocks: {_we}（保留舊資料）")
             _set_step("watchlist", "done")
         except Exception as e:
             lg.error(f"[refresh_all] watchlist: {e}")

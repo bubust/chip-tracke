@@ -602,6 +602,128 @@ def fetch_twse_market_breadth(lookback: int = 90):
 
     log.info(f"[fetcher] TWSE breadth 完成: 寫入 {inserted} 天")
 
+    # 若 TWSE 完全取不到（inserted=0 且 targets 不為空）→ 改用 FinMind TaiwanStockMarketInfo
+    if inserted == 0 and targets:
+        _fetch_breadth_finmind(targets)
+
+
+_FINMIND_TOKEN = (
+    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
+    ".eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0"
+    ".LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
+)
+
+
+def _fetch_breadth_finmind(targets: list):
+    """
+    FinMind TaiwanStockMarketInfo 作為市場廣度備用來源。
+    寫入 AD_LINE / BREADTH_50MA / MEDIAN_RET（代理值）。
+    """
+    if not targets:
+        return
+    start_date = min(d.strftime("%Y-%m-%d") for d in targets)
+    try:
+        with httpx.Client(timeout=20, headers={"User-Agent": _UA}) as c:
+            r = c.get(
+                "https://api.finmindtrade.com/api/v4/data",
+                params={
+                    "dataset": "TaiwanStockMarketInfo",
+                    "start_date": start_date,
+                    "token": _FINMIND_TOKEN,
+                },
+            )
+            r.raise_for_status()
+            rows = r.json().get("data", [])
+    except Exception as e:
+        log.warning(f"[fetcher] FinMind TaiwanStockMarketInfo 失敗: {e}")
+        return
+
+    if not rows:
+        log.warning("[fetcher] FinMind TaiwanStockMarketInfo 無資料")
+        return
+
+    # 按日期聚合（可能有多列，TSE+OTC）
+    from collections import defaultdict
+    day_up: dict[str, int] = defaultdict(int)
+    day_down: dict[str, int] = defaultdict(int)
+    day_flat: dict[str, int] = defaultdict(int)
+
+    for row in rows:
+        dt = str(row.get("date", "")).strip()
+        if not dt:
+            continue
+        # FinMind 漲跌家數欄位
+        for up_key in ("漲", "up_count", "漲家數", "上漲家數"):
+            if up_key in row:
+                try:
+                    day_up[dt] += int(str(row[up_key]).replace(",", "") or 0)
+                except Exception:
+                    pass
+                break
+        for dn_key in ("跌", "down_count", "跌家數", "下跌家數"):
+            if dn_key in row:
+                try:
+                    day_down[dt] += int(str(row[dn_key]).replace(",", "") or 0)
+                except Exception:
+                    pass
+                break
+        for fl_key in ("平", "flat_count", "持平家數", "未變家數"):
+            if fl_key in row:
+                try:
+                    day_flat[dt] += int(str(row[fl_key]).replace(",", "") or 0)
+                except Exception:
+                    pass
+                break
+
+    # 也嘗試直接從欄位名稱中偵測
+    if rows and not any(day_up.values()):
+        sample_keys = list(rows[0].keys())
+        log.info(f"[fetcher] FinMind TaiwanStockMarketInfo 欄位: {sample_keys[:15]}")
+        # 找含「漲」的欄位
+        up_col = next((k for k in sample_keys if "漲" in k and "跌" not in k), None)
+        dn_col = next((k for k in sample_keys if "跌" in k and "漲" not in k), None)
+        fl_col = next((k for k in sample_keys if "平" in k or "unchanged" in k.lower()), None)
+        if up_col and dn_col:
+            for row in rows:
+                dt = str(row.get("date", "")).strip()
+                if not dt:
+                    continue
+                try:
+                    day_up[dt] += int(str(row.get(up_col, 0)).replace(",", "") or 0)
+                    day_down[dt] += int(str(row.get(dn_col, 0)).replace(",", "") or 0)
+                    if fl_col:
+                        day_flat[dt] += int(str(row.get(fl_col, 0)).replace(",", "") or 0)
+                except Exception:
+                    pass
+
+    inserted = 0
+    with db() as conn:
+        for dt, up in sorted(day_up.items()):
+            down = day_down.get(dt, 0)
+            flat = day_flat.get(dt, 0)
+            if up == 0 and down == 0:
+                continue
+            total = max(up + down + flat, 1)
+            ad_val = up - down
+            breadth_pct = round(up / total * 100, 2)
+            median_proxy = round((up - down) / total * 2, 4)
+            upsert_series(conn, dt, "AD_LINE", ad_val, "FINMIND_MI")
+            has_b = conn.execute(
+                "SELECT 1 FROM market_daily WHERE date=? AND series='BREADTH_50MA'",
+                (dt,)
+            ).fetchone()
+            if not has_b:
+                upsert_series(conn, dt, "BREADTH_50MA", breadth_pct, "FINMIND_MI")
+            has_m = conn.execute(
+                "SELECT 1 FROM market_daily WHERE date=? AND series='MEDIAN_RET'",
+                (dt,)
+            ).fetchone()
+            if not has_m:
+                upsert_series(conn, dt, "MEDIAN_RET", median_proxy, "FINMIND_MI")
+            inserted += 1
+
+    log.info(f"[fetcher] FinMind breadth 寫入 {inserted} 天")
+
 
 def fetch_taifex_foreign_futures():
     """

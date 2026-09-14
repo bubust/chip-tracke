@@ -274,7 +274,7 @@ def get_scan_results() -> dict:
     return _scan_status["results"]
 
 
-async def run_market_scan(concurrency: int = 100, strategy_params: dict = None):
+async def run_market_scan(concurrency: int = 150, strategy_params: dict = None):
     """
     背景執行全市場策略掃描（上市 + 上櫃，全部 stocks.csv 股票）。
     - 掃全部股票，不做有量過濾（避免漏掉低量漲停或上櫃股票）
@@ -312,14 +312,14 @@ async def run_market_scan(concurrency: int = 100, strategy_params: dict = None):
         loop = asyncio.get_running_loop()
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=24)
 
-        timeout_cfg = httpx.Timeout(connect=3.0, read=8.0, write=3.0, pool=2.0)
+        timeout_cfg = httpx.Timeout(connect=2.0, read=6.0, write=2.0, pool=2.0)
 
         async with httpx.AsyncClient(
             headers={"User-Agent": _UA, "Accept": "application/json"},
             verify=False,
             timeout=timeout_cfg,
             follow_redirects=True,
-            limits=httpx.Limits(max_connections=120, max_keepalive_connections=80),
+            limits=httpx.Limits(max_connections=200, max_keepalive_connections=120),
         ) as client:
 
             async def _fetch_scan(sid, mkt):

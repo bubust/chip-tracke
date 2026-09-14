@@ -326,6 +326,46 @@ def compute_positioning(raw: dict, target_date: str | None = None) -> dict:
     oi_series = _series("tx_equivalent_total_oi")
     taiex_series = _series("taiex_close")
 
+    # TAIEX 歷史不足 6 筆時：從 regime.db 補充（regime 每天從 Yahoo Finance 抓）
+    if len(taiex_series) < 6:
+        try:
+            import sqlite3 as _sqlite3
+            from pathlib import Path as _Path
+            _regime_db = _Path(__file__).parent.parent / "chip_data" / "regime.db"
+            if _regime_db.exists():
+                _rc = _sqlite3.connect(str(_regime_db))
+                _rows = _rc.execute(
+                    "SELECT date, value FROM market_daily "
+                    "WHERE series='TAIEX' AND value IS NOT NULL "
+                    "ORDER BY date DESC LIMIT 300"
+                ).fetchall()
+                _rc.close()
+                _regime_taiex = [(r[0], r[1]) for r in reversed(_rows)]
+                if len(_regime_taiex) >= 6:
+                    # 把 regime TAIEX 寫入 positioning_daily，補全歷史
+                    _pc = get_conn()
+                    for _dt, _val in _regime_taiex:
+                        try:
+                            _pc.execute(
+                                "INSERT OR IGNORE INTO positioning_daily "
+                                "(observation_date, taiex_close) VALUES (?, ?)",
+                                (_dt, _val)
+                            )
+                            _pc.execute(
+                                "UPDATE positioning_daily SET taiex_close=? "
+                                "WHERE observation_date=? AND taiex_close IS NULL",
+                                (_val, _dt)
+                            )
+                        except Exception:
+                            pass
+                    _pc.commit()
+                    _pc.close()
+                    taiex_series = _series("taiex_close")
+                    if len(taiex_series) < 6:
+                        taiex_series = _regime_taiex  # 直接用 regime 資料
+        except Exception as _e:
+            log.warning(f"[calculator] regime TAIEX fallback: {_e}")
+
     def _vals(s):
         return [v for _, v in s if v is not None]
 

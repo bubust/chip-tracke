@@ -712,7 +712,7 @@ def load_stock_history(stock_id: str) -> list[dict]:
     try:
         import supabase_store as sb
         rows = sb.cd_load(stock_id)
-        if rows is not None:
+        if rows:  # 有實際資料才用 Supabase，空 list 改 fallback 到 CSV
             return rows
     except Exception:
         pass
