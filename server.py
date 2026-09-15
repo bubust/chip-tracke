@@ -11,7 +11,7 @@ import sqlite3
 from dotenv import load_dotenv
 load_dotenv()  # 本機從 .env 載入；Render 用 dashboard 環境變數
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -141,6 +141,16 @@ async def _fetch_mis_prices(stock_ids: list, mkt_map: dict) -> dict:
 async def _fetch_all_prices() -> dict:
     """為相容其他呼叫點保留，實際上回傳空 dict（watchlist 端點改用 _fetch_mis_prices）"""
     return _PRICE_ALL
+
+
+def _is_tw_trading_hours() -> bool:
+    """台股交易時間判斷：週一到五 09:00~13:35（台灣時間 UTC+8）"""
+    tw_tz = timezone(timedelta(hours=8))
+    now = datetime.now(tw_tz)
+    if now.weekday() >= 5:  # 週六日
+        return False
+    mins = now.hour * 60 + now.minute
+    return 540 <= mins <= 815  # 09:00 ~ 13:35
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -436,15 +446,26 @@ async def api_update_note(stock_id: str, request: Request):
 
 @app.get("/api/watchlist/prices")
 async def api_watchlist_prices():
-    """輕量端點：Yahoo Finance regularMarketPrice（與 K 線圖同一來源），供自動刷新用。"""
+    """
+    輕量端點，供自動刷新用。
+    盤中（09:00~13:35）→ TWSE MIS 即時報價
+    盤後 / 假日       → Yahoo Finance 收盤價
+    """
     from yahoo_price import get_stock_list, fetch_prices_for_stocks
     conn = get_conn()
     rows = conn.execute("SELECT stock_id FROM watchlist").fetchall()
     conn.close()
+    if not rows:
+        return {}
     stocks_df = get_stock_list()
     mkt_map = dict(zip(stocks_df["stock_id"], stocks_df["type"]))
-    stock_list = [(r["stock_id"], mkt_map.get(r["stock_id"], "twse")) for r in rows]
-    return await fetch_prices_for_stocks(stock_list)
+    stock_ids = [r["stock_id"] for r in rows]
+
+    if _is_tw_trading_hours():
+        return await _fetch_mis_prices(stock_ids, mkt_map)
+    else:
+        stock_list = [(sid, mkt_map.get(sid, "twse")) for sid in stock_ids]
+        return await fetch_prices_for_stocks(stock_list)
 
 @app.get("/api/watchlist/summary")
 async def api_watchlist_summary():
