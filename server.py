@@ -64,6 +64,14 @@ def _sf_price(s) -> "float | None":
     except Exception:
         return None
 
+def _sf_best_bid(s) -> "float | None":
+    """MIS b/a 欄位格式：'226_225.5_225_...' → 取第一個有效值（最佳委買/賣）"""
+    try:
+        first = str(s).split("_")[0].strip()
+        return float(first) if first and first not in ("-", "--", "") else None
+    except Exception:
+        return None
+
 async def _fetch_mis_prices(stock_ids: list, mkt_map: dict) -> dict:
     """
     TWSE MIS 即時報價（盤中每筆成交更新）。
@@ -125,26 +133,35 @@ async def _fetch_mis_prices(stock_ids: list, mkt_map: dict) -> dict:
 
     result = {}
     z_ok = 0
+    bid_ok = 0
     for item in items:
         sid = item.get("c", "")
         if not sid:
             continue
         z = _sf_price(item.get("z"))
         y = _sf_price(item.get("y"))
+        b = _sf_best_bid(item.get("b", ""))   # 最佳委買（z="-" 時的備援現價）
+
         if z is not None and y and y > 0:
-            # 有真實成交價：更新 cache
+            # 有真實成交價：最準，存入 cache
             pct = round((z - y) / y * 100, 2)
             entry = {"close": round(z, 2), "change_pct": pct}
             _STOCK_PRICE_CACHE[sid] = entry
             result[sid] = entry
             z_ok += 1
+        elif b is not None and y and y > 0:
+            # z="-" 但有委買價：用委買代替（盤中隨時更新，不需要有成交才有值）
+            pct = round((b - y) / y * 100, 2)
+            entry = {"close": round(b, 2), "change_pct": pct}
+            result[sid] = entry
+            bid_ok += 1
         elif sid in _STOCK_PRICE_CACHE:
-            # z="-"（本次無新成交）：用上次查到的真實價，不 fallback 到昨收
+            # 委買也沒有（集合競價/尚未開盤）：用上次 cache 的真實價
             result[sid] = _STOCK_PRICE_CACHE[sid]
         elif y is not None:
-            # 從未查過且 z="-"：只好顯示昨收，但不 cache（避免永遠卡住昨收）
+            # 完全沒資料：顯示昨收 + "--"
             result[sid] = {"close": round(y, 2), "change_pct": None}
-    print(f"[MIS] parsed={len(result)} 支，即時z={z_ok} 支，cache命中={len(result)-z_ok} 支")
+    print(f"[MIS] parsed={len(result)} 支，成交z={z_ok} 支，委買b={bid_ok} 支，cache={len(result)-z_ok-bid_ok} 支")
     return result
 
 
