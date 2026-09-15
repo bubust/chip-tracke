@@ -130,21 +130,22 @@ async def _fetch_mis_prices(stock_ids: list, mkt_map: dict) -> dict:
         sid = item.get("c", "")
         if not sid:
             continue
-        z = _sf_price(item.get("z"))
-        y = _sf_price(item.get("y"))
-        if z is not None and y and y > 0:
-            # 有真實成交價：存入 cache
-            pct = round((z - y) / y * 100, 2)
-            entry = {"close": round(z, 2), "change_pct": pct}
-            _STOCK_PRICE_CACHE[sid] = entry
+        z  = _sf_price(item.get("z"))
+        pz = _sf_price(item.get("pz"))  # 前次成交價，z="-" 時可能保留上一筆
+        y  = _sf_price(item.get("y"))
+        trade_price = z if z is not None else pz  # pz 做第一層備援
+        if trade_price is not None and y and y > 0:
+            # 有成交價（z 或 pz）：存入 cache
+            pct = round((trade_price - y) / y * 100, 2)
+            entry = {"close": round(trade_price, 2), "change_pct": pct}
+            if z is not None:
+                _STOCK_PRICE_CACHE[sid] = entry  # 只有 z（真實成交）才存 cache
             result[sid] = entry
             z_ok += 1
         elif sid in _STOCK_PRICE_CACHE:
-            # z="-"（本次無新成交）：用上次 cache 的真實成交價
+            # 兩個都沒有：用上次 cache 的成交價
             result[sid] = _STOCK_PRICE_CACHE[sid]
         elif y is not None:
-            # 從未抓到成交價：印出原始欄位供 debug
-            print(f"[MIS DEBUG] {sid} z='-' 原始欄位: z={item.get('z')} pz={item.get('pz')} b={str(item.get('b',''))[:20]} a={str(item.get('a',''))[:20]} o={item.get('o')} h={item.get('h')} l={item.get('l')} y={item.get('y')}")
             result[sid] = {"close": round(y, 2), "change_pct": None}
     print(f"[MIS] parsed={len(result)} 支，即時z={z_ok} 支，cache命中={len(result)-z_ok} 支")
     return result
