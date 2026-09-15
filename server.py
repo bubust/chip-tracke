@@ -67,7 +67,7 @@ def _sf_price(s) -> "float | None":
 async def _fetch_mis_prices(stock_ids: list, mkt_map: dict) -> dict:
     """
     TWSE MIS 即時報價（盤中每筆成交更新）。
-    先 GET index.jsp 建立 session，再查 getStockInfo.jsp，讓 z 欄位回傳真實成交價。
+    先 GET index.jsp 建立 session cookie，再查 getStockInfo.jsp → z 欄位才會有真實成交價。
     TSE → tse_XXXX.tw；OTC → otc_XXXX.tw
     z（成交價）有值 → 顯示真實漲跌；z="-" → 顯示昨收 y + change_pct=None（前端顯示 --）
     """
@@ -81,22 +81,32 @@ async def _fetch_mis_prices(stock_ids: list, mkt_map: dict) -> dict:
     MIS_BASE = "https://mis.twse.com.tw"
     UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
-    # 分批查詢（每批 4 支），降低單次 batch 觸發 z="-" 的機率
-    BATCH = 4
+    # 一批最多 30 支，單一 client 先建立 session 再查詢
+    BATCH = 30
     batches = [parts[i:i+BATCH] for i in range(0, len(parts), BATCH)]
     all_items = []
 
     async with httpx.AsyncClient(
         timeout=15, follow_redirects=True, verify=False,
-        headers={"User-Agent": UA},
+        headers={
+            "User-Agent": UA,
+            "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        },
     ) as client:
+        # ── Step 1: 建立 session（取得 JSESSIONID cookie）────────────────
+        try:
+            await client.get(f"{MIS_BASE}/stock/index.jsp", timeout=10)
+        except Exception as e:
+            print(f"[MIS] index.jsp session 建立失敗（繼續嘗試）: {e}")
+
+        # ── Step 2: 批次查詢 ─────────────────────────────────────────────
         for batch in batches:
             try:
                 r = await client.get(
                     f"{MIS_BASE}/stock/api/getStockInfo.jsp",
                     headers={
                         "Accept":           "application/json, text/javascript, */*; q=0.01",
-                        "Referer":          f"{MIS_BASE}/",
+                        "Referer":          f"{MIS_BASE}/stock/index.jsp",
                         "X-Requested-With": "XMLHttpRequest",
                     },
                     params={
