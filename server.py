@@ -473,7 +473,14 @@ async def api_watchlist_prices():
     stock_ids = [r["stock_id"] for r in rows]
 
     if _is_tw_trading_hours():
-        return await _fetch_mis_prices(stock_ids, mkt_map)
+        mis_result = await _fetch_mis_prices(stock_ids, mkt_map)
+        # MIS 抓不到 z（低量股 / 上櫃不穩定）→ Yahoo 補最後成交價（15分鐘延遲但是今天的價）
+        missing = [sid for sid in stock_ids if mis_result.get(sid, {}).get("change_pct") is None]
+        if missing:
+            stock_list = [(sid, mkt_map.get(sid, "twse")) for sid in missing]
+            yahoo_result = await fetch_prices_for_stocks(stock_list)
+            mis_result.update(yahoo_result)
+        return mis_result
     else:
         stock_list = [(sid, mkt_map.get(sid, "twse")) for sid in stock_ids]
         return await fetch_prices_for_stocks(stock_list)
