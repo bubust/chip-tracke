@@ -143,7 +143,8 @@ async def _fetch_mis_prices(stock_ids: list, mkt_map: dict) -> dict:
             # z="-"（本次無新成交）：用上次 cache 的真實成交價
             result[sid] = _STOCK_PRICE_CACHE[sid]
         elif y is not None:
-            # 從未抓到成交價：顯示昨收 + "--"（誠實告知尚未取得）
+            # 從未抓到成交價：印出原始欄位供 debug
+            print(f"[MIS DEBUG] {sid} z='-' 原始欄位: z={item.get('z')} pz={item.get('pz')} b={str(item.get('b',''))[:20]} a={str(item.get('a',''))[:20]} o={item.get('o')} h={item.get('h')} l={item.get('l')} y={item.get('y')}")
             result[sid] = {"close": round(y, 2), "change_pct": None}
     print(f"[MIS] parsed={len(result)} 支，即時z={z_ok} 支，cache命中={len(result)-z_ok} 支")
     return result
