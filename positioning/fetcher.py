@@ -38,7 +38,15 @@ def _float(s: str) -> float | None:
 
 
 def _last_trading_day_str() -> str:
-    d = date.today()
+    """
+    回傳最近一個有 TAIFEX 盤後資料的交易日（格式 YYYY/MM/DD）。
+    TAIFEX 盤後資料約 15:30~16:00 發布；台灣時間 16:00 前一律用前一交易日。
+    """
+    from datetime import datetime, timezone
+    tw_now = datetime.now(timezone(timedelta(hours=8)))
+    d = tw_now.date()
+    if tw_now.hour < 16:          # 16:00 前，今天資料未發布
+        d -= timedelta(days=1)
     for _ in range(7):
         if d.weekday() < 5:
             return d.strftime("%Y/%m/%d")
@@ -447,8 +455,16 @@ async def fetch_all(target_date: date | None = None) -> dict:
     Returns a consolidated dict ready for calculator.
     """
     from .db import get_conn
+    from datetime import datetime, timezone
     conn = get_conn()
-    td = target_date or date.today()
+    if target_date:
+        td = target_date
+    else:
+        # 16:00 前 TAIFEX 盤後資料未發布，預設用前一交易日
+        tw_now = datetime.now(timezone(timedelta(hours=8)))
+        td = tw_now.date()
+        if tw_now.hour < 16:
+            td -= timedelta(days=1)
     # Adjust to last weekday (TAIFEX has no data on weekends)
     while td.weekday() >= 5:
         td -= timedelta(days=1)

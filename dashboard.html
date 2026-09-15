@@ -1980,7 +1980,9 @@ async function pollScreenStatus() {
         document.getElementById('screen-placeholder').style.display = 'none';
         const r = await api('GET', '/api/screen/results');
         _screenAllResults = r.results || {};
-        lsSaveScreen(_screenAllResults);
+        // 只有真的有結果才覆蓋 localStorage（避免空結果把舊結果洗掉）
+        const _newTotal = Object.values(_screenAllResults).reduce((s,a)=>s+a.length,0);
+        if (_newTotal > 0) lsSaveScreen(_screenAllResults);
         renderStratBar();
         // 自動顯示第一個有資料的策略
         const first = Object.keys(STRATEGY_LABELS).find(k => (_screenAllResults[k] || []).length > 0);
@@ -2150,6 +2152,21 @@ async function warmupServer() {
     renderStratBar();
     const _first = Object.keys(STRATEGY_LABELS).find(k => (_screenAllResults[k] || []).length > 0);
     if (_first) viewStrategy(_first);
+  } else {
+    // localStorage 沒有資料時，嘗試從伺服器補回上次掃描結果
+    try {
+      const _sr = await api('GET', '/api/screen/results');
+      const _srResults = _sr.results || {};
+      const _srTotal = Object.values(_srResults).reduce((s,a)=>s+a.length,0);
+      if (_srTotal > 0) {
+        _screenAllResults = _srResults;
+        lsSaveScreen(_screenAllResults);
+        document.getElementById('screen-placeholder').style.display = 'none';
+        renderStratBar();
+        const _first2 = Object.keys(STRATEGY_LABELS).find(k => (_screenAllResults[k]||[]).length > 0);
+        if (_first2) viewStrategy(_first2);
+      }
+    } catch(e) { /* 伺服器無結果，維持空白等使用者掃描 */ }
   }
 
   // 從 localStorage 恢復全市場排行結果
