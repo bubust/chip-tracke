@@ -224,7 +224,7 @@
       <div style="display:flex;align-items:center;gap:8px">
         <button class="btn sm ghost" id="btn-refresh-tdcc" onclick="refreshWatchlistTdcc()" title="用 FinMind 更新觀察清單的千張大戶週資料">🏦 更新千張大戶</button>
         <span style="color:var(--muted);font-size:.8rem">現價自動刷新：</span>
-        <input id="price-refresh-sec" type="number" min="5" max="3600" value="30" style="width:60px;text-align:center;background:var(--card2);border:1px solid var(--border);border-radius:4px;color:var(--fg);padding:2px 4px;font-size:.82rem" title="刷新間隔（秒）">
+        <input id="price-refresh-sec" type="number" min="5" max="3600" value="5" style="width:60px;text-align:center;background:var(--card2);border:1px solid var(--border);border-radius:4px;color:var(--fg);padding:2px 4px;font-size:.82rem" title="刷新間隔（秒）">
         <span style="color:var(--muted);font-size:.8rem">秒</span>
         <button id="btn-price-refresh-toggle" class="btn sm ghost" onclick="togglePriceRefresh()" title="開始/暫停現價自動刷新">▶ 啟動</button>
         <span id="price-refresh-status" style="font-size:.75rem;color:var(--muted)"></span>
@@ -569,6 +569,7 @@ function switchTab(name) {
   if (name === 'positioning') { const pf = document.getElementById('positioning-iframe'); if (pf && !pf.dataset.loaded) { pf.dataset.loaded = '1'; pf.src = '/positioning/'; } }
   if (name === 'relationship') { const rf2 = document.getElementById('relationship-iframe'); if (rf2 && !rf2.dataset.loaded) { rf2.dataset.loaded = '1'; rf2.src = '/relationship/'; } }
   if (name !== 'watchlist') { _stopPriceRefreshIfActive(); }
+  if (name === 'watchlist') { _autoStartPriceRefresh(); }
 }
 
 // ───── Status pill ─────
@@ -676,6 +677,7 @@ async function loadWatchlist() {
       lsSaveWatchlist(_wlData.map(x => ({ stock_id: x.stock_id, name: x.name || '', memo: x.memo || '', note: x.note || '' })));
     }
     renderWatchlist();
+    _autoStartPriceRefresh();  // 載入完成後盤中自動啟動 5 秒刷新
   } catch (e) {
     // API 失敗（Render 冷啟動）→ 5 秒後自動重試
     toast('伺服器連線中，5 秒後重試...', true);
@@ -855,11 +857,22 @@ function _renderPriceCell(sid, close, change_pct) {
 
 async function refreshPricesOnly() {
   const status = document.getElementById('price-refresh-status');
+  // 盤後自動停止刷新
+  if (!_isTWTradingHours()) {
+    if (_priceRefreshTimer) {
+      clearInterval(_priceRefreshTimer);
+      clearInterval(_priceRefreshCountdownTimer);
+      _priceRefreshTimer = null;
+      const btn = document.getElementById('btn-price-refresh-toggle');
+      if (btn) btn.textContent = '▶ 啟動';
+    }
+    if (status) status.textContent = '收盤';
+    return;
+  }
   try {
     const data = await api('GET', '/api/watchlist/prices');
     for (const [sid, info] of Object.entries(data)) {
       _renderPriceCell(sid, info.close, info.change_pct);
-      // 同步 _wlData
       const item = _wlData.find(x => x.stock_id === sid);
       if (item) { item.close = info.close; item.change_pct = info.change_pct; }
     }
@@ -878,6 +891,13 @@ function _startCountdown(sec) {
     if (btn) btn.textContent = `⏸ ${_priceRefreshCountdown}s`;
     if (_priceRefreshCountdown <= 0) _priceRefreshCountdown = parseInt(document.getElementById('price-refresh-sec').value) || 30;
   }, 1000);
+}
+
+function _autoStartPriceRefresh() {
+  if (_priceRefreshTimer) return;       // 已在跑，不重複啟動
+  if (!_isTWTradingHours()) return;     // 盤後不自動啟動
+  document.getElementById('price-refresh-sec').value = 5;
+  togglePriceRefresh();
 }
 
 function togglePriceRefresh() {
