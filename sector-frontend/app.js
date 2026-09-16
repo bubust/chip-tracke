@@ -11,9 +11,40 @@ let _sortAsc = true;
 let _currentTab = "rank";  // rank | change | event | events-list
 let _statusTimer = null;
 
+// ── localStorage 快取 ───────────────────────────────────────────────────────
+
+const _LS_KEY = "sector_cache_v1";
+
+function _saveCache(sectors, date) {
+  try {
+    localStorage.setItem(_LS_KEY, JSON.stringify({ sectors, date, saved: Date.now() }));
+  } catch (e) {}
+}
+
+function _loadCache() {
+  try {
+    const raw = localStorage.getItem(_LS_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    // 快取超過 24 小時視為過期
+    if (Date.now() - (obj.saved || 0) > 86400000) return null;
+    return obj;
+  } catch (e) { return null; }
+}
+
 // ── 初始化 ──────────────────────────────────────────────────────────────────
 
 async function init() {
+  // 先顯示 localStorage 快取（讓頁面重整後立刻有資料）
+  const cache = _loadCache();
+  if (cache && cache.sectors && cache.sectors.length > 0) {
+    _sectors = cache.sectors;
+    renderTable(_sectors);
+    showLoading(false);
+    // 在 header 顯示快取說明
+    const dateBadge = document.getElementById("stat-date");
+    if (dateBadge && cache.date) dateBadge.textContent = cache.date + "（快取）";
+  }
   await loadStatus();
   await loadSectors(_currentTab);
   // 每 30s 自動刷狀態
@@ -84,8 +115,16 @@ async function loadSectors(tab) {
   try {
     const r = await fetch(`${BASE}/sector/api/sectors?sort_by=${sortBy}`);
     const d = await r.json();
-    _sectors = d.sectors || [];
-    renderTable(_sectors);
+    const fresh = d.sectors || [];
+    if (fresh.length > 0) {
+      _sectors = fresh;
+      renderTable(_sectors);
+      _saveCache(fresh, d.date);  // 成功時存快取
+    } else if (_sectors.length === 0) {
+      // API 空且沒有快取 → 顯示「無資料」
+      renderTable([]);
+    }
+    // 若 API 空但有快取，保留快取畫面不清除
   } catch (e) {
     showToast("載入失敗：" + e.message, "err");
   } finally {
