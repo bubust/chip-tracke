@@ -145,8 +145,10 @@ function _cv(v, dec=1, unit='') {
 
 function _pcr(v) {
   if (v == null) return '<span class="neu">—</span>';
-  const color = v > 1.1 ? '#f85149' : v < 0.85 ? '#3fb950' : '#8b949e';
-  return `<span style="color:${color};font-weight:700">${v.toFixed(1)}</span>`;
+  // TAIFEX 以百分比存 (e.g. 83.6 = 83.6%)，統一轉成比值顯示
+  const ratio = v > 2 ? v / 100 : v;
+  const color = ratio > 1.1 ? '#f85149' : ratio < 0.85 ? '#3fb950' : '#8b949e';
+  return `<span style="color:${color};font-weight:700">${ratio.toFixed(2)}</span>`;
 }
 
 function _retail(v) {

@@ -599,6 +599,44 @@ async def api_indices():
     except Exception:
         pass
 
+    # ── 3. FinMind 備援：TF/TE 最近日收盤 ──
+    import datetime as _dt_idx
+    _FM_TOKEN_IDX = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0.LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
+    missing_fut = [k for k in ("tf", "te") if result[k]["price"] is None]
+    if missing_fut:
+        start_fm = (_dt_idx.date.today() - _dt_idx.timedelta(days=10)).strftime("%Y-%m-%d")
+        prod_map = {"tf": "TF", "te": "TE"}
+        try:
+            async with httpx.AsyncClient(timeout=10, verify=False, follow_redirects=True) as fm_c:
+                for key in missing_fut:
+                    try:
+                        fm_r = await fm_c.get(
+                            "https://api.finmindtrade.com/api/v4/data",
+                            params={"dataset": "TaiwanFuturesDaily",
+                                    "data_id": prod_map[key],
+                                    "start_date": start_fm,
+                                    "token": _FM_TOKEN_IDX},
+                        )
+                        rows = fm_r.json().get("data", [])
+                        if rows:
+                            # 取最新日期的近月合約 (contract_date 最小即近月)
+                            latest_date = max(r.get("date","") for r in rows)
+                            today_rows = [r for r in rows if r.get("date") == latest_date]
+                            today_rows.sort(key=lambda r: r.get("contract_date",""))
+                            near = today_rows[0] if today_rows else rows[-1]
+                            price = float(near.get("close") or 0) or None
+                            # 昨收：同合約前一日
+                            cdate = near.get("contract_date")
+                            prev_rows = [r for r in rows if r.get("contract_date") == cdate and r.get("date","") < latest_date]
+                            prev_c = float(prev_rows[-1].get("close") or 0) if prev_rows else None
+                            if price:
+                                pct = round((price - prev_c) / prev_c * 100, 2) if prev_c and prev_c > 0 else None
+                                result[key].update({"price": price, "change_pct": pct})
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
     return result
 
 

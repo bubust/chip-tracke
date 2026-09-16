@@ -1030,6 +1030,11 @@ function openIndexChart(key, name) {
   _chartNames['__idx_' + key] = name;
   _chartOhlcvUrl = `/api/index/${key}/ohlcv`;
   _resetChartPeriod();
+  // 指數不支援個股回測，隱藏回測按鈕
+  const btBtn = document.getElementById('chart-bt-btn');
+  if (btBtn) btBtn.style.display = 'none';
+  const wlBtn = document.getElementById('chart-wl-btn');
+  if (wlBtn) wlBtn.style.display = 'none';
   openChart('__idx_' + key);
 }
 
@@ -2641,12 +2646,19 @@ function _updateChartNavBtns() {
 }
 
 function _updateChartWlBtn() {
-  const btn = document.getElementById('chart-wl-btn');
-  if (!btn) return;
-  const inWl = (_wlData || []).some(x => x.stock_id === _chartStockId);
-  btn.textContent = inWl ? '✓ 已在清單' : '+ 觀察清單';
-  btn.disabled = inWl;
-  btn.style.color = inWl ? '#6b7280' : '#22c55e';
+  const isIdx = (_chartStockId || '').startsWith('__idx_');
+  const wlBtn = document.getElementById('chart-wl-btn');
+  const btBtn = document.getElementById('chart-bt-btn');
+  if (wlBtn) {
+    wlBtn.style.display = isIdx ? 'none' : '';
+    if (!isIdx) {
+      const inWl = (_wlData || []).some(x => x.stock_id === _chartStockId);
+      wlBtn.textContent = inWl ? '✓ 已在清單' : '+ 觀察清單';
+      wlBtn.disabled = inWl;
+      wlBtn.style.color = inWl ? '#6b7280' : '#22c55e';
+    }
+  }
+  if (btBtn) btBtn.style.display = isIdx ? 'none' : '';
 }
 
 function _isTWTradingHours() {
@@ -3302,7 +3314,7 @@ async function saveAllStratParams() {
         <button class="btn sm ghost" onclick="clearDrawings()" title="清除所有畫線" style="font-size:.8rem;padding:3px 8px">🗑️</button>
       </span>
       <button id="chart-wl-btn" class="btn sm ghost" onclick="addChartToWl()" style="color:#22c55e;white-space:nowrap">+ 觀察清單</button>
-      <button class="btn sm ghost" onclick="openBacktest()" style="color:#f59e0b;white-space:nowrap">📊 回測</button>
+      <button id="chart-bt-btn" class="btn sm ghost" onclick="openBacktest()" style="color:#f59e0b;white-space:nowrap">📊 回測</button>
       <button class="btn sm ghost" onclick="closeChart()">✕ 關閉</button>
     </div>
     <div id="chart-tv-container" style="flex:1;overflow:hidden"></div>
