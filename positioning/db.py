@@ -207,6 +207,7 @@ def upsert_positioning(conn, row: dict):
 def get_history(conn, days: int = 60):
     rows = conn.execute(
         """SELECT * FROM positioning_daily
+           WHERE foreign_futures_net_oi IS NOT NULL OR pcr_oi_all IS NOT NULL
            ORDER BY observation_date DESC LIMIT ?""",
         (days,),
     ).fetchall()

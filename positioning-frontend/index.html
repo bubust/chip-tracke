@@ -59,6 +59,7 @@
   </div>
   <div style="display:flex;gap:8px">
     <button class="btn btn-sm" onclick="sendTelegram()">📨 Telegram</button>
+    <button class="btn btn-sm" onclick="doBackfill()">🗂️ 補歷史資料</button>
     <button class="btn" onclick="doRefresh()">🔄 更新資料</button>
   </div>
 </div>
@@ -380,6 +381,22 @@ async function doRefresh() {
     await loadHistory();
   } finally {
     btn.textContent = '🔄 更新資料';
+    btn.disabled = false;
+  }
+}
+
+async function doBackfill() {
+  const btn = event.target;
+  const days = prompt('補回幾天的歷史資料？（建議 30，TAIFEX 最多支援約 60 天）', '30');
+  if (!days) return;
+  btn.textContent = '補回填中...';
+  btn.disabled = true;
+  try {
+    await fetch(`/api/positioning/backfill?days=${days}`, { method: 'POST' });
+    alert(`已開始背景補回填 ${days} 天，約需 1~3 分鐘，完成後請重新整理頁面。`);
+  } catch(e) { alert('失敗: ' + e.message); }
+  finally {
+    btn.textContent = '🗂️ 補歷史資料';
     btn.disabled = false;
   }
 }

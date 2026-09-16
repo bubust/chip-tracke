@@ -80,8 +80,11 @@ def _parse_yahoo_json(data: dict) -> pd.DataFrame:
             import datetime as _dt
             last_dt   = _dt.datetime.utcfromtimestamp(int(rmt)) + _dt.timedelta(hours=8)
             last_date = last_dt.strftime("%Y%m%d")
+            # 週末不補（台股不開市），避免掃描結果出現 09/13(六) 等錯誤日期
+            if last_dt.weekday() >= 5:
+                pass  # Saturday=5, Sunday=6 → skip
             # 只有在 df 裡沒有這天資料時才補（日期統一台灣時間，比對才準）
-            if df.empty or df.iloc[-1]["date"] != last_date:
+            elif df.empty or df.iloc[-1]["date"] != last_date:
                 try:
                     vol = int(rmv)
                 except Exception:

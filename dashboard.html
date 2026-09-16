@@ -379,7 +379,7 @@
     <div class="tbl-wrap">
       <table>
         <thead>
-          <tr><th>#</th><th>代號</th><th>股名</th><th>股價</th><th>訊號</th><th>法人合計 (張)</th><th>外資 (張)</th><th>投信 (張)</th><th>融資增減 (張)</th><th>連買連賣</th><th>操作</th></tr>
+          <tr><th>#</th><th>代號</th><th>股名</th><th>股價</th><th>訊號</th><th>法人合計 (張)</th><th>外資 (張)</th><th>投信 (張)</th><th>自營商 (張)</th><th>連買連賣</th><th>操作</th></tr>
         </thead>
         <tbody id="mkt-tbody">
           <tr><td colspan="10" class="empty">點擊「掃描今日全市場」取得資料</td></tr>
@@ -1751,7 +1751,7 @@ function renderMarket() {
   data.forEach(r => { if (r.name) _chartNames[r.stock_id] = r.name; });
   tbody.innerHTML = data.map((r, i) => {
     const w  = r.whale_flow_lots  || 0;
-    const re = r.retail_flow_lots || 0;
+    const dl = r.dealer_lots      || 0;
     const fl = r.foreign_lots     || 0;
     const tl = r.trust_lots       || 0;
     const lv = r.signal_level     || 0;
@@ -1774,7 +1774,7 @@ function renderMarket() {
       <td class="${w  >= 0 ? 'pos' : 'neg'}">${fmtNum(w)}</td>
       <td class="${fl >= 0 ? 'pos' : 'neg'}">${fmtNum(fl)}</td>
       <td class="${tl >= 0 ? 'pos' : 'neg'}">${fmtNum(tl)}</td>
-      <td class="${re >= 0 ? 'pos' : 'neg'}">${fmtNum(re)}</td>
+      <td class="${dl >= 0 ? 'pos' : 'neg'}">${fmtNum(dl)}</td>
       <td>${consecStr}</td>
       <td onclick="event.stopPropagation()">
         <button class="btn sm ghost" onclick="addFromMarket('${r.stock_id}','${note}')">+ 加入清單</button>

@@ -982,6 +982,7 @@ async def api_market_scan(top: int = 50):
                                 chip_map[sid] = {
                                     "foreign_lots":    round(foreign),
                                     "trust_lots":      round(trust),
+                                    "dealer_lots":     round(dealer),
                                     "whale_flow_lots": round(whale),
                                 }
                             except Exception:
@@ -1009,6 +1010,7 @@ async def api_market_scan(top: int = 50):
             "close":           price_info.get("close"),
             "foreign_lots":    chip["foreign_lots"],
             "trust_lots":      chip["trust_lots"],
+            "dealer_lots":     chip["dealer_lots"],
             "whale_flow_lots": chip["whale_flow_lots"],
             "retail_flow_lots": 0,
             "signal_emoji":    "⚪",
@@ -1337,6 +1339,48 @@ def api_stock_ohlcv(stock_id: str, interval: str = "1d"):
                     return df.tail(500).fillna(0).to_dict(orient="records")
             except Exception:
                 pass
+    # Yahoo Finance 全部失敗 → FinMind 備援（日線 / 週線 / 月線）
+    if not is_intraday:
+        try:
+            _FM_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0.LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
+            import datetime as _dt2
+            start_date = (_dt2.date.today() - _dt2.timedelta(days=days)).strftime("%Y-%m-%d")
+            fm_r = httpx.get(
+                "https://api.finmindtrade.com/api/v4/data",
+                params={"dataset": "TaiwanStockPrice", "data_id": stock_id,
+                        "start_date": start_date, "token": _FM_TOKEN},
+                timeout=20.0, verify=False, follow_redirects=True,
+            )
+            fm_r.raise_for_status()
+            fm_rows = fm_r.json().get("data", [])
+            if fm_rows:
+                df_fm = pd.DataFrame(fm_rows)
+                df_fm = df_fm.rename(columns={"max": "high", "min": "low",
+                                               "Trading_Volume": "volume"})
+                df_fm["date"] = df_fm["date"].str.replace("-", "")
+                df_fm = df_fm[["date", "open", "high", "low", "close", "volume"]]
+                df_fm = df_fm.dropna(subset=["close"]).astype(
+                    {"open": float, "high": float, "low": float,
+                     "close": float, "volume": int})
+                if interval == "1wk":
+                    df_fm["_dt"] = pd.to_datetime(df_fm["date"], format="%Y%m%d")
+                    df_fm = df_fm.set_index("_dt").resample("W").agg(
+                        open=("open","first"), high=("high","max"),
+                        low=("low","min"),   close=("close","last"),
+                        volume=("volume","sum")).dropna(subset=["close"]).reset_index()
+                    df_fm["date"] = df_fm["_dt"].dt.strftime("%Y%m%d")
+                    df_fm = df_fm.drop(columns=["_dt"])
+                elif interval == "3d":
+                    df_fm["_dt"] = pd.to_datetime(df_fm["date"], format="%Y%m%d")
+                    df_fm = df_fm.set_index("_dt").resample("3D").agg(
+                        open=("open","first"), high=("high","max"),
+                        low=("low","min"),   close=("close","last"),
+                        volume=("volume","sum")).dropna(subset=["close"]).reset_index()
+                    df_fm["date"] = df_fm["_dt"].dt.strftime("%Y%m%d")
+                    df_fm = df_fm.drop(columns=["_dt"])
+                return df_fm.tail(500).fillna(0).to_dict(orient="records")
+        except Exception:
+            pass
     raise HTTPException(status_code=404, detail=f"{stock_id} 無法取得 {interval} 資料")
 
 @app.get("/api/stock/{stock_id}")

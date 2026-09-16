@@ -213,34 +213,34 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
     )
 
     # ── Exhaustion (Sprint 2: 極端漲跌後的竭盡訊號) ─────────────────────
-    # 使用中位數漲跌幅 + 市場廣度 + VIX 峰值識別極端狀態
+    # 正值(+100) = 買盤過熱可能見頂，負值(-100) = 賣壓耗盡可能反彈
     exhaustion = 0.0
+    def _signed_exhaustion(cur_breadth, vix_extreme):
+        if cur_breadth > 75:
+            be = (cur_breadth - 75) / 25 * 50
+            return round(min(100, be * 0.6 + vix_extreme * 0.4), 1)
+        elif cur_breadth < 25:
+            be = (25 - cur_breadth) / 25 * 50
+            return -round(min(100, be * 0.6 + vix_extreme * 0.4), 1)
+        return 0.0
+
     if median_ret and len(median_ret) >= 20 and breadth_50ma and len(breadth_50ma) >= 20:
-        med_vals = [v for _, v in median_ret[-20:]]
         b_vals_ex = [v for _, v in breadth_50ma[-20:]]
-        # 最近5日中位數漲幅均值（正=過熱傾向，負=恐慌傾向）
-        med_5d_avg = sum(med_vals[-5:]) / 5
-        # 廣度極端：>85% 或 <15% 代表可能竭盡
         cur_breadth = b_vals_ex[-1]
-        breadth_extreme = max(0, cur_breadth - 75) / 25 * 50 if cur_breadth > 75 else max(0, 25 - cur_breadth) / 25 * 50
-        # VIX 極端（已在 vix_risk 計算過，這裡取高 VIX 竭盡）
         vix_extreme = min(50, max(0, vix_risk - 50)) if vix_risk > 50 else 0
-        # 綜合竭盡：廣度極端 + VIX 極端，最高100
-        exhaustion = round(min(100, breadth_extreme * 0.6 + vix_extreme * 0.4), 1)
+        exhaustion = _signed_exhaustion(cur_breadth, vix_extreme)
     elif breadth_50ma and len(breadth_50ma) >= 5:
-        # median_ret 不足時，僅用廣度 + VIX
         b_vals_ex = [v for _, v in breadth_50ma[-10:]]
         cur_breadth = b_vals_ex[-1]
-        breadth_extreme = max(0, cur_breadth - 75) / 25 * 50 if cur_breadth > 75 else max(0, 25 - cur_breadth) / 25 * 50
         vix_extreme = min(50, max(0, vix_risk - 50)) if vix_risk > 50 else 0
-        exhaustion = round(min(100, breadth_extreme * 0.6 + vix_extreme * 0.4), 1)
+        exhaustion = _signed_exhaustion(cur_breadth, vix_extreme)
     else:
-        # 無廣度資料：純 VIX 竭盡（VIX>20 開始計分，VIX 35=50，VIX 50+=100）
+        # 無廣度資料：純 VIX 竭盡（VIX高=恐慌=負值=賣壓耗盡）
         if vix:
             vix_vals = [v for _, v in vix[-60:]]
             cur_vix = vix_vals[-1]
             vix_score = min(100, max(0, (cur_vix - 20) / 15 * 50))
-            exhaustion = round(vix_score, 1)
+            exhaustion = -round(vix_score, 1)
 
     # ── Regime Label ──────────────────────────────────────────────────────
     if direction > 50 and risk_score < 50:
