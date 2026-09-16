@@ -30,6 +30,12 @@ TAIFEX_HEADERS = {
     "Content-Type": "application/x-www-form-urlencoded",
 }
 
+_FM_TOKEN = (
+    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
+    ".eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0"
+    ".LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
+)
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _int(s: str) -> int | None:
@@ -76,48 +82,129 @@ def _fmt(d: date) -> str:
 
 # ── TAIFEX: institutional futures (TX / MTX / TMF) ───────────────────────────
 
+def _is_html(text: str) -> bool:
+    """偵測 TAIFEX 回傳的是 HTML（表示資料未發布或 IP 被擋）而非 CSV。"""
+    t = text.lstrip()
+    return t.startswith("<!") or t.startswith("<html") or t.startswith("<HTML")
+
+
+async def _taifex_post_csv(client: httpx.AsyncClient, url: str, payload: dict) -> str:
+    """
+    TAIFEX CSV 下載：先 GET 上頁建立 session cookie，再 POST 下載。
+    若收到 HTML（非 CSV）回傳空字串。
+    """
+    # 先 GET 頁面，取得 session cookie
+    page_url = url.replace("Down", "")   # e.g. futContractsDate
+    try:
+        await client.get(page_url, timeout=10)
+    except Exception:
+        pass
+    r = await client.post(url, data=payload)
+    text = r.content.decode("ms950", errors="replace")
+    if _is_html(text):
+        log.warning(f"[positioning] {url} 回傳 HTML（非 CSV），資料未發布或 IP 被擋")
+        return ""
+    return text
+
+
+async def _finmind_futures_inst(dt: date) -> dict:
+    """
+    FinMind 備援：TaiwanFuturesInstitutionalInvestors（TX/MTX）
+    Returns rows_out 格式與 fetch_taifex_inst_futures 相同。
+    """
+    rows_out: dict = {}
+    dt_str = dt.strftime("%Y-%m-%d")
+    # contract_map: FinMind name → contract key, identity keyword
+    # FinMind dataset: data_id = contract code (TX/MTX/TMF)
+    for data_id, contract_key in [("TX", "TX"), ("MTX", "MTX"), ("TMF", "TMF")]:
+        try:
+            async with httpx.AsyncClient(headers=HEADERS, timeout=20) as client:
+                r = await client.get(
+                    "https://api.finmindtrade.com/api/v4/data",
+                    params={
+                        "dataset": "TaiwanFuturesInstitutionalInvestors",
+                        "data_id": data_id,
+                        "start_date": dt_str,
+                        "end_date": dt_str,
+                        "token": _FM_TOKEN,
+                    },
+                )
+                rows = r.json().get("data", [])
+                for row in rows:
+                    name = row.get("name", "")   # 外資及陸資 / 投信 / 自營商
+                    rows_out[(name, contract_key)] = {
+                        "trade_long":  _int(str(row.get("buy_open_interest_balance", 0) or 0)),
+                        "trade_short": _int(str(row.get("sell_open_interest_balance", 0) or 0)),
+                        "trade_net":   _int(str(row.get("net_open_interest_balance", 0) or 0)),
+                        "oi_long":     _int(str(row.get("buy_open_interest_balance", 0) or 0)),
+                        "oi_short":    _int(str(row.get("sell_open_interest_balance", 0) or 0)),
+                        "oi_net":      _int(str(row.get("net_open_interest_balance", 0) or 0)),
+                    }
+        except Exception as e:
+            log.warning(f"[positioning] FinMind {data_id} inst futures 失敗: {e}")
+    return rows_out
+
+
 async def fetch_taifex_inst_futures(target_date: date | None = None) -> dict:
     """
     Download 三大法人期貨未平倉 from futContractsDateDown.
     Returns raw rows keyed by (identity, contract).
+    Falls back to FinMind if TAIFEX returns HTML.
     """
-    dt_str = _fmt(_to_trading_day(target_date)) if target_date else _last_trading_day_str()
+    td = _to_trading_day(target_date) if target_date else None
+    dt_str = _fmt(td) if td else _last_trading_day_str()
+    if not td:
+        # 反推 date 物件供 FinMind 備援
+        from datetime import datetime as _dt, timezone as _tz
+        td_dt = _dt.now(_tz(timedelta(hours=8)))
+        td = td_dt.date()
+        if td_dt.hour < 16:
+            td -= timedelta(days=1)
+        while td.weekday() >= 5:
+            td -= timedelta(days=1)
+
     url = "https://www.taifex.com.tw/cht/3/futContractsDateDown"
     payload = {"queryStartDate": dt_str, "queryEndDate": dt_str}
 
     rows_out = {}
-    async with httpx.AsyncClient(headers=TAIFEX_HEADERS, timeout=30) as client:
-        r = await client.post(url, data=payload)
-        text = r.content.decode("ms950", errors="replace")
+    async with httpx.AsyncClient(headers=TAIFEX_HEADERS, timeout=30, follow_redirects=True) as client:
+        text = await _taifex_post_csv(client, url, payload)
 
-    reader = csv.reader(io.StringIO(text))
-    for row in reader:
-        # format: date[0], contract[1], identity[2], trade_long[3], trade_long_val[4],
-        #         trade_short[5], trade_short_val[6], trade_net[7], trade_net_val[8],
-        #         oi_long[9], oi_long_val[10], oi_short[11], oi_short_val[12], oi_net[13]
-        if len(row) < 14:
-            continue
-        contract = row[1].strip()   # 商品名稱
-        identity = row[2].strip()   # 身份別
-        if not identity or not contract:
-            continue
-        key = None
-        if "臺股期貨" in contract:
-            key = (identity, "TX")
-        elif "小型臺指" in contract:
-            key = (identity, "MTX")
-        elif "永續" in contract:
-            key = (identity, "TMF")
-        else:
-            continue
-        rows_out[key] = {
-            "trade_long": _int(row[3]),
-            "trade_short": _int(row[5]),
-            "trade_net": _int(row[7]),
-            "oi_long": _int(row[9]),
-            "oi_short": _int(row[11]),
-            "oi_net": _int(row[13]),
-        }
+    if text:
+        reader = csv.reader(io.StringIO(text))
+        for row in reader:
+            # format: date[0], contract[1], identity[2], trade_long[3], trade_long_val[4],
+            #         trade_short[5], trade_short_val[6], trade_net[7], trade_net_val[8],
+            #         oi_long[9], oi_long_val[10], oi_short[11], oi_short_val[12], oi_net[13]
+            if len(row) < 14:
+                continue
+            contract = row[1].strip()   # 商品名稱
+            identity = row[2].strip()   # 身份別
+            if not identity or not contract:
+                continue
+            key = None
+            if "臺股期貨" in contract:
+                key = (identity, "TX")
+            elif "小型臺指" in contract:
+                key = (identity, "MTX")
+            elif "永續" in contract:
+                key = (identity, "TMF")
+            else:
+                continue
+            rows_out[key] = {
+                "trade_long": _int(row[3]),
+                "trade_short": _int(row[5]),
+                "trade_net": _int(row[7]),
+                "oi_long": _int(row[9]),
+                "oi_short": _int(row[11]),
+                "oi_net": _int(row[13]),
+            }
+
+    # FinMind 備援
+    if not rows_out:
+        log.info("[positioning] TAIFEX 期貨法人 → 切換 FinMind 備援")
+        rows_out = await _finmind_futures_inst(td)
+
     return rows_out, dt_str
 
 
@@ -127,18 +214,47 @@ async def fetch_taifex_large_trader(target_date: date | None = None) -> dict:
     """
     Download 期貨大額交易人未平倉 from largeTraderFutDown.
     Returns top5/top10 long/short and market total for TX-equivalent contracts.
+    Falls back to FinMind if TAIFEX returns HTML.
     """
     dt_str = _fmt(_to_trading_day(target_date)) if target_date else _last_trading_day_str()
     url = "https://www.taifex.com.tw/cht/3/largeTraderFutDown"
     payload = {"queryStartDate": dt_str, "queryEndDate": dt_str}
 
     result = {}
-    async with httpx.AsyncClient(headers=TAIFEX_HEADERS, timeout=30) as client:
-        r = await client.post(url, data=payload)
-        text = r.content.decode("ms950", errors="replace")
+    async with httpx.AsyncClient(headers=TAIFEX_HEADERS, timeout=30, follow_redirects=True) as client:
+        text = await _taifex_post_csv(client, url, payload)
 
-    reader = csv.reader(io.StringIO(text))
-    rows = list(reader)
+    if not text:
+        # FinMind 備援: TaiwanFuturesLargeTrader
+        try:
+            td_fm = dt_str.replace("/", "-")
+            async with httpx.AsyncClient(headers=HEADERS, timeout=20) as client:
+                r = await client.get(
+                    "https://api.finmindtrade.com/api/v4/data",
+                    params={
+                        "dataset": "TaiwanFuturesLargeTrader",
+                        "data_id": "TX",
+                        "start_date": td_fm,
+                        "end_date": td_fm,
+                        "token": _FM_TOKEN,
+                    },
+                )
+                for row in r.json().get("data", []):
+                    contract_id = row.get("data_id", "TX")
+                    result[contract_id] = {
+                        "top5_long":  _int(str(row.get("top_5_oi_buy", 0) or 0)),
+                        "top5_short": _int(str(row.get("top_5_oi_sell", 0) or 0)),
+                        "top10_long":  _int(str(row.get("top_10_oi_buy", 0) or 0)),
+                        "top10_short": _int(str(row.get("top_10_oi_sell", 0) or 0)),
+                        "market_long":  _int(str(row.get("market_oi_buy", 0) or 0)),
+                        "market_short": _int(str(row.get("market_oi_sell", 0) or 0)),
+                    }
+            log.info(f"[positioning] FinMind LargeTrader 備援: {len(result)} contracts")
+        except Exception as e:
+            log.warning(f"[positioning] FinMind LargeTrader 備援失敗: {e}")
+        return result, dt_str
+
+    rows = list(csv.reader(io.StringIO(text)))
 
     # TAIFEX large trader CSV:
     # row[0]=日期, row[1]=契約, row[2]=到期月份,
@@ -190,9 +306,11 @@ async def fetch_taifex_inst_options(target_date: date | None = None) -> dict:
     url = "https://www.taifex.com.tw/cht/3/optContractsDateDown"
     payload = {"queryStartDate": dt_str, "queryEndDate": dt_str}
 
-    async with httpx.AsyncClient(headers=TAIFEX_HEADERS, timeout=30) as client:
-        r = await client.post(url, data=payload)
-        text = r.content.decode("ms950", errors="replace")
+    async with httpx.AsyncClient(headers=TAIFEX_HEADERS, timeout=30, follow_redirects=True) as client:
+        text = await _taifex_post_csv(client, url, payload)
+
+    if not text:
+        return {"foreign": {"oi_long": None, "oi_short": None, "oi_net": None}}, dt_str
 
     reader = csv.reader(io.StringIO(text))
     # Same 15-col format: date[0], contract[1], identity[2], trade_long[3], trade_long_val[4],
@@ -233,28 +351,52 @@ async def fetch_taifex_pcr(target_date: date | None = None) -> dict:
     url = "https://www.taifex.com.tw/cht/3/pcRatioDown"
     payload = {"queryStartDate": dt_str, "queryEndDate": dt_str}
 
-    async with httpx.AsyncClient(headers=TAIFEX_HEADERS, timeout=30) as client:
-        r = await client.post(url, data=payload)
-        text = r.content.decode("ms950", errors="replace")
+    async with httpx.AsyncClient(headers=TAIFEX_HEADERS, timeout=30, follow_redirects=True) as client:
+        text = await _taifex_post_csv(client, url, payload)
 
-    reader = csv.reader(io.StringIO(text))
-    # pcRatioDown columns (typical TAIFEX format):
-    # date[0], put_vol[1], call_vol[2], pcr_vol%[3], put_oi[4], call_oi[5], pcr_oi%[6]
-    for row in reader:
-        if len(row) < 7:
-            continue
-        try:
-            put_oi = _int(row[4])
-            call_oi = _int(row[5])
-            pcr_oi = _float(row[6])
-            if pcr_oi is not None and call_oi:
+    if text:
+        reader = csv.reader(io.StringIO(text))
+        # pcRatioDown columns (typical TAIFEX format):
+        # date[0], put_vol[1], call_vol[2], pcr_vol%[3], put_oi[4], call_oi[5], pcr_oi%[6]
+        for row in reader:
+            if len(row) < 7:
+                continue
+            try:
+                put_oi = _int(row[4])
+                call_oi = _int(row[5])
+                pcr_oi = _float(row[6])
+                if pcr_oi is not None and call_oi:
+                    return {
+                        "pcr_oi_all": pcr_oi,
+                        "call_oi_all": call_oi,
+                        "put_oi_all": put_oi,
+                    }
+            except Exception:
+                continue
+
+    # FinMind 備援: TaiwanPutCallRatio
+    try:
+        td_fm = dt_str.replace("/", "-")
+        async with httpx.AsyncClient(headers=HEADERS, timeout=20) as client:
+            r = await client.get(
+                "https://api.finmindtrade.com/api/v4/data",
+                params={
+                    "dataset": "TaiwanPutCallRatio",
+                    "start_date": td_fm,
+                    "end_date": td_fm,
+                    "token": _FM_TOKEN,
+                },
+            )
+            rows = r.json().get("data", [])
+            if rows:
+                row = rows[-1]
                 return {
-                    "pcr_oi_all": pcr_oi,
-                    "call_oi_all": call_oi,
-                    "put_oi_all": put_oi,
+                    "pcr_oi_all": _float(str(row.get("put_call_ratio", "") or "")),
+                    "call_oi_all": _int(str(row.get("call_open_interest", 0) or 0)),
+                    "put_oi_all":  _int(str(row.get("put_open_interest", 0) or 0)),
                 }
-        except Exception:
-            continue
+    except Exception as e:
+        log.warning(f"[positioning] FinMind PCR 備援失敗: {e}")
 
     return {"pcr_oi_all": None, "call_oi_all": None, "put_oi_all": None}
 
@@ -305,37 +447,87 @@ async def fetch_twse_institutional_spot(target_date: date | None = None) -> dict
                 log.warning(f"T86 fetch from {url} failed: {e}")
                 continue
 
-    if not data:
-        return {}
-
     def _parse_bn(val):
         """Parse value string to 億元 (raw is 千元 from TWSE)."""
         try:
-            # TWSE T86 unit is 千元; convert to 億元: /100000
             return round(float(str(val).replace(",", "")) / 100000, 2)
         except Exception:
             return None
 
-    # Field name candidates (TWSE changes field names sometimes)
     def _get(d, *keys):
         for k in keys:
             if k in d:
                 return d[k]
         return None
 
-    foreign = _parse_bn(_get(data,
-        "foreignDealersExcluded", "外陸資買賣超股數(不含外資自營商)",
-        "foreignNetBuySell", "外資買賣超"))
-    trust = _parse_bn(_get(data,
-        "sitc", "投信買賣超股數", "trustNetBuySell", "投信買賣超"))
-    dealer = _parse_bn(_get(data,
-        "dealersTotal", "自營商買賣超股數(合計)", "dealerNetBuySell", "自營商買賣超"))
+    if data:
+        foreign = _parse_bn(_get(data,
+            "foreignDealersExcluded", "外陸資買賣超股數(不含外資自營商)",
+            "foreignNetBuySell", "外資買賣超"))
+        trust = _parse_bn(_get(data,
+            "sitc", "投信買賣超股數", "trustNetBuySell", "投信買賣超"))
+        dealer = _parse_bn(_get(data,
+            "dealersTotal", "自營商買賣超股數(合計)", "dealerNetBuySell", "自營商買賣超"))
+        if any(v is not None for v in [foreign, trust, dealer]):
+            return {
+                "foreign_cash_net": foreign,
+                "trust_cash_net": trust,
+                "dealer_cash_net": dealer,
+            }
 
-    return {
-        "foreign_cash_net": foreign,
-        "trust_cash_net": trust,
-        "dealer_cash_net": dealer,
-    }
+    # FinMind 備援: TaiwanStockInstitutionalInvestors (市場全體)
+    try:
+        td_fm = td.strftime("%Y-%m-%d")
+        async with httpx.AsyncClient(headers=HEADERS, timeout=20) as client:
+            r = await client.get(
+                "https://api.finmindtrade.com/api/v4/data",
+                params={
+                    "dataset": "TaiwanStockTotalReturnIndex",   # fallback: 嘗試市場整體法人
+                    "start_date": td_fm,
+                    "end_date": td_fm,
+                    "token": _FM_TOKEN,
+                },
+            )
+    except Exception:
+        pass
+
+    # If all else fails, try FinMind TaiwanStockInstitutionalInvestors (總計)
+    try:
+        td_fm = td.strftime("%Y-%m-%d")
+        async with httpx.AsyncClient(headers=HEADERS, timeout=20) as client:
+            r = await client.get(
+                "https://api.finmindtrade.com/api/v4/data",
+                params={
+                    "dataset": "TaiwanStockInstitutionalInvestors",
+                    "data_id": "市場",
+                    "start_date": td_fm,
+                    "end_date": td_fm,
+                    "token": _FM_TOKEN,
+                },
+            )
+            rows = r.json().get("data", [])
+            foreign_bn = trust_bn = dealer_bn = None
+            for row in rows:
+                name = row.get("name", "")
+                net = _float(str(row.get("buy", 0) or 0)) or 0
+                net -= _float(str(row.get("sell", 0) or 0)) or 0
+                net_bn = round(net / 100000, 2)   # 千元 → 億元
+                if "外資" in name:
+                    foreign_bn = net_bn
+                elif "投信" in name:
+                    trust_bn = net_bn
+                elif "自營" in name:
+                    dealer_bn = net_bn
+            if any(v is not None for v in [foreign_bn, trust_bn, dealer_bn]):
+                return {
+                    "foreign_cash_net": foreign_bn,
+                    "trust_cash_net": trust_bn,
+                    "dealer_cash_net": dealer_bn,
+                }
+    except Exception as e:
+        log.warning(f"[positioning] FinMind T86 備援失敗: {e}")
+
+    return {}
 
 
 # ── TAIFEX: total OI per contract ─────────────────────────────────────────────
@@ -356,13 +548,6 @@ def _derive_total_oi_from_large_trader(large_trader: dict) -> dict:
 
 
 # ── TAIEX close price ─────────────────────────────────────────────────────────
-
-_FM_TOKEN = (
-    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
-    ".eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0"
-    ".LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
-)
-
 
 async def fetch_taiex_close(target_date: date | None = None) -> float | None:
     """Fetch TAIEX (加權指數) closing price. Tries 4 sources in order."""

@@ -145,7 +145,8 @@
 
   /* 市場指數列 */
   .idx-bar { display:flex; align-items:center; flex-wrap:wrap; gap:0; padding:6px 4px; }
-  .idx-item { display:flex; flex-direction:column; gap:1px; padding:5px 18px; border-right:1px solid var(--border); min-width:100px; }
+  .idx-item { display:flex; flex-direction:column; gap:1px; padding:5px 18px; border-right:1px solid var(--border); min-width:100px; transition:background .15s; border-radius:4px; }
+  .idx-item:hover { background:rgba(79,142,247,.12); }
   .idx-item:last-of-type { border-right:none; }
   #idx-te { border-right:none; }
   .idx-sep { width:1px; background:var(--border); align-self:stretch; margin:0 6px; }
@@ -230,28 +231,28 @@
   <!-- 市場指數列（長駐置頂） -->
   <div class="card" style="padding:4px 8px;margin-bottom:10px">
     <div class="idx-bar">
-      <div class="idx-item" id="idx-taiex">
+      <div class="idx-item" id="idx-taiex" onclick="openIndexChart('taiex','加權指數')" style="cursor:pointer" title="點擊查看K線圖">
         <span class="idx-name">加權指數</span>
         <span class="idx-price muted">—</span>
         <span class="idx-chg muted">—</span>
       </div>
-      <div class="idx-item" id="idx-otc">
+      <div class="idx-item" id="idx-otc" onclick="openIndexChart('otc','上櫃指數')" style="cursor:pointer" title="點擊查看K線圖">
         <span class="idx-name">上櫃指數</span>
         <span class="idx-price muted">—</span>
         <span class="idx-chg muted">—</span>
       </div>
       <div class="idx-sep"></div>
-      <div class="idx-item" id="idx-tx">
+      <div class="idx-item" id="idx-tx" onclick="openIndexChart('tx','台指近')" style="cursor:pointer" title="點擊查看K線圖">
         <span class="idx-name">台指近</span>
         <span class="idx-price muted">—</span>
         <span class="idx-chg muted">—</span>
       </div>
-      <div class="idx-item" id="idx-tf">
+      <div class="idx-item" id="idx-tf" onclick="openIndexChart('tf','金融近')" style="cursor:pointer" title="點擊查看K線圖">
         <span class="idx-name">金融近</span>
         <span class="idx-price muted">—</span>
         <span class="idx-chg muted">—</span>
       </div>
-      <div class="idx-item" id="idx-te">
+      <div class="idx-item" id="idx-te" onclick="openIndexChart('te','電子近')" style="cursor:pointer" title="點擊查看K線圖">
         <span class="idx-name">電子近</span>
         <span class="idx-price muted">—</span>
         <span class="idx-chg muted">—</span>
@@ -1009,6 +1010,15 @@ function startIndicesRefresh() {
   refreshIndices();
   if (_idxTimer) clearInterval(_idxTimer);
   _idxTimer = setInterval(refreshIndices, 10000);   // 每 10 秒刷新
+}
+
+function openIndexChart(key, name) {
+  _frozenChartList = [];
+  _frozenChartIdx  = -1;
+  _chartSource     = '指數';
+  _chartNames['__idx_' + key] = name;
+  _chartOhlcvUrl = `/api/index/${key}/ohlcv`;
+  openChart('__idx_' + key);
 }
 
 // 切換 tab 時停止自動刷新（省流量）
@@ -2285,6 +2295,7 @@ async function warmupServer() {
 
 let _lwcCharts = [];
 let _chartStockId = null;
+let _chartOhlcvUrl = null;   // 指數圖時指向 /api/index/{key}/ohlcv
 let _chartRefreshTimer = null;
 // 三個區塊各自維護自己的清單，互不干擾
 let _wlChartList     = [];
@@ -2366,9 +2377,9 @@ function _restoreDrawings(sid) {
   });
 }
 
-function openWlChart(sid)     { _frozenChartList = [..._wlChartList];     _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = '';             openChart(sid); }
-function openMktChart(sid)    { _frozenChartList = [..._mktChartList];    _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = '全市場排行';   openChart(sid); }
-function openScreenChart(sid) { _frozenChartList = [..._screenChartList]; _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = (_viewingStrategy ? (STRATEGY_LABELS[_viewingStrategy] || _viewingStrategy).replace(/[（(][^）)]{10,}[）)]/g,'').trim() : ''); openChart(sid); }
+function openWlChart(sid)     { _frozenChartList = [..._wlChartList];     _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = '';             _chartOhlcvUrl = null; openChart(sid); }
+function openMktChart(sid)    { _frozenChartList = [..._mktChartList];    _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = '全市場排行';   _chartOhlcvUrl = null; openChart(sid); }
+function openScreenChart(sid) { _frozenChartList = [..._screenChartList]; _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = (_viewingStrategy ? (STRATEGY_LABELS[_viewingStrategy] || _viewingStrategy).replace(/[（(][^）)]{10,}[）)]/g,'').trim() : ''); _chartOhlcvUrl = null; openChart(sid); }
 
 function chartNav(dir) {
   if (!_frozenChartList.length) return;
@@ -2440,10 +2451,12 @@ function _stopChartAutoRefresh() {
 
 function _startChartAutoRefresh() {
   _stopChartAutoRefresh();
+  const _savedOhlcvUrl = _chartOhlcvUrl;   // 凍結，讓 interval 用正確 URL
   _chartRefreshTimer = setInterval(async () => {
     if (!_chartStockId) return;
     if (document.getElementById('chart-modal').style.display === 'none') { _stopChartAutoRefresh(); return; }
     if (!_isTWTradingHours()) { _stopChartAutoRefresh(); return; }
+    _chartOhlcvUrl = _savedOhlcvUrl;
     const range = _lwcCharts[0]?.timeScale()?.getVisibleLogicalRange();
     await openChart(_chartStockId, range);
   }, 60000); // 每 60 秒刷新
@@ -2533,7 +2546,7 @@ async function openChart(stockId, savedRange = null) {
 
   try {
     await _loadLWC();
-    const ohlcv = await api('GET', `/api/stock/${stockId}/ohlcv`);
+    const ohlcv = await api('GET', _chartOhlcvUrl || `/api/stock/${stockId}/ohlcv`);
     const _trading = _isTWTradingHours();
     title.innerHTML = `${stockId}${_chartStockName ? ' ' + _chartStockName : ''} K 線圖` +
       (_trading ? ' <span style="font-size:.72rem;color:#22c55e;background:rgba(34,197,94,.12);padding:1px 8px;border-radius:8px;border:1px solid rgba(34,197,94,.3)">🔴 盤中 · 每分鐘更新</span>' : '');

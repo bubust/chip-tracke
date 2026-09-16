@@ -514,37 +514,50 @@ async def api_indices():
                 "Accept": "application/json, */*",
             },
         ) as client:
-            r = await client.get(
-                "https://mis.taifex.com.tw/futures/api/getQuoteList",
-                params={"MarketType": "0"},
-            )
-            if r.status_code == 200:
-                quotes = r.json().get("RtData", {}).get("QuoteList", [])
-                # 找各商品的近月合約（最早到期 = CID 字典序最小）
-                _near: dict[str, dict] = {}
-                for q in quotes:
-                    cid = q.get("CID", "")
-                    for prod, key in [("TX", "tx"), ("TF", "tf"), ("TE", "te")]:
-                        if cid.startswith(prod) and len(cid) > len(prod):
-                            # skip 選擇權 (TXO) and 永續 (TXAM)
-                            if "O" in cid[len(prod):len(prod)+1]:
-                                continue
-                            if key not in _near or cid < _near[key].get("CID", "zzzz"):
-                                _near[key] = q
+            quotes = []
+            for market_type in ["0", "1"]:   # 0=日盤, 1=夜盤
+                try:
+                    r = await client.get(
+                        "https://mis.taifex.com.tw/futures/api/getQuoteList",
+                        params={"MarketType": market_type},
+                    )
+                    if r.status_code == 200:
+                        ql = r.json().get("RtData", {}).get("QuoteList", [])
+                        if ql:
+                            quotes = ql
                             break
-                for key, q in _near.items():
-                    try:
-                        price_s = q.get("LastPrice", "") or q.get("MatchPrice", "")
-                        ref_s   = q.get("ReferencePrice", "")
-                        price = float(price_s.replace(",", "")) if price_s and price_s != "-" else None
-                        ref   = float(ref_s.replace(",", ""))   if ref_s   and ref_s   != "-" else None
-                        if price and ref and ref > 0:
-                            pct = round((price - ref) / ref * 100, 2)
-                            result[key].update({"price": price, "change_pct": pct})
-                        elif price:
-                            result[key].update({"price": price, "change_pct": None})
-                    except Exception:
-                        pass
+                except Exception:
+                    pass
+
+            # 找各商品的近月合約（最早到期 = CID 字典序最小）
+            _near: dict[str, dict] = {}
+            for q in quotes:
+                cid = q.get("CID", "")
+                for prod, key in [("TX", "tx"), ("TF", "tf"), ("TE", "te")]:
+                    if cid.startswith(prod) and len(cid) > len(prod):
+                        rest = cid[len(prod):]
+                        # skip 選擇權 (O...) and 永續 (AM...)
+                        if rest.startswith("O") or rest.startswith("AM"):
+                            continue
+                        if key not in _near or cid < _near[key].get("CID", "zzzz"):
+                            _near[key] = q
+                        break
+            for key, q in _near.items():
+                try:
+                    # 優先取成交價, 依序 fallback 到 SettlementPrice / ReferencePrice (昨結)
+                    price_s = (q.get("LastPrice") or q.get("MatchPrice") or
+                               q.get("ClosingPrice") or q.get("SettlementPrice") or "")
+                    price_s = price_s.strip() if isinstance(price_s, str) else ""
+                    ref_s   = (q.get("ReferencePrice") or "").strip()
+                    price = float(price_s.replace(",", "")) if price_s and price_s != "-" else None
+                    ref   = float(ref_s.replace(",", ""))   if ref_s   and ref_s   != "-" else None
+                    if price and ref and ref > 0:
+                        pct = round((price - ref) / ref * 100, 2)
+                        result[key].update({"price": price, "change_pct": pct})
+                    elif price:
+                        result[key].update({"price": price, "change_pct": None})
+                except Exception:
+                    pass
     except Exception as e:
         print(f"[indices] TAIFEX MIS 失敗: {e}")
 
@@ -1054,6 +1067,48 @@ async def api_market_scan(top: int = 50):
 # ════════════════════════════════════════════════════════════════════════════
 # Stock Query API
 # ════════════════════════════════════════════════════════════════════════════
+
+_INDEX_YAHOO_MAP = {
+    "taiex": "^TWII",
+    "otc":   "^TWOTC",
+    "tx":    "TXF=F",
+    "tf":    "TFF=F",
+    "te":    "TEF=F",
+}
+_INDEX_NAMES = {
+    "taiex": "加權指數",
+    "otc":   "上櫃指數",
+    "tx":    "台指近",
+    "tf":    "金融近",
+    "te":    "電子近",
+}
+
+@app.get("/api/index/{key}/ohlcv")
+def api_index_ohlcv(key: str):
+    """回傳指數/期貨近月 OHLCV 日線資料（供指數 K 線圖使用）"""
+    from yahoo_price import _parse_yahoo_json
+    sym = _INDEX_YAHOO_MAP.get(key)
+    if not sym:
+        raise HTTPException(status_code=404, detail=f"Unknown index key: {key}")
+    UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    now = int(_time.time())
+    params = {"interval": "1d", "period1": now - 730 * 86400, "period2": now}
+    for host in ["query1", "query2"]:
+        try:
+            r = httpx.get(
+                f"https://{host}.finance.yahoo.com/v8/finance/chart/{sym}",
+                params=params,
+                headers={"User-Agent": UA, "Accept": "application/json"},
+                timeout=10.0, verify=False, follow_redirects=True,
+            )
+            r.raise_for_status()
+            df = _parse_yahoo_json(r.json())
+            if not df.empty and len(df) >= 5:
+                return df.tail(500).fillna(0).to_dict(orient="records")
+        except Exception:
+            pass
+    raise HTTPException(status_code=404, detail=f"{key} ({sym}) 無法取得 K 線資料")
+
 
 @app.get("/api/stock/{stock_id}/ohlcv")
 def api_stock_ohlcv(stock_id: str):
