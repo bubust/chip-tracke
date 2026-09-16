@@ -277,12 +277,13 @@ def get_scan_results() -> dict:
     return _scan_status["results"]
 
 
-async def run_market_scan(concurrency: int = 150, strategy_params: dict = None):
+async def run_market_scan(concurrency: int = 50, strategy_params: dict = None):
     """
     背景執行全市場策略掃描（上市 + 上櫃，全部 stocks.csv 股票）。
     - 掃全部股票，不做有量過濾（避免漏掉低量漲停或上櫃股票）
-    - Semaphore(100) 控制並發；range=1y（S1 大 MACD 需 235 天）
+    - Semaphore(50) 控制並發（Render.com 同 IP 150 並發會被 Yahoo 限流，50 是實測穩定值）
     - scan_one_stock 跑在 ThreadPoolExecutor(24)，不阻塞 event loop
+    - 第一輪失敗的股票會自動重試一次（減少因網路抖動造成的誤判失敗）
     - strategy_params: {strategy_key: {param_key: value}} 各策略自訂參數
     """
     import concurrent.futures
@@ -315,15 +316,16 @@ async def run_market_scan(concurrency: int = 150, strategy_params: dict = None):
         loop = asyncio.get_running_loop()
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=24)
 
-        timeout_cfg = httpx.Timeout(connect=2.0, read=6.0, write=2.0, pool=2.0)
+        timeout_cfg = httpx.Timeout(connect=3.0, read=10.0, write=3.0, pool=3.0)
 
         async with httpx.AsyncClient(
             headers={"User-Agent": _UA, "Accept": "application/json"},
             verify=False,
             timeout=timeout_cfg,
             follow_redirects=True,
-            limits=httpx.Limits(max_connections=200, max_keepalive_connections=120),
+            limits=httpx.Limits(max_connections=80, max_keepalive_connections=60),
         ) as client:
+            import functools
 
             async def _fetch_scan(sid, mkt):
                 # range=2y：S1 大MACD(108,216,18) 的 216-period EWM 需約 430 天才收斂
@@ -337,7 +339,6 @@ async def run_market_scan(concurrency: int = 150, strategy_params: dict = None):
                 _scan_status["yahoo_ok"] += 1
                 all_prices[sid] = df
                 # CPU-bound pandas 運算放到 thread pool，釋放 event loop
-                import functools
                 return await loop.run_in_executor(
                     executor,
                     functools.partial(scan_one_stock, df, sid, names.get(sid, ""),
@@ -346,6 +347,24 @@ async def run_market_scan(concurrency: int = 150, strategy_params: dict = None):
 
             coros   = [_fetch_scan(sid, mkt) for sid, mkt in tasks]
             results = await asyncio.gather(*coros, return_exceptions=True)
+
+            # ── 重試失敗的股票（一次機會，等待 2 秒讓 Yahoo 冷卻）────────────────
+            retry_list = [(sid, mkt) for sid, mkt in tasks
+                          if sid in set(_scan_status["failed_stocks"])]
+            if retry_list:
+                print(f"[SCAN] 重試 {len(retry_list)} 支失敗股票...")
+                await asyncio.sleep(2)
+                retry_coros  = [_fetch_scan(sid, mkt) for sid, mkt in retry_list]
+                retry_results = await asyncio.gather(*retry_coros, return_exceptions=True)
+                # 從 failed_stocks 移除這次成功的
+                now_failed = set(_scan_status["failed_stocks"])
+                retry_sids  = [sid for sid, _ in retry_list]
+                for sid, out in zip(retry_sids, retry_results):
+                    if isinstance(out, dict) and out:
+                        now_failed.discard(sid)
+                _scan_status["failed_stocks"] = list(now_failed)
+                _scan_status["yahoo_fail"]    = len(now_failed)
+                results = list(results) + list(retry_results)
 
         executor.shutdown(wait=False)
 
