@@ -13,11 +13,41 @@ import os
 
 log = logging.getLogger(__name__)
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-FINMIND_TOKEN = os.getenv("FINMIND_TOKEN", "")
+FINMIND_TOKEN = os.getenv("FINMIND_TOKEN", "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0.LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA")
 
 
 async def fetch_taiex_ohlcv(days: int = 400) -> list[dict]:
-    """Fetch TAIEX OHLCV from Yahoo Finance ^TWII."""
+    """Fetch TAIEX OHLCV from FinMind Y9999 (primary) or Yahoo Finance ^TWII (fallback)."""
+    # ── FinMind TaiwanStockPrice Y9999 (TAIEX) ──
+    if FINMIND_TOKEN:
+        try:
+            fm_url = "https://api.finmindtrade.com/api/v4/data"
+            fm_start = (date.today() - timedelta(days=days + 30)).strftime("%Y-%m-%d")
+            async with httpx.AsyncClient(headers={"User-Agent": _UA}, timeout=30) as fm_client:
+                fm_r = await fm_client.get(fm_url, params={
+                    "dataset": "TaiwanStockPrice", "data_id": "Y9999",
+                    "start_date": fm_start, "token": FINMIND_TOKEN,
+                })
+                fm_data = fm_r.json().get("data", [])
+                if fm_data:
+                    rows = []
+                    for item in fm_data:
+                        dt = item.get("date", "")[:10]
+                        rows.append({
+                            "observation_date": dt,
+                            "taiex_open": item.get("open"),
+                            "taiex_high": item.get("max"),
+                            "taiex_low": item.get("min"),
+                            "taiex_close": item.get("close"),
+                            "taiex_volume": item.get("Trading_Volume"),
+                        })
+                    rows = [r for r in rows if r["taiex_close"]]
+                    if rows:
+                        log.info(f"[relationship] TAIEX from FinMind Y9999: {len(rows)} rows")
+                        return rows
+        except Exception as e:
+            log.warning(f"[relationship] FinMind Y9999 failed: {e}")
+
     range_str = f"{min(days // 250 + 1, 5)}y"
     urls = [
         f"https://query1.finance.yahoo.com/v8/finance/chart/%5ETWII?interval=1d&range={range_str}",
