@@ -1170,11 +1170,14 @@ def api_index_ohlcv(key: str):
 
 
 @app.get("/api/backtest/fbd")
-def api_backtest_fbd(stock_id: str, holding_days: int = 10):
+def api_backtest_fbd(stock_id: str, holding_days: int = 10,
+                     stop_loss: float = 0.0, take_profit: float = 0.0):
     """
     假跌破/假突破回測：
     - 進場：訊號當日收盤（尾盤進場）
-    - 出場：持有 holding_days 個交易日後收盤
+    - 出場：持有 holding_days 個交易日後收盤，或觸及停損/停利
+    - stop_loss: 停損百分比（如 5 = 5%），0 = 不啟用
+    - take_profit: 停利百分比（如 10 = 10%），0 = 不啟用
     - 訊號定義：
         假跌破（FBD）: 當日 close < MA10，隔日 close > MA10
         假突破（FBR）: 當日 close > MA10，隔日 close < MA10
@@ -1219,6 +1222,9 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 10):
     # 計算 MA10
     ma10 = pd.Series(closes).rolling(10, min_periods=10).mean().values
 
+    sl_frac = stop_loss / 100.0   # e.g. 5% → 0.05
+    tp_frac = take_profit / 100.0
+
     def run_backtest(signal_type: str):
         """signal_type: 'fbd' or 'fbr'"""
         trades = []
@@ -1235,8 +1241,23 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 10):
             # 進場：訊號日（i）收盤
             entry_date  = dates[i]
             entry_price = closes[i]
-            # 出場：持有 holding_days 個交易日
+            sl_price = round(entry_price * (1 - sl_frac), 2) if sl_frac > 0 else None
+            tp_price = round(entry_price * (1 + tp_frac), 2) if tp_frac > 0 else None
+
+            # 逐日模擬出場
+            exit_reason = "時間"
             exit_idx = min(i + holding_days, n - 1)
+            for j in range(i + 1, min(i + holding_days + 1, n)):
+                c = closes[j]
+                if sl_price is not None and c <= sl_price:
+                    exit_idx = j
+                    exit_reason = "停損"
+                    break
+                if tp_price is not None and c >= tp_price:
+                    exit_idx = j
+                    exit_reason = "停利"
+                    break
+
             exit_date  = dates[exit_idx]
             exit_price = closes[exit_idx]
             ret = (exit_price - entry_price) / entry_price
@@ -1246,6 +1267,9 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 10):
                 "exit_date":   exit_date,
                 "exit_price":  float(exit_price),
                 "return":      round(float(ret), 4),
+                "exit_reason": exit_reason,
+                "sl_price":    sl_price,
+                "tp_price":    tp_price,
             })
         if not trades:
             return {"count": 0}
@@ -1264,6 +1288,8 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 10):
     return {
         "stock_id":    stock_id,
         "holding_days": holding_days,
+        "stop_loss":   stop_loss,
+        "take_profit": take_profit,
         "total_bars":  n,
         "fbd": run_backtest("fbd"),
         "fbr": run_backtest("fbr"),
