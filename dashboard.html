@@ -2825,6 +2825,8 @@ function _calcMA(arr, period) {
 function _toDate(d) {  // "20260902" → "2026-09-02"
   return d.slice(0,4) + '-' + d.slice(4,6) + '-' + d.slice(6,8);
 }
+// 統一時間欄位：分時用 ts（已含 +8h 偏移），日線用 date string
+function _rt(r) { return r.ts != null ? r.ts : _toDate(r.date); }
 
 function _fmtN(v, d=2) {
   return (v === null || v === undefined || isNaN(v)) ? '—' : (+v).toFixed(d);
@@ -2976,7 +2978,7 @@ async function openChart(stockId, savedRange = null) {
         color, lineWidth: 1,
         priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
       });
-      s.setData(ohlcv.map((r, i) => isNaN(ma[i]) ? null : { time: _toDate(r.date), value: ma[i] }).filter(Boolean));
+      s.setData(ohlcv.map((r, i) => isNaN(ma[i]) ? null : { time: _rt(r), value: ma[i] }).filter(Boolean));
     }
 
     // ── 假跌破 / 假突破標記 ──
@@ -2986,14 +2988,14 @@ async function openChart(stockId, savedRange = null) {
       // i 日跌破 MA10，i+1 日收復 → 假跌破
       if (closes[i] < ma10[i] && closes[i + 1] > ma10[i + 1]) {
         markers.push({
-          time: _toDate(ohlcv[i + 1].date),
+          time: _rt(ohlcv[i + 1]),
           position: 'belowBar', color: '#fbbf24', shape: 'arrowUp', text: '假跌破', size: 1,
         });
       }
       // i 日突破 MA10，i+1 日跌回 → 假突破
       if (closes[i] > ma10[i] && closes[i + 1] < ma10[i + 1]) {
         markers.push({
-          time: _toDate(ohlcv[i + 1].date),
+          time: _rt(ohlcv[i + 1]),
           position: 'aboveBar', color: '#ef5350', shape: 'arrowDown', text: '假突破', size: 1,
         });
       }
@@ -3029,7 +3031,7 @@ async function openChart(stockId, savedRange = null) {
       const pct = ((curr.price - prev.price) / prev.price * 100).toFixed(1);
       const sign = pct >= 0 ? '+' : '';
       markers.push({
-        time: _toDate(ohlcv[curr.idx].date),
+        time: _rt(ohlcv[curr.idx]),
         position: curr.type === 'H' ? 'aboveBar' : 'belowBar',
         color: curr.type === 'H' ? '#ef5350' : '#26a69a',
         shape: 'circle', size: 1,
@@ -3082,15 +3084,15 @@ async function openChart(stockId, savedRange = null) {
 
     const hSeries = mChart.addHistogramSeries({ priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false });
     hSeries.setData(ohlcv.map((r, i) => ({
-      time: _toDate(r.date), value: hist1[i],
+      time: _rt(r), value: hist1[i],
       color: hist1[i] >= 0 ? 'rgba(239,83,80,0.8)' : 'rgba(38,166,154,0.8)'
     })));
     const difSeries = mChart.addLineSeries({ color: '#2196f3', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-    difSeries.setData(ohlcv.map((r, i) => ({ time: _toDate(r.date), value: dif1[i] })));
+    difSeries.setData(ohlcv.map((r, i) => ({ time: _rt(r), value: dif1[i] })));
     // 零軸（實線）
     difSeries.createPriceLine({ price: 0, color: 'rgba(255,255,255,0.45)', lineWidth: 1, lineStyle: 0, axisLabelVisible: false });
     const deaSeries = mChart.addLineSeries({ color: '#ff9800', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-    deaSeries.setData(ohlcv.map((r, i) => ({ time: _toDate(r.date), value: dea1[i] })));
+    deaSeries.setData(ohlcv.map((r, i) => ({ time: _rt(r), value: dea1[i] })));
 
     const mLeg = _mkLegend(mEl);
     function updateMLeg(idx) {
@@ -3111,15 +3113,15 @@ async function openChart(stockId, savedRange = null) {
 
     const h2Series = m2Chart.addHistogramSeries({ priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false });
     h2Series.setData(ohlcv.map((r, i) => ({
-      time: _toDate(r.date), value: hist2[i],
+      time: _rt(r), value: hist2[i],
       color: hist2[i] >= 0 ? 'rgba(239,83,80,0.8)' : 'rgba(38,166,154,0.8)'
     })));
     const dif2Series = m2Chart.addLineSeries({ color: '#2196f3', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-    dif2Series.setData(ohlcv.map((r, i) => ({ time: _toDate(r.date), value: dif2[i] })));
+    dif2Series.setData(ohlcv.map((r, i) => ({ time: _rt(r), value: dif2[i] })));
     // 零軸（實線）
     dif2Series.createPriceLine({ price: 0, color: 'rgba(255,255,255,0.45)', lineWidth: 1, lineStyle: 0, axisLabelVisible: false });
     const dea2Series = m2Chart.addLineSeries({ color: '#ff9800', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-    dea2Series.setData(ohlcv.map((r, i) => ({ time: _toDate(r.date), value: dea2[i] })));
+    dea2Series.setData(ohlcv.map((r, i) => ({ time: _rt(r), value: dea2[i] })));
 
     const m2Leg = _mkLegend(m2El);
     function updateM2Leg(idx) {

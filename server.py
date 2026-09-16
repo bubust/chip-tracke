@@ -1496,14 +1496,16 @@ def api_stock_ohlcv(stock_id: str, interval: str = "1d"):
 
                 if is_intraday:
                     # 回傳含 Unix timestamp 的 records
+                    # ts 加 8 小時偏移 (28800)，讓 LightweightCharts 顯示台灣時間
+                    _TW_OFFSET = 8 * 3600
                     records = []
                     for i, ts in enumerate(timestamps):
                         c = closes[i] if i < len(closes) else None
                         if c is None:
                             continue
                         records.append({
-                            "ts":     int(ts),
-                            "date":   datetime.utcfromtimestamp(ts).strftime("%Y%m%d"),
+                            "ts":     int(ts) + _TW_OFFSET,
+                            "date":   datetime.utcfromtimestamp(ts + _TW_OFFSET).strftime("%Y%m%d"),
                             "open":   opens[i] if i < len(opens) else c,
                             "high":   highs[i] if i < len(highs) else c,
                             "low":    lows[i]  if i < len(lows)  else c,
