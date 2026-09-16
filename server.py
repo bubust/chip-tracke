@@ -455,6 +455,102 @@ async def api_update_note(stock_id: str, request: Request):
     conn.close()
     return {"ok": True}
 
+@app.get("/api/indices")
+async def api_indices():
+    """市場指數列：加權指數、上櫃指數、台指近、金融近、電子近"""
+    result = {
+        "taiex": {"name": "加權指數", "price": None, "change_pct": None},
+        "otc":   {"name": "上櫃指數",  "price": None, "change_pct": None},
+        "tx":    {"name": "台指近",    "price": None, "change_pct": None},
+        "tf":    {"name": "金融近",    "price": None, "change_pct": None},
+        "te":    {"name": "電子近",    "price": None, "change_pct": None},
+    }
+    UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+    # ── 1. TWSE MIS 加權 + 上櫃 ──
+    MIS_BASE = "https://mis.twse.com.tw"
+    try:
+        async with httpx.AsyncClient(
+            timeout=12, follow_redirects=True, verify=False,
+            headers={"User-Agent": UA, "Accept-Language": "zh-TW,zh;q=0.9"},
+        ) as client:
+            try:
+                await client.get(f"{MIS_BASE}/stock/index.jsp", timeout=8)
+            except Exception:
+                pass
+            r = await client.get(
+                f"{MIS_BASE}/stock/api/getStockInfo.jsp",
+                headers={
+                    "Accept": "application/json, text/javascript, */*; q=0.01",
+                    "Referer": f"{MIS_BASE}/stock/index.jsp",
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+                params={
+                    "ex_ch": "tse_t00.tw|otc_o00.tw",
+                    "json": "1", "delay": "0",
+                    "_": str(int(_time.time() * 1000)),
+                },
+            )
+            for item in r.json().get("msgArray", []):
+                code = item.get("c", "")
+                z = _sf_price(item.get("z"))
+                y = _sf_price(item.get("y"))
+                if y and y > 0:
+                    price = z if z else y
+                    pct = round((z - y) / y * 100, 2) if z else None
+                    key = "taiex" if code == "t00" else ("otc" if code == "o00" else None)
+                    if key:
+                        result[key].update({"price": round(price, 2), "change_pct": pct})
+    except Exception as e:
+        print(f"[indices] TWSE MIS 失敗: {e}")
+
+    # ── 2. TAIFEX MIS 台指近 / 金融近 / 電子近 ──
+    try:
+        async with httpx.AsyncClient(
+            timeout=10, follow_redirects=True,
+            headers={
+                "User-Agent": UA,
+                "Referer": "https://mis.taifex.com.tw/",
+                "Accept": "application/json, */*",
+            },
+        ) as client:
+            r = await client.get(
+                "https://mis.taifex.com.tw/futures/api/getQuoteList",
+                params={"MarketType": "0"},
+            )
+            if r.status_code == 200:
+                quotes = r.json().get("RtData", {}).get("QuoteList", [])
+                # 找各商品的近月合約（最早到期 = CID 字典序最小）
+                _near: dict[str, dict] = {}
+                for q in quotes:
+                    cid = q.get("CID", "")
+                    for prod, key in [("TX", "tx"), ("TF", "tf"), ("TE", "te")]:
+                        if cid.startswith(prod) and len(cid) > len(prod):
+                            # skip 選擇權 (TXO) and 永續 (TXAM)
+                            if "O" in cid[len(prod):len(prod)+1]:
+                                continue
+                            if key not in _near or cid < _near[key].get("CID", "zzzz"):
+                                _near[key] = q
+                            break
+                for key, q in _near.items():
+                    try:
+                        price_s = q.get("LastPrice", "") or q.get("MatchPrice", "")
+                        ref_s   = q.get("ReferencePrice", "")
+                        price = float(price_s.replace(",", "")) if price_s and price_s != "-" else None
+                        ref   = float(ref_s.replace(",", ""))   if ref_s   and ref_s   != "-" else None
+                        if price and ref and ref > 0:
+                            pct = round((price - ref) / ref * 100, 2)
+                            result[key].update({"price": price, "change_pct": pct})
+                        elif price:
+                            result[key].update({"price": price, "change_pct": None})
+                    except Exception:
+                        pass
+    except Exception as e:
+        print(f"[indices] TAIFEX MIS 失敗: {e}")
+
+    return result
+
+
 @app.get("/api/watchlist/prices")
 async def api_watchlist_prices():
     """

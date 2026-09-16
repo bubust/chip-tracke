@@ -142,6 +142,16 @@
   .scan-hdr .info { flex: 1; }
   .scan-hdr .info strong { font-size: .97rem; }
   .scan-hdr .info small { display: block; color: var(--muted); font-size: .79rem; margin-top: 2px; }
+
+  /* 市場指數列 */
+  .idx-bar { display:flex; align-items:center; flex-wrap:wrap; gap:0; padding:6px 4px; }
+  .idx-item { display:flex; flex-direction:column; gap:1px; padding:5px 18px; border-right:1px solid var(--border); min-width:100px; }
+  .idx-item:last-of-type { border-right:none; }
+  #idx-te { border-right:none; }
+  .idx-sep { width:1px; background:var(--border); align-self:stretch; margin:0 6px; }
+  .idx-name { font-size:.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; white-space:nowrap; }
+  .idx-price { font-size:1.05rem; font-weight:700; font-variant-numeric:tabular-nums; line-height:1.3; }
+  .idx-chg { font-size:.76rem; font-weight:500; }
 </style>
 </head>
 <body>
@@ -214,6 +224,39 @@
         </select>
       </div>
       <button class="btn green" onclick="refreshAll()" id="btn-refresh-all" style="margin-top:18px">🔄 全部更新</button>
+    </div>
+  </div>
+
+  <!-- 市場指數列（長駐置頂） -->
+  <div class="card" style="padding:4px 8px;margin-bottom:10px">
+    <div class="idx-bar">
+      <div class="idx-item" id="idx-taiex">
+        <span class="idx-name">加權指數</span>
+        <span class="idx-price muted">—</span>
+        <span class="idx-chg muted">—</span>
+      </div>
+      <div class="idx-item" id="idx-otc">
+        <span class="idx-name">上櫃指數</span>
+        <span class="idx-price muted">—</span>
+        <span class="idx-chg muted">—</span>
+      </div>
+      <div class="idx-sep"></div>
+      <div class="idx-item" id="idx-tx">
+        <span class="idx-name">台指近</span>
+        <span class="idx-price muted">—</span>
+        <span class="idx-chg muted">—</span>
+      </div>
+      <div class="idx-item" id="idx-tf">
+        <span class="idx-name">金融近</span>
+        <span class="idx-price muted">—</span>
+        <span class="idx-chg muted">—</span>
+      </div>
+      <div class="idx-item" id="idx-te">
+        <span class="idx-name">電子近</span>
+        <span class="idx-price muted">—</span>
+        <span class="idx-chg muted">—</span>
+      </div>
+      <span style="margin-left:auto;padding:0 10px;font-size:.7rem;color:var(--muted);align-self:center" id="idx-ts"></span>
     </div>
   </div>
 
@@ -922,6 +965,50 @@ function togglePriceRefresh() {
   }, sec * 1000);
   _startCountdown(sec);
   if (btn) btn.textContent = `⏸ ${sec}s`;
+}
+
+// ── 市場指數列刷新 ──────────────────────────────────────────────────────────
+let _idxTimer = null;
+
+function _updateIdxEl(key, d) {
+  const el = document.getElementById(`idx-${key}`);
+  if (!el) return;
+  const priceEl = el.querySelector('.idx-price');
+  const chgEl   = el.querySelector('.idx-chg');
+  if (!d || d.price == null) {
+    priceEl.textContent = '—'; priceEl.className = 'idx-price muted';
+    chgEl.textContent   = '—'; chgEl.className   = 'idx-chg muted';
+    return;
+  }
+  priceEl.textContent = d.price.toLocaleString('zh-TW', {minimumFractionDigits:2, maximumFractionDigits:2});
+  if (d.change_pct != null) {
+    const up = d.change_pct >= 0;
+    priceEl.className = `idx-price ${up ? 'pos' : 'neg'}`;
+    chgEl.textContent = `${up ? '▲' : '▼'} ${Math.abs(d.change_pct).toFixed(2)}%`;
+    chgEl.className   = `idx-chg ${up ? 'pos' : 'neg'}`;
+  } else {
+    priceEl.className = 'idx-price';
+    chgEl.textContent = '—'; chgEl.className = 'idx-chg muted';
+  }
+}
+
+async function refreshIndices() {
+  try {
+    const data = await api('GET', '/api/indices');
+    for (const key of ['taiex', 'otc', 'tx', 'tf', 'te']) {
+      _updateIdxEl(key, data[key]);
+    }
+    const tsEl = document.getElementById('idx-ts');
+    if (tsEl) tsEl.textContent = new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  } catch(e) {
+    console.warn('[indices]', e);
+  }
+}
+
+function startIndicesRefresh() {
+  refreshIndices();
+  if (_idxTimer) clearInterval(_idxTimer);
+  _idxTimer = setInterval(refreshIndices, 10000);   // 每 10 秒刷新
 }
 
 // 切換 tab 時停止自動刷新（省流量）
@@ -2179,6 +2266,7 @@ async function warmupServer() {
   await loadWatchlist();
   await loadPill();
   renderQueryHistory();
+  startIndicesRefresh();   // 市場指數列（常駐刷新）
   // 頁面重整後自動恢復掃描進度（如果伺服器掃描仍在跑）
   try {
     const s = await api('GET', '/api/screen/status');

@@ -17,8 +17,17 @@ from .db import get_conn, DB_PATH
 log = logging.getLogger(__name__)
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "Accept": "*/*",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+}
+
+# TAIFEX POST 下載端點需要額外的 Referer / Content-Type
+TAIFEX_HEADERS = {
+    **HEADERS,
+    "Referer": "https://www.taifex.com.tw/cht/3/futContractsDate",
+    "Origin": "https://www.taifex.com.tw",
+    "Content-Type": "application/x-www-form-urlencoded",
 }
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -77,7 +86,7 @@ async def fetch_taifex_inst_futures(target_date: date | None = None) -> dict:
     payload = {"queryStartDate": dt_str, "queryEndDate": dt_str}
 
     rows_out = {}
-    async with httpx.AsyncClient(headers=HEADERS, timeout=30) as client:
+    async with httpx.AsyncClient(headers=TAIFEX_HEADERS, timeout=30) as client:
         r = await client.post(url, data=payload)
         text = r.content.decode("ms950", errors="replace")
 
@@ -124,7 +133,7 @@ async def fetch_taifex_large_trader(target_date: date | None = None) -> dict:
     payload = {"queryStartDate": dt_str, "queryEndDate": dt_str}
 
     result = {}
-    async with httpx.AsyncClient(headers=HEADERS, timeout=30) as client:
+    async with httpx.AsyncClient(headers=TAIFEX_HEADERS, timeout=30) as client:
         r = await client.post(url, data=payload)
         text = r.content.decode("ms950", errors="replace")
 
@@ -181,7 +190,7 @@ async def fetch_taifex_inst_options(target_date: date | None = None) -> dict:
     url = "https://www.taifex.com.tw/cht/3/optContractsDateDown"
     payload = {"queryStartDate": dt_str, "queryEndDate": dt_str}
 
-    async with httpx.AsyncClient(headers=HEADERS, timeout=30) as client:
+    async with httpx.AsyncClient(headers=TAIFEX_HEADERS, timeout=30) as client:
         r = await client.post(url, data=payload)
         text = r.content.decode("ms950", errors="replace")
 
@@ -224,7 +233,7 @@ async def fetch_taifex_pcr(target_date: date | None = None) -> dict:
     url = "https://www.taifex.com.tw/cht/3/pcRatioDown"
     payload = {"queryStartDate": dt_str, "queryEndDate": dt_str}
 
-    async with httpx.AsyncClient(headers=HEADERS, timeout=30) as client:
+    async with httpx.AsyncClient(headers=TAIFEX_HEADERS, timeout=30) as client:
         r = await client.post(url, data=payload)
         text = r.content.decode("ms950", errors="replace")
 
