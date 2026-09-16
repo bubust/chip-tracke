@@ -280,13 +280,27 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
             concentration = 0.0
 
     # ── Divergence (背離：廣度與指數方向不一致) ──────────────────────────
+    # 主要來源：BREADTH_50MA vs TAIEX；資料不足時改用 OTC vs TAIEX 動能背離
     divergence = 0.0
-    if breadth_50ma and len(breadth_50ma) >= 10 and taiex and len(taiex) >= 10:
-        b_trend = (breadth_50ma[-1][1] - breadth_50ma[-10][1]) if len(breadth_50ma) >= 10 else 0
-        t_trend = (taiex[-1][1] - taiex[-10][1]) / max(taiex[-10][1], 1) * 100 if len(taiex) >= 10 else 0
-        # 背離：指數漲但廣度跌（或反之）
-        if (t_trend > 0 and b_trend < -5) or (t_trend < 0 and b_trend > 5):
+    _look = min(10, len(breadth_50ma)) if breadth_50ma else 0
+    if breadth_50ma and _look >= 3 and taiex and len(taiex) >= _look:
+        b_trend = breadth_50ma[-1][1] - breadth_50ma[-_look][1]
+        t_trend = (taiex[-1][1] - taiex[-_look][1]) / max(taiex[-_look][1], 1) * 100
+        # 背離：指數漲但廣度跌（或反之），閾值依資料多寡動態調整
+        threshold = max(2.0, 5.0 * _look / 10)
+        if (t_trend > 0 and b_trend < -threshold) or (t_trend < 0 and b_trend > threshold):
             divergence = round(min(100, abs(t_trend) * 5 + abs(b_trend)), 1)
+    elif otc and len(otc) >= 10 and taiex and len(taiex) >= 10:
+        # Fallback：OTC vs 加權 10日動能背離（中小型股與大型股齊漲跌=無背離；分歧=背離）
+        otc_ret  = (otc[-1][1]   - otc[-10][1])  / max(otc[-10][1],   1) * 100
+        taiex_ret = (taiex[-1][1] - taiex[-10][1]) / max(taiex[-10][1], 1) * 100
+        diff = otc_ret - taiex_ret  # 正值=小型股強(健康)；負值=大型股撐盤(警示)
+        # 大型股明顯超跑小型股（集中度高）→ 背離警示
+        if diff < -3:
+            divergence = round(min(100, abs(diff) * 5), 1)
+        # 小型股崩潰但大盤撐住 → 背離警示
+        elif diff > 5 and taiex_ret < -1:
+            divergence = round(min(100, diff * 4), 1)
 
     result = {
         "date": today,

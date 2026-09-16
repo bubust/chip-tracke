@@ -1505,9 +1505,15 @@ async function openTdccDetail(sid, name) {
   document.getElementById('tdcc-modal-tbody').innerHTML = '';
   document.getElementById('tdcc-sparkline').innerHTML = '';
   document.getElementById('tdcc-modal-empty').style.display = 'none';
+  document.getElementById('norway-section').style.display = 'none';
   try {
-    const r = await api('GET', `/api/stock/${sid}/tdcc`);
-    renderTdccModal(r.history);
+    const [tdccRes, norwayRes] = await Promise.allSettled([
+      api('GET', `/api/stock/${sid}/tdcc`),
+      api('GET', `/api/stock/${sid}/norway`)
+    ]);
+    if (tdccRes.status === 'fulfilled') renderTdccModal(tdccRes.value.history);
+    if (norwayRes.status === 'fulfilled' && norwayRes.value.history?.length)
+      renderNorwaySection(norwayRes.value.history);
   } catch (e) {
     toast(e.message, true);
   }
@@ -1605,6 +1611,70 @@ function renderTdccModal(history) {
       <td>${trendIcon}</td>
     </tr>`;
   }).join('');
+}
+
+function renderNorwaySection(history) {
+  // history is oldest-first from API (reversed in get_cached)
+  const sec = document.getElementById('norway-section');
+  if (!history || !history.length) { sec.style.display = 'none'; return; }
+  sec.style.display = 'block';
+  // Newest first for table display
+  const rows = [...history].reverse();
+  const latest = rows[0];
+  const prev   = rows[1] || null;
+  const gt1000Chg = prev ? latest.gt1000_count - prev.gt1000_count : null;
+  const gt400Chg  = prev ? (latest.gt400_pct - prev.gt400_pct).toFixed(2) : null;
+  const chgColor  = v => v > 0 ? 'var(--up)' : v < 0 ? 'var(--down)' : 'var(--muted)';
+  const arw = v => v > 0 ? '▲' : v < 0 ? '▼' : '─';
+
+  // Stacked bar for latest bracket breakdown
+  const total = (latest.cnt400_600||0) + (latest.cnt600_800||0) + (latest.cnt800_1000||0) + (latest.gt1000_count||0);
+  const bar = total > 0 ? [
+    {label:'400~600', cnt: latest.cnt400_600||0, color:'#3b82f6'},
+    {label:'600~800', cnt: latest.cnt600_800||0, color:'#8b5cf6'},
+    {label:'800~1000',cnt: latest.cnt800_1000||0,color:'#f59e0b'},
+    {label:'>1000',   cnt: latest.gt1000_count||0,color:'#10b981'},
+  ].map(seg => `<div title="${seg.label}: ${seg.cnt}人" style="flex:${seg.cnt/total};background:${seg.color};height:14px;min-width:2px"></div>`).join('') : '';
+
+  const tableRows = rows.slice(0, 12).map((r, i) => {
+    const p = rows[i + 1] || null;
+    const dc = p ? r.gt1000_count - p.gt1000_count : null;
+    const dp = p ? (r.gt400_pct - p.gt400_pct).toFixed(2) : null;
+    return `<tr>
+      <td class="muted">${r.date}</td>
+      <td style="color:${r.close_price>0?'inherit':'var(--muted)'}">${r.close_price>0?r.close_price.toFixed(1):'─'}</td>
+      <td>${r.gt400_pct?.toFixed(2)||'─'}%</td>
+      <td>${dp!=null?`<span style="color:${chgColor(dp)}">${arw(+dp)} ${+dp>0?'+':''}${dp}%</span>`:'─'}</td>
+      <td><b>${r.gt1000_count||'─'}</b></td>
+      <td>${dc!=null?`<span style="color:${chgColor(dc)}">${arw(dc)} ${dc>0?'+':''}${dc}</span>`:'─'}</td>
+      <td>${r.gt1000_pct?.toFixed(2)||'─'}%</td>
+    </tr>`;
+  }).join('');
+
+  sec.innerHTML = `
+    <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <strong style="font-size:.9rem">📊 神秘金字塔（norway.twsthr.info）</strong>
+        <span style="font-size:.8rem;color:var(--muted)">${latest.date} 最新</span>
+        ${gt1000Chg!=null?`<span style="font-size:.82rem;padding:2px 8px;border-radius:12px;background:${chgColor(gt1000Chg)};color:#fff">千張大戶 ${arw(gt1000Chg)} ${gt1000Chg>0?'+':''}${gt1000Chg}人</span>`:''}
+      </div>
+      <div style="display:flex;border-radius:4px;overflow:hidden;margin-bottom:6px;gap:1px">${bar}</div>
+      <div style="display:flex;gap:16px;font-size:.75rem;color:var(--muted);margin-bottom:12px">
+        <span><span style="color:#3b82f6">■</span> 400~600張 ${latest.cnt400_600||0}人</span>
+        <span><span style="color:#8b5cf6">■</span> 600~800張 ${latest.cnt600_800||0}人</span>
+        <span><span style="color:#f59e0b">■</span> 800~1000張 ${latest.cnt800_1000||0}人</span>
+        <span><span style="color:#10b981">■</span> >1000張 ${latest.gt1000_count||0}人 (${latest.gt1000_pct?.toFixed(2)||'─'}%)</span>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th>週次</th><th>收盤</th><th>>400%</th><th>變化</th>
+            <th>千張人數</th><th>人數變化</th><th>千張%</th>
+          </tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
 async function refreshWatchlistTdcc() {
@@ -3120,6 +3190,8 @@ async function saveAllStratParams() {
         尚無千張大戶資料<br>
         <small>點「更新千張大戶」按鈕取得資料</small>
       </div>
+      <!-- Norway 神秘金字塔詳細分層 -->
+      <div id="norway-section" style="display:none"></div>
     </div>
   </div>
 </div>

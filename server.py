@@ -1393,6 +1393,13 @@ def api_stock_tdcc(stock_id: str):
     history = get_stock_tdcc_history(stock_id, weeks=12)
     return {"stock_id": stock_id, "history": history}
 
+@app.get("/api/stock/{stock_id}/norway")
+async def api_stock_norway(stock_id: str):
+    """回傳 norway.twsthr.info 千張大戶細分週資料（最近 20 週）"""
+    from norway_holders import get_history
+    history = await get_history(stock_id)
+    return {"stock_id": stock_id, "history": history}
+
 @app.post("/api/chip/refresh-watchlist")
 async def api_chip_refresh_watchlist(background_tasks: BackgroundTasks):
     """用 FinMind 更新觀察清單股票的千張大戶資料（Plan C 手動觸發）"""
