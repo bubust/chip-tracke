@@ -9,6 +9,7 @@ yahoo_price.py - 用 Yahoo Finance 抓全市場日線資料
 import asyncio
 import datetime
 import os
+import random
 import threading
 import time
 from itertools import cycle
@@ -16,11 +17,22 @@ from itertools import cycle
 import httpx
 import pandas as pd
 
-_UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/124.0.0.0 Safari/537.36"
-)
+# ── 多個 User-Agent 輪替，讓 Yahoo 無法用 UA 封鎖 ────────────────────────────
+_UA_POOL = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+]
+_UA = _UA_POOL[0]  # 預設（向下相容）
+
+_SCAN_HEADERS = {
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Referer": "https://finance.yahoo.com/",
+    "Origin": "https://finance.yahoo.com",
+}
 
 _host_cycle = cycle(["query1", "query2"])
 _host_lock  = threading.Lock()
@@ -29,6 +41,10 @@ _host_lock  = threading.Lock()
 def _next_host() -> str:
     with _host_lock:
         return next(_host_cycle)
+
+
+def _rand_ua() -> str:
+    return random.choice(_UA_POOL)
 
 
 _STOCKS_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stocks.csv")
@@ -126,11 +142,18 @@ async def _fetch_yahoo_async(
     p1   = now - days * 86400
     params = {"interval": "1d", "period1": p1, "period2": now}
     async with sem:
+        # 請求前加 0~150ms 隨機抖動，避免突刺流量觸發 Yahoo 限流
+        await asyncio.sleep(random.uniform(0, 0.15))
         for suffix in suffixes:
             host = _next_host()
             url  = f"https://{host}.finance.yahoo.com/v8/finance/chart/{stock_id}{suffix}"
+            headers = {"User-Agent": _rand_ua(), **_SCAN_HEADERS}
             try:
-                r = await client.get(url, params=params)
+                r = await client.get(url, params=params, headers=headers)
+                if r.status_code == 429:
+                    # Yahoo 限流：等候再試一次
+                    await asyncio.sleep(random.uniform(1.5, 3.0))
+                    r = await client.get(url, params=params, headers={"User-Agent": _rand_ua(), **_SCAN_HEADERS})
                 r.raise_for_status()
                 df = _parse_yahoo_json(r.json())
                 if not df.empty and len(df) >= 5:
@@ -277,13 +300,13 @@ def get_scan_results() -> dict:
     return _scan_status["results"]
 
 
-async def run_market_scan(concurrency: int = 50, strategy_params: dict = None):
+async def run_market_scan(concurrency: int = 30, strategy_params: dict = None):
     """
     背景執行全市場策略掃描（上市 + 上櫃，全部 stocks.csv 股票）。
     - 掃全部股票，不做有量過濾（避免漏掉低量漲停或上櫃股票）
-    - Semaphore(50) 控制並發（Render.com 同 IP 150 並發會被 Yahoo 限流，50 是實測穩定值）
+    - Semaphore(30) 控制並發 + 0~150ms jitter + Referer header（減少 Yahoo 限流）
     - scan_one_stock 跑在 ThreadPoolExecutor(24)，不阻塞 event loop
-    - 第一輪失敗的股票會自動重試一次（減少因網路抖動造成的誤判失敗）
+    - 第一輪失敗 → 等 5s → 重試一次；仍失敗 → 等 8s → 第二次重試
     - strategy_params: {strategy_key: {param_key: value}} 各策略自訂參數
     """
     import concurrent.futures
@@ -316,54 +339,56 @@ async def run_market_scan(concurrency: int = 50, strategy_params: dict = None):
         loop = asyncio.get_running_loop()
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=24)
 
-        timeout_cfg = httpx.Timeout(connect=3.0, read=10.0, write=3.0, pool=3.0)
+        timeout_cfg = httpx.Timeout(connect=4.0, read=12.0, write=4.0, pool=4.0)
 
         async with httpx.AsyncClient(
-            headers={"User-Agent": _UA, "Accept": "application/json"},
             verify=False,
             timeout=timeout_cfg,
             follow_redirects=True,
-            limits=httpx.Limits(max_connections=80, max_keepalive_connections=60),
+            limits=httpx.Limits(max_connections=50, max_keepalive_connections=40),
         ) as client:
             import functools
 
-            async def _fetch_scan(sid, mkt):
-                # range=2y：S1 大MACD(108,216,18) 的 216-period EWM 需約 430 天才收斂
-                # 1y≈252 天不夠，2y≈504 天可讓 EWM 誤差降至 <0.1%
+            async def _fetch_scan_inner(sid, mkt):
+                """抓取 + 策略計算，成功回傳 {strategy: result}，失敗回傳 None"""
                 df = await _fetch_yahoo_async(client, sem, sid, mkt, range_="2y")
-                _scan_status["progress"] += 1
                 if df.empty or len(df) < 5:
-                    _scan_status["yahoo_fail"] += 1
-                    _scan_status["failed_stocks"].append(sid)
-                    return {}
-                _scan_status["yahoo_ok"] += 1
+                    return None
                 all_prices[sid] = df
-                # CPU-bound pandas 運算放到 thread pool，釋放 event loop
                 return await loop.run_in_executor(
                     executor,
                     functools.partial(scan_one_stock, df, sid, names.get(sid, ""),
                                       strategy_params=_strategy_params)
                 )
 
+            async def _fetch_scan(sid, mkt):
+                out = await _fetch_scan_inner(sid, mkt)
+                _scan_status["progress"] += 1
+                if out is None:
+                    _scan_status["yahoo_fail"] += 1
+                    _scan_status["failed_stocks"].append(sid)
+                    return {}
+                _scan_status["yahoo_ok"] += 1
+                return out
+
             coros   = [_fetch_scan(sid, mkt) for sid, mkt in tasks]
             results = await asyncio.gather(*coros, return_exceptions=True)
 
-            # ── 重試失敗的股票（一次機會，等待 2 秒讓 Yahoo 冷卻）────────────────
-            retry_list = [(sid, mkt) for sid, mkt in tasks
-                          if sid in set(_scan_status["failed_stocks"])]
-            if retry_list:
-                print(f"[SCAN] 重試 {len(retry_list)} 支失敗股票...")
-                await asyncio.sleep(2)
-                retry_coros  = [_fetch_scan(sid, mkt) for sid, mkt in retry_list]
+            # ── 重試兩輪：第一輪等 5s，第二輪再等 8s ──────────────────────────
+            for retry_round, wait_secs in enumerate([(5, "第1輪重試"), (8, "第2輪重試")], 1):
+                wait_secs, label = wait_secs
+                failed_set = set(_scan_status["failed_stocks"])
+                retry_list = [(sid, mkt) for sid, mkt in tasks if sid in failed_set]
+                if not retry_list:
+                    break
+                print(f"[SCAN] {label}: {len(retry_list)} 支，等待 {wait_secs}s...")
+                await asyncio.sleep(wait_secs)
+                # 重試時清除這批失敗記錄，讓 _fetch_scan 重新計數
+                _scan_status["failed_stocks"] = [s for s in _scan_status["failed_stocks"]
+                                                  if s not in failed_set]
+                _scan_status["yahoo_fail"] = len(_scan_status["failed_stocks"])
+                retry_coros = [_fetch_scan(sid, mkt) for sid, mkt in retry_list]
                 retry_results = await asyncio.gather(*retry_coros, return_exceptions=True)
-                # 從 failed_stocks 移除這次成功的
-                now_failed = set(_scan_status["failed_stocks"])
-                retry_sids  = [sid for sid, _ in retry_list]
-                for sid, out in zip(retry_sids, retry_results):
-                    if isinstance(out, dict) and out:
-                        now_failed.discard(sid)
-                _scan_status["failed_stocks"] = list(now_failed)
-                _scan_status["yahoo_fail"]    = len(now_failed)
                 results = list(results) + list(retry_results)
 
         executor.shutdown(wait=False)
