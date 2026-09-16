@@ -228,6 +228,18 @@ async def lifespan(app: FastAPI):
             except Exception as _e:
                 import logging; logging.getLogger(__name__).error(f"[sector_auto_calc] {_e}")
         threading.Thread(target=_sector_auto_calc, daemon=True).start()
+    # 若 relationship.db 無資料，背景啟動初始更新
+    from relationship.db import get_conn as _rel_conn
+    _rel_cnt = _rel_conn().execute("SELECT COUNT(*) FROM market_daily").fetchone()[0]
+    if _rel_cnt == 0:
+        def _relationship_init():
+            try:
+                from relationship.router import _run_refresh as _rel_refresh
+                import logging; logging.getLogger(__name__).info("[relationship] 初始資料抓取（約需 30 秒）...")
+                _rel_refresh(days=200)
+            except Exception as _e:
+                import logging; logging.getLogger(__name__).error(f"[relationship_init] {_e}")
+        threading.Thread(target=_relationship_init, daemon=True).start()
     # 啟動 positioning 排程（每個交易日 16:45 自動更新）
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
@@ -1162,15 +1174,21 @@ _INDEX_NAMES = {
 }
 
 @app.get("/api/index/{key}/ohlcv")
-def api_index_ohlcv(key: str):
-    """回傳指數/期貨近月 OHLCV 日線資料（供指數 K 線圖使用）"""
+def api_index_ohlcv(key: str, interval: str = "1d"):
+    """回傳指數/期貨近月 OHLCV 資料（供 K 線圖使用），支援多週期"""
     from yahoo_price import _parse_yahoo_json
     sym = _INDEX_YAHOO_MAP.get(key)
     if not sym:
         raise HTTPException(status_code=404, detail=f"Unknown index key: {key}")
     UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     now = int(_time.time())
-    params = {"interval": "1d", "period1": now - 730 * 86400, "period2": now}
+    _ICFG = {
+        "3m": ("3m", 5), "5m": ("5m", 59), "30m": ("30m", 59),
+        "60m": ("60m", 59), "1d": ("1d", 730), "3d": ("1d", 730),
+        "1wk": ("1wk", 1825), "1mo": ("1mo", 3650),
+    }
+    yf_iv, days_back = _ICFG.get(interval, ("1d", 730))
+    params = {"interval": yf_iv, "period1": now - days_back * 86400, "period2": now}
     for host in ["query1", "query2"]:
         try:
             r = httpx.get(
@@ -1329,6 +1347,97 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 10,
         "stop_loss":   stop_loss,
         "take_profit": take_profit,
         "total_bars":  n,
+        "fbd": run_backtest("fbd"),
+        "fbr": run_backtest("fbr"),
+    }
+
+
+@app.get("/api/backtest/index")
+def api_backtest_index(key: str, holding_days: int = 10,
+                       stop_loss: float = 0.0, take_profit: float = 0.0):
+    """指數 MA10 假跌破/假突破回測（同個股邏輯，但使用指數 OHLCV 資料）"""
+    import pandas as pd
+    from yahoo_price import _parse_yahoo_json
+    sym = _INDEX_YAHOO_MAP.get(key)
+    name = _INDEX_NAMES.get(key, key)
+    if not sym:
+        raise HTTPException(status_code=404, detail=f"Unknown index key: {key}")
+    UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    now = int(_time.time())
+    params = {"interval": "1d", "period1": now - 730 * 86400, "period2": now}
+
+    df = None
+    for host in ["query1", "query2"]:
+        try:
+            r = httpx.get(
+                f"https://{host}.finance.yahoo.com/v8/finance/chart/{sym}",
+                params=params,
+                headers={"User-Agent": UA, "Accept": "application/json"},
+                timeout=12.0, verify=False, follow_redirects=True,
+            )
+            r.raise_for_status()
+            df = _parse_yahoo_json(r.json())
+            if df is not None and not df.empty and len(df) >= 30:
+                break
+        except Exception:
+            pass
+    if df is None or df.empty or len(df) < 30:
+        raise HTTPException(status_code=404, detail=f"{name} ({sym}) 無法取得歷史資料")
+
+    closes = df["close"].values
+    dates  = df["date"].values
+    n = len(closes)
+    ma10 = pd.Series(closes).rolling(10, min_periods=10).mean().values
+    sl_frac = stop_loss / 100.0
+    tp_frac = take_profit / 100.0
+
+    def run_backtest(signal_type: str):
+        trades = []
+        for i in range(10, n - 1):
+            if pd.isna(ma10[i]) or pd.isna(ma10[i+1]):
+                continue
+            if signal_type == "fbd":
+                triggered = (closes[i-1] < ma10[i-1]) and (closes[i] > ma10[i])
+            else:
+                triggered = (closes[i-1] > ma10[i-1]) and (closes[i] < ma10[i])
+            if not triggered:
+                continue
+            entry_date  = dates[i]
+            entry_price = closes[i]
+            sl_price = round(entry_price * (1 - sl_frac), 0) if sl_frac > 0 else None
+            tp_price = round(entry_price * (1 + tp_frac), 0) if tp_frac > 0 else None
+            exit_reason = "時間"
+            exit_idx = min(i + holding_days, n - 1)
+            for j in range(i + 1, min(i + holding_days + 1, n)):
+                c = closes[j]
+                if sl_price is not None and c <= sl_price:
+                    exit_idx = j; exit_reason = "停損"; break
+                if tp_price is not None and c >= tp_price:
+                    exit_idx = j; exit_reason = "停利"; break
+            exit_date  = dates[exit_idx]
+            exit_price = closes[exit_idx]
+            ret = (exit_price - entry_price) / entry_price
+            trades.append({
+                "entry_date": entry_date, "entry_price": float(entry_price),
+                "exit_date": exit_date,   "exit_price": float(exit_price),
+                "return": round(float(ret), 4),
+                "exit_reason": exit_reason,
+                "sl_price": sl_price, "tp_price": tp_price,
+            })
+        if not trades:
+            return {"count": 0}
+        rets = [t["return"] for t in trades]
+        wins = [r for r in rets if r > 0]
+        return {
+            "count": len(trades), "win_rate": round(len(wins)/len(rets), 3),
+            "avg_return": round(sum(rets)/len(rets), 4),
+            "max_win": round(max(rets), 4), "max_loss": round(min(rets), 4),
+            "trades": trades[-30:],
+        }
+
+    return {
+        "key": key, "name": name, "holding_days": holding_days,
+        "stop_loss": stop_loss, "take_profit": take_profit, "total_bars": n,
         "fbd": run_backtest("fbd"),
         "fbr": run_backtest("fbr"),
     }

@@ -1030,9 +1030,6 @@ function openIndexChart(key, name) {
   _chartNames['__idx_' + key] = name;
   _chartOhlcvUrl = `/api/index/${key}/ohlcv`;
   _resetChartPeriod();
-  // 指數不支援個股回測，隱藏回測按鈕
-  const btBtn = document.getElementById('chart-bt-btn');
-  if (btBtn) btBtn.style.display = 'none';
   const wlBtn = document.getElementById('chart-wl-btn');
   if (wlBtn) wlBtn.style.display = 'none';
   openChart('__idx_' + key);
@@ -1042,11 +1039,45 @@ function openIndexChart(key, name) {
 let _btStockId = null, _btStockName = null;
 
 async function openBacktest() {
-  if (!_chartStockId || _chartStockId.startsWith('__idx_')) return;
+  const isIdx = (_chartStockId || '').startsWith('__idx_');
   _btStockId = _chartStockId;
   _btStockName = _chartStockName;
   const modal = document.getElementById('backtest-modal');
   const title = document.getElementById('bt-title');
+
+  if (isIdx) {
+    const key = _chartStockId.replace('__idx_', '');
+    const name = _chartStockName || key;
+    title.textContent = `${name} — 指數回測（MA10 假跌破/假突破）`;
+    // inject param controls once
+    let ctrl = document.getElementById('bt-params');
+    if (!ctrl) {
+      ctrl = document.createElement('div');
+      ctrl.id = 'bt-params';
+      ctrl.style.cssText = 'display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 0 6px;border-bottom:1px solid #30363d;margin-bottom:10px;font-size:.82rem;';
+      ctrl.innerHTML = `
+        <label style="color:var(--muted)">持有天數
+          <input id="bt-days" type="number" value="10" min="1" max="60" style="width:50px;margin-left:6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 6px">
+        </label>
+        <label style="color:var(--muted)">停損%
+          <input id="bt-sl" type="number" value="0" min="0" max="30" step="0.5" style="width:55px;margin-left:6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 6px">
+          <span style="color:#484f58;font-size:.72rem;margin-left:2px">（0=不啟用）</span>
+        </label>
+        <label style="color:var(--muted)">停利%
+          <input id="bt-tp" type="number" value="0" min="0" max="50" step="0.5" style="width:55px;margin-left:6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 6px">
+          <span style="color:#484f58;font-size:.72rem;margin-left:2px">（0=不啟用）</span>
+        </label>
+        <button onclick="runBacktest()" style="background:#58a6ff;color:#fff;border:none;border-radius:6px;padding:4px 14px;cursor:pointer;font-size:.82rem;font-weight:600">重新計算</button>
+      `;
+      document.getElementById('bt-body').before(ctrl);
+    }
+    modal.style.display = 'flex';
+    await runIdxBacktest(key);
+    return;
+  }
+
+  // stock path (existing logic)
+  if (!_chartStockId) return;
   title.textContent = `${_btStockId}${_btStockName ? ' ' + _btStockName : ''} — 假跌破/假突破回測`;
 
   // inject param controls once
@@ -1074,6 +1105,75 @@ async function openBacktest() {
 
   modal.style.display = 'flex';
   await runBacktest();
+}
+
+async function runIdxBacktest(key) {
+  const body = document.getElementById('bt-body');
+  body.innerHTML = '<div style="color:var(--muted);text-align:center;padding:40px">計算中...</div>';
+  const days = parseInt(document.getElementById('bt-days')?.value || 10);
+  const sl   = parseFloat(document.getElementById('bt-sl')?.value || 0);
+  const tp   = parseFloat(document.getElementById('bt-tp')?.value || 0);
+  const slHint = sl > 0 ? ` · 停損 ${sl}%` : '';
+  const tpHint = tp > 0 ? ` · 停利 ${tp}%` : '';
+  try {
+    const r = await fetch(`/api/backtest/index?key=${key}&holding_days=${days}&stop_loss=${sl}&take_profit=${tp}`);
+    const d = await r.json();
+    if (d.error || d.detail) { body.innerHTML = `<div style="color:var(--red)">${d.error || d.detail}</div>`; return; }
+    const retColor = v => v >= 0 ? '#ef4444' : '#22c55e';
+    function statBlock(type, label, color) {
+      const s = d[type] || {};
+      if (!s.count) return `<div style="color:var(--muted);margin-bottom:12px">無 ${label} 訊號</div>`;
+      const exitReasonBadge = r => {
+        const map = {'停損':'#ef4444','停利':'#22c55e','時間':'#8b949e'};
+        const c = map[r] || '#8b949e';
+        return `<span style="font-size:.68rem;padding:1px 6px;border-radius:10px;background:${c}22;color:${c};border:1px solid ${c}44">${r||'時間'}</span>`;
+      };
+      const showSl = sl > 0, showTp = tp > 0;
+      const extraTh = (showSl ? `<th style="color:var(--muted);padding:4px">停損價</th>` : '') + (showTp ? `<th style="color:var(--muted);padding:4px">停利價</th>` : '');
+      const extraTd = t => (showSl ? `<td style="padding:3px 4px;text-align:center;color:#ef4444">${t.sl_price?.toFixed(0)||'—'}</td>` : '') + (showTp ? `<td style="padding:3px 4px;text-align:center;color:#22c55e">${t.tp_price?.toFixed(0)||'—'}</td>` : '');
+      return `
+        <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:12px">
+          <div style="font-size:.85rem;font-weight:700;color:${color};margin-bottom:10px">${label}（${s.count} 次，持有最多 ${days} 天）</div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center">
+            <div><div style="font-size:.72rem;color:var(--muted)">勝率</div><div style="font-size:1.3rem;font-weight:700;color:${color}">${(s.win_rate*100).toFixed(1)}%</div></div>
+            <div><div style="font-size:.72rem;color:var(--muted)">平均報酬</div><div style="font-size:1.3rem;font-weight:700;color:${retColor(s.avg_return)}">${s.avg_return>=0?'+':''}${(s.avg_return*100).toFixed(2)}%</div></div>
+            <div><div style="font-size:.72rem;color:var(--muted)">最大獲利</div><div style="font-size:1.1rem;font-weight:700;color:#ef4444">+${(s.max_win*100).toFixed(2)}%</div></div>
+            <div><div style="font-size:.72rem;color:var(--muted)">最大虧損</div><div style="font-size:1.1rem;font-weight:700;color:#22c55e">${(s.max_loss*100).toFixed(2)}%</div></div>
+          </div>
+          <details style="margin-top:12px">
+            <summary style="cursor:pointer;color:var(--muted);font-size:.8rem">詳細交易紀錄（最近30筆）</summary>
+            <table style="width:100%;margin-top:8px;font-size:.78rem;border-collapse:collapse">
+              <thead><tr>
+                <th style="text-align:left;color:var(--muted);padding:4px">進場日</th>
+                <th style="color:var(--muted);padding:4px">進場價</th>
+                ${extraTh}
+                <th style="color:var(--muted);padding:4px">出場日</th>
+                <th style="color:var(--muted);padding:4px">出場價</th>
+                <th style="color:var(--muted);padding:4px">報酬</th>
+                <th style="color:var(--muted);padding:4px">出場原因</th>
+              </tr></thead>
+              <tbody>${(s.trades||[]).map(t=>`<tr style="border-top:1px solid #21262d">
+                <td style="padding:3px 4px">${t.entry_date}</td>
+                <td style="padding:3px 4px;text-align:center">${t.entry_price.toFixed(0)}</td>
+                ${extraTd(t)}
+                <td style="padding:3px 4px">${t.exit_date||'未出場'}</td>
+                <td style="padding:3px 4px;text-align:center">${t.exit_price?t.exit_price.toFixed(0):'—'}</td>
+                <td style="padding:3px 4px;text-align:right;font-weight:700;color:${retColor(t.return)}">${t.return!=null?(t.return>=0?'+':'')+(t.return*100).toFixed(2)+'%':'—'}</td>
+                <td style="padding:3px 4px;text-align:center">${exitReasonBadge(t.exit_reason)}</td>
+              </tr>`).join('')}</tbody>
+            </table>
+          </details>
+        </div>`;
+    }
+    body.innerHTML = `
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">⚙️ MA10 假跌破/假突破 · 進場：訊號當日收盤 · 持有 ${days} 天${slHint}${tpHint}</div>
+      <div style="font-size:.72rem;color:#484f58;margin-bottom:10px">🔴 紅=獲利　🟢 綠=虧損（台股慣例）</div>
+      ${statBlock('fbd','🟡 假跌破（看多）','#fbbf24')}
+      ${statBlock('fbr','🔴 假突破（看空）','#f85149')}
+    `;
+  } catch(e) {
+    body.innerHTML = `<div style="color:var(--red)">載入失敗: ${e.message}</div>`;
+  }
 }
 
 async function runBacktest() {
@@ -2658,7 +2758,7 @@ function _updateChartWlBtn() {
       wlBtn.style.color = inWl ? '#6b7280' : '#22c55e';
     }
   }
-  if (btBtn) btBtn.style.display = isIdx ? 'none' : '';
+  if (btBtn) btBtn.style.display = '';
 }
 
 function _isTWTradingHours() {
@@ -2772,7 +2872,8 @@ async function openChart(stockId, savedRange = null) {
 
   try {
     await _loadLWC();
-    const ohlcv = await api('GET', _chartOhlcvUrl || `/api/stock/${stockId}/ohlcv?interval=${_chartInterval}`);
+    const _ohlcvBase = _chartOhlcvUrl || `/api/stock/${stockId}/ohlcv`;
+    const ohlcv = await api('GET', `${_ohlcvBase}?interval=${_chartInterval}`);
     const _trading = _isTWTradingHours();
     title.innerHTML = `${stockId}${_chartStockName ? ' ' + _chartStockName : ''} K 線圖` +
       (_trading ? ' <span style="font-size:.72rem;color:#22c55e;background:rgba(34,197,94,.12);padding:1px 8px;border-radius:8px;border:1px solid rgba(34,197,94,.3)">🔴 盤中 · 每分鐘更新</span>' : '');
