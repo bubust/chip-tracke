@@ -561,6 +561,28 @@ async def api_indices():
     except Exception as e:
         print(f"[indices] TAIFEX MIS 失敗: {e}")
 
+    # 若 TAIFEX MIS 失敗，TX 用 ^TWII 近似值補充
+    try:
+        if result["tx"]["price"] is None:
+            async with httpx.AsyncClient(timeout=8, verify=False, follow_redirects=True,
+                headers={"User-Agent": UA, "Accept": "application/json"}) as yc:
+                yr = await yc.get(
+                    "https://query1.finance.yahoo.com/v8/finance/chart/%5ETWII",
+                    params={"interval": "1d", "range": "5d"},
+                )
+                if yr.status_code == 200:
+                    res = (yr.json().get("chart", {}).get("result") or [])
+                    if res:
+                        closes = res[0]["indicators"]["quote"][0].get("close", [])
+                        closes = [c for c in closes if c]
+                        if len(closes) >= 2:
+                            price = round(float(closes[-1]), 2)
+                            prev  = round(float(closes[-2]), 2)
+                            pct   = round((price - prev) / prev * 100, 2) if prev else None
+                            result["tx"].update({"price": price, "change_pct": pct, "name": "台指近(近似)"})
+    except Exception:
+        pass
+
     return result
 
 
@@ -1107,20 +1129,215 @@ def api_index_ohlcv(key: str):
                 return df.tail(500).fillna(0).to_dict(orient="records")
         except Exception:
             pass
+    # Fallback for futures: use underlying index
+    FALLBACKS = {"tx": "^TWII", "tf": "^TWII", "te": "^SOX"}
+    fb_sym = FALLBACKS.get(key)
+    if fb_sym:
+        for host in ["query1", "query2"]:
+            try:
+                r = httpx.get(
+                    f"https://{host}.finance.yahoo.com/v8/finance/chart/{fb_sym}",
+                    params=params,
+                    headers={"User-Agent": UA, "Accept": "application/json"},
+                    timeout=10.0, verify=False, follow_redirects=True,
+                )
+                r.raise_for_status()
+                df = _parse_yahoo_json(r.json())
+                if not df.empty and len(df) >= 5:
+                    # Mark as fallback index
+                    return df.tail(500).fillna(0).to_dict(orient="records")
+            except Exception:
+                pass
     raise HTTPException(status_code=404, detail=f"{key} ({sym}) 無法取得 K 線資料")
 
 
-@app.get("/api/stock/{stock_id}/ohlcv")
-def api_stock_ohlcv(stock_id: str):
-    """回傳個股 OHLCV 日線資料（供 K 線圖使用）"""
-    from yahoo_price import fetch_yahoo, get_stock_list
+@app.get("/api/backtest/fbd")
+def api_backtest_fbd(stock_id: str, holding_days: int = 10):
+    """
+    假跌破/假突破回測：
+    - 進場：訊號當日收盤（尾盤進場）
+    - 出場：持有 holding_days 個交易日後收盤
+    - 訊號定義：
+        假跌破（FBD）: 當日 close < MA10，隔日 close > MA10
+        假突破（FBR）: 當日 close > MA10，隔日 close < MA10
+    """
+    import pandas as pd
+    from yahoo_price import _parse_yahoo_json, get_stock_list
     stocks = get_stock_list()
     row = stocks[stocks["stock_id"] == stock_id]
     market = str(row.iloc[0]["type"]) if not row.empty else "twse"
-    df = fetch_yahoo(stock_id, market)
-    if df is None or df.empty:
-        raise HTTPException(status_code=404, detail=f"{stock_id} 無法取得資料")
-    return df.tail(300).fillna(0).to_dict(orient="records")
+    suffixes = [".TW"] if market == "twse" else [".TWO", ".TW"]
+    UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    now = int(_time.time())
+    p1 = now - 730 * 86400
+    params = {"interval": "1d", "period1": p1, "period2": now}
+
+    df = None
+    for host in ["query1", "query2"]:
+        for suffix in suffixes:
+            try:
+                r = httpx.get(
+                    f"https://{host}.finance.yahoo.com/v8/finance/chart/{stock_id}{suffix}",
+                    params=params,
+                    headers={"User-Agent": UA, "Accept": "application/json"},
+                    timeout=12.0, verify=False, follow_redirects=True,
+                )
+                r.raise_for_status()
+                df = _parse_yahoo_json(r.json())
+                if df is not None and not df.empty and len(df) >= 30:
+                    break
+            except Exception:
+                pass
+        if df is not None and not df.empty and len(df) >= 30:
+            break
+
+    if df is None or df.empty or len(df) < 30:
+        raise HTTPException(status_code=404, detail=f"{stock_id} 無法取得歷史資料")
+
+    closes = df["close"].values
+    dates  = df["date"].values
+    n = len(closes)
+
+    # 計算 MA10
+    ma10 = pd.Series(closes).rolling(10, min_periods=10).mean().values
+
+    def run_backtest(signal_type: str):
+        """signal_type: 'fbd' or 'fbr'"""
+        trades = []
+        for i in range(10, n - 1):
+            if pd.isna(ma10[i]) or pd.isna(ma10[i+1]):
+                continue
+            # 假跌破：前一日跌破MA10，今日收復
+            if signal_type == "fbd":
+                triggered = (closes[i-1] < ma10[i-1]) and (closes[i] > ma10[i])
+            else:  # 假突破
+                triggered = (closes[i-1] > ma10[i-1]) and (closes[i] < ma10[i])
+            if not triggered:
+                continue
+            # 進場：訊號日（i）收盤
+            entry_date  = dates[i]
+            entry_price = closes[i]
+            # 出場：持有 holding_days 個交易日
+            exit_idx = min(i + holding_days, n - 1)
+            exit_date  = dates[exit_idx]
+            exit_price = closes[exit_idx]
+            ret = (exit_price - entry_price) / entry_price
+            trades.append({
+                "entry_date":  entry_date,
+                "entry_price": float(entry_price),
+                "exit_date":   exit_date,
+                "exit_price":  float(exit_price),
+                "return":      round(float(ret), 4),
+            })
+        if not trades:
+            return {"count": 0}
+        rets = [t["return"] for t in trades]
+        wins = [r for r in rets if r > 0]
+        return {
+            "count":      len(trades),
+            "win_rate":   round(len(wins) / len(rets), 3),
+            "avg_return": round(sum(rets) / len(rets), 4),
+            "median_return": round(sorted(rets)[len(rets)//2], 4),
+            "max_win":    round(max(rets), 4),
+            "max_loss":   round(min(rets), 4),
+            "trades":     trades[-30:],   # 最近30筆
+        }
+
+    return {
+        "stock_id":    stock_id,
+        "holding_days": holding_days,
+        "total_bars":  n,
+        "fbd": run_backtest("fbd"),
+        "fbr": run_backtest("fbr"),
+    }
+
+
+@app.get("/api/stock/{stock_id}/ohlcv")
+def api_stock_ohlcv(stock_id: str, interval: str = "1d"):
+    """回傳個股 OHLCV 日線/週線/分線資料（供 K 線圖使用）"""
+    import pandas as pd
+    from yahoo_price import _parse_yahoo_json, get_stock_list
+    stocks = get_stock_list()
+    row = stocks[stocks["stock_id"] == stock_id]
+    market = str(row.iloc[0]["type"]) if not row.empty else "twse"
+    suffixes = [".TW"] if market == "twse" else [".TWO", ".TW"]
+
+    # 映射 interval → (yf_interval, days_back, is_intraday)
+    _ICFG = {
+        "3m":  ("3m",  5,    True),
+        "5m":  ("5m",  59,   True),
+        "30m": ("30m", 59,   True),
+        "60m": ("60m", 59,   True),
+        "1d":  ("1d",  730,  False),
+        "3d":  ("1d",  730,  False),
+        "1wk": ("1wk", 1825, False),
+        "1mo": ("1mo", 3650, False),
+    }
+    yf_iv, days, is_intraday = _ICFG.get(interval, ("1d", 730, False))
+    UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    now = int(_time.time())
+    p1 = now - days * 86400
+    params = {"interval": yf_iv, "period1": p1, "period2": now}
+
+    for host in ["query1", "query2"]:
+        for suffix in suffixes:
+            try:
+                r = httpx.get(
+                    f"https://{host}.finance.yahoo.com/v8/finance/chart/{stock_id}{suffix}",
+                    params=params,
+                    headers={"User-Agent": UA, "Accept": "application/json"},
+                    timeout=12.0, verify=False, follow_redirects=True,
+                )
+                r.raise_for_status()
+                raw = (r.json().get("chart", {}).get("result") or [])
+                if not raw:
+                    continue
+                res = raw[0]
+                timestamps = res.get("timestamp", [])
+                quote = res.get("indicators", {}).get("quote", [{}])[0]
+                opens  = quote.get("open",   [])
+                highs  = quote.get("high",   [])
+                lows   = quote.get("low",    [])
+                closes = quote.get("close",  [])
+                vols   = quote.get("volume", [])
+                if not timestamps or not closes:
+                    continue
+
+                if is_intraday:
+                    # 回傳含 Unix timestamp 的 records
+                    records = []
+                    for i, ts in enumerate(timestamps):
+                        c = closes[i] if i < len(closes) else None
+                        if c is None:
+                            continue
+                        records.append({
+                            "ts":     int(ts),
+                            "date":   datetime.utcfromtimestamp(ts).strftime("%Y%m%d"),
+                            "open":   opens[i] if i < len(opens) else c,
+                            "high":   highs[i] if i < len(highs) else c,
+                            "low":    lows[i]  if i < len(lows)  else c,
+                            "close":  c,
+                            "volume": int(vols[i] or 0) if i < len(vols) else 0,
+                        })
+                    if records:
+                        return records[-2000:]
+                else:
+                    df = _parse_yahoo_json(r.json())
+                    if df is None or df.empty or len(df) < 5:
+                        continue
+                    if interval == "3d":
+                        df["_dt"] = pd.to_datetime(df["date"], format="%Y%m%d")
+                        df3 = df.set_index("_dt").resample("3D").agg(
+                            open=("open","first"), high=("high","max"),
+                            low=("low","min"),   close=("close","last"),
+                            volume=("volume","sum")
+                        ).dropna(subset=["close"]).reset_index()
+                        df3["date"] = df3["_dt"].dt.strftime("%Y%m%d")
+                        df = df3.drop(columns=["_dt"])
+                    return df.tail(500).fillna(0).to_dict(orient="records")
+            except Exception:
+                pass
+    raise HTTPException(status_code=404, detail=f"{stock_id} 無法取得 {interval} 資料")
 
 @app.get("/api/stock/{stock_id}")
 async def api_stock(stock_id: str, days: int = 30):

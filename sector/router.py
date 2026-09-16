@@ -219,7 +219,7 @@ def api_get_status():
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/api/refresh")
-def api_refresh(background_tasks: BackgroundTasks, days_back: int = Query(120, ge=1, le=365)):
+def api_refresh(background_tasks: BackgroundTasks, days_back: int = Query(30, ge=1, le=365)):
     """觸發產業引擎重新計算（背景執行）"""
     global _engine_running
     with _engine_lock:

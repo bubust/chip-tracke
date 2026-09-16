@@ -58,6 +58,7 @@
   .strat-cnt { display:inline-block;min-width:18px;padding:0 4px;background:var(--accent);color:#fff;border-radius:8px;font-size:.72rem;font-weight:700;margin-left:4px;text-align:center; }
   .strat-cnt:empty { display:none; }
   .draw-btn.active { border-color:#a78bfa!important;color:#a78bfa!important;background:rgba(167,139,250,.12)!important; }
+  .chart-period-btn.active { background:var(--accent);color:#fff; }
   .screen-strat-btn.active { border-color:var(--accent);color:var(--accent); }
   .btn.green { background: var(--green); }
   .btn.danger { background: var(--red); }
@@ -283,6 +284,7 @@
             <th>代號</th>
             <th>名稱</th>
             <th title="從哪個策略或市場排行加入">來源</th>
+            <th title="自由填寫：進場價、停損、目標等">📝 備註</th>
             <th>股價</th>
             <th>最新訊號</th>
             <th>大戶今日 (張)</th>
@@ -291,7 +293,6 @@
             <th title="布林軌道分級：上軌=+10 中軌=0 下軌=-10">BB位置</th>
             <th title="集保所千張大戶持股%，點擊查看歷史趨勢" style="cursor:help">千張大戶</th>
             <th title="系統依MA10/MA60自動判斷，不可手動修改">🔦 狀態</th>
-            <th title="自由填寫：進場價、停損、目標等">📝 備註</th>
             <th>最新日期</th>
             <th>操作</th>
           </tr>
@@ -754,13 +755,23 @@ function renderWatchlist() {
       const sign = pct > 0 ? '+' : '';
       return `<td id="price-${s.stock_id}" class="${cls}">${s.close} <small style="opacity:.7">${sign}${pct.toFixed(2)}%</small></td>`;
     })();
+    // 個人備註（可自由編輯，失焦自動儲存）- 提前計算供 no-data row 使用
+    const memoValEarly = (s.memo || '').replace(/"/g, '&quot;');
+    const memoCellEarly = `<td onclick="event.stopPropagation()" style="min-width:100px;max-width:160px">
+      <input type="text" value="${memoValEarly}" placeholder="進場價、停損…"
+        style="width:100%;background:transparent;border:none;border-bottom:1px dashed var(--border);color:var(--fg);font-size:.78rem;padding:2px 0;outline:none"
+        onblur="saveMemo('${s.stock_id}', this.value)"
+        onkeydown="if(event.key==='Enter')this.blur()"
+        onclick="event.stopPropagation()" />
+    </td>`;
     if (!s.has_data) {
       return `<tr>
         <td><b class="link" onclick="openWlChart('${s.stock_id}')" style="cursor:pointer;color:var(--accent)">${s.stock_id}</b></td>
         <td>${nameCell(s)}</td>
         ${noteCell(s)}
+        ${memoCellEarly}
         ${priceCell}
-        <td colspan="9" style="color:var(--muted);font-size:.82rem">尚無籌碼資料，請點全部更新</td>
+        <td colspan="8" style="color:var(--muted);font-size:.82rem">尚無籌碼資料，請點全部更新</td>
         <td style="white-space:nowrap">
           <button class="btn sm ghost" style="padding:2px 6px" onclick="moveWlItem('${s.stock_id}',-1)" title="上移">▲</button>
           <button class="btn sm ghost" style="padding:2px 6px;margin-left:2px" onclick="moveWlItem('${s.stock_id}',1)" title="下移">▼</button>
@@ -823,6 +834,7 @@ function renderWatchlist() {
       <td onclick="event.stopPropagation();openWlChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
       <td>${nameCell(s)}</td>
       ${noteCell(s)}
+      ${memoCell}
       ${priceCell}
       <td><span class="sig-badge sig-${level}">${s.signal_emoji} ${s.signal_title}</span></td>
       <td class="${w  >= 0 ? 'pos' : 'neg'}">${fmtNum(w)}</td>
@@ -831,7 +843,6 @@ function renderWatchlist() {
       ${bbCell}
       ${kpctCell}
       ${stageCell}
-      ${memoCell}
       <td class="muted">${s.date || '—'}</td>
       <td onclick="event.stopPropagation()" style="white-space:nowrap">
         <button class="btn sm ghost" style="padding:2px 6px" onclick="moveWlItem('${s.stock_id}',-1)" title="上移">▲</button>
@@ -1018,7 +1029,59 @@ function openIndexChart(key, name) {
   _chartSource     = '指數';
   _chartNames['__idx_' + key] = name;
   _chartOhlcvUrl = `/api/index/${key}/ohlcv`;
+  _resetChartPeriod();
   openChart('__idx_' + key);
+}
+
+async function openBacktest() {
+  if (!_chartStockId || _chartStockId.startsWith('__idx_')) return;
+  const modal = document.getElementById('backtest-modal');
+  const title = document.getElementById('bt-title');
+  const body  = document.getElementById('bt-body');
+  title.textContent = `${_chartStockId}${_chartStockName ? ' ' + _chartStockName : ''} — 假跌破/假突破回測`;
+  body.innerHTML = '<div style="color:var(--muted);text-align:center;padding:40px">計算中...</div>';
+  modal.style.display = 'flex';
+  try {
+    const r = await fetch(`/api/backtest/fbd?stock_id=${_chartStockId}&holding_days=10`);
+    const d = await r.json();
+    if (d.error) { body.innerHTML = `<div style="color:var(--red)">${d.error}</div>`; return; }
+    const fbd = d.fbd || {};
+    const fbr = d.fbr || {};
+    function statBlock(type, label, color) {
+      const s = d[type] || {};
+      if (!s.count) return `<div style="color:var(--muted)">無 ${label} 訊號</div>`;
+      return `
+        <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:12px">
+          <div style="font-size:.85rem;font-weight:700;color:${color};margin-bottom:10px">${label}（${s.count} 次，持有 ${d.holding_days} 天）</div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center">
+            <div><div style="font-size:.72rem;color:var(--muted)">勝率</div><div style="font-size:1.3rem;font-weight:700;color:${color}">${(s.win_rate*100).toFixed(1)}%</div></div>
+            <div><div style="font-size:.72rem;color:var(--muted)">平均報酬</div><div style="font-size:1.3rem;font-weight:700;color:${s.avg_return>=0?'#3fb950':'#f85149'}">${s.avg_return>=0?'+':''}${(s.avg_return*100).toFixed(2)}%</div></div>
+            <div><div style="font-size:.72rem;color:var(--muted)">最大獲利</div><div style="font-size:1.1rem;font-weight:700;color:#3fb950">+${(s.max_win*100).toFixed(2)}%</div></div>
+            <div><div style="font-size:.72rem;color:var(--muted)">最大虧損</div><div style="font-size:1.1rem;font-weight:700;color:#f85149">${(s.max_loss*100).toFixed(2)}%</div></div>
+          </div>
+          <details style="margin-top:12px">
+            <summary style="cursor:pointer;color:var(--muted);font-size:.8rem">詳細交易紀錄</summary>
+            <table style="width:100%;margin-top:8px;font-size:.78rem;border-collapse:collapse">
+              <thead><tr><th style="text-align:left;color:var(--muted);padding:4px">進場日</th><th style="color:var(--muted);padding:4px">進場價</th><th style="color:var(--muted);padding:4px">出場日</th><th style="color:var(--muted);padding:4px">出場價</th><th style="color:var(--muted);padding:4px">報酬</th></tr></thead>
+              <tbody>${(s.trades||[]).map(t=>`<tr style="border-top:1px solid #21262d">
+                <td style="padding:3px 4px">${t.entry_date}</td>
+                <td style="padding:3px 4px;text-align:center">${t.entry_price.toFixed(2)}</td>
+                <td style="padding:3px 4px">${t.exit_date||'未出場'}</td>
+                <td style="padding:3px 4px;text-align:center">${t.exit_price?t.exit_price.toFixed(2):'—'}</td>
+                <td style="padding:3px 4px;text-align:right;color:${t.return>=0?'#3fb950':'#f85149'}">${t.return!=null?(t.return>=0?'+':'')+(t.return*100).toFixed(2)+'%':'—'}</td>
+              </tr>`).join('')}</tbody>
+            </table>
+          </details>
+        </div>`;
+    }
+    body.innerHTML = `
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:12px">⚙️ 訊號：MA10 假跌破/假突破 · 進場：訊號當日收盤 · 持有 ${d.holding_days} 天後出場</div>
+      ${statBlock('fbd','🟡 假跌破（看多）','#fbbf24')}
+      ${statBlock('fbr','🔴 假突破（看空）','#f85149')}
+    `;
+  } catch(e) {
+    body.innerHTML = `<div style="color:var(--red)">載入失敗: ${e.message}</div>`;
+  }
 }
 
 // 切換 tab 時停止自動刷新（省流量）
@@ -2296,6 +2359,15 @@ async function warmupServer() {
 let _lwcCharts = [];
 let _chartStockId = null;
 let _chartOhlcvUrl = null;   // 指數圖時指向 /api/index/{key}/ohlcv
+let _chartInterval = '1d';   // 目前選擇的週期
+
+function setChartPeriod(period) {
+  _chartInterval = period;
+  document.querySelectorAll('.chart-period-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.period === period);
+  });
+  if (_chartStockId) openChart(_chartStockId);
+}
 let _chartRefreshTimer = null;
 // 三個區塊各自維護自己的清單，互不干擾
 let _wlChartList     = [];
@@ -2377,9 +2449,15 @@ function _restoreDrawings(sid) {
   });
 }
 
-function openWlChart(sid)     { _frozenChartList = [..._wlChartList];     _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = '';             _chartOhlcvUrl = null; openChart(sid); }
-function openMktChart(sid)    { _frozenChartList = [..._mktChartList];    _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = '全市場排行';   _chartOhlcvUrl = null; openChart(sid); }
-function openScreenChart(sid) { _frozenChartList = [..._screenChartList]; _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = (_viewingStrategy ? (STRATEGY_LABELS[_viewingStrategy] || _viewingStrategy).replace(/[（(][^）)]{10,}[）)]/g,'').trim() : ''); _chartOhlcvUrl = null; openChart(sid); }
+function _resetChartPeriod() {
+  _chartInterval = '1d';
+  document.querySelectorAll('.chart-period-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.period === '1d');
+  });
+}
+function openWlChart(sid)     { _frozenChartList = [..._wlChartList];     _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = '';             _chartOhlcvUrl = null; _resetChartPeriod(); openChart(sid); }
+function openMktChart(sid)    { _frozenChartList = [..._mktChartList];    _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = '全市場排行';   _chartOhlcvUrl = null; _resetChartPeriod(); openChart(sid); }
+function openScreenChart(sid) { _frozenChartList = [..._screenChartList]; _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = (_viewingStrategy ? (STRATEGY_LABELS[_viewingStrategy] || _viewingStrategy).replace(/[（(][^）)]{10,}[）)]/g,'').trim() : ''); _chartOhlcvUrl = null; _resetChartPeriod(); openChart(sid); }
 
 function chartNav(dir) {
   if (!_frozenChartList.length) return;
@@ -2546,7 +2624,7 @@ async function openChart(stockId, savedRange = null) {
 
   try {
     await _loadLWC();
-    const ohlcv = await api('GET', _chartOhlcvUrl || `/api/stock/${stockId}/ohlcv`);
+    const ohlcv = await api('GET', _chartOhlcvUrl || `/api/stock/${stockId}/ohlcv?interval=${_chartInterval}`);
     const _trading = _isTWTradingHours();
     title.innerHTML = `${stockId}${_chartStockName ? ' ' + _chartStockName : ''} K 線圖` +
       (_trading ? ' <span style="font-size:.72rem;color:#22c55e;background:rgba(34,197,94,.12);padding:1px 8px;border-radius:8px;border:1px solid rgba(34,197,94,.3)">🔴 盤中 · 每分鐘更新</span>' : '');
@@ -2562,7 +2640,7 @@ async function openChart(stockId, savedRange = null) {
       grid:   { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
       crosshair: { mode: 1 },
       rightPriceScale: { borderColor: '#2a2e39' },
-      timeScale: { borderColor: '#2a2e39', timeVisible: false },
+      timeScale: { borderColor: '#2a2e39', timeVisible: ['3m','5m','30m','60m'].includes(_chartInterval) },
       handleScale: true, handleScroll: true,
     };
 
@@ -2586,7 +2664,7 @@ async function openChart(stockId, savedRange = null) {
       priceLineVisible: false, lastValueVisible: false,
     });
     cSeries.setData(ohlcv.map(r => ({
-      time: _toDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close
+      time: r.ts != null ? r.ts : _toDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close
     })));
 
     // 儲存繪圖用參考
@@ -2736,7 +2814,7 @@ async function openChart(stockId, savedRange = null) {
       priceLineVisible: false, lastValueVisible: false,
     });
     vSeries.setData(ohlcv.map(r => ({
-      time: _toDate(r.date), value: r.volume / 1000,
+      time: r.ts != null ? r.ts : _toDate(r.date), value: r.volume / 1000,
       color: r.close >= r.open ? 'rgba(239,83,80,0.7)' : 'rgba(38,166,154,0.7)'
     })));
 
@@ -3069,6 +3147,16 @@ async function saveAllStratParams() {
       <button id="chart-prev-btn" class="btn sm ghost" onclick="chartNav(-1)" title="上一檔" style="padding:4px 10px">◀ 上一檔</button>
       <button id="chart-next-btn" class="btn sm ghost" onclick="chartNav(+1)" title="下一檔" style="padding:4px 10px">下一檔 ▶</button>
       <strong id="chart-modal-title" style="font-size:.95rem;flex:1;color:#d1d4dc;text-align:center"></strong>
+      <span id="chart-period-bar" style="display:flex;gap:3px;align-items:center">
+        <button class="btn sm ghost chart-period-btn" data-period="3m"  onclick="setChartPeriod('3m')"  style="padding:2px 6px;font-size:.72rem">3分</button>
+        <button class="btn sm ghost chart-period-btn" data-period="5m"  onclick="setChartPeriod('5m')"  style="padding:2px 6px;font-size:.72rem">5分</button>
+        <button class="btn sm ghost chart-period-btn" data-period="30m" onclick="setChartPeriod('30m')" style="padding:2px 6px;font-size:.72rem">30分</button>
+        <button class="btn sm ghost chart-period-btn" data-period="60m" onclick="setChartPeriod('60m')" style="padding:2px 6px;font-size:.72rem">60分</button>
+        <button class="btn sm ghost chart-period-btn active" data-period="1d"  onclick="setChartPeriod('1d')"  style="padding:2px 6px;font-size:.72rem">日</button>
+        <button class="btn sm ghost chart-period-btn" data-period="3d"  onclick="setChartPeriod('3d')"  style="padding:2px 6px;font-size:.72rem">3日</button>
+        <button class="btn sm ghost chart-period-btn" data-period="1wk" onclick="setChartPeriod('1wk')" style="padding:2px 6px;font-size:.72rem">週</button>
+        <button class="btn sm ghost chart-period-btn" data-period="1mo" onclick="setChartPeriod('1mo')" style="padding:2px 6px;font-size:.72rem">月</button>
+      </span>
       <span style="font-size:.72rem;color:#6b7280;white-space:nowrap">K線＋量＋小MACD＋大MACD（Yahoo Finance）</span>
       <span style="display:flex;gap:4px;align-items:center">
         <button id="draw-btn-hline" class="btn sm ghost draw-btn" onclick="setDrawMode('hline')" title="水平線（點K線加上）" style="font-size:.8rem;padding:3px 8px">📏 水平線</button>
@@ -3076,9 +3164,21 @@ async function saveAllStratParams() {
         <button class="btn sm ghost" onclick="clearDrawings()" title="清除所有畫線" style="font-size:.8rem;padding:3px 8px">🗑️</button>
       </span>
       <button id="chart-wl-btn" class="btn sm ghost" onclick="addChartToWl()" style="color:#22c55e;white-space:nowrap">+ 觀察清單</button>
+      <button class="btn sm ghost" onclick="openBacktest()" style="color:#f59e0b;white-space:nowrap">📊 回測</button>
       <button class="btn sm ghost" onclick="closeChart()">✕ 關閉</button>
     </div>
     <div id="chart-tv-container" style="flex:1;overflow:hidden"></div>
+  </div>
+</div>
+
+<!-- 回測 Modal -->
+<div id="backtest-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:10000;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)document.getElementById('backtest-modal').style.display='none'">
+  <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;width:min(96vw,720px);max-height:85vh;overflow-y:auto;padding:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 style="color:#e6edf3;font-size:1.1rem" id="bt-title">回測結果</h2>
+      <button class="btn sm ghost" onclick="document.getElementById('backtest-modal').style.display='none'">✕</button>
+    </div>
+    <div id="bt-body">載入中...</div>
   </div>
 </div>
 
