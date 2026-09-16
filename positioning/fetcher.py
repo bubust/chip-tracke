@@ -803,10 +803,26 @@ async def fetch_all(target_date: date | None = None) -> dict:
     # ── Options ──
     foreign_opt = options_data.get("foreign", {})
 
+    # ── 成交量（億）：嘗試從 FinMind TaiwanStockPrice Y9999 取得 ──
+    market_volume_bn = None
+    try:
+        async with httpx.AsyncClient(headers=HEADERS, timeout=10) as _vc:
+            _vr = await _vc.get("https://api.finmindtrade.com/api/v4/data",
+                params={"dataset": "TaiwanStockPrice", "data_id": "Y9999",
+                        "start_date": td_str, "end_date": td_str, "token": _FM_TOKEN})
+            for _vrow in _vr.json().get("data", []):
+                vol = _vrow.get("Trading_Volume") or _vrow.get("trading_volume")
+                if vol:
+                    market_volume_bn = round(float(vol) / 1e8, 1)
+                    break
+    except Exception:
+        pass
+
     result = {
         "observation_date": td_str,
         # Market index
         "taiex_close": taiex_close,
+        "market_volume_bn": market_volume_bn,
         # Cash
         "foreign_cash_net": spot_data.get("foreign_cash_net"),
         "trust_cash_net": spot_data.get("trust_cash_net"),
