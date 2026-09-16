@@ -108,8 +108,13 @@
   <div class="score-card" id="card-ex">
     <div class="label">竭盡 Exhaustion</div>
     <div class="value" id="ex-val">—</div>
-    <div class="sub">極端竭盡（-100~+100）</div>
-    <div class="desc">接近 −100 → 賣壓耗盡，可能反彈<br>接近 +100 → 買盤過熱，可能見頂</div>
+    <div class="sub" id="ex-status" style="font-size:.78rem;font-weight:600;margin-top:2px">—</div>
+    <div class="desc" style="margin-top:6px">
+      <b>0 = 正常</b>，無極端訊號（多數時候如此）<br>
+      接近 <b style="color:#3fb950">−100</b> → 跌深賣壓耗盡，可能反彈<br>
+      接近 <b style="color:#f85149">+100</b> → 買盤過熱，可能見頂<br>
+      <span style="color:#484f58;font-size:.72rem">觸發門檻：廣度 &lt;25% 或 &gt;75% 才會出現非零值</span>
+    </div>
   </div>
 </div>
 
@@ -328,7 +333,22 @@ function renderToday(data) {
   rEl.textContent = risk;
   rEl.style.color = colorRisk(risk);
 
-  document.getElementById('ex-val').textContent = ex;
+  const exEl = document.getElementById('ex-val');
+  const exStatusEl = document.getElementById('ex-status');
+  exEl.textContent = (ex >= 0 ? (ex > 0 ? '+' : '') : '') + ex;
+  if (ex === 0) {
+    exEl.style.color = '#8b949e';
+    exStatusEl.textContent = '正常中性';
+    exStatusEl.style.color = '#8b949e';
+  } else if (ex > 0) {
+    exEl.style.color = '#f85149';
+    exStatusEl.textContent = ex > 60 ? '⚠️ 買盤過熱' : '偏熱';
+    exStatusEl.style.color = '#f85149';
+  } else {
+    exEl.style.color = '#3fb950';
+    exStatusEl.textContent = ex < -60 ? '⚠️ 賣壓耗盡' : '偏超賣';
+    exStatusEl.style.color = '#3fb950';
+  }
   const regimeLabel = data.regime_label || '—';
   document.getElementById('regime-label-top').textContent = regimeLabel;
 
@@ -468,8 +488,8 @@ function renderHistoryTable(history) {
       '<div style="color:#8b949e;font-size:.82rem;text-align:center;padding:12px">無歷史資料</div>';
     return;
   }
-  // 顯示最近 20 筆，最新在上
-  const rows = [...history].reverse().slice(0, 20);
+  // 顯示最近 30 筆，最新在上
+  const rows = [...history].reverse().slice(0, 30);
   const html = `<table>
     <tr>
       <th>日期</th><th>狀態</th><th>方向</th><th>風險</th><th>廣度</th><th>竭盡</th>
@@ -477,15 +497,29 @@ function renderHistoryTable(history) {
     ${rows.map(d => {
       const dir = d.direction ?? 0;
       const risk = d.risk_score ?? 0;
+      const breadth = d.breadth;
+      const ex = d.exhaustion;
       const dColor = dir > 30 ? '#3fb950' : dir < -30 ? '#f85149' : '#d29922';
       const rColor = risk > 70 ? '#f85149' : risk > 50 ? '#d29922' : '#3fb950';
+      // 廣度：正=綠，負=紅，深淺依強度
+      const bColor = breadth == null ? '#8b949e'
+        : breadth > 30 ? '#3fb950' : breadth > 0 ? '#7dd99e'
+        : breadth > -30 ? '#f47e7a' : '#f85149';
+      const bStr = breadth != null ? ((breadth > 0 ? '+' : '') + breadth) : '—';
+      // 竭盡：0=灰（正常），正=紅（過熱），負=綠（耗盡）
+      const exColor = ex == null || ex === 0 ? '#484f58'
+        : ex > 0 ? '#f85149' : '#3fb950';
+      const exStr = ex != null
+        ? (ex === 0 ? '<span style="color:#484f58">— 正常</span>'
+          : `<b style="color:${exColor}">${ex > 0 ? '+' : ''}${ex}</b>`)
+        : '—';
       return `<tr>
         <td style="color:#8b949e">${d.date || ''}</td>
         <td>${d.regime_label || '—'}</td>
-        <td style="color:${dColor}">${(dir >= 0 ? '+' : '') + dir}</td>
+        <td style="color:${dColor};font-weight:600">${(dir >= 0 ? '+' : '') + dir}</td>
         <td style="color:${rColor}">${risk}</td>
-        <td style="color:#8b949e">${d.breadth ?? '—'}</td>
-        <td style="color:#8b949e">${d.exhaustion ?? '—'}</td>
+        <td style="color:${bColor};font-weight:${Math.abs(breadth ?? 0) > 30 ? 600 : 400}">${bStr}</td>
+        <td>${exStr}</td>
       </tr>`;
     }).join('')}
   </table>`;

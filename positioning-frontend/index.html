@@ -213,17 +213,21 @@
     </select>
   </div>
   <div style="overflow-x:auto">
-    <table id="hist-table">
+    <table id="hist-table" style="font-size:0.78rem;min-width:900px">
       <thead>
-        <tr>
-          <th>日期</th>
-          <th>外資期貨</th>
-          <th>Δ1D</th>
-          <th>前五大</th>
-          <th>PCR</th>
-          <th>散戶比</th>
-          <th>狀態</th>
-          <th>趨勢</th>
+        <tr style="background:#1c2128">
+          <th style="white-space:nowrap">日期</th>
+          <th style="white-space:nowrap;text-align:right">成交量</th>
+          <th style="white-space:nowrap;text-align:right;color:#58a6ff">外資</th>
+          <th style="white-space:nowrap;text-align:right;color:#58a6ff">投信</th>
+          <th style="white-space:nowrap;text-align:right;color:#58a6ff">自營</th>
+          <th style="white-space:nowrap;text-align:right;color:#d29922">外資大小<br><span style="font-weight:400;color:var(--muted)">(期貨淨口)</span></th>
+          <th style="white-space:nowrap;text-align:right;color:#d29922">前五大<br><span style="font-weight:400;color:var(--muted)">留倉</span></th>
+          <th style="white-space:nowrap;text-align:right;color:#d29922">前十大<br><span style="font-weight:400;color:var(--muted)">留倉</span></th>
+          <th style="white-space:nowrap;text-align:right">選 PCR</th>
+          <th style="white-space:nowrap;text-align:right;color:#58a6ff">外(選)</th>
+          <th style="white-space:nowrap;text-align:right">韭菜指數</th>
+          <th style="white-space:nowrap;text-align:right;color:var(--muted)">未平倉口數</th>
         </tr>
       </thead>
       <tbody id="hist-body"></tbody>
@@ -341,30 +345,51 @@ async function loadToday() {
   }
 }
 
+function _cv(v, dec=0, unit='') {
+  if (v == null) return '<span class="neu" style="color:#484f58">—</span>';
+  const cls = v > 0 ? 'pos' : v < 0 ? 'neg' : 'neu';
+  const sign = v > 0 ? '+' : '';
+  const num = dec === 0 ? Math.round(v).toLocaleString() : v.toFixed(dec);
+  return `<span class="${cls}">${sign}${num}${unit}</span>`;
+}
+
 async function loadHistory() {
   const days = document.getElementById('hist-days').value;
   try {
     const r = await fetch(`/api/positioning/history?days=${days}`);
     const rows = await r.json();
     const tbody = document.getElementById('hist-body');
-    tbody.innerHTML = rows.map(d => {
-      const ffNet = d.foreign_futures_net_oi;
-      const ffCls = ffNet > 0 ? 'pos' : ffNet < 0 ? 'neg' : 'neu';
-      const delta = d.delta_foreign_futures_1d;
-      const deltaCls = delta > 0 ? 'pos' : delta < 0 ? 'neg' : 'neu';
-      const t5 = d.top5_net_oi;
-      const t5Cls = t5 > 0 ? 'pos' : t5 < 0 ? 'neg' : 'neu';
+    tbody.innerHTML = rows.map((d, i) => {
+      // 韭菜指數顏色：正 = 多頭(偏紅/警示)，負 = 空頭(偏綠/超跌)
       const retail = d.retail_mtx_ratio;
-      const rCls = retail > 0 ? 'pos' : retail < 0 ? 'neg' : 'neu';
-      return `<tr>
-        <td>${d.observation_date}</td>
-        <td class="${ffCls}">${ffNet != null ? (ffNet > 0 ? '+' : '') + Math.round(ffNet).toLocaleString() : 'N/A'}</td>
-        <td class="${deltaCls}">${delta != null ? (delta > 0 ? '+' : '') + Math.round(delta).toLocaleString() : '—'}</td>
-        <td class="${t5Cls}">${t5 != null ? (t5 > 0 ? '+' : '') + t5.toLocaleString() : 'N/A'}</td>
-        <td>${d.pcr_oi_all != null ? d.pcr_oi_all.toFixed(1) : 'N/A'}</td>
-        <td class="${rCls}">${retail != null ? (retail > 0 ? '+' : '') + retail.toFixed(1) + '%' : 'N/A'}</td>
-        <td>${stateBadge(d.positioning_state)}</td>
-        <td>${stateBadge(d.positioning_transition)}</td>
+      const rCls = retail > 15 ? 'pos' : retail < -15 ? 'neg' : 'neu';
+      const retailStr = retail != null
+        ? `<span class="${rCls}">${retail > 0 ? '+' : ''}${retail.toFixed(1)}%</span>`
+        : '<span class="neu" style="color:#484f58">—</span>';
+      // PCR 顏色：>1 偏空(買權少→紅)，<0.8 偏多(賣權少→綠)
+      const pcr = d.pcr_oi_all;
+      const pcrColor = pcr == null ? '#484f58' : pcr > 1.1 ? '#f85149' : pcr < 0.85 ? '#3fb950' : '#8b949e';
+      const pcrStr = pcr != null
+        ? `<span style="color:${pcrColor};font-weight:600">${pcr.toFixed(1)}</span>`
+        : '<span style="color:#484f58">—</span>';
+      // 未平倉
+      const oi = d.tx_equivalent_total_oi;
+      const oiStr = oi != null ? Math.round(oi).toLocaleString() : '—';
+      // 斑馬底色
+      const rowBg = i % 2 === 0 ? '' : 'background:#1c2128';
+      return `<tr style="${rowBg}">
+        <td style="color:#8b949e;white-space:nowrap">${d.observation_date}</td>
+        <td style="text-align:right;color:#8b949e">${d.market_volume_bn != null ? d.market_volume_bn.toFixed(0) + '億' : '—'}</td>
+        <td style="text-align:right">${_cv(d.foreign_cash_net, 1, '億')}</td>
+        <td style="text-align:right">${_cv(d.trust_cash_net, 1, '億')}</td>
+        <td style="text-align:right">${_cv(d.dealer_cash_net, 1, '億')}</td>
+        <td style="text-align:right;font-weight:600">${_cv(d.foreign_futures_net_oi, 0, '口')}</td>
+        <td style="text-align:right">${_cv(d.top5_net_oi, 0, '口')}</td>
+        <td style="text-align:right">${_cv(d.top10_net_oi, 0, '口')}</td>
+        <td style="text-align:right">${pcrStr}</td>
+        <td style="text-align:right">${_cv(d.foreign_option_net_value, 0, '千')}</td>
+        <td style="text-align:right">${retailStr}</td>
+        <td style="text-align:right;color:#8b949e">${oiStr}</td>
       </tr>`;
     }).join('');
   } catch(e) { console.error(e); }
