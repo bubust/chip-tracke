@@ -212,6 +212,22 @@ async def lifespan(app: FastAPI):
             except Exception as _e:
                 import logging; logging.getLogger(__name__).error(f"[sector_init] {_e}")
         threading.Thread(target=_sector_init, daemon=True).start()
+    else:
+        # sector_master 已有資料，但若 sector_daily 是空的 → 自動觸發計算
+        def _sector_auto_calc():
+            try:
+                from sector.db import db as _sdb
+                with _sdb() as _sc:
+                    cnt = _sc.execute("SELECT COUNT(*) FROM sector_daily").fetchone()[0]
+                if cnt == 0:
+                    import logging; logging.getLogger(__name__).info("[sector] sector_daily 空，自動觸發計算...")
+                    from sector.prices import backfill
+                    from sector.engine import run_sector_engine
+                    backfill(days=130)
+                    run_sector_engine(days_back=60)
+            except Exception as _e:
+                import logging; logging.getLogger(__name__).error(f"[sector_auto_calc] {_e}")
+        threading.Thread(target=_sector_auto_calc, daemon=True).start()
     # 啟動 positioning 排程（每個交易日 16:45 自動更新）
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
