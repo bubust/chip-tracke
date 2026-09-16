@@ -616,7 +616,7 @@ async def api_indices():
     _FM_TOKEN_IDX = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0.LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
     missing_fut = [k for k in ("tf", "te") if result[k]["price"] is None]
     if missing_fut:
-        start_fm = (_dt_idx.date.today() - _dt_idx.timedelta(days=10)).strftime("%Y-%m-%d")
+        start_fm = (_dt_idx.datetime.now(_dt_idx.timezone(_dt_idx.timedelta(hours=8))).date() - _dt_idx.timedelta(days=10)).strftime("%Y-%m-%d")
         prod_map = {"tf": "TF", "te": "TE"}
         try:
             async with httpx.AsyncClient(timeout=10, verify=False, follow_redirects=True) as fm_c:
@@ -1019,7 +1019,7 @@ async def api_market_scan(top: int = 50):
             pass
 
         # T86 嘗試最近 5 個交易日（今日優先，若未公布則往前找）
-        attempt_dt = date.today()
+        attempt_dt = datetime.now(timezone(timedelta(hours=8))).date()
         for _ in range(5):
             if not is_trading_day(attempt_dt):
                 attempt_dt -= timedelta(days=1)
@@ -1535,7 +1535,7 @@ def api_stock_ohlcv(stock_id: str, interval: str = "1d"):
         try:
             _FM_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0.LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
             import datetime as _dt2
-            start_date = (_dt2.date.today() - _dt2.timedelta(days=days)).strftime("%Y-%m-%d")
+            start_date = (_dt2.datetime.now(_dt2.timezone(_dt2.timedelta(hours=8))).date() - _dt2.timedelta(days=days)).strftime("%Y-%m-%d")
             fm_r = httpx.get(
                 "https://api.finmindtrade.com/api/v4/data",
                 params={"dataset": "TaiwanStockPrice", "data_id": stock_id,
@@ -2133,7 +2133,7 @@ async def debug_prices():
 
         # FinMind — 測試今日收盤 + 分鐘資料
         import datetime as _dt
-        today_str = _dt.date.today().strftime("%Y-%m-%d")
+        today_str = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).date().strftime("%Y-%m-%d")
         FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0.LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
         for fm_dataset in ["TaiwanStockPrice", "TaiwanStockPriceMinute"]:
             try:

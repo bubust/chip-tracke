@@ -6,7 +6,7 @@ import asyncio
 import logging
 import os
 import threading
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -96,7 +96,7 @@ def refresh(target_date: str | None = None):
 def backfill(days: int = 30):
     def _bg():
         # Re-fetch and compute for last N trading days
-        td = date.today()
+        td = datetime.now(timezone(timedelta(hours=8))).date()
         count = 0
         for i in range(days * 2):  # iterate extra to skip weekends
             d = td - timedelta(days=i)

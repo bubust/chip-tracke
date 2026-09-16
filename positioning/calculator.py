@@ -4,7 +4,7 @@ Computes derived indicators, states, transitions, divergences, and exhaustion.
 """
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from statistics import mean, stdev
 
 from .db import get_conn, upsert_positioning, get_series, get_history
@@ -311,7 +311,7 @@ def compute_positioning(raw: dict, target_date: str | None = None) -> dict:
     Saves result to positioning_daily.
     """
     conn = get_conn()
-    td_str = target_date or raw.get("observation_date") or date.today().strftime("%Y-%m-%d")
+    td_str = target_date or raw.get("observation_date") or datetime.now(timezone(timedelta(hours=8))).date().strftime("%Y-%m-%d")
 
     # Pull historical series for delta/percentile calculations
     def _series(col, limit=300):

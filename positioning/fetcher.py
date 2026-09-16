@@ -8,7 +8,10 @@ import csv
 import io
 import json
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
+
+def _tw_today() -> date:
+    return datetime.now(timezone(timedelta(hours=8))).date()
 
 import httpx
 
@@ -408,7 +411,7 @@ async def fetch_twse_institutional_spot(target_date: date | None = None) -> dict
     Fetch 三大法人現貨 from TWSE T86.
     Returns foreign/trust/dealer net in 億元.
     """
-    td = target_date or date.today()
+    td = target_date or _tw_today()
     while td.weekday() >= 5:
         td -= timedelta(days=1)
     dt_str = td.strftime("%Y%m%d")
@@ -551,7 +554,7 @@ def _derive_total_oi_from_large_trader(large_trader: dict) -> dict:
 
 async def fetch_taiex_close(target_date: date | None = None) -> float | None:
     """Fetch TAIEX (加權指數) closing price. Tries 4 sources in order."""
-    td = target_date or date.today()
+    td = target_date or _tw_today()
     while td.weekday() >= 5:
         td -= timedelta(days=1)
     dt_str = td.strftime("%Y%m%d")

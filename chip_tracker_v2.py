@@ -9,12 +9,25 @@ import asyncio
 import json
 import os
 import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
 import httpx
 import pandas as pd
+
+# ── 台灣時區工具 ───────────────────────────────────────────────────────────────
+_TW_TZ = timezone(timedelta(hours=8))
+
+def _tw_today() -> date:
+    """回傳台灣時間的今日日期（Render.com 執行環境為 UTC，不能用 date.today()）"""
+    return datetime.now(_TW_TZ).date()
+
+# ── FinMind Token ─────────────────────────────────────────────────────────────
+_FM_TOKEN = os.getenv(
+    "FINMIND_TOKEN",
+    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0.LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
+)
 
 # ── 目錄設定 ──────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -261,7 +274,7 @@ def to_twse_date(d: date) -> str:
 
 def last_n_trading_dates(n: int, end: date = None) -> list[date]:
     if end is None:
-        end = date.today()
+        end = _tw_today()
     result = []
     cur = end
     while len(result) < n:
@@ -280,7 +293,8 @@ FINMIND_BASE = "https://api.finmindtrade.com/api/v4/data"
 async def _fetch_finmind(client: httpx.AsyncClient, dataset: str, stock_id: str,
                           start_date: str, end_date: str = None) -> list:
     """抓取 Finmind 單一 dataset，回傳 data 陣列"""
-    params = {"dataset": dataset, "data_id": stock_id, "start_date": start_date}
+    params = {"dataset": dataset, "data_id": stock_id, "start_date": start_date,
+              "token": _FM_TOKEN}
     if end_date:
         params["end_date"] = end_date
     try:
@@ -599,7 +613,7 @@ async def update_stocks(
     回傳每檔的每日估算紀錄，同時寫入 chip_data/{stock_id}.csv
     """
     if end_date is None:
-        end_date = date.today()
+        end_date = _tw_today()
 
     dates = last_n_trading_dates(days, end_date)
     if not dates:
@@ -730,7 +744,7 @@ def get_market_rankings(dt: str = None, top: int = 30) -> list[dict]:
     注意：只排已更新的股票
     """
     if dt is None:
-        dt = to_twse_date(date.today())
+        dt = to_twse_date(_tw_today())
 
     # 掃描所有 CSV，找該日期的資料
     rankings = []
@@ -840,7 +854,7 @@ async def scan_market_today(dt: date = None) -> tuple[list[dict], str]:
     優先透過 TWSE rwd endpoint，若被封鎖（海外 IP）則回傳空結果。
     """
     if dt is None:
-        dt = date.today()
+        dt = _tw_today()
 
     TWSE_HEADERS = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
