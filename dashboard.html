@@ -278,6 +278,7 @@
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div class="section-title" style="margin:0">我的選股清單</div>
       <div style="display:flex;align-items:center;gap:8px">
+        <button class="btn sm ghost" onclick="exportWatchlist()" title="匯出觀察清單為 CSV，可用手機 Excel/Numbers 查看">📤 匯出清單</button>
         <button class="btn sm ghost" id="btn-refresh-tdcc" onclick="refreshWatchlistTdcc()" title="用 FinMind 更新觀察清單的千張大戶週資料">🏦 更新千張大戶</button>
         <span style="color:var(--muted);font-size:.8rem">現價自動刷新：</span>
         <input id="price-refresh-sec" type="number" min="5" max="3600" value="5" style="width:60px;text-align:center;background:var(--card2);border:1px solid var(--border);border-radius:4px;color:var(--fg);padding:2px 4px;font-size:.82rem" title="刷新間隔（秒）">
@@ -1997,6 +1998,38 @@ function renderNorwaySection(history) {
     </div>`;
 }
 
+function exportWatchlist() {
+  if (!_wlData || _wlData.length === 0) { toast('觀察清單是空的'); return; }
+  const headers = ['代號','名稱','來源','備註','股價','漲跌%','最新訊號','大戶今日(張)','7日累計(張)','連續天數','BB位置','千張大戶%','狀態','最新日期'];
+  const rows = _wlData.map(s => {
+    const cb = s.consecutive_buy || 0, cs = s.consecutive_sell || 0;
+    return [
+      s.stock_id,
+      s.name || '',
+      s.source || '',
+      (s.note || '').replace(/,/g,'，'),
+      s.price != null ? s.price.toFixed(2) : '',
+      s.price_change_pct != null ? (s.price_change_pct > 0 ? '+' : '') + s.price_change_pct.toFixed(2) + '%' : '',
+      s.signal || '',
+      s.whale_flow_lots != null ? s.whale_flow_lots : '',
+      s.cum7_whale != null ? s.cum7_whale : '',
+      cb > 0 ? '+' + cb + '天' : cs > 0 ? '-' + cs + '天' : '',
+      s.bb_score != null ? (s.bb_score > 0 ? '+' : '') + s.bb_score : '',
+      s.kpct != null ? s.kpct.toFixed(1) + '%' : '',
+      s.status || '',
+      s.last_date || '',
+    ];
+  });
+  const csv = [headers, ...rows].map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\r\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const d = new Date().toLocaleDateString('sv-SE');
+  a.href = url; a.download = `觀察清單_${d}.csv`; a.click();
+  URL.revokeObjectURL(url);
+  toast(`✅ 已匯出 ${_wlData.length} 支股票`);
+}
+
 async function refreshWatchlistTdcc() {
   const btn = document.getElementById('btn-refresh-tdcc');
   btn.disabled = true;
@@ -2823,6 +2856,8 @@ let _chartStockId = null;
 let _chartOhlcvUrl = null;   // 指數圖時指向 /api/index/{key}/ohlcv
 let _chartInterval = '1d';   // 目前選擇的週期
 const _chartOverlayState = { ma5: true, ma10: true, ma20: true, ma60: true, bb: false };
+let _maSeriesRefs = {};
+let _bbSeriesRefs = [];
 
 function setChartPeriod(period) {
   _chartInterval = period;
@@ -2937,10 +2972,10 @@ function toggleChartOverlay(key) {
   _chartOverlayState[key] = !_chartOverlayState[key];
   const btn = document.getElementById(`overlay-btn-${key}`);
   if (btn) btn.classList.toggle('active', _chartOverlayState[key]);
-  if (_chartStockId) {
-    let savedRange = null;
-    if (_lwcCharts[0]) try { savedRange = _lwcCharts[0].timeScale().getVisibleRange(); } catch(e) {}
-    openChart(_chartStockId, savedRange);
+  if (key === 'bb') {
+    _bbSeriesRefs.forEach(s => { try { s.applyOptions({ visible: _chartOverlayState.bb }); } catch(e) {} });
+  } else if (_maSeriesRefs[key]) {
+    try { _maSeriesRefs[key].applyOptions({ visible: _chartOverlayState[key] }); } catch(e) {}
   }
 }
 function openWlChart(sid)     { _frozenChartList = [..._wlChartList];     _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = '';             _chartOhlcvUrl = null; _resetChartPeriod(); openChart(sid); }
@@ -3225,25 +3260,28 @@ async function openChart(stockId, savedRange = null) {
       { key: 'ma20', period: 20, ma: ma20, color: '#e91e63' },
       { key: 'ma60', period: 60, ma: ma60, color: '#ff9800' },
     ];
+    // MA 線：全部建立，透過 applyOptions visible 切換，避免整圖重繪
+    _maSeriesRefs = {};
     for (const { key, period, ma, color } of MA_CFG) {
-      if (!_chartOverlayState[key]) continue;
       const s = cChart.addLineSeries({
         color, lineWidth: 1,
         priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
       });
       s.setData(ohlcv.map((r, i) => isNaN(ma[i]) ? null : { time: _rt(r), value: ma[i] }).filter(Boolean));
+      s.applyOptions({ visible: _chartOverlayState[key] });
+      _maSeriesRefs[key] = s;
     }
 
-    // 布林軌道 (BB, 20日, 2σ)
-    if (_chartOverlayState.bb) {
-      const { upper, lower } = _calcBB(closes, 20);
-      const bbUpperS = cChart.addLineSeries({ color: 'rgba(248,81,73,.55)', lineWidth: 1, lineStyle: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-      bbUpperS.setData(ohlcv.map((r, i) => isNaN(upper[i]) ? null : { time: _rt(r), value: upper[i] }).filter(Boolean));
-      const bbLowerS = cChart.addLineSeries({ color: 'rgba(88,166,255,.55)', lineWidth: 1, lineStyle: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-      bbLowerS.setData(ohlcv.map((r, i) => isNaN(lower[i]) ? null : { time: _rt(r), value: lower[i] }).filter(Boolean));
-      const bbMidS  = cChart.addLineSeries({ color: 'rgba(167,139,250,.4)',  lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-      bbMidS.setData(ohlcv.map((r, i) => isNaN(ma20[i]) ? null : { time: _rt(r), value: ma20[i] }).filter(Boolean));
-    }
+    // 布林軌道 (BB, 20日, 2σ) — 一律建立，切換時改 visible
+    _bbSeriesRefs = [];
+    const { upper: _bbUp, lower: _bbLo } = _calcBB(closes, 20);
+    const bbUpperS = cChart.addLineSeries({ color: 'rgba(248,81,73,.55)', lineWidth: 1, lineStyle: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+    bbUpperS.setData(ohlcv.map((r, i) => isNaN(_bbUp[i]) ? null : { time: _rt(r), value: _bbUp[i] }).filter(Boolean));
+    const bbLowerS = cChart.addLineSeries({ color: 'rgba(88,166,255,.55)', lineWidth: 1, lineStyle: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+    bbLowerS.setData(ohlcv.map((r, i) => isNaN(_bbLo[i]) ? null : { time: _rt(r), value: _bbLo[i] }).filter(Boolean));
+    const bbMidS  = cChart.addLineSeries({ color: 'rgba(167,139,250,.4)',  lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+    bbMidS.setData(ohlcv.map((r, i) => isNaN(ma20[i]) ? null : { time: _rt(r), value: ma20[i] }).filter(Boolean));
+    [bbUpperS, bbLowerS, bbMidS].forEach(s => { s.applyOptions({ visible: _chartOverlayState.bb }); _bbSeriesRefs.push(s); });
 
     // ── 假跌破 / 假突破標記 ──
     const markers = [];
