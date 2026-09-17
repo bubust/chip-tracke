@@ -1066,15 +1066,20 @@ async function openBacktest() {
       ctrl.id = 'bt-params';
       ctrl.style.cssText = 'display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 0 6px;border-bottom:1px solid #30363d;margin-bottom:10px;font-size:.82rem;';
       ctrl.innerHTML = `
-        <label style="color:var(--muted)">持有天數
-          <input id="bt-days" type="number" value="10" min="1" max="60" style="width:50px;margin-left:6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 6px">
+        <label style="color:var(--muted)">跌破幾天低點
+          <input id="bt-tld" type="number" value="2" min="0" max="10" style="width:45px;margin-left:6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 6px">
+          <span style="color:#484f58;font-size:.72rem;margin-left:2px">（0=不啟用）</span>
+        </label>
+        <label style="color:var(--muted)">出場天數上限
+          <input id="bt-days" type="number" value="0" min="0" max="60" style="width:45px;margin-left:6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 6px">
+          <span style="color:#484f58;font-size:.72rem;margin-left:2px">（0=不限）</span>
         </label>
         <label style="color:var(--muted)">停損%
-          <input id="bt-sl" type="number" value="0" min="0" max="30" step="0.5" style="width:55px;margin-left:6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 6px">
+          <input id="bt-sl" type="number" value="0" min="0" max="30" step="0.5" style="width:50px;margin-left:6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 6px">
           <span style="color:#484f58;font-size:.72rem;margin-left:2px">（0=不啟用）</span>
         </label>
         <label style="color:var(--muted)">停利%
-          <input id="bt-tp" type="number" value="0" min="0" max="50" step="0.5" style="width:55px;margin-left:6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 6px">
+          <input id="bt-tp" type="number" value="0" min="0" max="50" step="0.5" style="width:50px;margin-left:6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 6px">
           <span style="color:#484f58;font-size:.72rem;margin-left:2px">（0=不啟用）</span>
         </label>
         <button onclick="runBacktest()" style="background:#58a6ff;color:#fff;border:none;border-radius:6px;padding:4px 14px;cursor:pointer;font-size:.82rem;font-weight:600">重新計算</button>
@@ -1097,15 +1102,20 @@ async function openBacktest() {
     ctrl.id = 'bt-params';
     ctrl.style.cssText = 'display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 0 6px;border-bottom:1px solid #30363d;margin-bottom:10px;font-size:.82rem;';
     ctrl.innerHTML = `
-      <label style="color:var(--muted)">持有天數
-        <input id="bt-days" type="number" value="10" min="1" max="60" style="width:50px;margin-left:6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 6px">
+      <label style="color:var(--muted)">跌破幾天低點
+        <input id="bt-tld" type="number" value="2" min="0" max="10" style="width:45px;margin-left:6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 6px">
+        <span style="color:#484f58;font-size:.72rem;margin-left:2px">（0=不啟用）</span>
+      </label>
+      <label style="color:var(--muted)">出場天數上限
+        <input id="bt-days" type="number" value="0" min="0" max="60" style="width:45px;margin-left:6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 6px">
+        <span style="color:#484f58;font-size:.72rem;margin-left:2px">（0=不限）</span>
       </label>
       <label style="color:var(--muted)">停損%
-        <input id="bt-sl" type="number" value="0" min="0" max="30" step="0.5" style="width:55px;margin-left:6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 6px">
+        <input id="bt-sl" type="number" value="0" min="0" max="30" step="0.5" style="width:50px;margin-left:6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 6px">
         <span style="color:#484f58;font-size:.72rem;margin-left:2px">（0=不啟用）</span>
       </label>
       <label style="color:var(--muted)">停利%
-        <input id="bt-tp" type="number" value="0" min="0" max="50" step="0.5" style="width:55px;margin-left:6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 6px">
+        <input id="bt-tp" type="number" value="0" min="0" max="50" step="0.5" style="width:50px;margin-left:6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 6px">
         <span style="color:#484f58;font-size:.72rem;margin-left:2px">（0=不啟用）</span>
       </label>
       <button onclick="runBacktest()" style="background:#58a6ff;color:#fff;border:none;border-radius:6px;padding:4px 14px;cursor:pointer;font-size:.82rem;font-weight:600">重新計算</button>
@@ -1120,13 +1130,14 @@ async function openBacktest() {
 async function runIdxBacktest(key) {
   const body = document.getElementById('bt-body');
   body.innerHTML = '<div style="color:var(--muted);text-align:center;padding:40px">計算中...</div>';
-  const days = parseInt(document.getElementById('bt-days')?.value || 10);
+  const days = parseInt(document.getElementById('bt-days')?.value ?? 0);
+  const tld  = parseInt(document.getElementById('bt-tld')?.value ?? 2);
   const sl   = parseFloat(document.getElementById('bt-sl')?.value || 0);
   const tp   = parseFloat(document.getElementById('bt-tp')?.value || 0);
   const slHint = sl > 0 ? ` · 停損 ${sl}%` : '';
   const tpHint = tp > 0 ? ` · 停利 ${tp}%` : '';
   try {
-    const r = await fetch(`/api/backtest/index?key=${key}&holding_days=${days}&stop_loss=${sl}&take_profit=${tp}`);
+    const r = await fetch(`/api/backtest/index?key=${key}&holding_days=${days}&trailing_low_days=${tld}&stop_loss=${sl}&take_profit=${tp}`);
     const d = await r.json();
     if (d.error || d.detail) { body.innerHTML = `<div style="color:var(--red)">${d.error || d.detail}</div>`; return; }
     const retColor = v => v >= 0 ? '#ef4444' : '#22c55e';
@@ -1134,7 +1145,7 @@ async function runIdxBacktest(key) {
       const s = d[type] || {};
       if (!s.count) return `<div style="color:var(--muted);margin-bottom:12px">無 ${label} 訊號</div>`;
       const exitReasonBadge = r => {
-        const map = {'停損':'#ef4444','停利':'#22c55e','時間':'#8b949e'};
+        const map = {'停損':'#ef4444','停利':'#22c55e','時間':'#8b949e','跌破低點':'#d29922'};
         const c = map[r] || '#8b949e';
         return `<span style="font-size:.68rem;padding:1px 6px;border-radius:10px;background:${c}22;color:${c};border:1px solid ${c}44">${r||'時間'}</span>`;
       };
@@ -1143,7 +1154,7 @@ async function runIdxBacktest(key) {
       const extraTd = t => (showSl ? `<td style="padding:3px 4px;text-align:center;color:#ef4444">${t.sl_price?.toFixed(0)||'—'}</td>` : '') + (showTp ? `<td style="padding:3px 4px;text-align:center;color:#22c55e">${t.tp_price?.toFixed(0)||'—'}</td>` : '');
       return `
         <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:12px">
-          <div style="font-size:.85rem;font-weight:700;color:${color};margin-bottom:10px">${label}（${s.count} 次，持有最多 ${days} 天）</div>
+          <div style="font-size:.85rem;font-weight:700;color:${color};margin-bottom:10px">${label}（${s.count} 次${tld>0?' · 跌破前'+tld+'天低點出場':''}${days>0?' · 最多'+days+'天':''}）</div>
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center">
             <div><div style="font-size:.72rem;color:var(--muted)">勝率</div><div style="font-size:1.3rem;font-weight:700;color:${color}">${(s.win_rate*100).toFixed(1)}%</div></div>
             <div><div style="font-size:.72rem;color:var(--muted)">平均報酬</div><div style="font-size:1.3rem;font-weight:700;color:${retColor(s.avg_return)}">${s.avg_return>=0?'+':''}${(s.avg_return*100).toFixed(2)}%</div></div>
@@ -1176,7 +1187,7 @@ async function runIdxBacktest(key) {
         </div>`;
     }
     body.innerHTML = `
-      <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">⚙️ MA10 假跌破/假突破 · 進場：訊號當日收盤 · 持有 ${days} 天${slHint}${tpHint}</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">⚙️ MA10 假跌破/假突破 · 進場：訊號當日收盤${tld>0?' · 跌破前'+tld+'天低點出場':''}${days>0?' · 上限'+days+'天':''}${slHint}${tpHint}</div>
       <div style="font-size:.72rem;color:#484f58;margin-bottom:10px">🔴 紅=獲利　🟢 綠=虧損（台股慣例）</div>
       ${statBlock('fbd','🟡 假跌破（看多）','#fbbf24')}
       ${statBlock('fbr','🔴 假突破（看空）','#f85149')}
@@ -1189,7 +1200,8 @@ async function runIdxBacktest(key) {
 async function runBacktest() {
   const body = document.getElementById('bt-body');
   body.innerHTML = '<div style="color:var(--muted);text-align:center;padding:40px">計算中...</div>';
-  const days = parseInt(document.getElementById('bt-days')?.value || 10);
+  const days = parseInt(document.getElementById('bt-days')?.value ?? 0);
+  const tld  = parseInt(document.getElementById('bt-tld')?.value ?? 2);
   const sl   = parseFloat(document.getElementById('bt-sl')?.value || 0);
   const tp   = parseFloat(document.getElementById('bt-tp')?.value || 0);
 
@@ -1198,7 +1210,7 @@ async function runBacktest() {
   const tpHint = tp > 0 ? ` · 停利 ${tp}%` : '';
 
   try {
-    const r = await fetch(`/api/backtest/fbd?stock_id=${_btStockId}&holding_days=${days}&stop_loss=${sl}&take_profit=${tp}`);
+    const r = await fetch(`/api/backtest/fbd?stock_id=${_btStockId}&holding_days=${days}&trailing_low_days=${tld}&stop_loss=${sl}&take_profit=${tp}`);
     const d = await r.json();
     if (d.error) { body.innerHTML = `<div style="color:var(--red)">${d.error}</div>`; return; }
 
@@ -1209,7 +1221,7 @@ async function runBacktest() {
       const s = d[type] || {};
       if (!s.count) return `<div style="color:var(--muted);margin-bottom:12px">無 ${label} 訊號</div>`;
       const exitReasonBadge = r => {
-        const map = {'停損':'#ef4444','停利':'#22c55e','時間':'#8b949e'};
+        const map = {'停損':'#ef4444','停利':'#22c55e','時間':'#8b949e','跌破低點':'#d29922'};
         const c = map[r] || '#8b949e';
         return `<span style="font-size:.68rem;padding:1px 6px;border-radius:10px;background:${c}22;color:${c};border:1px solid ${c}44">${r||'時間'}</span>`;
       };
@@ -1221,7 +1233,7 @@ async function runBacktest() {
                            (showTp ? `<td style="padding:3px 4px;text-align:center;color:#22c55e">${t.tp_price?.toFixed(2)||'—'}</td>` : '');
       return `
         <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:12px">
-          <div style="font-size:.85rem;font-weight:700;color:${color};margin-bottom:10px">${label}（${s.count} 次，持有最多 ${days} 天）</div>
+          <div style="font-size:.85rem;font-weight:700;color:${color};margin-bottom:10px">${label}（${s.count} 次${tld>0?' · 跌破前'+tld+'天低點出場':''}${days>0?' · 最多'+days+'天':''}）</div>
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center">
             <div><div style="font-size:.72rem;color:var(--muted)">勝率</div><div style="font-size:1.3rem;font-weight:700;color:${color}">${(s.win_rate*100).toFixed(1)}%</div></div>
             <div><div style="font-size:.72rem;color:var(--muted)">平均報酬</div><div style="font-size:1.3rem;font-weight:700;color:${retColor(s.avg_return)}">${s.avg_return>=0?'+':''}${(s.avg_return*100).toFixed(2)}%</div></div>
@@ -1255,7 +1267,7 @@ async function runBacktest() {
     }
 
     body.innerHTML = `
-      <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">⚙️ MA10 假跌破/假突破 · 進場：訊號當日收盤 · 持有 ${days} 天${slHint}${tpHint}</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">⚙️ MA10 假跌破/假突破 · 進場：訊號當日收盤${tld>0?' · 跌破前'+tld+'天低點出場':''}${days>0?' · 上限'+days+'天':''}${slHint}${tpHint}</div>
       <div style="font-size:.72rem;color:#484f58;margin-bottom:10px">🔴 紅=獲利　🟢 綠=虧損（台股慣例）</div>
       ${statBlock('fbd','🟡 假跌破（看多）','#fbbf24')}
       ${statBlock('fbr','🔴 假突破（看空）','#f85149')}

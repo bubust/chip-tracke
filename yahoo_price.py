@@ -363,7 +363,17 @@ async def run_market_scan(concurrency: int = 30, strategy_params: dict = None):
 
             async def _fetch_scan(sid, mkt):
                 out = await _fetch_scan_inner(sid, mkt)
-                _scan_status["progress"] += 1
+                _scan_status["progress"] += 1   # 只在首輪計數
+                if out is None:
+                    _scan_status["yahoo_fail"] += 1
+                    _scan_status["failed_stocks"].append(sid)
+                    return {}
+                _scan_status["yahoo_ok"] += 1
+                return out
+
+            async def _fetch_scan_retry(sid, mkt):
+                """重試版本：不再累加 progress（避免進度條超過 100%）"""
+                out = await _fetch_scan_inner(sid, mkt)
                 if out is None:
                     _scan_status["yahoo_fail"] += 1
                     _scan_status["failed_stocks"].append(sid)
@@ -383,11 +393,11 @@ async def run_market_scan(concurrency: int = 30, strategy_params: dict = None):
                     break
                 print(f"[SCAN] {label}: {len(retry_list)} 支，等待 {wait_secs}s...")
                 await asyncio.sleep(wait_secs)
-                # 重試時清除這批失敗記錄，讓 _fetch_scan 重新計數
+                # 重試時清除這批失敗記錄
                 _scan_status["failed_stocks"] = [s for s in _scan_status["failed_stocks"]
                                                   if s not in failed_set]
                 _scan_status["yahoo_fail"] = len(_scan_status["failed_stocks"])
-                retry_coros = [_fetch_scan(sid, mkt) for sid, mkt in retry_list]
+                retry_coros = [_fetch_scan_retry(sid, mkt) for sid, mkt in retry_list]
                 retry_results = await asyncio.gather(*retry_coros, return_exceptions=True)
                 results = list(results) + list(retry_results)
 
