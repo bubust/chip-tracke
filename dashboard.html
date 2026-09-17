@@ -131,6 +131,15 @@
   /* settings */
   .sg { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   @media (max-width: 600px) { .sg { grid-template-columns: 1fr; } }
+  @media (max-width: 768px) {
+    header { flex-wrap: wrap; padding: 8px 12px; gap: 8px; }
+    header h1 { font-size: 1rem; }
+    .pill-status { font-size: .72rem; padding: 3px 10px; }
+    #btn-global-refresh { font-size: .76rem; padding: 5px 10px; margin-left: 0 !important; }
+    nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    nav button { flex-shrink: 0; padding: 10px 12px; font-size: .8rem; }
+    main { padding: 10px 8px; }
+  }
   .log-row { display: flex; gap: 12px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: .83rem; }
   .log-row:last-child { border-bottom: none; }
   code { font-family: monospace; font-size: .8rem; }
@@ -722,7 +731,8 @@ async function loadWatchlist() {
       lsSaveWatchlist(_wlData.map(x => ({ stock_id: x.stock_id, name: x.name || '', memo: x.memo || '', note: x.note || '' })));
     }
     renderWatchlist();
-    _autoStartPriceRefresh();  // 載入完成後盤中自動啟動 5 秒刷新
+    refreshPricesOnly(true);   // 載入完成後強制刷新一次現價（不受交易時間限制）
+    _autoStartPriceRefresh();  // 盤中自動啟動 5 秒定時刷新
   } catch (e) {
     // API 失敗（Render 冷啟動）→ 5 秒後自動重試
     toast('伺服器連線中，5 秒後重試...', true);
@@ -910,10 +920,10 @@ function _renderPriceCell(sid, close, change_pct) {
   setTimeout(() => { td.style.background = ''; }, 600);
 }
 
-async function refreshPricesOnly() {
+async function refreshPricesOnly(force = false) {
   const status = document.getElementById('price-refresh-status');
-  // 盤後自動停止刷新
-  if (!_isTWTradingHours()) {
+  // 盤後自動停止刷新（除非 force=true 用於初次載入）
+  if (!force && !_isTWTradingHours()) {
     if (_priceRefreshTimer) {
       clearInterval(_priceRefreshTimer);
       clearInterval(_priceRefreshCountdownTimer);

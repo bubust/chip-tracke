@@ -169,9 +169,16 @@ async function loadHistory() {
         '<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:20px">尚無資料，請先點擊「更新資料」或「補歷史資料」</td></tr>';
       return;
     }
-    document.getElementById('hist-body').innerHTML = rows.map(d => `<tr>
+    const todayStr = new Date().toLocaleDateString('sv-SE', {timeZone:'Asia/Taipei'});
+    document.getElementById('hist-body').innerHTML = rows.map(d => {
+      const volCell = d.market_volume_bn != null
+        ? d.market_volume_bn.toFixed(0)+'億'
+        : (d.observation_date === todayStr
+            ? '<span style="color:#484f58;font-size:.72rem">盤中</span>'
+            : '—');
+      return `<tr>
       <td>${d.observation_date}</td>
-      <td style="color:var(--muted)">${d.market_volume_bn != null ? d.market_volume_bn.toFixed(0)+'億' : '—'}</td>
+      <td style="color:var(--muted)">${volCell}</td>
       <td>${_cv(d.foreign_cash_net,  1, '億')}</td>
       <td>${_cv(d.trust_cash_net,    1, '億')}</td>
       <td>${_cv(d.dealer_cash_net,   1, '億')}</td>
@@ -182,7 +189,7 @@ async function loadHistory() {
       <td>${_cv(d.foreign_option_net_value, 0, '')}</td>
       <td>${_retail(d.retail_mtx_ratio)}</td>
       <td style="color:var(--muted)">${d.tx_equivalent_total_oi != null ? Math.round(d.tx_equivalent_total_oi).toLocaleString() : '—'}</td>
-    </tr>`).join('');
+    </tr>`;}).join('');
 
     // 更新今日速覽（第一筆 = 最新）
     const latest = rows[0];

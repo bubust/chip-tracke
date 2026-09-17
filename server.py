@@ -49,6 +49,43 @@ BASE_DIR = Path(__file__).parent
 
 import time as _time
 
+_FINMIND_TOKEN = os.getenv("FINMIND_TOKEN", "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0.LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA")
+
+async def _fetch_finmind_prices(stock_ids: list) -> dict:
+    """FinMind TaiwanStockPrice 最終兜底，每次只查一支但並發。"""
+    from datetime import date, timedelta
+    start = (date.today() - timedelta(days=5)).strftime("%Y-%m-%d")
+    result: dict = {}
+    sem = asyncio.Semaphore(8)
+
+    async def _one(sid):
+        async with sem:
+            try:
+                async with httpx.AsyncClient(timeout=10, verify=False) as client:
+                    r = await client.get(
+                        "https://api.finmindtrade.com/api/v4/data",
+                        params={"dataset": "TaiwanStockPrice", "data_id": sid,
+                                "start_date": start, "token": _FINMIND_TOKEN},
+                    )
+                    rows = r.json().get("data", [])
+                    if not rows:
+                        return
+                    rows.sort(key=lambda x: x.get("date", ""))
+                    latest = rows[-1]
+                    close = float(latest.get("close") or 0)
+                    if close <= 0:
+                        return
+                    pct = None
+                    if len(rows) >= 2:
+                        prev = float(rows[-2].get("close") or 0)
+                        pct = round((close - prev) / prev * 100, 2) if prev > 0 else None
+                    result[sid] = {"close": round(close, 2), "change_pct": pct}
+            except Exception:
+                pass
+
+    await asyncio.gather(*[_one(sid) for sid in stock_ids])
+    return result
+
 # ── 觀察清單即時現價快取（MIS）───────────────────────────────────────────────
 # MIS z 欄位：每次成交後更新，無新成交時回傳 "-"
 # _STOCK_PRICE_CACHE：記住每支股票上次查到的真實 z 值，避免 z="-" 時 fallback 到昨收(y)
@@ -679,8 +716,20 @@ async def api_watchlist_prices():
             mis_result.update(yahoo_result)
         return mis_result
     else:
+        # 盤後：Yahoo → MIS 昨收 → FinMind 三層兜底
         stock_list = [(sid, mkt_map.get(sid, "twse")) for sid in stock_ids]
-        return await fetch_prices_for_stocks(stock_list)
+        yahoo_result = await fetch_prices_for_stocks(stock_list)
+        missing_after = [sid for sid in stock_ids if sid not in yahoo_result]
+        if missing_after:
+            mis_fallback = await _fetch_mis_prices(missing_after, mkt_map)
+            for sid, info in mis_fallback.items():
+                if sid not in yahoo_result:
+                    yahoo_result[sid] = info
+        still_missing = [sid for sid in stock_ids if sid not in yahoo_result]
+        if still_missing:
+            fm_fallback = await _fetch_finmind_prices(still_missing)
+            yahoo_result.update(fm_fallback)
+        return yahoo_result
 
 @app.get("/api/watchlist/summary")
 async def api_watchlist_summary():
@@ -730,10 +779,20 @@ async def api_watchlist_summary():
         conn.commit()
         conn.close()
 
-    # 現價：Yahoo Finance regularMarketPrice（與 K 線同源，Render 可連）
+    # 現價：Yahoo → MIS 昨收 → FinMind 三層兜底
     from yahoo_price import fetch_prices_for_stocks
     stock_list = [(sid, mkt_map.get(sid, "twse")) for sid in stock_ids]
     latest_prices = await fetch_prices_for_stocks(stock_list)
+    missing_price = [sid for sid in stock_ids if sid not in latest_prices]
+    if missing_price:
+        mis_fb = await _fetch_mis_prices(missing_price, mkt_map)
+        for sid, info in mis_fb.items():
+            if sid not in latest_prices:
+                latest_prices[sid] = info
+    still_miss = [sid for sid in stock_ids if sid not in latest_prices]
+    if still_miss:
+        fm_fb = await _fetch_finmind_prices(still_miss)
+        latest_prices.update(fm_fb)
 
     result = []
     for r in rows:

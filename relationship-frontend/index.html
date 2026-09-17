@@ -13,7 +13,8 @@
   --purple: #bc8cff; --orange: #db6d28;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: var(--bg); color: var(--text); font-family: 'Segoe UI','PingFang TC',sans-serif; font-size: 14px; }
+html, body { height: 100%; overflow: hidden; }
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI','PingFang TC',sans-serif; font-size: 14px; display: flex; flex-direction: column; }
 .header { background: var(--card); border-bottom: 1px solid var(--border); padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .header h1 { font-size: 1rem; font-weight: 600; }
 .header .status { font-size: .78rem; color: var(--muted); }
@@ -29,7 +30,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Segoe UI','PingF
 .stat-label { font-size: .72rem; color: var(--muted); }
 .stat-val { font-size: 1rem; font-weight: 700; }
 .pos { color: var(--green); } .neg { color: var(--red); } .neu { color: var(--muted); }
-.layout { display: grid; grid-template-columns: 1fr 300px; gap: 0; height: calc(100vh - 120px); overflow: hidden; }
+.layout { display: grid; grid-template-columns: 1fr 300px; gap: 0; flex: 1; min-height: 0; overflow: hidden; }
 .charts-col { display: flex; flex-direction: column; overflow: hidden; }
 .chart-section { flex: 2; border-bottom: 1px solid var(--border); }
 .chart-section.small { flex: 1; }
@@ -65,9 +66,17 @@ select { background: #21262d; color: var(--text); border: 1px solid var(--border
 .occ-table td { padding: 4px 6px; border-bottom: 1px solid #21262d; }
 .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.strategy-bar { display: flex; align-items: center; gap: 8px; padding: 6px 16px; background: var(--card); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.strategy-bar label { font-size: .75rem; color: var(--muted); white-space: nowrap; }
+.strategy-bar select { flex: 1; max-width: 420px; }
+.strategy-mini-stats { display: flex; gap: 12px; font-size: .75rem; }
+.strategy-mini-stats span { color: var(--muted); }
+.strategy-mini-stats b { margin-left: 3px; }
 @media (max-width: 768px) {
-  .layout { grid-template-columns: 1fr; height: auto; }
-  .side-panel { height: 400px; }
+  html, body { overflow: hidden; }
+  .layout { grid-template-columns: 1fr; flex: 1; }
+  .side-panel { height: 300px; }
+  .strategy-bar { flex-wrap: wrap; }
 }
 </style>
 </head>
@@ -78,7 +87,6 @@ select { background: #21262d; color: var(--text); border: 1px solid var(--border
   <h1>📊 市場關聯研究 V1</h1>
   <span class="status" id="hdr-status">載入中...</span>
   <button class="btn accent" onclick="doRefresh()" id="btn-refresh">🔄 更新</button>
-  <button class="btn" onclick="showResearch()" id="btn-research">🔬 研究模式</button>
 </div>
 
 <!-- Period selector -->
@@ -89,6 +97,21 @@ select { background: #21262d; color: var(--text); border: 1px solid var(--border
   <button class="period-btn active" onclick="setPeriod(90, this)">90D</button>
   <button class="period-btn" onclick="setPeriod(180, this)">180D</button>
   <span style="margin-left:auto;font-size:.72rem;color:var(--muted)" id="crosshair-date">滑鼠移到圖表查看日期資料</span>
+</div>
+
+<!-- Strategy overlay bar -->
+<div class="strategy-bar">
+  <label>📌 策略標記：</label>
+  <select id="strategy-overlay-select" onchange="applyStrategyOverlay(this.value)">
+    <option value="">— 不標記 —</option>
+  </select>
+  <div class="strategy-mini-stats" id="strategy-mini-stats" style="display:none">
+    <span>樣本<b id="sm-n">—</b></span>
+    <span>5日均<b id="sm-5d" style="margin-left:3px">—</b></span>
+    <span>10日均<b id="sm-10d" style="margin-left:3px">—</b></span>
+    <span>勝率<b id="sm-wr" style="margin-left:3px">—</b></span>
+  </div>
+  <button class="btn" onclick="showResearch()" id="btn-research" style="margin-left:auto">🔬 研究模式</button>
 </div>
 
 <!-- Top stats bar -->
@@ -278,7 +301,8 @@ function renderCharts() {
     const color = maxLvl >= 3 ? '#bc8cff' : maxLvl >= 2 ? '#d29922' : '#8b949e';
     return { time: dt, position: 'aboveBar', color, shape: 'circle', text: evts.length > 1 ? `${evts.length}事件` : '', size: maxLvl >= 3 ? 2 : 1 };
   });
-  _taiexSeries.setMarkers(markers.sort((a,b) => a.time.localeCompare(b.time)));
+  _taiexMarkers = markers.sort((a,b) => a.time.localeCompare(b.time));
+  _rebuildMarkers();
 }
 
 function renderTimeline() {
@@ -417,18 +441,64 @@ function hideResearch() {
   document.getElementById('main-layout').style.display = '';
 }
 
+let _strategyMarkers = [];  // markers from strategy overlay
+
 async function loadEventTypes() {
   try {
     const r = await fetch(`${BASE}/api/relationship/event_types`);
     const types = await r.json();
-    const sel = document.getElementById('research-event-select');
+    // Fill both the research select and the overlay select
+    const selResearch = document.getElementById('research-event-select');
+    const selOverlay  = document.getElementById('strategy-overlay-select');
     types.forEach(t => {
-      const opt = document.createElement('option');
-      opt.value = t.type;
-      opt.textContent = `[L${t.level}] ${t.description} (${t.type})`;
-      sel.appendChild(opt);
+      const label = `[L${t.level}] ${t.description} (${t.type})`;
+      const opt1 = document.createElement('option');
+      opt1.value = t.type; opt1.textContent = label;
+      selResearch.appendChild(opt1);
+      const opt2 = document.createElement('option');
+      opt2.value = t.type; opt2.textContent = label;
+      selOverlay.appendChild(opt2);
     });
   } catch(e) {}
+}
+
+async function applyStrategyOverlay(etype) {
+  const miniStats = document.getElementById('strategy-mini-stats');
+  // Clear overlay markers
+  _strategyMarkers = [];
+  _rebuildMarkers();
+  if (!etype) { miniStats.style.display = 'none'; return; }
+  try {
+    const r = await fetch(`${BASE}/api/relationship/research/${etype}?days=500`);
+    const d = await r.json();
+    // Build strategy markers (triangle shape, different color)
+    const lvl3Color = '#bc8cff', lvl2Color = '#d29922', lvl1Color = '#58a6ff';
+    const occDates = new Set((d.occurrences || []).map(o => o.observation_date));
+    _strategyMarkers = [...occDates].map(dt => ({
+      time: dt, position: 'belowBar', shape: 'arrowUp',
+      color: '#58a6ff', size: 1,
+    }));
+    _rebuildMarkers();
+    // Update mini stats
+    const s5 = d.stats?.['5d'], s10 = d.stats?.['10d'];
+    document.getElementById('sm-n').textContent = d.total_occurrences || 0;
+    const fmt = v => v != null ? `${v > 0 ? '+' : ''}${v}%` : '—';
+    document.getElementById('sm-5d').textContent = s5 ? fmt(s5.avg) : '—';
+    document.getElementById('sm-10d').textContent = s10 ? fmt(s10.avg) : '—';
+    document.getElementById('sm-wr').textContent = s5 ? `${s5.win_rate}%` : '—';
+    const sm5 = document.getElementById('sm-5d');
+    const sm10 = document.getElementById('sm-10d');
+    if (s5) sm5.style.color = s5.avg > 0 ? 'var(--green)' : s5.avg < 0 ? 'var(--red)' : '';
+    if (s10) sm10.style.color = s10.avg > 0 ? 'var(--green)' : s10.avg < 0 ? 'var(--red)' : '';
+    miniStats.style.display = 'flex';
+  } catch(e) { miniStats.style.display = 'none'; }
+}
+
+function _rebuildMarkers() {
+  // Merge event markers + strategy markers, sort by date
+  const all = [..._taiexMarkers, ..._strategyMarkers]
+    .sort((a, b) => a.time.localeCompare(b.time));
+  if (_taiexSeries) _taiexSeries.setMarkers(all);
 }
 
 async function loadResearch() {

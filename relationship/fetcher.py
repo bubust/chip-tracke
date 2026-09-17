@@ -100,13 +100,16 @@ async def fetch_tx_futures_ohlcv(days: int = 400) -> list[dict]:
             data = j.get("data", [])
             if not data:
                 return []
-            # Group by date, take the contract with most volume (front month)
-            by_date: dict[str, dict] = {}
+            # Group by date: highest-volume contract for price; sum OI across all contracts
+            price_by_date: dict[str, dict] = {}
+            oi_by_date: dict[str, float] = {}
             for item in data:
                 dt = item.get("date", "")[:10]
                 vol = item.get("trading_volume", 0) or 0
-                if dt not in by_date or vol > (by_date[dt].get("_vol", 0)):
-                    by_date[dt] = {
+                oi = item.get("open_interest", 0) or 0
+                oi_by_date[dt] = oi_by_date.get(dt, 0) + oi
+                if dt not in price_by_date or vol > (price_by_date[dt].get("_vol", 0)):
+                    price_by_date[dt] = {
                         "tx_open": item.get("open"),
                         "tx_high": item.get("max"),
                         "tx_low": item.get("min"),
@@ -114,7 +117,8 @@ async def fetch_tx_futures_ohlcv(days: int = 400) -> list[dict]:
                         "tx_volume": item.get("trading_volume"),
                         "_vol": vol,
                     }
-            return [{"observation_date": dt, **v} for dt, v in sorted(by_date.items())]
+            return [{"observation_date": dt, **v, "total_oi": oi_by_date.get(dt)}
+                    for dt, v in sorted(price_by_date.items())]
         except Exception as e:
             log.warning(f"TX futures FinMind: {e}")
             return []
@@ -134,6 +138,8 @@ async def fetch_all(days: int = 400):
     saved = 0
     prev_taiex = None
     prev_tx = None
+    prev_oi = None
+    rolling_closes: list = []  # for MA20/MA60 calculation
 
     # Sort by date ascending so we can compute returns in order
     taiex_rows.sort(key=lambda x: x["observation_date"])
@@ -151,6 +157,18 @@ async def fetch_all(days: int = 400):
             tx_ret = round((tx["tx_close"] - prev_tx) / prev_tx * 100, 4)
         tx_rel = round(tx_ret - taiex_ret, 4) if tx_ret is not None and taiex_ret is not None else None
 
+        # OI change
+        total_oi = tx.get("total_oi")
+        oi_change = None
+        if prev_oi is not None and total_oi is not None:
+            oi_change = round(total_oi - prev_oi, 0)
+
+        # MA20 / MA60
+        if row["taiex_close"]:
+            rolling_closes.append(row["taiex_close"])
+        ma20 = round(sum(rolling_closes[-20:]) / len(rolling_closes[-20:]), 2) if len(rolling_closes) >= 2 else None
+        ma60 = round(sum(rolling_closes[-60:]) / len(rolling_closes[-60:]), 2) if len(rolling_closes) >= 2 else None
+
         merged = {
             "observation_date": dt,
             "taiex_open": row["taiex_open"],
@@ -159,6 +177,8 @@ async def fetch_all(days: int = 400):
             "taiex_close": row["taiex_close"],
             "taiex_volume": row["taiex_volume"],
             "taiex_return_1d": taiex_ret,
+            "taiex_ma20": ma20,
+            "taiex_ma60": ma60,
             "tx_open": tx.get("tx_open"),
             "tx_high": tx.get("tx_high"),
             "tx_low": tx.get("tx_low"),
@@ -166,6 +186,8 @@ async def fetch_all(days: int = 400):
             "tx_volume": tx.get("tx_volume"),
             "tx_return_1d": tx_ret,
             "tx_relative_return": tx_rel,
+            "total_oi": total_oi,
+            "oi_change_1d": oi_change,
         }
         upsert_market_daily(conn, merged)
         saved += 1
@@ -173,6 +195,8 @@ async def fetch_all(days: int = 400):
             prev_taiex = row["taiex_close"]
         if tx.get("tx_close"):
             prev_tx = tx["tx_close"]
+        if total_oi:
+            prev_oi = total_oi
 
     conn.commit()
     conn.close()
