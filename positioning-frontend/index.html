@@ -165,6 +165,7 @@ async function loadHistory() {
     const r = await fetch(`/api/positioning/history?days=${days}`);
     const rows = await r.json();
     if (!rows.length) {
+      document.getElementById('update-date').textContent = '尚無資料';
       document.getElementById('hist-body').innerHTML =
         '<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:20px">尚無資料，請先點擊「更新資料」或「補歷史資料」</td></tr>';
       return;

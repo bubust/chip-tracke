@@ -1287,7 +1287,9 @@ def api_index_ohlcv(key: str, interval: str = "1d"):
 @app.get("/api/backtest/fbd")
 def api_backtest_fbd(stock_id: str, holding_days: int = 0,
                      trailing_low_days: int = 2,
-                     stop_loss: float = 0.0, take_profit: float = 0.0):
+                     stop_loss: float = 0.0, take_profit: float = 0.0,
+                     taiex_bull: int = 0,
+                     big_macd: int = 0):
     """
     假跌破/假突破回測：
     - 進場：訊號當日收盤（尾盤進場）
@@ -1344,11 +1346,66 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 0,
     sl_frac = stop_loss / 100.0   # e.g. 5% → 0.05
     tp_frac = take_profit / 100.0
 
+    # ── 加權指數多頭排列篩選 (MA5 > MA10 > MA20 > MA60) ──────────────────────
+    taiex_bull_dates: set = set()
+    if taiex_bull > 0:
+        try:
+            from relationship.db import get_conn as _rel_conn
+            rc = _rel_conn()
+            trows = rc.execute(
+                "SELECT observation_date, taiex_close FROM market_daily "
+                "WHERE taiex_close IS NOT NULL ORDER BY observation_date ASC"
+            ).fetchall()
+            rc.close()
+            if trows:
+                t_closes = pd.Series([r[1] for r in trows],
+                                     index=[r[0] for r in trows])
+                _ma5  = t_closes.rolling(5).mean()
+                _ma10 = t_closes.rolling(10).mean()
+                _ma20 = t_closes.rolling(20).mean()
+                _ma60 = t_closes.rolling(60).mean()
+                for dt_dash, m5, m10, m20, m60 in zip(
+                    t_closes.index, _ma5, _ma10, _ma20, _ma60
+                ):
+                    if not any(pd.isna(x) for x in [m5, m10, m20, m60]):
+                        if m5 > m10 > m20 > m60:
+                            taiex_bull_dates.add(dt_dash.replace("-", ""))
+        except Exception:
+            pass  # 若 relationship DB 不存在，跳過此篩選
+
+    # ── 大 MACD（週線 DIF>0 & DEA>0 & 柱狀紅柱）篩選 ───────────────────────
+    big_macd_arr: list = [True] * n   # default: all pass
+    if big_macd > 0:
+        try:
+            date_idx = pd.to_datetime(pd.Series(dates), format="%Y%m%d")
+            close_s = pd.Series(closes, index=date_idx)
+            # 以週五收盤代表週K（台股週一至週五）
+            weekly = close_s.resample("W-FRI").last().dropna()
+            ema12w = weekly.ewm(span=12, adjust=False).mean()
+            ema26w = weekly.ewm(span=26, adjust=False).mean()
+            dif_w  = ema12w - ema26w
+            dea_w  = dif_w.ewm(span=9, adjust=False).mean()
+            hist_w = dif_w - dea_w
+            # 前填補：每個交易日繼承上個週五的週線 MACD 值
+            dif_d  = dif_w.reindex(date_idx, method="ffill")
+            dea_d  = dea_w.reindex(date_idx, method="ffill")
+            hist_d = hist_w.reindex(date_idx, method="ffill")
+            big_macd_arr = (
+                (dif_d > 0) & (dea_d > 0) & (hist_d > 0)
+            ).fillna(False).tolist()
+        except Exception:
+            big_macd_arr = [True] * n
+
     def run_backtest(signal_type: str):
         """signal_type: 'fbd' or 'fbr'"""
         trades = []
         for i in range(10, n - 1):
             if pd.isna(ma10[i]) or pd.isna(ma10[i+1]):
+                continue
+            # ── 市場環境篩選 ──
+            if taiex_bull > 0 and dates[i] not in taiex_bull_dates:
+                continue
+            if big_macd > 0 and not big_macd_arr[i]:
                 continue
             # 假跌破：前一日跌破MA10，今日收復
             if signal_type == "fbd":
@@ -1419,6 +1476,8 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 0,
         "trailing_low_days": trailing_low_days,
         "stop_loss":   stop_loss,
         "take_profit": take_profit,
+        "taiex_bull":  taiex_bull,
+        "big_macd":    big_macd,
         "total_bars":  n,
         "fbd": run_backtest("fbd"),
         "fbr": run_backtest("fbr"),
@@ -1428,7 +1487,9 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 0,
 @app.get("/api/backtest/index")
 def api_backtest_index(key: str, holding_days: int = 0,
                        trailing_low_days: int = 2,
-                       stop_loss: float = 0.0, take_profit: float = 0.0):
+                       stop_loss: float = 0.0, take_profit: float = 0.0,
+                       taiex_bull: int = 0,
+                       big_macd: int = 0):
     """指數 MA10 假跌破/假突破回測（同個股邏輯，但使用指數 OHLCV 資料）"""
     import pandas as pd
     from yahoo_price import _parse_yahoo_json
@@ -1466,10 +1527,51 @@ def api_backtest_index(key: str, holding_days: int = 0,
     sl_frac = stop_loss / 100.0
     tp_frac = take_profit / 100.0
 
+    # ── 大 MACD 週線篩選（指數本身）────────────────────────────────────────────
+    big_macd_arr_idx: list = [True] * n
+    if big_macd > 0:
+        try:
+            date_idx = pd.to_datetime(pd.Series(dates), format="%Y%m%d")
+            close_s = pd.Series(closes, index=date_idx)
+            weekly = close_s.resample("W-FRI").last().dropna()
+            ema12w = weekly.ewm(span=12, adjust=False).mean()
+            ema26w = weekly.ewm(span=26, adjust=False).mean()
+            dif_w  = ema12w - ema26w
+            dea_w  = dif_w.ewm(span=9, adjust=False).mean()
+            hist_w = dif_w - dea_w
+            dif_d  = dif_w.reindex(date_idx, method="ffill")
+            dea_d  = dea_w.reindex(date_idx, method="ffill")
+            hist_d = hist_w.reindex(date_idx, method="ffill")
+            big_macd_arr_idx = (
+                (dif_d > 0) & (dea_d > 0) & (hist_d > 0)
+            ).fillna(False).tolist()
+        except Exception:
+            big_macd_arr_idx = [True] * n
+
+    # ── 加權多頭排列篩選（指數模式：直接用本 df 的 MA） ──────────────────────
+    taiex_bull_dates_idx: set = set()
+    if taiex_bull > 0:
+        try:
+            _ma5  = pd.Series(closes).rolling(5).mean().values
+            _ma10c = pd.Series(closes).rolling(10).mean().values
+            _ma20c = pd.Series(closes).rolling(20).mean().values
+            _ma60c = pd.Series(closes).rolling(60).mean().values
+            for i_t, dt_t in enumerate(dates):
+                m5, m10c, m20c, m60c = _ma5[i_t], _ma10c[i_t], _ma20c[i_t], _ma60c[i_t]
+                if not any(pd.isna(x) for x in [m5, m10c, m20c, m60c]):
+                    if m5 > m10c > m20c > m60c:
+                        taiex_bull_dates_idx.add(dt_t)
+        except Exception:
+            pass
+
     def run_backtest(signal_type: str):
         trades = []
         for i in range(10, n - 1):
             if pd.isna(ma10[i]) or pd.isna(ma10[i+1]):
+                continue
+            if taiex_bull > 0 and dates[i] not in taiex_bull_dates_idx:
+                continue
+            if big_macd > 0 and not big_macd_arr_idx[i]:
                 continue
             if signal_type == "fbd":
                 triggered = (closes[i-1] < ma10[i-1]) and (closes[i] > ma10[i])

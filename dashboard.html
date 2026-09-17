@@ -1109,6 +1109,16 @@ async function openBacktest() {
           <span style="color:#484f58;font-size:.72rem;margin-left:2px">（0=不啟用）</span>
         </label>
         <button onclick="runBacktest()" style="background:#58a6ff;color:#fff;border:none;border-radius:6px;padding:4px 14px;cursor:pointer;font-size:.82rem;font-weight:600">重新計算</button>
+        <div style="width:100%;display:flex;gap:16px;margin-top:2px;padding-top:6px;border-top:1px solid #21262d">
+          <label style="color:var(--muted);display:flex;align-items:center;gap:5px;cursor:pointer">
+            <input type="checkbox" id="bt-taiex-bull" style="accent-color:#58a6ff">
+            加權多頭排列 <span style="color:#484f58;font-size:.72rem">（MA5>10>20>60）</span>
+          </label>
+          <label style="color:var(--muted);display:flex;align-items:center;gap:5px;cursor:pointer">
+            <input type="checkbox" id="bt-big-macd" style="accent-color:#58a6ff">
+            大MACD多頭 <span style="color:#484f58;font-size:.72rem">（週線DIF&gt;DEA&gt;0且紅柱）</span>
+          </label>
+        </div>
       `;
       document.getElementById('bt-body').before(ctrl);
     }
@@ -1145,6 +1155,16 @@ async function openBacktest() {
         <span style="color:#484f58;font-size:.72rem;margin-left:2px">（0=不啟用）</span>
       </label>
       <button onclick="runBacktest()" style="background:#58a6ff;color:#fff;border:none;border-radius:6px;padding:4px 14px;cursor:pointer;font-size:.82rem;font-weight:600">重新計算</button>
+      <div style="width:100%;display:flex;gap:16px;margin-top:2px;padding-top:6px;border-top:1px solid #21262d">
+        <label style="color:var(--muted);display:flex;align-items:center;gap:5px;cursor:pointer">
+          <input type="checkbox" id="bt-taiex-bull" style="accent-color:#58a6ff">
+          加權多頭排列 <span style="color:#484f58;font-size:.72rem">（MA5>10>20>60）</span>
+        </label>
+        <label style="color:var(--muted);display:flex;align-items:center;gap:5px;cursor:pointer">
+          <input type="checkbox" id="bt-big-macd" style="accent-color:#58a6ff">
+          大MACD多頭 <span style="color:#484f58;font-size:.72rem">（週線DIF&gt;DEA&gt;0且紅柱）</span>
+        </label>
+      </div>
     `;
     document.getElementById('bt-body').before(ctrl);
   }
@@ -1156,14 +1176,17 @@ async function openBacktest() {
 async function runIdxBacktest(key) {
   const body = document.getElementById('bt-body');
   body.innerHTML = '<div style="color:var(--muted);text-align:center;padding:40px">計算中...</div>';
-  const days = parseInt(document.getElementById('bt-days')?.value ?? 0);
-  const tld  = parseInt(document.getElementById('bt-tld')?.value ?? 2);
-  const sl   = parseFloat(document.getElementById('bt-sl')?.value || 0);
-  const tp   = parseFloat(document.getElementById('bt-tp')?.value || 0);
+  const days      = parseInt(document.getElementById('bt-days')?.value ?? 0);
+  const tld       = parseInt(document.getElementById('bt-tld')?.value ?? 2);
+  const sl        = parseFloat(document.getElementById('bt-sl')?.value || 0);
+  const tp        = parseFloat(document.getElementById('bt-tp')?.value || 0);
+  const taiexBull = document.getElementById('bt-taiex-bull')?.checked ? 1 : 0;
+  const bigMacd   = document.getElementById('bt-big-macd')?.checked ? 1 : 0;
   const slHint = sl > 0 ? ` · 停損 ${sl}%` : '';
   const tpHint = tp > 0 ? ` · 停利 ${tp}%` : '';
+  const filterHint = [taiexBull ? '加權多頭排列' : '', bigMacd ? '大MACD多頭' : ''].filter(Boolean).join(' + ');
   try {
-    const r = await fetch(`/api/backtest/index?key=${key}&holding_days=${days}&trailing_low_days=${tld}&stop_loss=${sl}&take_profit=${tp}`);
+    const r = await fetch(`/api/backtest/index?key=${key}&holding_days=${days}&trailing_low_days=${tld}&stop_loss=${sl}&take_profit=${tp}&taiex_bull=${taiexBull}&big_macd=${bigMacd}`);
     const d = await r.json();
     if (d.error || d.detail) { body.innerHTML = `<div style="color:var(--red)">${d.error || d.detail}</div>`; return; }
     const retColor = v => v >= 0 ? '#ef4444' : '#22c55e';
@@ -1213,7 +1236,7 @@ async function runIdxBacktest(key) {
         </div>`;
     }
     body.innerHTML = `
-      <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">⚙️ MA10 假跌破/假突破 · 進場：訊號當日收盤${tld>0?' · 跌破前'+tld+'天低點出場':''}${days>0?' · 上限'+days+'天':''}${slHint}${tpHint}</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">⚙️ MA10 假跌破/假突破 · 進場：訊號當日收盤${tld>0?' · 跌破前'+tld+'天低點出場':''}${days>0?' · 上限'+days+'天':''}${slHint}${tpHint}${filterHint?' · 篩選：'+filterHint:''}</div>
       <div style="font-size:.72rem;color:#484f58;margin-bottom:10px">🔴 紅=獲利　🟢 綠=虧損（台股慣例）</div>
       ${statBlock('fbd','🟡 假跌破（看多）','#fbbf24')}
       ${statBlock('fbr','🔴 假突破（看空）','#f85149')}
@@ -1226,17 +1249,20 @@ async function runIdxBacktest(key) {
 async function runBacktest() {
   const body = document.getElementById('bt-body');
   body.innerHTML = '<div style="color:var(--muted);text-align:center;padding:40px">計算中...</div>';
-  const days = parseInt(document.getElementById('bt-days')?.value ?? 0);
-  const tld  = parseInt(document.getElementById('bt-tld')?.value ?? 2);
-  const sl   = parseFloat(document.getElementById('bt-sl')?.value || 0);
-  const tp   = parseFloat(document.getElementById('bt-tp')?.value || 0);
+  const days      = parseInt(document.getElementById('bt-days')?.value ?? 0);
+  const tld       = parseInt(document.getElementById('bt-tld')?.value ?? 2);
+  const sl        = parseFloat(document.getElementById('bt-sl')?.value || 0);
+  const tp        = parseFloat(document.getElementById('bt-tp')?.value || 0);
+  const taiexBull = document.getElementById('bt-taiex-bull')?.checked ? 1 : 0;
+  const bigMacd   = document.getElementById('bt-big-macd')?.checked ? 1 : 0;
 
   // show stop-loss price hint
-  const slHint = sl > 0 ? ` · 停損 ${sl}%` : '';
-  const tpHint = tp > 0 ? ` · 停利 ${tp}%` : '';
+  const slHint    = sl > 0 ? ` · 停損 ${sl}%` : '';
+  const tpHint    = tp > 0 ? ` · 停利 ${tp}%` : '';
+  const filterHint = [taiexBull ? '加權多頭排列' : '', bigMacd ? '大MACD多頭' : ''].filter(Boolean).join(' + ');
 
   try {
-    const r = await fetch(`/api/backtest/fbd?stock_id=${_btStockId}&holding_days=${days}&trailing_low_days=${tld}&stop_loss=${sl}&take_profit=${tp}`);
+    const r = await fetch(`/api/backtest/fbd?stock_id=${_btStockId}&holding_days=${days}&trailing_low_days=${tld}&stop_loss=${sl}&take_profit=${tp}&taiex_bull=${taiexBull}&big_macd=${bigMacd}`);
     const d = await r.json();
     if (d.error) { body.innerHTML = `<div style="color:var(--red)">${d.error}</div>`; return; }
 
@@ -1295,7 +1321,7 @@ async function runBacktest() {
     }
 
     body.innerHTML = `
-      <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">⚙️ MA10 假跌破/假突破 · 進場：訊號當日收盤${tld>0?' · 跌破前'+tld+'天低點出場':''}${days>0?' · 上限'+days+'天':''}${slHint}${tpHint}</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">⚙️ MA10 假跌破/假突破 · 進場：訊號當日收盤${tld>0?' · 跌破前'+tld+'天低點出場':''}${days>0?' · 上限'+days+'天':''}${slHint}${tpHint}${filterHint?' · 篩選：'+filterHint:''}</div>
       <div style="font-size:.72rem;color:#484f58;margin-bottom:10px">🔴 紅=獲利　🟢 綠=虧損（台股慣例）</div>
       ${statBlock('fbd','🟡 假跌破（看多）','#fbbf24')}
       ${statBlock('fbr','🔴 假突破（看空）','#f85149')}

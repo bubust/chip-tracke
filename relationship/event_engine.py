@@ -81,6 +81,12 @@ def run_event_engine(days: int = 120):
         trigger = {}
 
         # ── OI state ──
+        _OI_STATE_EVENT = {
+            "PRICE_UP_OI_UP":    ("PRICE_OI_UP_BUILD",        "上漲增倉 — 多方主動建倉"),
+            "PRICE_UP_OI_DOWN":  ("PRICE_OI_UP_COVERING",     "上漲減倉 — 可能空單回補"),
+            "PRICE_DOWN_OI_UP":  ("PRICE_OI_DOWN_BUILD",      "下跌增倉 — 空方主動建倉"),
+            "PRICE_DOWN_OI_DOWN":("PRICE_OI_DOWN_LIQUIDATION","下跌減倉 — 可能多單退出"),
+        }
         if taiex_ret is not None and oi_chg is not None:
             if taiex_ret > 0 and oi_chg > 0:
                 oi_state = "PRICE_UP_OI_UP"
@@ -94,11 +100,11 @@ def run_event_engine(days: int = 120):
                 "UPDATE market_daily SET oi_state=? WHERE observation_date=?",
                 (oi_state, dt)
             )
-            # OI events
-            if oi_state in EVENT_DEFINITIONS:
-                lvl, desc = EVENT_DEFINITIONS[oi_state]
+            # OI events — use correct event type names
+            if oi_state in _OI_STATE_EVENT:
+                etype, edesc = _OI_STATE_EVENT[oi_state]
                 trigger = {"taiex_ret": taiex_ret, "oi_chg": oi_chg}
-                upsert_event(conn, dt, oi_state, lvl, desc, trigger)
+                upsert_event(conn, dt, etype, 1, edesc, trigger)
                 events_generated += 1
 
         # ── Price vs Futures alignment ──
@@ -155,6 +161,19 @@ def run_event_engine(days: int = 120):
                         {"taiex_ret": taiex_ret, "cash_5d": cash_5d, "ff_d5": ff_d5})
                     events_generated += 1
 
+            # Large trader events (based on top5 1-day delta)
+            if t5_d1 is not None:
+                if t5_d1 > 1000:
+                    upsert_event(conn, dt, "LARGE_TRADER_BUILDING", 2,
+                        f"大交易人增加 {t5_d1:+.0f}口",
+                        {"t5_d1": t5_d1, "t5_net": t5_net})
+                    events_generated += 1
+                elif t5_d1 < -1000:
+                    upsert_event(conn, dt, "LARGE_TRADER_REDUCING", 2,
+                        f"大交易人減少 {t5_d1:+.0f}口",
+                        {"t5_d1": t5_d1, "t5_net": t5_net})
+                    events_generated += 1
+
             # High-level state events
             if state == "BULLISH_CONFIRMATION":
                 upsert_event(conn, dt, "BULLISH_CONFIRMATION", 3,
@@ -166,9 +185,21 @@ def run_event_engine(days: int = 120):
                     "空頭籌碼全面確認",
                     {"state": state, "ff_net": ff_net, "t5_net": t5_net})
                 events_generated += 1
-            elif state == "BEARISH_EXHAUSTION":
+            elif state in ("BEARISH_EXHAUSTION", "POTENTIAL_BEARISH_EXHAUSTION"):
                 upsert_event(conn, dt, "POTENTIAL_BEARISH_EXHAUSTION", 3,
                     "空頭可能進入耗竭",
+                    {"state": state, "exhaustion": exhaustion})
+                events_generated += 1
+            elif state in ("SHORT_COVERING", "LONG_LIQUIDATION"):
+                # 空方壓力減弱：處於空單回補或多單退出狀態時
+                if taiex_ret is not None and taiex_ret > 0:
+                    upsert_event(conn, dt, "BEARISH_PRESSURE_WEAKENING", 3,
+                        f"空方壓力減弱（{state}）",
+                        {"state": state, "taiex_ret": taiex_ret})
+                    events_generated += 1
+            if exhaustion and "BULLISH" in exhaustion:
+                upsert_event(conn, dt, "POTENTIAL_BULLISH_EXHAUSTION", 3,
+                    "多頭可能過熱",
                     {"state": state, "exhaustion": exhaustion})
                 events_generated += 1
 
