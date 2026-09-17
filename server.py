@@ -1286,10 +1286,10 @@ def api_index_ohlcv(key: str, interval: str = "1d"):
 
 @app.get("/api/backtest/fbd")
 def api_backtest_fbd(stock_id: str, holding_days: int = 0,
-                     trailing_low_days: int = 2,
+                     trailing_low_days: int = 0,
+                     exit_ma: int = 10,
                      stop_loss: float = 0.0, take_profit: float = 0.0,
-                     taiex_bull: int = 0,
-                     big_macd: int = 0):
+                     taiex_bull: int = 0, big_macd: int = 0):
     """
     假跌破/假突破回測：
     - 進場：訊號當日收盤（尾盤進場）
@@ -1337,6 +1337,7 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 0,
 
     closes = df["close"].values
     lows   = df["low"].values
+    highs  = df["high"].values
     dates  = df["date"].values
     n = len(closes)
 
@@ -1396,8 +1397,14 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 0,
         except Exception:
             big_macd_arr = [True] * n
 
+    # ── 出場均線陣列 ──────────────────────────────────────────────────────────
+    exit_ma_arr = None
+    if exit_ma > 0:
+        exit_ma_arr = pd.Series(closes).rolling(exit_ma, min_periods=exit_ma).mean().values
+
     def run_backtest(signal_type: str):
-        """signal_type: 'fbd' or 'fbr'"""
+        """signal_type: 'fbd' (看多/long) or 'fbr' (看空/short)"""
+        is_short = (signal_type == "fbr")
         trades = []
         for i in range(10, n - 1):
             if pd.isna(ma10[i]) or pd.isna(ma10[i+1]):
@@ -1407,73 +1414,119 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 0,
                 continue
             if big_macd > 0 and not big_macd_arr[i]:
                 continue
-            # 假跌破：前一日跌破MA10，今日收復
+            # ── 訊號觸發 ──
             if signal_type == "fbd":
                 triggered = (closes[i-1] < ma10[i-1]) and (closes[i] > ma10[i])
-            else:  # 假突破
+            else:
                 triggered = (closes[i-1] > ma10[i-1]) and (closes[i] < ma10[i])
             if not triggered:
                 continue
-            # 進場：訊號日（i）收盤
-            entry_date  = dates[i]
-            entry_price = closes[i]
-            sl_price = round(entry_price * (1 - sl_frac), 2) if sl_frac > 0 else None
-            tp_price = round(entry_price * (1 + tp_frac), 2) if tp_frac > 0 else None
 
-            # 逐日模擬出場
-            exit_reason = "時間"
+            entry_price = closes[i]
+            # 停損/停利方向：做空時反轉
+            if is_short:
+                sl_price = round(entry_price * (1 + sl_frac), 2) if sl_frac > 0 else None
+                tp_price = round(entry_price * (1 - tp_frac), 2) if tp_frac > 0 else None
+            else:
+                sl_price = round(entry_price * (1 - sl_frac), 2) if sl_frac > 0 else None
+                tp_price = round(entry_price * (1 + tp_frac), 2) if tp_frac > 0 else None
+
+            # 出場模擬
+            exit_reason = ""
             max_j = (i + holding_days) if holding_days > 0 else (n - 1)
             exit_idx = min(max_j, n - 1)
+
             for j in range(i + 1, min(max_j + 1, n)):
                 c = closes[j]
-                if sl_price is not None and c <= sl_price:
-                    exit_idx = j; exit_reason = "停損"; break
-                if tp_price is not None and c >= tp_price:
-                    exit_idx = j; exit_reason = "停利"; break
-                # 跌破前 trailing_low_days 天低點出場
-                if trailing_low_days > 0:
-                    lb_start = max(i, j - trailing_low_days)
-                    trail_low = float(min(lows[lb_start:j]))
-                    if c < trail_low:
-                        exit_idx = j; exit_reason = "跌破低點"; break
+                if is_short:
+                    # 做空停損：股價上漲超過 sl%
+                    if sl_price is not None and c >= sl_price:
+                        exit_idx = j; exit_reason = "停損"; break
+                    # 做空停利：股價下跌超過 tp%
+                    if tp_price is not None and c <= tp_price:
+                        exit_idx = j; exit_reason = "停利"; break
+                    # 做空均線出場：股價站回均線以上
+                    if exit_ma_arr is not None:
+                        ma_v = exit_ma_arr[j]
+                        if not pd.isna(ma_v) and c > ma_v:
+                            exit_idx = j; exit_reason = f"站上MA{exit_ma}"; break
+                    # 做空追蹤高點出場：股價突破前N天高點
+                    if trailing_low_days > 0:
+                        lb_start = max(i, j - trailing_low_days)
+                        if lb_start < j:
+                            trail_high = float(max(highs[lb_start:j]))
+                            if c > trail_high:
+                                exit_idx = j; exit_reason = "突破高點"; break
+                else:
+                    # 做多停損：股價下跌超過 sl%
+                    if sl_price is not None and c <= sl_price:
+                        exit_idx = j; exit_reason = "停損"; break
+                    # 做多停利：股價上漲超過 tp%
+                    if tp_price is not None and c >= tp_price:
+                        exit_idx = j; exit_reason = "停利"; break
+                    # 做多均線出場：股價跌破均線
+                    if exit_ma_arr is not None:
+                        ma_v = exit_ma_arr[j]
+                        if not pd.isna(ma_v) and c < ma_v:
+                            exit_idx = j; exit_reason = f"破MA{exit_ma}"; break
+                    # 做多追蹤低點出場
+                    if trailing_low_days > 0:
+                        lb_start = max(i, j - trailing_low_days)
+                        if lb_start < j:
+                            trail_low = float(min(lows[lb_start:j]))
+                            if c < trail_low:
+                                exit_idx = j; exit_reason = "跌破低點"; break
 
-            # compute trail_low at exit for reference
-            trail_low_at_exit = None
+            if not exit_reason:
+                exit_reason = "天數到期" if holding_days > 0 else "持至末端"
+
+            # 追蹤參考價（出場時點的追蹤低/高點）
+            trail_ref = None
             if trailing_low_days > 0 and exit_idx > i:
                 lb_s = max(i, exit_idx - trailing_low_days)
-                trail_low_at_exit = round(float(min(lows[lb_s:exit_idx])), 2) if lb_s < exit_idx else None
-            exit_date  = dates[exit_idx]
+                if lb_s < exit_idx:
+                    trail_ref = round(float(
+                        max(highs[lb_s:exit_idx]) if is_short else min(lows[lb_s:exit_idx])
+                    ), 2)
+
             exit_price = closes[exit_idx]
-            ret = (exit_price - entry_price) / entry_price
+            # 回報計算：做空時股價下跌才獲利
+            if is_short:
+                ret = (entry_price - exit_price) / entry_price
+            else:
+                ret = (exit_price - entry_price) / entry_price
+
             trades.append({
-                "entry_date":  entry_date,
+                "entry_date":  dates[i],
                 "entry_price": float(entry_price),
-                "exit_date":   exit_date,
+                "exit_date":   dates[exit_idx],
                 "exit_price":  float(exit_price),
                 "return":      round(float(ret), 4),
                 "exit_reason": exit_reason,
                 "sl_price":    sl_price,
                 "tp_price":    tp_price,
-                "trail_low_price": trail_low_at_exit,
+                "trail_ref":   trail_ref,
             })
+
         if not trades:
             return {"count": 0}
         rets = [t["return"] for t in trades]
         wins = [r for r in rets if r > 0]
         return {
-            "count":      len(trades),
-            "win_rate":   round(len(wins) / len(rets), 3),
-            "avg_return": round(sum(rets) / len(rets), 4),
+            "count":         len(trades),
+            "win_rate":      round(len(wins) / len(rets), 3),
+            "avg_return":    round(sum(rets) / len(rets), 4),
             "median_return": round(sorted(rets)[len(rets)//2], 4),
-            "max_win":    round(max(rets), 4),
-            "max_loss":   round(min(rets), 4),
-            "trades":     trades[-30:],   # 最近30筆
+            "max_win":       round(max(rets), 4),
+            "max_loss":      round(min(rets), 4),
+            "trades":        trades[-30:],
         }
 
     return {
         "stock_id":    stock_id,
         "holding_days": holding_days,
         "trailing_low_days": trailing_low_days,
+        "exit_ma":     exit_ma,
         "stop_loss":   stop_loss,
         "take_profit": take_profit,
         "taiex_bull":  taiex_bull,
@@ -1486,7 +1539,8 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 0,
 
 @app.get("/api/backtest/index")
 def api_backtest_index(key: str, holding_days: int = 0,
-                       trailing_low_days: int = 2,
+                       trailing_low_days: int = 0,
+                       exit_ma: int = 10,
                        stop_loss: float = 0.0, take_profit: float = 0.0,
                        taiex_bull: int = 0,
                        big_macd: int = 0):
@@ -1521,6 +1575,7 @@ def api_backtest_index(key: str, holding_days: int = 0,
 
     closes = df["close"].values
     lows   = df["low"].values
+    highs  = df["high"].values
     dates  = df["date"].values
     n = len(closes)
     ma10 = pd.Series(closes).rolling(10, min_periods=10).mean().values
@@ -1564,70 +1619,135 @@ def api_backtest_index(key: str, holding_days: int = 0,
         except Exception:
             pass
 
+    # ── 出場均線陣列 ──────────────────────────────────────────────────────────
+    exit_ma_arr = None
+    if exit_ma > 0:
+        exit_ma_arr = pd.Series(closes).rolling(exit_ma, min_periods=exit_ma).mean().values
+
     def run_backtest(signal_type: str):
+        """signal_type: 'fbd' (看多/long) or 'fbr' (看空/short)"""
+        is_short = (signal_type == "fbr")
         trades = []
         for i in range(10, n - 1):
             if pd.isna(ma10[i]) or pd.isna(ma10[i+1]):
                 continue
+            # ── 市場環境篩選 ──
             if taiex_bull > 0 and dates[i] not in taiex_bull_dates_idx:
                 continue
             if big_macd > 0 and not big_macd_arr_idx[i]:
                 continue
+            # ── 訊號觸發 ──
             if signal_type == "fbd":
                 triggered = (closes[i-1] < ma10[i-1]) and (closes[i] > ma10[i])
             else:
                 triggered = (closes[i-1] > ma10[i-1]) and (closes[i] < ma10[i])
             if not triggered:
                 continue
-            entry_date  = dates[i]
+
             entry_price = closes[i]
-            sl_price = round(entry_price * (1 - sl_frac), 0) if sl_frac > 0 else None
-            tp_price = round(entry_price * (1 + tp_frac), 0) if tp_frac > 0 else None
-            exit_reason = "時間"
+            # 停損/停利方向：做空時反轉
+            if is_short:
+                sl_price = round(entry_price * (1 + sl_frac), 2) if sl_frac > 0 else None
+                tp_price = round(entry_price * (1 - tp_frac), 2) if tp_frac > 0 else None
+            else:
+                sl_price = round(entry_price * (1 - sl_frac), 2) if sl_frac > 0 else None
+                tp_price = round(entry_price * (1 + tp_frac), 2) if tp_frac > 0 else None
+
+            # 出場模擬
+            exit_reason = ""
             max_j = (i + holding_days) if holding_days > 0 else (n - 1)
             exit_idx = min(max_j, n - 1)
+
             for j in range(i + 1, min(max_j + 1, n)):
                 c = closes[j]
-                if sl_price is not None and c <= sl_price:
-                    exit_idx = j; exit_reason = "停損"; break
-                if tp_price is not None and c >= tp_price:
-                    exit_idx = j; exit_reason = "停利"; break
-                # 跌破前 trailing_low_days 天低點出場
-                if trailing_low_days > 0:
-                    lb_start = max(i, j - trailing_low_days)
-                    trail_low = float(min(lows[lb_start:j]))
-                    if c < trail_low:
-                        exit_idx = j; exit_reason = "跌破低點"; break
-            # compute trail_low at exit for reference
-            trail_low_at_exit = None
+                if is_short:
+                    # 做空停損：股價上漲超過 sl%
+                    if sl_price is not None and c >= sl_price:
+                        exit_idx = j; exit_reason = "停損"; break
+                    # 做空停利：股價下跌超過 tp%
+                    if tp_price is not None and c <= tp_price:
+                        exit_idx = j; exit_reason = "停利"; break
+                    # 做空均線出場：股價站回均線以上
+                    if exit_ma_arr is not None:
+                        ma_v = exit_ma_arr[j]
+                        if not pd.isna(ma_v) and c > ma_v:
+                            exit_idx = j; exit_reason = f"站上MA{exit_ma}"; break
+                    # 做空追蹤高點出場：股價突破前N天高點
+                    if trailing_low_days > 0:
+                        lb_start = max(i, j - trailing_low_days)
+                        if lb_start < j:
+                            trail_high = float(max(highs[lb_start:j]))
+                            if c > trail_high:
+                                exit_idx = j; exit_reason = "突破高點"; break
+                else:
+                    # 做多停損：股價下跌超過 sl%
+                    if sl_price is not None and c <= sl_price:
+                        exit_idx = j; exit_reason = "停損"; break
+                    # 做多停利：股價上漲超過 tp%
+                    if tp_price is not None and c >= tp_price:
+                        exit_idx = j; exit_reason = "停利"; break
+                    # 做多均線出場：股價跌破均線
+                    if exit_ma_arr is not None:
+                        ma_v = exit_ma_arr[j]
+                        if not pd.isna(ma_v) and c < ma_v:
+                            exit_idx = j; exit_reason = f"破MA{exit_ma}"; break
+                    # 做多追蹤低點出場
+                    if trailing_low_days > 0:
+                        lb_start = max(i, j - trailing_low_days)
+                        if lb_start < j:
+                            trail_low = float(min(lows[lb_start:j]))
+                            if c < trail_low:
+                                exit_idx = j; exit_reason = "跌破低點"; break
+
+            if not exit_reason:
+                exit_reason = "天數到期" if holding_days > 0 else "持至末端"
+
+            # 追蹤參考價（出場時點的追蹤低/高點）
+            trail_ref = None
             if trailing_low_days > 0 and exit_idx > i:
                 lb_s = max(i, exit_idx - trailing_low_days)
-                trail_low_at_exit = round(float(min(lows[lb_s:exit_idx])), 2) if lb_s < exit_idx else None
-            exit_date  = dates[exit_idx]
+                if lb_s < exit_idx:
+                    trail_ref = round(float(
+                        max(highs[lb_s:exit_idx]) if is_short else min(lows[lb_s:exit_idx])
+                    ), 2)
+
             exit_price = closes[exit_idx]
-            ret = (exit_price - entry_price) / entry_price
+            # 回報計算：做空時股價下跌才獲利
+            if is_short:
+                ret = (entry_price - exit_price) / entry_price
+            else:
+                ret = (exit_price - entry_price) / entry_price
+
             trades.append({
-                "entry_date": entry_date, "entry_price": float(entry_price),
-                "exit_date": exit_date,   "exit_price": float(exit_price),
-                "return": round(float(ret), 4),
+                "entry_date":  dates[i],
+                "entry_price": float(entry_price),
+                "exit_date":   dates[exit_idx],
+                "exit_price":  float(exit_price),
+                "return":      round(float(ret), 4),
                 "exit_reason": exit_reason,
-                "sl_price": sl_price, "tp_price": tp_price,
-                "trail_low_price": trail_low_at_exit,
+                "sl_price":    sl_price,
+                "tp_price":    tp_price,
+                "trail_ref":   trail_ref,
             })
+
         if not trades:
             return {"count": 0}
         rets = [t["return"] for t in trades]
         wins = [r for r in rets if r > 0]
         return {
-            "count": len(trades), "win_rate": round(len(wins)/len(rets), 3),
-            "avg_return": round(sum(rets)/len(rets), 4),
-            "max_win": round(max(rets), 4), "max_loss": round(min(rets), 4),
-            "trades": trades[-30:],
+            "count":         len(trades),
+            "win_rate":      round(len(wins) / len(rets), 3),
+            "avg_return":    round(sum(rets) / len(rets), 4),
+            "median_return": round(sorted(rets)[len(rets)//2], 4),
+            "max_win":       round(max(rets), 4),
+            "max_loss":      round(min(rets), 4),
+            "trades":        trades[-30:],
         }
 
     return {
         "key": key, "name": name, "holding_days": holding_days,
         "trailing_low_days": trailing_low_days,
+        "exit_ma": exit_ma,
         "stop_loss": stop_loss, "take_profit": take_profit, "total_bars": n,
         "fbd": run_backtest("fbd"),
         "fbr": run_backtest("fbr"),
