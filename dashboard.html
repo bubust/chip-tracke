@@ -446,6 +446,7 @@
         <strong id="screen-result-title">篩選結果</strong>
         <span id="screen-result-count" style="font-size:.82rem;color:var(--muted);margin-left:8px"></span>
       </div>
+      <button class="btn" style="font-size:.8rem;padding:5px 12px" onclick="openStrategyBacktest()">🔬 批量回測此策略</button>
     </div>
     <div class="tbl-wrap">
       <table>
@@ -455,6 +456,31 @@
         <tbody id="screen-tbody"></tbody>
       </table>
     </div>
+  </div>
+
+  <!-- 批量回測結果區 -->
+  <div class="card" id="strategy-batch-card" style="display:none;margin-top:12px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <strong id="batch-title">批量回測</strong>
+      <span id="batch-meta" style="font-size:.8rem;color:var(--muted)"></span>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto;font-size:.82rem">
+        <label style="color:var(--muted)">訊號
+          <select id="batch-signal" style="margin-left:4px;padding:2px 6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);font-size:.8rem">
+            <option value="fbd">假跌破（看多）</option>
+            <option value="fbr">假突破（看空）</option>
+          </select>
+        </label>
+        <label style="color:var(--muted)">跌破幾天低點
+          <input id="batch-tld" type="number" value="2" min="0" max="10" style="width:40px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem">
+        </label>
+        <label style="color:var(--muted)">天數上限
+          <input id="batch-days" type="number" value="0" min="0" max="60" style="width:40px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem">
+        </label>
+        <button onclick="runStrategyBacktest()" style="background:#58a6ff;color:#fff;border:none;border-radius:5px;padding:4px 12px;cursor:pointer;font-size:.8rem">重新計算</button>
+        <button onclick="document.getElementById('strategy-batch-card').style.display='none'" style="background:transparent;border:1px solid #30363d;border-radius:5px;padding:4px 8px;cursor:pointer;color:var(--muted);font-size:.8rem">✕</button>
+      </div>
+    </div>
+    <div id="batch-body"><div style="color:var(--muted);text-align:center;padding:30px">計算中...</div></div>
   </div>
 
 </div><!-- /tab-screen -->
@@ -1149,9 +1175,9 @@ async function runIdxBacktest(key) {
         const c = map[r] || '#8b949e';
         return `<span style="font-size:.68rem;padding:1px 6px;border-radius:10px;background:${c}22;color:${c};border:1px solid ${c}44">${r||'時間'}</span>`;
       };
-      const showSl = sl > 0, showTp = tp > 0;
-      const extraTh = (showSl ? `<th style="color:var(--muted);padding:4px">停損價</th>` : '') + (showTp ? `<th style="color:var(--muted);padding:4px">停利價</th>` : '');
-      const extraTd = t => (showSl ? `<td style="padding:3px 4px;text-align:center;color:#ef4444">${t.sl_price?.toFixed(0)||'—'}</td>` : '') + (showTp ? `<td style="padding:3px 4px;text-align:center;color:#22c55e">${t.tp_price?.toFixed(0)||'—'}</td>` : '');
+      const showSl = sl > 0, showTp = tp > 0, showTld = tld > 0;
+      const extraTh = (showSl ? `<th style="color:var(--muted);padding:4px">停損價</th>` : '') + (showTp ? `<th style="color:var(--muted);padding:4px">停利價</th>` : '') + (showTld ? `<th style="color:var(--muted);padding:4px">追蹤低點</th>` : '');
+      const extraTd = t => (showSl ? `<td style="padding:3px 4px;text-align:center;color:#ef4444">${t.sl_price?.toFixed(0)||'—'}</td>` : '') + (showTp ? `<td style="padding:3px 4px;text-align:center;color:#22c55e">${t.tp_price?.toFixed(0)||'—'}</td>` : '') + (showTld ? `<td style="padding:3px 4px;text-align:center;color:#d29922">${t.trail_low_price?.toFixed(0)||'—'}</td>` : '');
       return `
         <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:12px">
           <div style="font-size:.85rem;font-weight:700;color:${color};margin-bottom:10px">${label}（${s.count} 次${tld>0?' · 跌破前'+tld+'天低點出場':''}${days>0?' · 最多'+days+'天':''}）</div>
@@ -1226,11 +1252,13 @@ async function runBacktest() {
         return `<span style="font-size:.68rem;padding:1px 6px;border-radius:10px;background:${c}22;color:${c};border:1px solid ${c}44">${r||'時間'}</span>`;
       };
       // show SL/TP price columns only if enabled
-      const showSl = sl > 0, showTp = tp > 0;
+      const showSl = sl > 0, showTp = tp > 0, showTld = tld > 0;
       const extraTh = (showSl ? `<th style="color:var(--muted);padding:4px">停損價</th>` : '') +
-                      (showTp ? `<th style="color:var(--muted);padding:4px">停利價</th>` : '');
+                      (showTp ? `<th style="color:var(--muted);padding:4px">停利價</th>` : '') +
+                      (showTld ? `<th style="color:var(--muted);padding:4px">追蹤低點</th>` : '');
       const extraTd = t => (showSl ? `<td style="padding:3px 4px;text-align:center;color:#ef4444">${t.sl_price?.toFixed(2)||'—'}</td>` : '') +
-                           (showTp ? `<td style="padding:3px 4px;text-align:center;color:#22c55e">${t.tp_price?.toFixed(2)||'—'}</td>` : '');
+                           (showTp ? `<td style="padding:3px 4px;text-align:center;color:#22c55e">${t.tp_price?.toFixed(2)||'—'}</td>` : '') +
+                           (showTld ? `<td style="padding:3px 4px;text-align:center;color:#d29922">${t.trail_low_price?.toFixed(2)||'—'}</td>` : '');
       return `
         <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:12px">
           <div style="font-size:.85rem;font-weight:700;color:${color};margin-bottom:10px">${label}（${s.count} 次${tld>0?' · 跌破前'+tld+'天低點出場':''}${days>0?' · 最多'+days+'天':''}）</div>
@@ -2445,6 +2473,78 @@ function renderStratBar() {
     const el = document.getElementById('cnt-' + k);
     if (el) el.textContent = cnt > 0 ? cnt : '';
   });
+}
+
+let _batchStrategy = null;
+
+function openStrategyBacktest() {
+  _batchStrategy = _viewingStrategy;
+  if (!_batchStrategy) { toast('請先選擇策略', true); return; }
+  document.getElementById('strategy-batch-card').style.display = 'block';
+  document.getElementById('strategy-batch-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  runStrategyBacktest();
+}
+
+async function runStrategyBacktest() {
+  if (!_batchStrategy) return;
+  const signal = document.getElementById('batch-signal').value;
+  const tld    = parseInt(document.getElementById('batch-tld').value ?? 2);
+  const days   = parseInt(document.getElementById('batch-days').value ?? 0);
+  const body   = document.getElementById('batch-body');
+  const label  = STRATEGY_LABELS[_batchStrategy] || _batchStrategy;
+  document.getElementById('batch-title').textContent = `${label} 批量回測`;
+  document.getElementById('batch-meta').textContent = '';
+  body.innerHTML = '<div style="color:var(--muted);text-align:center;padding:30px">計算中，需 30~60 秒...</div>';
+  try {
+    const r = await api('GET', `/api/backtest/strategy-batch?strategy=${_batchStrategy}&signal=${signal}&trailing_low_days=${tld}&holding_days=${days}&max_stocks=40`);
+    const agg = r.aggregate || {};
+    document.getElementById('batch-meta').textContent = `${r.strategy} · 掃描 ${r.total_scanned} 支，成功 ${r.computed} 支`;
+    if (!r.computed) { body.innerHTML = '<div style="color:var(--muted);text-align:center;padding:30px">無足夠資料（請先執行掃描）</div>'; return; }
+    const retColor = v => v >= 0 ? '#ef4444' : '#22c55e';
+    const tldHint = tld > 0 ? `跌破前${tld}天低點出場` : (days > 0 ? `最多${days}天` : '無出場上限');
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+        <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px;text-align:center">
+          <div style="font-size:.72rem;color:var(--muted)">有效股票</div>
+          <div style="font-size:1.4rem;font-weight:700">${agg.stocks_with_trades}</div>
+        </div>
+        <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px;text-align:center">
+          <div style="font-size:.72rem;color:var(--muted)">平均勝率</div>
+          <div style="font-size:1.4rem;font-weight:700;color:${agg.avg_win_rate>=0.5?'#ef4444':'#22c55e'}">${(agg.avg_win_rate*100).toFixed(1)}%</div>
+        </div>
+        <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px;text-align:center">
+          <div style="font-size:.72rem;color:var(--muted)">平均報酬</div>
+          <div style="font-size:1.4rem;font-weight:700;color:${retColor(agg.avg_return)}">${agg.avg_return>=0?'+':''}${(agg.avg_return*100).toFixed(2)}%</div>
+        </div>
+        <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px;text-align:center">
+          <div style="font-size:.72rem;color:var(--muted)">正報酬股</div>
+          <div style="font-size:1.4rem;font-weight:700;color:#ef4444">${agg.positive_stocks}</div>
+        </div>
+      </div>
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:8px">⚙️ ${signal==='fbd'?'假跌破（看多）':'假突破（看空）'} · ${tldHint} · 各股歷史回測均值，不代表未來績效</div>
+      <table style="width:100%;border-collapse:collapse;font-size:.78rem">
+        <thead><tr style="background:#1c2128">
+          <th style="padding:5px 8px;text-align:left;color:var(--muted)">代號</th>
+          <th style="padding:5px 8px;text-align:left;color:var(--muted)">股名</th>
+          <th style="padding:5px 8px;color:var(--muted);text-align:right">次數</th>
+          <th style="padding:5px 8px;color:var(--muted);text-align:right">勝率</th>
+          <th style="padding:5px 8px;color:var(--muted);text-align:right">均報</th>
+          <th style="padding:5px 8px;color:var(--muted);text-align:right">最佳</th>
+          <th style="padding:5px 8px;color:var(--muted);text-align:right">最差</th>
+        </tr></thead>
+        <tbody>${r.by_stock.map(s=>`<tr style="border-top:1px solid #21262d" onclick="openChartById('${s.stock_id}','${s.name}')" style="cursor:pointer">
+          <td style="padding:4px 8px;color:var(--muted)">${s.stock_id}</td>
+          <td style="padding:4px 8px">${s.name}</td>
+          <td style="padding:4px 8px;text-align:right">${s.count}</td>
+          <td style="padding:4px 8px;text-align:right;color:${s.win_rate>=0.5?'#ef4444':'#22c55e'}">${(s.win_rate*100).toFixed(0)}%</td>
+          <td style="padding:4px 8px;text-align:right;font-weight:700;color:${retColor(s.avg_return)}">${s.avg_return>=0?'+':''}${(s.avg_return*100).toFixed(2)}%</td>
+          <td style="padding:4px 8px;text-align:right;color:#ef4444">+${(s.max_win*100).toFixed(1)}%</td>
+          <td style="padding:4px 8px;text-align:right;color:#22c55e">${(s.max_loss*100).toFixed(1)}%</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+  } catch(e) {
+    body.innerHTML = `<div style="color:var(--red)">載入失敗: ${e.message}</div>`;
+  }
 }
 
 function viewStrategy(s) {

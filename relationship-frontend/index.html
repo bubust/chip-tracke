@@ -111,6 +111,7 @@ select { background: #21262d; color: var(--text); border: 1px solid var(--border
     <span>10日均<b id="sm-10d" style="margin-left:3px">—</b></span>
     <span>勝率<b id="sm-wr" style="margin-left:3px">—</b></span>
   </div>
+  <button class="btn" onclick="toggleEventHelp()" id="btn-event-help" title="事件說明" style="padding:5px 8px">❓</button>
   <button class="btn" onclick="showResearch()" id="btn-research" style="margin-left:auto">🔬 研究模式</button>
 </div>
 
@@ -122,6 +123,29 @@ select { background: #21262d; color: var(--text); border: 1px solid var(--border
   <div class="stat-cell"><div class="stat-label">OI 狀態</div><div class="stat-val" id="s-oi-state">—</div></div>
   <div class="stat-cell"><div class="stat-label">今日事件</div><div class="stat-val" id="s-today-events">—</div></div>
 </div>
+
+<!-- Event type help popup -->
+<div id="event-help-popup" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;background:#161b22;border:1px solid #30363d;border-radius:10px;padding:20px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.6)">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <h3 style="font-size:.95rem">📋 事件類型說明</h3>
+    <button onclick="toggleEventHelp()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem">✕</button>
+  </div>
+  <div style="margin-bottom:12px;padding:8px 12px;background:#0d1117;border-radius:6px;font-size:.8rem">
+    <div><span style="color:#58a6ff;font-weight:700">[L1] 一階訊號</span> — 單一指標直接觀察，反映當日價格與未平倉口數（OI）的關係</div>
+    <div style="margin-top:4px"><span style="color:#d29922;font-weight:700">[L2] 二階訊號</span> — 兩個以上指標交叉比對，需連續幾日確認，較可靠但略有延遲</div>
+    <div style="margin-top:4px"><span style="color:#bc8cff;font-weight:700">[L3] 三階訊號</span> — 整合多項評分後的市場整體定位判斷，訊號最少但最具參考意義</div>
+  </div>
+  <table style="width:100%;border-collapse:collapse;font-size:.78rem">
+    <thead><tr style="background:#1c2128">
+      <th style="padding:5px 8px;text-align:left;color:var(--muted)">代碼</th>
+      <th style="padding:5px 8px;text-align:left;color:var(--muted)">說明</th>
+      <th style="padding:5px 8px;color:var(--muted)">方向</th>
+    </tr></thead>
+    <tbody id="event-help-tbody">
+    </tbody>
+  </table>
+</div>
+<div id="event-help-overlay" onclick="toggleEventHelp()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999"></div>
 
 <!-- Main layout -->
 <div class="layout" id="main-layout">
@@ -442,6 +466,51 @@ function hideResearch() {
 }
 
 let _strategyMarkers = [];  // markers from strategy overlay
+
+const _EVENT_META = {
+  PRICE_FUTURES_ALIGNED:           { desc:'現貨與台指期同向同步，趨勢方向明確一致', dir:'中性', level:1 },
+  PRICE_FUTURES_DIVERGENCE_BULL:   { desc:'現貨偏弱但期貨相對強，期貨先行暗示看多', dir:'多', level:2 },
+  PRICE_FUTURES_DIVERGENCE_BEAR:   { desc:'現貨偏強但期貨相對弱，期貨先行暗示看空', dir:'空', level:2 },
+  PRICE_OI_UP_BUILD:               { desc:'現貨上漲且 OI（未平倉）增加 → 多方主動建倉，動能強', dir:'多', level:1 },
+  PRICE_OI_UP_COVERING:            { desc:'現貨上漲但 OI 減少 → 空方被迫回補推漲，屬弱多', dir:'多', level:1 },
+  PRICE_OI_DOWN_BUILD:             { desc:'現貨下跌且 OI 增加 → 空方主動建倉，下跌動能強', dir:'空', level:1 },
+  PRICE_OI_DOWN_LIQUIDATION:       { desc:'現貨下跌但 OI 減少 → 多方認輸出場，屬弱空', dir:'空', level:1 },
+  PRICE_POSITIONING_DIVERGENCE:    { desc:'現貨走勢與法人籌碼定位方向背離，警示訊號', dir:'中性', level:2 },
+  FOREIGN_FUTURES_IMPROVING:       { desc:'外資期貨淨部位連續改善（多增或空減），外資轉多', dir:'多', level:2 },
+  FOREIGN_FUTURES_DETERIORATING:   { desc:'外資期貨淨部位連續惡化（多減或空增），外資轉空', dir:'空', level:2 },
+  LARGE_TRADER_BUILDING:           { desc:'前五/十大交易人淨部位持續增加，大戶加碼', dir:'多', level:2 },
+  LARGE_TRADER_REDUCING:           { desc:'前五/十大交易人淨部位持續減少，大戶減碼', dir:'空', level:2 },
+  BULLISH_CONFIRMATION:            { desc:'多項籌碼指標同時偏多，多頭趨勢獲確認', dir:'多', level:3 },
+  BEARISH_CONFIRMATION:            { desc:'多項籌碼指標同時偏空，空頭趨勢獲確認', dir:'空', level:3 },
+  BEARISH_PRESSURE_WEAKENING:      { desc:'空頭訊號數量減少，空方壓力開始緩解，注意止跌', dir:'多', level:3 },
+  POTENTIAL_BEARISH_EXHAUSTION:    { desc:'空方訊號達到高峰，可能接近短期底部反彈點', dir:'多', level:3 },
+  POTENTIAL_BULLISH_EXHAUSTION:    { desc:'多方訊號過熱，注意高點風險，籌碼可能鬆動', dir:'空', level:3 },
+};
+
+function toggleEventHelp() {
+  const popup = document.getElementById('event-help-popup');
+  const overlay = document.getElementById('event-help-overlay');
+  const shown = popup.style.display !== 'none';
+  if (!shown) {
+    // build table on first open
+    const tbody = document.getElementById('event-help-tbody');
+    if (!tbody.children.length) {
+      const levelColor = {1:'#58a6ff', 2:'#d29922', 3:'#bc8cff'};
+      const dirColor = {多:'#3fb950', 空:'#f85149', 中性:'#8b949e'};
+      tbody.innerHTML = Object.entries(_EVENT_META).map(([code, m]) => `
+        <tr style="border-top:1px solid #21262d">
+          <td style="padding:5px 8px;white-space:nowrap">
+            <span style="color:${levelColor[m.level]};font-size:.68rem;font-weight:700">[L${m.level}]</span>
+            <span style="color:var(--muted);font-size:.72rem;margin-left:4px">${code}</span>
+          </td>
+          <td style="padding:5px 8px">${m.desc}</td>
+          <td style="padding:5px 8px;text-align:center"><span style="color:${dirColor[m.dir]||'#8b949e'};font-weight:700">${m.dir}</span></td>
+        </tr>`).join('');
+    }
+  }
+  popup.style.display = shown ? 'none' : 'block';
+  overlay.style.display = shown ? 'none' : 'block';
+}
 
 async function loadEventTypes() {
   try {

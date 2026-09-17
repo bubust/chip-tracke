@@ -1375,11 +1375,16 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 0,
                     exit_idx = j; exit_reason = "停利"; break
                 # 跌破前 trailing_low_days 天低點出場
                 if trailing_low_days > 0:
-                    lb_start = max(0, j - trailing_low_days)
+                    lb_start = max(i, j - trailing_low_days)
                     trail_low = float(min(lows[lb_start:j]))
                     if c < trail_low:
                         exit_idx = j; exit_reason = "跌破低點"; break
 
+            # compute trail_low at exit for reference
+            trail_low_at_exit = None
+            if trailing_low_days > 0 and exit_idx > i:
+                lb_s = max(i, exit_idx - trailing_low_days)
+                trail_low_at_exit = round(float(min(lows[lb_s:exit_idx])), 2) if lb_s < exit_idx else None
             exit_date  = dates[exit_idx]
             exit_price = closes[exit_idx]
             ret = (exit_price - entry_price) / entry_price
@@ -1392,6 +1397,7 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 0,
                 "exit_reason": exit_reason,
                 "sl_price":    sl_price,
                 "tp_price":    tp_price,
+                "trail_low_price": trail_low_at_exit,
             })
         if not trades:
             return {"count": 0}
@@ -1486,10 +1492,15 @@ def api_backtest_index(key: str, holding_days: int = 0,
                     exit_idx = j; exit_reason = "停利"; break
                 # 跌破前 trailing_low_days 天低點出場
                 if trailing_low_days > 0:
-                    lb_start = max(0, j - trailing_low_days)
+                    lb_start = max(i, j - trailing_low_days)
                     trail_low = float(min(lows[lb_start:j]))
                     if c < trail_low:
                         exit_idx = j; exit_reason = "跌破低點"; break
+            # compute trail_low at exit for reference
+            trail_low_at_exit = None
+            if trailing_low_days > 0 and exit_idx > i:
+                lb_s = max(i, exit_idx - trailing_low_days)
+                trail_low_at_exit = round(float(min(lows[lb_s:exit_idx])), 2) if lb_s < exit_idx else None
             exit_date  = dates[exit_idx]
             exit_price = closes[exit_idx]
             ret = (exit_price - entry_price) / entry_price
@@ -1499,6 +1510,7 @@ def api_backtest_index(key: str, holding_days: int = 0,
                 "return": round(float(ret), 4),
                 "exit_reason": exit_reason,
                 "sl_price": sl_price, "tp_price": tp_price,
+                "trail_low_price": trail_low_at_exit,
             })
         if not trades:
             return {"count": 0}
@@ -1517,6 +1529,148 @@ def api_backtest_index(key: str, holding_days: int = 0,
         "stop_loss": stop_loss, "take_profit": take_profit, "total_bars": n,
         "fbd": run_backtest("fbd"),
         "fbr": run_backtest("fbr"),
+    }
+
+
+@app.get("/api/backtest/strategy-batch")
+def api_backtest_strategy_batch(
+    strategy: str,
+    trailing_low_days: int = 2,
+    holding_days: int = 0,
+    stop_loss: float = 0.0,
+    take_profit: float = 0.0,
+    signal: str = "fbd",
+    max_stocks: int = 40,
+):
+    """批量回測：對策略篩選出的股票跑 MA10 假跌破/假突破回測，彙總統計"""
+    import pandas as pd
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from yahoo_price import get_scan_results, _parse_yahoo_json, get_stock_list
+
+    scan_res = get_scan_results()
+    raw_list = scan_res.get(strategy, [])
+    if not raw_list:
+        raise HTTPException(status_code=404, detail=f"策略 {strategy} 尚無掃描結果，請先執行全市場掃描")
+
+    stocks = get_stock_list()
+    stock_ids = [s["stock_id"] for s in raw_list[:max_stocks]]
+    UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    now_ts = int(_time.time())
+    p1 = now_ts - 730 * 86400
+    params_yf = {"interval": "1d", "period1": p1, "period2": now_ts}
+    sl_frac = stop_loss / 100.0
+    tp_frac = take_profit / 100.0
+
+    def _one_stock(stock_id):
+        row = stocks[stocks["stock_id"] == stock_id]
+        market = str(row.iloc[0]["type"]) if not row.empty else "twse"
+        suffixes = [".TW"] if market == "twse" else [".TWO", ".TW"]
+        df = None
+        for host in ["query1", "query2"]:
+            for suffix in suffixes:
+                try:
+                    r = httpx.get(
+                        f"https://{host}.finance.yahoo.com/v8/finance/chart/{stock_id}{suffix}",
+                        params=params_yf,
+                        headers={"User-Agent": UA, "Accept": "application/json"},
+                        timeout=12.0, verify=False, follow_redirects=True,
+                    )
+                    r.raise_for_status()
+                    df = _parse_yahoo_json(r.json())
+                    if df is not None and not df.empty and len(df) >= 30:
+                        break
+                except Exception:
+                    pass
+            if df is not None and not df.empty and len(df) >= 30:
+                break
+        if df is None or df.empty or len(df) < 30:
+            return None
+
+        closes = df["close"].values
+        lows_arr = df["low"].values
+        dates_arr = df["date"].values
+        n = len(closes)
+        ma10 = pd.Series(closes).rolling(10, min_periods=10).mean().values
+        trades = []
+        for i in range(10, n - 1):
+            if pd.isna(ma10[i]) or pd.isna(ma10[i + 1]):
+                continue
+            if signal == "fbd":
+                triggered = (closes[i - 1] < ma10[i - 1]) and (closes[i] > ma10[i])
+            else:
+                triggered = (closes[i - 1] > ma10[i - 1]) and (closes[i] < ma10[i])
+            if not triggered:
+                continue
+            entry_price = closes[i]
+            sl_price = round(entry_price * (1 - sl_frac), 2) if sl_frac > 0 else None
+            tp_price = round(entry_price * (1 + tp_frac), 2) if tp_frac > 0 else None
+            exit_reason = "時間"
+            max_j = (i + holding_days) if holding_days > 0 else (n - 1)
+            exit_idx = min(max_j, n - 1)
+            for j in range(i + 1, min(max_j + 1, n)):
+                c = closes[j]
+                if sl_price is not None and c <= sl_price:
+                    exit_idx = j; exit_reason = "停損"; break
+                if tp_price is not None and c >= tp_price:
+                    exit_idx = j; exit_reason = "停利"; break
+                if trailing_low_days > 0:
+                    lb_start = max(i, j - trailing_low_days)
+                    if lb_start < j:
+                        trail_low = float(min(lows_arr[lb_start:j]))
+                        if c < trail_low:
+                            exit_idx = j; exit_reason = "跌破低點"; break
+            exit_price = closes[exit_idx]
+            ret = (exit_price - entry_price) / entry_price
+            trades.append({"return": round(float(ret), 4), "exit_reason": exit_reason,
+                           "entry_date": dates_arr[i], "exit_date": dates_arr[exit_idx]})
+        if not trades:
+            return None
+        rets = [t["return"] for t in trades]
+        wins = [r for r in rets if r > 0]
+        return {
+            "stock_id": stock_id,
+            "name": next((s.get("name", "") for s in raw_list if s.get("stock_id") == stock_id), ""),
+            "count": len(trades),
+            "win_rate": round(len(wins) / len(rets), 3),
+            "avg_return": round(sum(rets) / len(rets), 4),
+            "max_win": round(max(rets), 4),
+            "max_loss": round(min(rets), 4),
+            "last_entry": trades[-1]["entry_date"] if trades else None,
+        }
+
+    by_stock = []
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futures = {ex.submit(_one_stock, sid): sid for sid in stock_ids}
+        for fut in as_completed(futures):
+            res = fut.result()
+            if res:
+                by_stock.append(res)
+
+    if not by_stock:
+        return {"strategy": strategy, "total_scanned": len(stock_ids), "computed": 0,
+                "aggregate": {"count": 0}, "by_stock": []}
+
+    all_rets = []
+    for sr in by_stock:
+        # weight each stock's avg equally
+        all_rets.append(sr["avg_return"])
+
+    by_stock.sort(key=lambda x: x["avg_return"], reverse=True)
+    wins_agg = [r for r in all_rets if r > 0]
+    return {
+        "strategy": strategy,
+        "signal": signal,
+        "total_scanned": len(stock_ids),
+        "computed": len(by_stock),
+        "trailing_low_days": trailing_low_days,
+        "holding_days": holding_days,
+        "aggregate": {
+            "stocks_with_trades": len(by_stock),
+            "avg_win_rate": round(sum(s["win_rate"] for s in by_stock) / len(by_stock), 3),
+            "avg_return": round(sum(all_rets) / len(all_rets), 4),
+            "positive_stocks": len(wins_agg),
+        },
+        "by_stock": by_stock,
     }
 
 
