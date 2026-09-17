@@ -59,6 +59,8 @@
   .strat-cnt:empty { display:none; }
   .draw-btn.active { border-color:#a78bfa!important;color:#a78bfa!important;background:rgba(167,139,250,.12)!important; }
   .chart-period-btn.active { background:var(--accent);color:#fff; }
+  .chart-overlay-btn { opacity:.4; }
+  .chart-overlay-btn.active { opacity:1; }
   .screen-strat-btn.active { border-color:var(--accent);color:var(--accent); }
   .btn.green { background: var(--green); }
   .btn.danger { background: var(--red); }
@@ -829,10 +831,26 @@ function renderWatchlist() {
     })();
     const bb = s.bb_score ?? null;
     const bbCell = (() => {
-      if (bb === null || bb === undefined) return `<td class="muted">—</td>`;
-      const cls = bb > 0 ? 'pos' : bb < 0 ? 'neg' : 'muted';
+      if (bb === null || bb === undefined) return `<td class="muted" style="white-space:nowrap">—</td>`;
+      let zone, zoneColor;
+      if (bb > 10)       { zone = '超上軌'; zoneColor = '#f85149'; }
+      else if (bb > 5)   { zone = '近上軌'; zoneColor = '#ff9800'; }
+      else if (bb > -5)  { zone = '中軌';   zoneColor = '#8b949e'; }
+      else if (bb > -10) { zone = '近下軌'; zoneColor = '#58a6ff'; }
+      else               { zone = '超下軌'; zoneColor = '#38bdf8'; }
+      const numColor = bb > 5 ? '#f85149' : bb > 0 ? '#ff9800' : bb > -5 ? '#8b949e' : '#58a6ff';
       const sign = bb > 0 ? '+' : '';
-      return `<td class="${cls}" title="上軌=+10 中軌=0 下軌=-10">${sign}${bb}</td>`;
+      const clampedBB = Math.max(-15, Math.min(15, bb));
+      const dotPct = ((clampedBB + 15) / 30 * 100).toFixed(1);
+      const tipText = bb > 10 ? '已突破上軌' : bb < -10 ? '已跌破下軌' : '軌道內';
+      return `<td title="布林軌道位置（上軌=+10 中軌=0 下軌=-10）｜${tipText}" style="white-space:nowrap">
+        <span style="color:${numColor};font-weight:700;font-size:.85rem">${sign}${bb}</span><span style="color:${zoneColor};font-size:.68rem;margin-left:3px">${zone}</span>
+        <div style="margin-top:3px;height:3px;background:#21262d;border-radius:2px;width:56px;position:relative;display:inline-block;vertical-align:middle;margin-left:4px">
+          <div style="position:absolute;left:33.3%;width:1px;height:3px;background:#555"></div>
+          <div style="position:absolute;left:66.6%;width:1px;height:3px;background:#555"></div>
+          <div style="position:absolute;left:${dotPct}%;transform:translateX(-50%);top:-1px;width:5px;height:5px;border-radius:50%;background:${numColor}"></div>
+        </div>
+      </td>`;
     })();
     const kpct = s.kpct;
     const kpctChg = s.kpct_change;
@@ -2804,6 +2822,7 @@ let _lwcCharts = [];
 let _chartStockId = null;
 let _chartOhlcvUrl = null;   // 指數圖時指向 /api/index/{key}/ohlcv
 let _chartInterval = '1d';   // 目前選擇的週期
+const _chartOverlayState = { ma5: true, ma10: true, ma20: true, ma60: true, bb: false };
 
 function setChartPeriod(period) {
   _chartInterval = period;
@@ -2898,6 +2917,31 @@ function _resetChartPeriod() {
   document.querySelectorAll('.chart-period-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.period === '1d');
   });
+}
+
+function _calcBB(closes, period = 20) {
+  const upper = new Array(closes.length).fill(NaN);
+  const lower = new Array(closes.length).fill(NaN);
+  for (let i = period - 1; i < closes.length; i++) {
+    const slice = closes.slice(i - period + 1, i + 1);
+    const mean = slice.reduce((s, v) => s + v, 0) / period;
+    const variance = slice.reduce((s, v) => s + (v - mean) ** 2, 0) / period;
+    const std = Math.sqrt(variance);
+    upper[i] = mean + 2 * std;
+    lower[i] = mean - 2 * std;
+  }
+  return { upper, lower };
+}
+
+function toggleChartOverlay(key) {
+  _chartOverlayState[key] = !_chartOverlayState[key];
+  const btn = document.getElementById(`overlay-btn-${key}`);
+  if (btn) btn.classList.toggle('active', _chartOverlayState[key]);
+  if (_chartStockId) {
+    let savedRange = null;
+    if (_lwcCharts[0]) try { savedRange = _lwcCharts[0].timeScale().getVisibleRange(); } catch(e) {}
+    openChart(_chartStockId, savedRange);
+  }
 }
 function openWlChart(sid)     { _frozenChartList = [..._wlChartList];     _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = '';             _chartOhlcvUrl = null; _resetChartPeriod(); openChart(sid); }
 function openMktChart(sid)    { _frozenChartList = [..._mktChartList];    _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = '全市場排行';   _chartOhlcvUrl = null; _resetChartPeriod(); openChart(sid); }
@@ -3063,6 +3107,11 @@ async function openChart(stockId, savedRange = null) {
   _lwcCharts.forEach(c => { try { c.remove(); } catch(e){} });
   _lwcCharts = [];
   _chartStockId   = stockId;
+  // Sync overlay buttons visual state
+  Object.keys(_chartOverlayState).forEach(k => {
+    const btn = document.getElementById(`overlay-btn-${k}`);
+    if (btn) btn.classList.toggle('active', _chartOverlayState[k]);
+  });
   _chartStockName = _chartNames[stockId] || '';
   _updateChartNavBtns();
   _updateChartWlBtn();
@@ -3169,19 +3218,31 @@ async function openChart(stockId, savedRange = null) {
       }
     });
 
-    // MA 線
+    // MA 線 (依切換狀態顯示)
     const MA_CFG = [
-      { period: 5,  ma: ma5,  color: '#4caf50' },
-      { period: 10, ma: ma10, color: '#ffeb3b' },
-      { period: 20, ma: ma20, color: '#e91e63' },
-      { period: 60, ma: ma60, color: '#ff9800' },
+      { key: 'ma5',  period: 5,  ma: ma5,  color: '#4caf50' },
+      { key: 'ma10', period: 10, ma: ma10, color: '#ffeb3b' },
+      { key: 'ma20', period: 20, ma: ma20, color: '#e91e63' },
+      { key: 'ma60', period: 60, ma: ma60, color: '#ff9800' },
     ];
-    for (const { period, ma, color } of MA_CFG) {
+    for (const { key, period, ma, color } of MA_CFG) {
+      if (!_chartOverlayState[key]) continue;
       const s = cChart.addLineSeries({
         color, lineWidth: 1,
         priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
       });
       s.setData(ohlcv.map((r, i) => isNaN(ma[i]) ? null : { time: _rt(r), value: ma[i] }).filter(Boolean));
+    }
+
+    // 布林軌道 (BB, 20日, 2σ)
+    if (_chartOverlayState.bb) {
+      const { upper, lower } = _calcBB(closes, 20);
+      const bbUpperS = cChart.addLineSeries({ color: 'rgba(248,81,73,.55)', lineWidth: 1, lineStyle: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+      bbUpperS.setData(ohlcv.map((r, i) => isNaN(upper[i]) ? null : { time: _rt(r), value: upper[i] }).filter(Boolean));
+      const bbLowerS = cChart.addLineSeries({ color: 'rgba(88,166,255,.55)', lineWidth: 1, lineStyle: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+      bbLowerS.setData(ohlcv.map((r, i) => isNaN(lower[i]) ? null : { time: _rt(r), value: lower[i] }).filter(Boolean));
+      const bbMidS  = cChart.addLineSeries({ color: 'rgba(167,139,250,.4)',  lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+      bbMidS.setData(ohlcv.map((r, i) => isNaN(ma20[i]) ? null : { time: _rt(r), value: ma20[i] }).filter(Boolean));
     }
 
     // ── 假跌破 / 假突破標記 ──
@@ -3613,7 +3674,14 @@ async function saveAllStratParams() {
         <button class="btn sm ghost chart-period-btn" data-period="1wk" onclick="setChartPeriod('1wk')" style="padding:2px 6px;font-size:.72rem">週</button>
         <button class="btn sm ghost chart-period-btn" data-period="1mo" onclick="setChartPeriod('1mo')" style="padding:2px 6px;font-size:.72rem">月</button>
       </span>
-      <span style="font-size:.72rem;color:#6b7280;white-space:nowrap">K線＋量＋小MACD＋大MACD（Yahoo Finance）</span>
+      <span id="chart-overlay-bar" style="display:flex;gap:3px;align-items:center;flex-wrap:nowrap">
+        <span style="font-size:.68rem;color:#6b7280;margin-right:2px">均線:</span>
+        <button id="overlay-btn-ma5"  class="btn sm ghost chart-overlay-btn active" onclick="toggleChartOverlay('ma5')"  style="padding:2px 7px;font-size:.72rem;color:#4caf50;border-color:#4caf50">MA5</button>
+        <button id="overlay-btn-ma10" class="btn sm ghost chart-overlay-btn active" onclick="toggleChartOverlay('ma10')" style="padding:2px 7px;font-size:.72rem;color:#ffeb3b;border-color:#ffeb3b">MA10</button>
+        <button id="overlay-btn-ma20" class="btn sm ghost chart-overlay-btn active" onclick="toggleChartOverlay('ma20')" style="padding:2px 7px;font-size:.72rem;color:#e91e63;border-color:#e91e63">MA20</button>
+        <button id="overlay-btn-ma60" class="btn sm ghost chart-overlay-btn active" onclick="toggleChartOverlay('ma60')" style="padding:2px 7px;font-size:.72rem;color:#ff9800;border-color:#ff9800">MA60</button>
+        <button id="overlay-btn-bb"   class="btn sm ghost chart-overlay-btn"        onclick="toggleChartOverlay('bb')"   style="padding:2px 7px;font-size:.72rem;color:#a78bfa;border-color:#a78bfa">BB</button>
+      </span>
       <span style="display:flex;gap:4px;align-items:center">
         <button id="draw-btn-hline" class="btn sm ghost draw-btn" onclick="setDrawMode('hline')" title="水平線（點K線加上）" style="font-size:.8rem;padding:3px 8px">📏 水平線</button>
         <button id="draw-btn-tline" class="btn sm ghost draw-btn" onclick="setDrawMode('tline')" title="趨勢線（點兩個K線點）" style="font-size:.8rem;padding:3px 8px">📐 趨勢線</button>

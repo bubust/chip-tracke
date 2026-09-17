@@ -285,7 +285,7 @@ async function openDetail(sectorId) {
 
 function renderDetailPage(d) {
   const s = d.latest || {};
-  const name = s.sector_name || s.sector_id || sectorId;
+  const name = s.sector_name || s.sector_id || d.sector_id || '';
 
   const metrics = [
     { label: "趨勢狀態", value: trendBadgeHtml(s.trend_state) },
@@ -355,6 +355,13 @@ function renderDetailPage(d) {
           </thead>
           <tbody>${historyRows}</tbody>
         </table>
+      </div>
+    </div>
+
+    <div style="margin-top:20px">
+      <h4 style="color:var(--muted);margin-bottom:10px;font-size:.85rem">成份股（${(d.stocks||[]).length} 支）</h4>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${(d.stocks||[]).map(sid => `<span style="display:inline-block;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:.8rem;color:var(--accent);font-weight:600">${sid}</span>`).join('')}
       </div>
     </div>
   `;

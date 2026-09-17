@@ -324,17 +324,17 @@
       <table id="sectors-table">
         <thead>
           <tr>
-            <th onclick="sortTable('sector_name')">產業 <span class="sort-arrow">↕</span></th>
-            <th onclick="sortTable('trend_state')">趨勢 <span class="sort-arrow">↕</span></th>
-            <th onclick="sortTable('relative_rank_5d')">5D # <span class="sort-arrow">↕</span></th>
-            <th onclick="sortTable('relative_rank_20d')">20D # <span class="sort-arrow">↕</span></th>
-            <th onclick="sortTable('relative_rank_60d')">60D # <span class="sort-arrow">↕</span></th>
-            <th onclick="sortTable('rank_trend')">排名趨勢 <span class="sort-arrow">↕</span></th>
-            <th onclick="sortTable('return_ew_5d')">5D % <span class="sort-arrow">↕</span></th>
-            <th onclick="sortTable('return_ew_20d')">20D % <span class="sort-arrow">↕</span></th>
-            <th onclick="sortTable('structure_event')">結構事件 <span class="sort-arrow">↕</span></th>
-            <th onclick="sortTable('internal_health')">健康度 <span class="sort-arrow">↕</span></th>
-            <th onclick="sortTable('sector_regime')">狀態標籤 <span class="sort-arrow">↕</span></th>
+            <th onclick="sortTable('sector_name')" title="產業分類名稱">產業 <span class="sort-arrow">↕</span></th>
+            <th onclick="sortTable('trend_state')" title="多頭(BULL)=MA20向上站上MA60；空頭(BEAR)=MA20向下跌破MA60；盤整(RANGE)=其他">趨勢 <span class="sort-arrow">↕</span></th>
+            <th onclick="sortTable('relative_rank_5d')" title="過去5天等權重報酬率在所有產業中的名次（數字越小越強）">5D # <span class="sort-arrow">↕</span></th>
+            <th onclick="sortTable('relative_rank_20d')" title="過去20天等權重報酬率在所有產業中的名次（數字越小越強）">20D # <span class="sort-arrow">↕</span></th>
+            <th onclick="sortTable('relative_rank_60d')" title="過去60天等權重報酬率在所有產業中的名次（數字越小越強）">60D # <span class="sort-arrow">↕</span></th>
+            <th onclick="sortTable('rank_trend')" title="近期排名方向：↑↑強化=排名持續上升（相對走強）；↓↓弱化=排名持續下降；→穩定=無明顯變化">排名趨勢 <span class="sort-arrow">↕</span></th>
+            <th onclick="sortTable('return_ew_5d')" title="產業內所有股票5天報酬率等權平均（EW=Equal Weight）">5D % <span class="sort-arrow">↕</span></th>
+            <th onclick="sortTable('return_ew_20d')" title="產業內所有股票20天報酬率等權平均">20D % <span class="sort-arrow">↕</span></th>
+            <th onclick="sortTable('structure_event')" title="最近結構性事件：假跌破=跌破後迅速回升（偏多）；假突破=突破後迅速回落（偏空）；突破/跌破=正式方向確認">結構事件 <span class="sort-arrow">↕</span></th>
+            <th onclick="sortTable('internal_health')" title="產業內部健康度：健康=漲跌比與站上均線比例均佳；集中=少數股票主導；弱勢/惡化=多數股票積弱">健康度 <span class="sort-arrow">↕</span></th>
+            <th onclick="sortTable('sector_regime')" title="綜合狀態：多頭強勢/弱勢、盤整強勢/弱勢、空頭抗跌/弱勢（依趨勢×健康度×報酬率綜合判斷）">狀態標籤 <span class="sort-arrow">↕</span></th>
             <th>詳細</th>
           </tr>
         </thead>
