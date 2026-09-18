@@ -730,7 +730,18 @@ async function loadWatchlist() {
   document.getElementById('wl-empty').style.display = 'none';
   document.getElementById('wl-table-wrap').style.display = 'none';
   try {
-    _wlData = await api('GET', '/api/watchlist/summary');
+    const _wlResp = await api('GET', '/api/watchlist/summary');
+    _wlData = Array.isArray(_wlResp) ? _wlResp : (_wlResp.items || []);
+    // 顯示最後更新時間（不管有沒有籌碼資料都顯示）
+    if (!Array.isArray(_wlResp) && _wlResp.last_refresh) {
+      const _dateEl2 = document.getElementById('chip-data-date');
+      if (_dateEl2) {
+        const _lr = new Date(_wlResp.last_refresh);
+        const _lrStr = isNaN(_lr) ? _wlResp.last_refresh : _lr.toLocaleString('zh-TW', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+        _dateEl2.textContent = `🕐 最後更新 ${_lrStr}`;
+        _dateEl2.style.display = 'inline-block';
+      }
+    }
     // 合併本機備份：把本機有、伺服器沒有的股票補回去
     // （防止 Render 重啟時 Supabase 只有部分股票，導致本機備份被少量資料覆蓋）
     const backup = lsLoadWatchlist();
@@ -741,7 +752,8 @@ async function loadWatchlist() {
       for (const item of missing) {
         try { await api('POST', '/api/watchlist', { stock_id: item.stock_id, name: item.name || '', note: item.note || '' }); } catch(e) {}
       }
-      _wlData = await api('GET', '/api/watchlist/summary');
+      const _wlResp2 = await api('GET', '/api/watchlist/summary');
+      _wlData = Array.isArray(_wlResp2) ? _wlResp2 : (_wlResp2.items || []);
     }
     // 合併本機備份 note：伺服器沒有 note（Supabase 欄位缺失）時，從 localStorage 補回並推回伺服器
     const noteBackup = lsLoadWatchlist();
@@ -787,17 +799,13 @@ function renderWatchlist() {
   document.getElementById('wl-empty').style.display = 'none';
   _wlChartList = _wlData.map(s => s.stock_id);
   _wlData.forEach(s => { if (s.name) _chartNames[s.stock_id] = s.name; });
-  // 顯示籌碼資料最新日期
+  // 顯示籌碼資料最新日期（有籌碼日期時覆蓋顯示，否則不動 last_refresh 顯示）
   const _latestDate = _wlData.filter(s => s.date).map(s => s.date).sort().reverse()[0];
   const _dateEl = document.getElementById('chip-data-date');
-  if (_dateEl) {
-    if (_latestDate) {
-      _dateEl.textContent = `📅 籌碼資料 ${_latestDate}`;
-      _dateEl.style.display = 'inline-block';
-    } else {
-      _dateEl.style.display = 'none';
-    }
-  };
+  if (_dateEl && _latestDate) {
+    _dateEl.textContent = `📅 籌碼資料 ${_latestDate}`;
+    _dateEl.style.display = 'inline-block';
+  }
 
   tbody.innerHTML = _wlData.map(s => {
     const priceCell = (() => {
@@ -3796,7 +3804,8 @@ async function saveAllStratParams() {
 <!-- K 線圖 Modal -->
 <div id="chart-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeChart()">
   <div style="background:#131722;border-radius:var(--radius);width:min(98vw,1300px);height:85vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 60px #000c">
-    <div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid #2a2e39;flex-shrink:0;gap:8px">
+    <!-- 第一行：導航 + 標題 + 時間週期 + 觀察清單/回測/關閉 -->
+    <div style="display:flex;align-items:center;padding:8px 16px;border-bottom:1px solid #1e2435;flex-shrink:0;gap:6px;flex-wrap:wrap">
       <button id="chart-prev-btn" class="btn sm ghost" onclick="chartNav(-1)" title="上一檔" style="padding:4px 10px">◀ 上一檔</button>
       <button id="chart-next-btn" class="btn sm ghost" onclick="chartNav(+1)" title="下一檔" style="padding:4px 10px">下一檔 ▶</button>
       <strong id="chart-modal-title" style="font-size:.95rem;flex:1;color:#d1d4dc;text-align:center"></strong>
@@ -3810,6 +3819,12 @@ async function saveAllStratParams() {
         <button class="btn sm ghost chart-period-btn" data-period="1wk" onclick="setChartPeriod('1wk')" style="padding:2px 6px;font-size:.72rem">週</button>
         <button class="btn sm ghost chart-period-btn" data-period="1mo" onclick="setChartPeriod('1mo')" style="padding:2px 6px;font-size:.72rem">月</button>
       </span>
+      <button id="chart-wl-btn" class="btn sm ghost" onclick="addChartToWl()" style="color:#22c55e;white-space:nowrap">+ 觀察清單</button>
+      <button id="chart-bt-btn" class="btn sm ghost" onclick="openBacktest()" style="color:#f59e0b;white-space:nowrap">📊 回測</button>
+      <button class="btn sm ghost" onclick="closeChart()">✕ 關閉</button>
+    </div>
+    <!-- 第二行：均線按鈕 + 畫線工具 -->
+    <div style="display:flex;align-items:center;padding:5px 16px;border-bottom:1px solid #2a2e39;flex-shrink:0;gap:6px;background:#0f1523">
       <span id="chart-overlay-bar" style="display:flex;gap:3px;align-items:center;flex-wrap:nowrap">
         <span style="font-size:.68rem;color:#6b7280;margin-right:2px">均線:</span>
         <button id="overlay-btn-ma5"  class="btn sm ghost chart-overlay-btn active" onclick="toggleChartOverlay('ma5')"  style="padding:2px 7px;font-size:.72rem;color:#4caf50;border-color:#4caf50">MA5</button>
@@ -3818,14 +3833,12 @@ async function saveAllStratParams() {
         <button id="overlay-btn-ma60" class="btn sm ghost chart-overlay-btn active" onclick="toggleChartOverlay('ma60')" style="padding:2px 7px;font-size:.72rem;color:#ff9800;border-color:#ff9800">MA60</button>
         <button id="overlay-btn-bb"   class="btn sm ghost chart-overlay-btn"        onclick="toggleChartOverlay('bb')"   style="padding:2px 7px;font-size:.72rem;color:#a78bfa;border-color:#a78bfa">BB</button>
       </span>
+      <span style="width:1px;height:16px;background:#2a2e39;margin:0 4px"></span>
       <span style="display:flex;gap:4px;align-items:center">
         <button id="draw-btn-hline" class="btn sm ghost draw-btn" onclick="setDrawMode('hline')" title="水平線（點K線加上）" style="font-size:.8rem;padding:3px 8px">📏 水平線</button>
         <button id="draw-btn-tline" class="btn sm ghost draw-btn" onclick="setDrawMode('tline')" title="趨勢線（點兩個K線點）" style="font-size:.8rem;padding:3px 8px">📐 趨勢線</button>
         <button class="btn sm ghost" onclick="clearDrawings()" title="清除所有畫線" style="font-size:.8rem;padding:3px 8px">🗑️</button>
       </span>
-      <button id="chart-wl-btn" class="btn sm ghost" onclick="addChartToWl()" style="color:#22c55e;white-space:nowrap">+ 觀察清單</button>
-      <button id="chart-bt-btn" class="btn sm ghost" onclick="openBacktest()" style="color:#f59e0b;white-space:nowrap">📊 回測</button>
-      <button class="btn sm ghost" onclick="closeChart()">✕ 關閉</button>
     </div>
     <div id="chart-tv-container" style="flex:1;overflow:hidden"></div>
   </div>

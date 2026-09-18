@@ -147,18 +147,22 @@ def api_get_sector(sector_id: str, days: int = Query(60, ge=1, le=365)):
 @router.get("/api/events")
 def api_get_events(limit: int = Query(50, ge=1, le=200)):
     """回傳最近結構事件列表"""
-    with db() as conn:
-        rows = conn.execute(
-            """
-            SELECT se.*, sm.sector_name
-            FROM sector_events se
-            LEFT JOIN sector_master sm ON se.sector_id = sm.sector_id
-            ORDER BY se.observation_date DESC, se.event_id DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
-    return {"events": [dict(r) for r in rows]}
+    try:
+        with db() as conn:
+            rows = conn.execute(
+                """
+                SELECT se.*, sm.sector_name
+                FROM sector_events se
+                LEFT JOIN sector_master sm ON se.sector_id = sm.sector_id
+                ORDER BY se.observation_date DESC, se.event_id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return {"events": [dict(r) for r in rows]}
+    except Exception as e:
+        log.warning(f"[sector] api_get_events 失敗: {e}")
+        return {"events": []}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

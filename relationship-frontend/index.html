@@ -219,7 +219,7 @@ function initCharts() {
     grid: { vertLines: { color: '#21262d' }, horzLines: { color: '#21262d' } },
     crosshair: { mode: 1 },
     rightPriceScale: { borderColor: '#30363d' },
-    timeScale: { borderColor: '#30363d', timeVisible: true },
+    timeScale: { borderColor: '#30363d', timeVisible: false },
   };
 
   const taiexEl = document.getElementById('chart-taiex');
@@ -311,9 +311,6 @@ function renderCharts() {
   _txSeries.setData(txCandles);
   if (ma20Pts.length) _ma20Series.setData(ma20Pts);
   if (ma60Pts.length) _ma60Series.setData(ma60Pts);
-  // 縮放到資料範圍，不浪費空白
-  _taiexChart.timeScale().fitContent();
-  _txChart.timeScale().fitContent();
 
   // Event markers
   const markerMap = {};
@@ -328,6 +325,9 @@ function renderCharts() {
   });
   _taiexMarkers = markers.sort((a,b) => a.time.localeCompare(b.time));
   _rebuildMarkers();
+  // 縮放到資料範圍，不浪費空白（必須在 setMarkers 之後）
+  _taiexChart.timeScale().fitContent();
+  _txChart.timeScale().fitContent();
 }
 
 function renderTimeline() {

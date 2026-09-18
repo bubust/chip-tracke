@@ -897,7 +897,7 @@ async def api_watchlist_summary():
             "close":      price_info.get("close"),
             "change_pct": price_info.get("change_pct"),
             "bb_score":   price_info.get("bb_score", 0.0),
-            "stage":      price_info.get("stage", {"code": "unknown", "label": "資料不足", "color": "muted", "desc": "無法取得價格資料"}),
+            "stage":      price_info.get("stage", {"code": "unknown", "label": "—", "color": "muted", "desc": "無法取得價格資料"}),
         }
         if records:
             latest = records[-1]
@@ -944,7 +944,8 @@ async def api_watchlist_summary():
             item["kpct_prev"]   = None
             item["kpct_change"] = None
             item["kpct_date"]   = None
-    return result
+    last_refresh = settings_get("last_refresh")
+    return {"items": result, "last_refresh": last_refresh}
 
 
 # ════════════════════════════════════════════════════════════════════════════
