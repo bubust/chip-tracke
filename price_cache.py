@@ -214,25 +214,25 @@ async def backfill_from_finmind(days: int = 260, concurrency: int = 8) -> dict:
     init_price_db()
     cached_dates = get_cached_dates()
 
-    # 取得股票代號清單（從已有的最新一天資料；若無則先抓 TWSE openapi）
-    conn = sqlite3.connect(str(DB_PATH))
-    latest_date = conn.execute("SELECT MAX(date) FROM price_daily").fetchone()[0]
-    stock_ids = []
-    if latest_date:
-        rows = conn.execute(
-            "SELECT DISTINCT stock_id FROM price_daily WHERE date=?", (latest_date,)
-        ).fetchall()
-        stock_ids = [r[0] for r in rows]
-    conn.close()
-
-    if len(stock_ids) < 1000:
-        # DB 股票清單不足（< 1000 支），先用 OpenAPI 抓今日全市場取得完整清單
-        print(f"[PRICE] DB 股票清單不足（{len(stock_ids)} 支），改用 TWSE OpenAPI 取得完整清單")
-        async with httpx.AsyncClient() as client:
-            dt_str, records = await fetch_price_latest_openapi(client)
-        if records:
-            save_price_day(dt_str, records)
-            stock_ids = [r["stock_id"] for r in records]
+    # 股票清單：永遠從 stocks.csv 取（上市 + 上櫃共 2119 支）
+    # 不用 DB 的最新日（OpenAPI 只有上市 ~1700，上櫃 ~900 支會漏）
+    try:
+        import os as _os2, pandas as _pd2
+        _csv = _os2.path.join(_os2.path.dirname(_os2.path.abspath(__file__)), "stocks.csv")
+        _sdf = _pd2.read_csv(_csv, dtype=str)
+        stock_ids = _sdf["stock_id"].dropna().tolist()
+        print(f"[PRICE] stocks.csv 讀取 {len(stock_ids)} 支")
+    except Exception as _ce:
+        print(f"[PRICE] stocks.csv 讀取失敗：{_ce}，改用 DB 清單")
+        conn = sqlite3.connect(str(DB_PATH))
+        latest_date = conn.execute("SELECT MAX(date) FROM price_daily").fetchone()[0]
+        stock_ids = []
+        if latest_date:
+            rows = conn.execute(
+                "SELECT DISTINCT stock_id FROM price_daily WHERE date=?", (latest_date,)
+            ).fetchall()
+            stock_ids = [r[0] for r in rows]
+        conn.close()
         if not stock_ids:
             return {"error": "無法取得股票清單"}
 
