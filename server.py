@@ -265,32 +265,35 @@ async def lifespan(app: FastAPI):
             except Exception as _e:
                 import logging; logging.getLogger(__name__).error(f"[sector_auto_calc] {_e}")
         threading.Thread(target=_sector_auto_calc, daemon=True).start()
-    # 若 relationship.db 無資料或資料過時，背景啟動初始更新
+    # 若 relationship.db 無資料、資料過時、或 events=0，背景啟動初始更新
     try:
         from relationship.db import get_conn as _rel_conn
-        _rel_row = _rel_conn().execute("SELECT COUNT(*) as cnt, MAX(observation_date) as latest FROM market_daily").fetchone()
+        _rel_c = _rel_conn()
+        _rel_row = _rel_c.execute("SELECT COUNT(*) as cnt, MAX(observation_date) as latest FROM market_daily").fetchone()
         _rel_cnt = _rel_row["cnt"] if _rel_row else 0
         _rel_latest = _rel_row["latest"] if _rel_row else None
+        _rel_events = _rel_c.execute("SELECT COUNT(*) FROM market_events").fetchone()[0]
+        _rel_c.close()
         from datetime import date as _date_cls, timedelta as _td_cls
         _rel_stale = (_rel_latest is None) or (str(_rel_latest) < str((_date_cls.today() - _td_cls(days=2)).isoformat()))
-        if _rel_cnt == 0 or _rel_stale:
+        if _rel_cnt == 0 or _rel_stale or _rel_events == 0:
             def _relationship_init():
                 try:
                     from relationship.router import _run_refresh as _rel_refresh
-                    import logging; logging.getLogger(__name__).info(f"[relationship] 資料過時（{_rel_latest}），補抓近 90 天...")
-                    _rel_refresh(days=90)
+                    import logging; logging.getLogger(__name__).info(f"[relationship] 觸發更新（rows={_rel_cnt}, stale={_rel_stale}, events={_rel_events}）")
+                    _rel_refresh(days=400)
                 except Exception as _e:
                     import logging; logging.getLogger(__name__).error(f"[relationship_init] {_e}")
             threading.Thread(target=_relationship_init, daemon=True).start()
     except Exception as _rel_e:
         import logging; logging.getLogger(__name__).warning(f"[relationship_check] {_rel_e}")
-    # 啟動 relationship 排程（每個交易日 17:00 自動更新）
+    # 啟動 relationship 排程（每個交易日 17:00 自動更新，days=30 確保近期事件都產生）
     try:
         from apscheduler.schedulers.background import BackgroundScheduler as _RelSched
         import pytz as _pytz
         _rel_scheduler = _RelSched(timezone=_pytz.timezone("Asia/Taipei"))
         _rel_scheduler.add_job(
-            lambda: __import__('threading').Thread(target=lambda: __import__('relationship.router', fromlist=['_run_refresh'])._run_refresh(days=5), daemon=True).start(),
+            lambda: __import__('threading').Thread(target=lambda: __import__('relationship.router', fromlist=['_run_refresh'])._run_refresh(days=30), daemon=True).start(),
             "cron", day_of_week="mon-fri", hour=17, minute=0,
             id="relationship_daily", replace_existing=True,
         )
@@ -350,7 +353,9 @@ async def lifespan(app: FastAPI):
             threading.Thread(target=_positioning_init, daemon=True).start()
     except Exception as _pos_e:
         import logging; logging.getLogger(__name__).warning(f"[positioning_init_check] {_pos_e}")
-    # 啟動觀察清單籌碼每日自動更新（週一至五 15:00 更新，確保資料不斷檔）
+    # 啟動觀察清單籌碼定期自動更新
+    # - 盤中每小時更新（09:00~13:00），確保開盤隨時可看到最新價格
+    # - 收盤後 15:00 再更新一次（完整資料）
     try:
         from apscheduler.schedulers.background import BackgroundScheduler as _ChipSched
         import pytz as _cpytz
@@ -367,7 +372,7 @@ async def lifespan(app: FastAPI):
                     _conn.close()
                     _sids = [r["stock_id"] for r in _rows]
                 if _sids:
-                    await update_stocks(_sids, days=5)
+                    await update_stocks(_sids, days=30)
                     settings_set("last_refresh", datetime.now().isoformat())
                     _lg.getLogger(__name__).info(f"[auto_chip] 完成 {len(_sids)} 檔")
             except Exception as _ace:
@@ -375,6 +380,13 @@ async def lifespan(app: FastAPI):
         def _auto_chip_sync():
             import asyncio as _aio
             _aio.run(_auto_chip_refresh())
+        # 盤中每小時（09~13點整）
+        _chip_scheduler.add_job(
+            _auto_chip_sync, "cron",
+            day_of_week="mon-fri", hour="9-13", minute=0,
+            id="chip_intraday", replace_existing=True,
+        )
+        # 盤後 15:00 補完整日資料
         _chip_scheduler.add_job(
             _auto_chip_sync, "cron",
             day_of_week="mon-fri", hour=15, minute=0,
@@ -964,7 +976,7 @@ async def api_watchlist_summary():
             "S_RES":        (2,  "📐", "壓力區",  1),
             "S_KD":         (2,  "📊", "KD交叉",  1),
         }
-        _best_scan: dict = {}
+        _all_scan: dict = {}  # sid -> {strategy_key: (priority, emoji, label, level)}
         for _sk, _sresults in _scan_res.items():
             if _sk not in _SIG_PRIORITY:
                 continue
@@ -973,18 +985,18 @@ async def api_watchlist_summary():
                 _sid = _sr.get("stock_id", "")
                 if not _sid:
                     continue
-                if _sid not in _best_scan or _entry[0] > _best_scan[_sid][0]:
-                    _best_scan[_sid] = _entry
+                if _sid not in _all_scan:
+                    _all_scan[_sid] = {}
+                _all_scan[_sid][_sk] = _entry
         for _item in result:
-            _scan_sig = _best_scan.get(_item["stock_id"])
-            if _scan_sig:
-                # 對 has_data=False 股票直接設定策略訊號
-                # 對 has_data=True 但 signal_title="—" 的股票也補充策略訊號
+            _sig_map = _all_scan.get(_item["stock_id"])
+            if _sig_map:
+                _sigs = sorted(_sig_map.values(), key=lambda x: x[0], reverse=True)
                 _existing_title = _item.get("signal_title", "—")
                 if not _item.get("has_data") or _existing_title == "—":
-                    _item["signal_emoji"] = _scan_sig[1]
-                    _item["signal_title"] = _scan_sig[2]
-                    _item["signal_level"] = _scan_sig[3]
+                    _item["signal_emoji"] = _sigs[0][1]
+                    _item["signal_title"] = "·".join(s[2] for s in _sigs)
+                    _item["signal_level"] = _sigs[0][3]
     except Exception:
         pass
 
@@ -1304,8 +1316,8 @@ async def api_market_scan(top: int = 50):
 
     merged.sort(key=lambda x: x["whale_flow_lots"], reverse=True)
 
-    # 從策略掃描快取補充 signal 資訊
-    best_sig: dict = {}
+    # 從策略掃描快取補充 signal 資訊（顯示所有命中策略）
+    all_sig: dict = {}  # sid -> {strategy_key: (priority, emoji, label, level)}
     try:
         from yahoo_price import get_scan_results
         scan_res = get_scan_results()
@@ -1330,14 +1342,16 @@ async def api_market_scan(top: int = 50):
                 sid = r.get("stock_id", "")
                 if not sid:
                     continue
-                if sid not in best_sig or entry[0] > best_sig[sid][0]:
-                    best_sig[sid] = entry
+                if sid not in all_sig:
+                    all_sig[sid] = {}
+                all_sig[sid][strategy_key] = entry
         for item in merged:
-            sig = best_sig.get(item["stock_id"])
-            if sig:
-                item["signal_emoji"] = sig[1]
-                item["signal_title"] = sig[2]
-                item["signal_level"] = sig[3]
+            sig_map = all_sig.get(item["stock_id"])
+            if sig_map:
+                sigs = sorted(sig_map.values(), key=lambda x: x[0], reverse=True)
+                item["signal_emoji"] = sigs[0][1]
+                item["signal_title"] = "·".join(s[2] for s in sigs)
+                item["signal_level"] = sigs[0][3]
     except Exception:
         pass
 

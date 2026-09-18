@@ -43,9 +43,10 @@ def run_event_engine(days: int = 120):
     """Compute events for recent days based on market_daily + positioning_daily data."""
     conn = get_conn()
 
-    # Load market_daily
+    # Load market_daily — get most recent (days+10) rows, sorted ascending for sequential delta calc
     mrows = conn.execute(
-        "SELECT * FROM market_daily ORDER BY observation_date ASC LIMIT ?",
+        "SELECT * FROM (SELECT * FROM market_daily ORDER BY observation_date DESC LIMIT ?) "
+        "ORDER BY observation_date ASC",
         (days + 10,)
     ).fetchall()
     mrows = [dict(r) for r in mrows]
