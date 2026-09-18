@@ -675,6 +675,23 @@ def api_sync_watchlist_to_supabase():
                 pushed.append(r["stock_id"])
     return {"ok": True, "pushed": pushed, "total_local": len(all_local), "already_in_sb": len(sb_ids)}
 
+@app.get("/api/watchlist/debug")
+def api_watchlist_debug():
+    """診斷：列出本地 SQLite 全部觀察清單 + Supabase 清單 + price_daily 有快取的股票"""
+    conn = get_conn()
+    local_rows = conn.execute("SELECT stock_id, name, added_at, note FROM watchlist ORDER BY added_at").fetchall()
+    # price_daily 裡有快取的股票（可能曾被觀察）
+    cached_stocks = conn.execute(
+        "SELECT stock_id, COUNT(*) as days, MAX(date) as last_date FROM price_daily GROUP BY stock_id ORDER BY last_date DESC"
+    ).fetchall()
+    conn.close()
+    sb_rows = sb.wl_list() or []
+    return {
+        "local_sqlite": [dict(r) for r in local_rows],
+        "supabase": sb_rows,
+        "price_daily_cached": [dict(r) for r in cached_stocks[:50]],
+    }
+
 @app.get("/api/indices")
 async def api_indices():
     """市場指數列：加權指數、上櫃指數、台指近、金融近、電子近"""
