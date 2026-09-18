@@ -201,6 +201,11 @@ def _is_tw_trading_hours() -> bool:
     return 540 <= mins <= 815  # 09:00 ~ 13:35
 
 
+# ── price_cache warmup 狀態（供前端顯示） ────────────────────────────────────
+# phase: "init" | "supabase" | "finmind" | "ready"
+_warmup_status: dict = {"phase": "init", "days": 0}
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # App 初始化
 # ════════════════════════════════════════════════════════════════════════════
@@ -443,7 +448,12 @@ async def lifespan(app: FastAPI):
                 n = len(get_cached_dates())
                 if n >= 60:
                     _lg.getLogger(__name__).info(f"[price_cache] 快取已有 {n} 天，跳過回填")
+                    _warmup_status["phase"] = "ready"
+                    _warmup_status["days"]  = n
                     return
+                # ── Supabase 恢復 ─────────────────────────────────────────
+                _warmup_status["phase"] = "supabase"
+                _warmup_status["days"]  = n
                 _lg.getLogger(__name__).info(f"[price_cache] 冷啟動（{n} 天），先嘗試 Supabase 恢復...")
                 try:
                     from price_cache import restore_from_supabase
@@ -451,14 +461,18 @@ async def lifespan(app: FastAPI):
                     _lg.getLogger(__name__).info(f"[price_cache] Supabase 恢復：{restored} 筆")
                 except Exception as _se:
                     _lg.getLogger(__name__).warning(f"[price_cache] Supabase 恢復失敗：{_se}")
-                    restored = 0
-                # Supabase 沒資料或不夠，改用 FinMind
+                # ── 若還不夠，FinMind 回填 ────────────────────────────────
                 n2 = len(get_cached_dates())
+                _warmup_status["days"] = n2
                 if n2 < 60 and _os.environ.get("FINMIND_TOKEN"):
+                    _warmup_status["phase"] = "finmind"
                     _lg.getLogger(__name__).info(f"[price_cache] 仍不足（{n2} 天），改用 FinMind 回填...")
                     from price_cache import backfill_from_finmind
                     result = await backfill_from_finmind(days=260)
+                    _warmup_status["days"] = len(get_cached_dates())
                     _lg.getLogger(__name__).info(f"[price_cache] FinMind 回填完成：{result}")
+                _warmup_status["phase"] = "ready"
+                _warmup_status["days"]  = len(get_cached_dates())
             _aio.run(_inner())
         threading.Thread(target=_price_backfill_cold, daemon=True).start()
     except Exception as _bfe:
@@ -2485,9 +2499,13 @@ async def api_price_cache_backfill(background_tasks: BackgroundTasks, days: int 
 
 @app.get("/api/price-cache/status")
 def api_price_cache_status():
-    """查看 price_cache 目前有幾天資料"""
+    """查看 price_cache 狀態（含 warmup 階段）"""
     from price_cache import get_price_cache_status
-    return get_price_cache_status()
+    s = get_price_cache_status()
+    s["warmup_phase"] = _warmup_status["phase"]
+    s["warmup_days"]  = _warmup_status["days"]
+    s["ready"] = _warmup_status["phase"] == "ready" or s["days_cached"] >= 60
+    return s
 
 @app.post("/api/screen/run")
 async def api_screen_run(background_tasks: BackgroundTasks):

@@ -410,6 +410,19 @@
 <div id="tab-screen" class="tab">
 
   <div class="card">
+    <!-- Cache 預熱狀態列 -->
+    <div id="cache-warmup-bar" style="display:none;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:12px;font-size:.82rem;background:rgba(210,153,34,.08);border:1px solid rgba(210,153,34,.3)">
+      <span id="cache-warmup-icon" style="font-size:1rem">⏳</span>
+      <span id="cache-warmup-msg" style="color:var(--yellow)">快取準備中...</span>
+      <div style="flex:1;background:var(--border);border-radius:4px;height:5px;overflow:hidden;max-width:200px">
+        <div id="cache-warmup-prog" style="height:100%;background:var(--yellow);transition:width .5s;width:0%"></div>
+      </div>
+      <span id="cache-warmup-days" style="color:var(--muted)"></span>
+    </div>
+    <div id="cache-ready-bar" style="display:none;align-items:center;gap:8px;padding:6px 12px;border-radius:8px;margin-bottom:12px;font-size:.82rem;background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.3)">
+      <span>✅</span>
+      <span id="cache-ready-msg" style="color:var(--green)">快取就緒，可以掃描</span>
+    </div>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
       <button class="btn green" id="btn-screen" onclick="runScreen()">🔍 掃描全市場（所有策略）</button>
       <span id="screen-progress-text" style="color:var(--muted);font-size:.82rem"></span>
@@ -2553,6 +2566,56 @@ async function resetParams() {
   } catch (e) { toast(e.message, true); }
 }
 
+// ═════════════════════════ Cache 預熱狀態 ════════════════════════════════════
+
+const _WARMUP_LABELS = {
+  init:     { icon:'⏳', msg:'伺服器啟動中...', color:'var(--yellow)' },
+  supabase: { icon:'🔄', msg:'從 Supabase 恢復歷史資料中...', color:'var(--yellow)' },
+  finmind:  { icon:'📥', msg:'FinMind 回填 260 天資料中（約 5~10 分鐘）...', color:'var(--yellow)' },
+  ready:    { icon:'✅', msg:'快取就緒，可以掃描', color:'var(--green)' },
+};
+let _cacheReady = false;
+let _cacheWarmupTimer = null;
+
+async function checkCacheStatus() {
+  try {
+    const s = await api('GET', '/api/price-cache/status');
+    const warmupBar  = document.getElementById('cache-warmup-bar');
+    const readyBar   = document.getElementById('cache-ready-bar');
+    const btnScreen  = document.getElementById('btn-screen');
+
+    if (s.ready) {
+      _cacheReady = true;
+      warmupBar.style.display  = 'none';
+      readyBar.style.display   = 'flex';
+      document.getElementById('cache-ready-msg').textContent =
+        `✅ 快取就緒 — ${s.days_cached} 天資料（最新 ${s.to || '—'}，${s.stocks || 0} 支股票）`;
+      if (btnScreen && !btnScreen.disabled) btnScreen.disabled = false;
+      if (_cacheWarmupTimer) { clearInterval(_cacheWarmupTimer); _cacheWarmupTimer = null; }
+    } else {
+      _cacheReady = false;
+      const phase = s.warmup_phase || 'init';
+      const meta  = _WARMUP_LABELS[phase] || _WARMUP_LABELS.init;
+      warmupBar.style.display  = 'flex';
+      readyBar.style.display   = 'none';
+      document.getElementById('cache-warmup-icon').textContent = meta.icon;
+      document.getElementById('cache-warmup-msg').style.color  = meta.color;
+      document.getElementById('cache-warmup-msg').textContent  = meta.msg;
+      const pct = Math.min(100, Math.round((s.days_cached / 260) * 100));
+      document.getElementById('cache-warmup-prog').style.width = pct + '%';
+      document.getElementById('cache-warmup-days').textContent = `${s.days_cached} / 260 天`;
+      if (btnScreen) btnScreen.disabled = true;
+    }
+  } catch(e) {}
+}
+
+function startCacheWarmupPolling() {
+  checkCacheStatus();
+  if (!_cacheWarmupTimer) {
+    _cacheWarmupTimer = setInterval(checkCacheStatus, 8000);
+  }
+}
+
 // ═════════════════════════ 全市場掃描（所有策略一次搞定）═══════════════════════
 
 let _screenPollTimer = null;
@@ -2873,6 +2936,7 @@ async function warmupServer() {
 
 (async function init() {
   await warmupServer();
+  startCacheWarmupPolling();
 
   // 從 localStorage 恢復策略掃描結果（重整後不消失）
   const _savedScreen = lsLoadScreen();
