@@ -485,20 +485,41 @@ async def lifespan(app: FastAPI):
                         _lg.getLogger(__name__).info(f"[price_cache] Supabase 恢復：{restored} 筆")
                     except Exception as _se:
                         _lg.getLogger(__name__).warning(f"[price_cache] Supabase 恢復失敗：{_se}")
-                # ── step2：FinMind 回填（確保全市場歷史完整）────────────
+                # ── step2：FinMind 回填（若超額則改用 TWSE rwd 備援）───────
+                _warmup_status["phase"] = "finmind"
+                n2 = len(get_cached_dates())
+                _warmup_status["days"] = n2
+                fm_ok = False
                 if _os.environ.get("FINMIND_TOKEN"):
-                    _warmup_status["phase"] = "finmind"
-                    n2 = len(get_cached_dates())
-                    _warmup_status["days"] = n2
                     _lg.getLogger(__name__).info(f"[price_cache] FinMind 回填（{n2} 天）...")
                     from price_cache import backfill_from_finmind
                     result = await backfill_from_finmind(days=260)
                     _warmup_status["days"] = len(get_cached_dates())
                     _lg.getLogger(__name__).info(f"[price_cache] FinMind 回填完成：{result}")
+                    fm_ok = result.get("new_rows", 0) > 0
+                # ── step3：TWSE rwd 備援（FinMind 失敗/超額時）──────────────
+                st2 = get_price_cache_status()
+                if not fm_ok and st2.get("stocks", 0) < 1000:
+                    _warmup_status["phase"] = "twse_rwd"
+                    _lg.getLogger(__name__).info("[price_cache] FinMind 無效，改用 TWSE rwd 回填 260 天...")
+                    try:
+                        from price_cache import update_price_cache
+                        rwd_result = await update_price_cache(days=260, local_mode=True)
+                        _warmup_status["days"] = len(get_cached_dates())
+                        _lg.getLogger(__name__).info(f"[price_cache] TWSE rwd 回填完成：{rwd_result}")
+                    except Exception as _re:
+                        _lg.getLogger(__name__).warning(f"[price_cache] TWSE rwd 回填失敗：{_re}")
                 # 只有真的足夠才算 ready
-                final_n = len(get_cached_dates())
+                final_n   = len(get_cached_dates())
+                final_st  = get_price_cache_status()
+                final_cnt = final_st.get("stocks", 0)
                 _warmup_status["days"]  = final_n
-                _warmup_status["phase"] = "ready" if final_n >= 60 else "insufficient"
+                if final_n >= 60 and final_cnt >= 1000:
+                    _warmup_status["phase"] = "ready"
+                elif final_n >= 60:
+                    _warmup_status["phase"] = "insufficient"
+                else:
+                    _warmup_status["phase"] = "insufficient"
             _aio.run(_inner())
         threading.Thread(target=_price_backfill_cold, daemon=True).start()
     except Exception as _bfe:

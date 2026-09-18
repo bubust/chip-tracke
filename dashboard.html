@@ -2570,8 +2570,9 @@ async function resetParams() {
 const _WARMUP_LABELS = {
   init:         { icon:'⏳', msg:'伺服器啟動中，請稍候...', color:'var(--yellow)' },
   supabase:     { icon:'🔄', msg:'從 Supabase 恢復歷史資料中...', color:'var(--yellow)' },
-  finmind:      { icon:'📥', msg:'FinMind 回填 260 天資料中（約 5~10 分鐘）...', color:'var(--yellow)' },
-  insufficient: { icon:'⚠️', msg:'歷史資料不足（Supabase/FinMind 均無資料），可先掃描但失敗率偏高', color:'var(--red)' },
+  finmind:      { icon:'📥', msg:'FinMind 回填 260 天資料中（約 3~5 分鐘）...', color:'var(--yellow)' },
+  twse_rwd:     { icon:'🗂️', msg:'TWSE rwd 回填歷史資料中（FinMind 額度用盡，改用 TWSE，約 5~8 分鐘）...', color:'var(--yellow)' },
+  insufficient: { icon:'⚠️', msg:'歷史資料不足，FinMind 額度已用盡且 TWSE rwd 無法使用，可先掃描但失敗率偏高', color:'var(--orange)' },
 };
 let _cacheReady = false;
 let _cacheWarmupTimer = null;
