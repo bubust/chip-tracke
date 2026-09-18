@@ -420,7 +420,6 @@
       <span id="cache-warmup-days" style="color:var(--muted)"></span>
     </div>
     <div id="cache-ready-bar" style="display:none;align-items:center;gap:8px;padding:6px 12px;border-radius:8px;margin-bottom:12px;font-size:.82rem;background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.3)">
-      <span>✅</span>
       <span id="cache-ready-msg" style="color:var(--green)">快取就緒，可以掃描</span>
     </div>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
@@ -2569,10 +2568,10 @@ async function resetParams() {
 // ═════════════════════════ Cache 預熱狀態 ════════════════════════════════════
 
 const _WARMUP_LABELS = {
-  init:     { icon:'⏳', msg:'伺服器啟動中...', color:'var(--yellow)' },
-  supabase: { icon:'🔄', msg:'從 Supabase 恢復歷史資料中...', color:'var(--yellow)' },
-  finmind:  { icon:'📥', msg:'FinMind 回填 260 天資料中（約 5~10 分鐘）...', color:'var(--yellow)' },
-  ready:    { icon:'✅', msg:'快取就緒，可以掃描', color:'var(--green)' },
+  init:         { icon:'⏳', msg:'伺服器啟動中，請稍候...', color:'var(--yellow)' },
+  supabase:     { icon:'🔄', msg:'從 Supabase 恢復歷史資料中...', color:'var(--yellow)' },
+  finmind:      { icon:'📥', msg:'FinMind 回填 260 天資料中（約 5~10 分鐘）...', color:'var(--yellow)' },
+  insufficient: { icon:'⚠️', msg:'歷史資料不足（Supabase/FinMind 均無資料），可先掃描但失敗率偏高', color:'var(--red)' },
 };
 let _cacheReady = false;
 let _cacheWarmupTimer = null;
@@ -2590,7 +2589,7 @@ async function checkCacheStatus() {
       readyBar.style.display   = 'flex';
       document.getElementById('cache-ready-msg').textContent =
         `✅ 快取就緒 — ${s.days_cached} 天資料（最新 ${s.to || '—'}，${s.stocks || 0} 支股票）`;
-      if (btnScreen && !btnScreen.disabled) btnScreen.disabled = false;
+      if (btnScreen) btnScreen.disabled = false;
       if (_cacheWarmupTimer) { clearInterval(_cacheWarmupTimer); _cacheWarmupTimer = null; }
     } else {
       _cacheReady = false;
@@ -2600,11 +2599,13 @@ async function checkCacheStatus() {
       readyBar.style.display   = 'none';
       document.getElementById('cache-warmup-icon').textContent = meta.icon;
       document.getElementById('cache-warmup-msg').style.color  = meta.color;
-      document.getElementById('cache-warmup-msg').textContent  = meta.msg;
+      document.getElementById('cache-warmup-msg').textContent  =
+        `${meta.msg}（目前 ${s.days_cached} 天）`;
       const pct = Math.min(100, Math.round((s.days_cached / 260) * 100));
       document.getElementById('cache-warmup-prog').style.width = pct + '%';
       document.getElementById('cache-warmup-days').textContent = `${s.days_cached} / 260 天`;
-      if (btnScreen) btnScreen.disabled = true;
+      // insufficient 時仍允許掃描（有警告就好）
+      if (btnScreen) btnScreen.disabled = (phase !== 'insufficient');
     }
   } catch(e) {}
 }

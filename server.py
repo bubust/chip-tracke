@@ -471,8 +471,10 @@ async def lifespan(app: FastAPI):
                     result = await backfill_from_finmind(days=260)
                     _warmup_status["days"] = len(get_cached_dates())
                     _lg.getLogger(__name__).info(f"[price_cache] FinMind 回填完成：{result}")
-                _warmup_status["phase"] = "ready"
-                _warmup_status["days"]  = len(get_cached_dates())
+                # 只有真的足夠才算 ready
+                final_n = len(get_cached_dates())
+                _warmup_status["days"]  = final_n
+                _warmup_status["phase"] = "ready" if final_n >= 60 else "insufficient"
             _aio.run(_inner())
         threading.Thread(target=_price_backfill_cold, daemon=True).start()
     except Exception as _bfe:
@@ -2504,7 +2506,7 @@ def api_price_cache_status():
     s = get_price_cache_status()
     s["warmup_phase"] = _warmup_status["phase"]
     s["warmup_days"]  = _warmup_status["days"]
-    s["ready"] = _warmup_status["phase"] == "ready" or s["days_cached"] >= 60
+    s["ready"] = s["days_cached"] >= 60   # 只看實際資料天數，不信任 phase
     return s
 
 @app.post("/api/screen/run")
