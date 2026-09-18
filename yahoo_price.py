@@ -181,8 +181,10 @@ async def fetch_prices_for_stocks(stock_list: list) -> dict:
         dfs = await asyncio.gather(*tasks, return_exceptions=True)
 
     result = {}
+    failed_sids = []
     for (sid, _), df in zip(stock_list, dfs):
         if isinstance(df, Exception) or df is None or df.empty:
+            failed_sids.append(sid)
             continue
         try:
             close = float(df.iloc[-1]["close"])
@@ -204,6 +206,43 @@ async def fetch_prices_for_stocks(stock_list: list) -> dict:
                 stage = {"code": "unknown", "label": "—", "color": "muted", "desc": "無法計算階段"}
             result[sid] = {"close": round(close, 2), "change_pct": pct,
                            "bb_score": bb_score, "stage": stage}
+            # 成功後快取 OHLCV（供 Yahoo 被限流時使用）
+            try:
+                from price_cache import save_stock_ohlcv
+                save_stock_ohlcv(sid, df)
+            except Exception:
+                pass
+        except Exception:
+            failed_sids.append(sid)
+
+    # Yahoo 失敗時：用 price_daily TWSE 快取補充（可計算 BB/stage）
+    if failed_sids:
+        try:
+            from price_cache import get_stock_ohlcv
+            from scanner import classify_stage
+            for sid in failed_sids:
+                try:
+                    cached_df = get_stock_ohlcv(sid, days=60)
+                    if cached_df.empty or len(cached_df) < 2:
+                        continue
+                    close = float(cached_df.iloc[-1]["close"])
+                    prev  = float(cached_df.iloc[-2]["close"])
+                    pct   = round((close - prev) / prev * 100, 2) if prev > 0 else 0.0
+                    bb_score = 0.0
+                    if len(cached_df) >= 20:
+                        closes = cached_df['close']
+                        ma  = closes.rolling(20).mean().iloc[-1]
+                        std = closes.rolling(20).std(ddof=0).iloc[-1]
+                        if not pd.isna(ma) and not pd.isna(std) and std > 0:
+                            bb_score = round((close - float(ma)) / (2 * float(std)) * 10, 1)
+                    try:
+                        stage = classify_stage(cached_df)
+                    except Exception:
+                        stage = {"code": "unknown", "label": "—", "color": "muted", "desc": "快取資料"}
+                    result[sid] = {"close": round(close, 2), "change_pct": pct,
+                                   "bb_score": bb_score, "stage": stage}
+                except Exception:
+                    pass
         except Exception:
             pass
     return result

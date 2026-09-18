@@ -395,6 +395,44 @@ async def lifespan(app: FastAPI):
         _chip_scheduler.start()
     except Exception as _cp_e:
         import logging; logging.getLogger(__name__).warning(f"[chip_scheduler] {_cp_e}")
+    # price_daily TWSE 快取：每日 14:00 抓最新一天（供 Yahoo 限流時 fallback 使用）
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler as _PriceSched
+        import pytz as _ppytz
+        _price_sched = _PriceSched(timezone=_ppytz.timezone("Asia/Taipei"))
+        def _price_cache_sync():
+            import asyncio as _aio
+            async def _inner():
+                from price_cache import update_price_cache, init_price_db
+                init_price_db()
+                await update_price_cache(local_mode=False)
+            _aio.run(_inner())
+        _price_sched.add_job(
+            _price_cache_sync, "cron",
+            day_of_week="mon-fri", hour=14, minute=30,
+            id="price_cache_daily", replace_existing=True,
+        )
+        _price_sched.start()
+    except Exception as _pce:
+        import logging; logging.getLogger(__name__).warning(f"[price_cache_scheduler] {_pce}")
+    # 啟動時若 price_daily 無資料，用 FinMind 補近 30 天（供 Yahoo fallback 使用）
+    try:
+        from price_cache import get_price_cache_status, init_price_db
+        init_price_db()
+        _pc_status = get_price_cache_status()
+        if _pc_status["days_cached"] < 20:
+            def _price_backfill():
+                import asyncio as _aio
+                async def _inner():
+                    import logging as _lg
+                    _lg.getLogger(__name__).info("[price_cache] 初始化：用 FinMind 補近 30 天資料...")
+                    from price_cache import backfill_from_finmind
+                    result = await backfill_from_finmind(days=30, concurrency=5)
+                    _lg.getLogger(__name__).info(f"[price_cache] 初始化完成：{result}")
+                _aio.run(_inner())
+            threading.Thread(target=_price_backfill, daemon=True).start()
+    except Exception as _pcbe:
+        import logging; logging.getLogger(__name__).warning(f"[price_cache_backfill] {_pcbe}")
     yield
     stop_warrant_scheduler()
 

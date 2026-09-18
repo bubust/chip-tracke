@@ -420,6 +420,60 @@ def get_latest_prices() -> dict:
         }
     return result
 
+def get_stock_ohlcv(stock_id: str, days: int = 60) -> pd.DataFrame:
+    """回傳單支股票最近 days 天的 OHLCV DataFrame（從 price_daily 快取讀取）。"""
+    try:
+        init_price_db()
+        conn = sqlite3.connect(str(DB_PATH))
+        rows = conn.execute(
+            "SELECT date, open, high, low, close, volume FROM price_daily "
+            "WHERE stock_id=? ORDER BY date DESC LIMIT ?",
+            (stock_id, days)
+        ).fetchall()
+        conn.close()
+        if not rows:
+            return pd.DataFrame()
+        df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
+        df = df.sort_values("date").reset_index(drop=True)
+        for col in ["open", "high", "low", "close", "volume"]:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+def save_stock_ohlcv(stock_id: str, df: pd.DataFrame):
+    """將 Yahoo 抓回的 DataFrame 存入 price_daily 快取（供下次 Yahoo 失敗時使用）。"""
+    try:
+        if df is None or df.empty:
+            return
+        init_price_db()
+        records = []
+        for _, row in df.iterrows():
+            date_val = str(row.get("date", ""))
+            if not date_val:
+                continue
+            # Yahoo 日期是 YYYY-MM-DD，轉為 YYYYMMDD 格式
+            date_str = date_val.replace("-", "") if "-" in str(date_val) else str(date_val)
+            records.append({
+                "date": date_str, "stock_id": stock_id, "name": "",
+                "open": float(row.get("open") or 0) or None,
+                "high": float(row.get("high") or 0) or None,
+                "low":  float(row.get("low") or 0) or None,
+                "close": float(row.get("close") or 0) or None,
+                "volume": float(row.get("volume") or 0) or None,
+            })
+        if records:
+            conn = sqlite3.connect(str(DB_PATH))
+            conn.executemany(
+                "INSERT OR REPLACE INTO price_daily (date,stock_id,name,open,high,low,close,volume) "
+                "VALUES (:date,:stock_id,:name,:open,:high,:low,:close,:volume)",
+                records
+            )
+            conn.commit()
+            conn.close()
+    except Exception as e:
+        print(f"[PRICE] save_stock_ohlcv {stock_id}: {e}")
+
 def get_price_cache_status() -> dict:
     init_price_db()
     conn = sqlite3.connect(str(DB_PATH))
