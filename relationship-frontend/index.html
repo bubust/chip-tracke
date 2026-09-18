@@ -110,6 +110,8 @@ select { background: #21262d; color: var(--text); border: 1px solid var(--border
     <span>5日均<b id="sm-5d" style="margin-left:3px">—</b></span>
     <span>10日均<b id="sm-10d" style="margin-left:3px">—</b></span>
     <span>勝率<b id="sm-wr" style="margin-left:3px">—</b></span>
+    <span style="color:var(--muted);border-left:1px solid var(--border);padding-left:10px;margin-left:2px;font-size:.73rem;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="sm-desc"></span>
+    <b id="sm-verdict" style="margin-left:8px;font-size:.85rem;white-space:nowrap">—</b>
   </div>
   <button class="btn" onclick="toggleEventHelp()" id="btn-event-help" title="事件說明" style="padding:5px 8px">❓</button>
   <button class="btn" onclick="showResearch()" id="btn-research" style="margin-left:auto">🔬 研究模式</button>
@@ -537,7 +539,13 @@ async function applyStrategyOverlay(etype) {
   // Clear overlay markers
   _strategyMarkers = [];
   _rebuildMarkers();
-  if (!etype) { miniStats.style.display = 'none'; return; }
+  if (!etype) {
+    miniStats.style.display = 'none';
+    document.getElementById('sm-desc').textContent = '';
+    document.getElementById('sm-verdict').textContent = '—';
+    document.getElementById('sm-verdict').style.color = '';
+    return;
+  }
   try {
     const r = await fetch(`${BASE}/api/relationship/research/${etype}?days=500`);
     const d = await r.json();
@@ -560,6 +568,29 @@ async function applyStrategyOverlay(etype) {
     const sm10 = document.getElementById('sm-10d');
     if (s5) sm5.style.color = s5.avg > 0 ? 'var(--green)' : s5.avg < 0 ? 'var(--red)' : '';
     if (s10) sm10.style.color = s10.avg > 0 ? 'var(--green)' : s10.avg < 0 ? 'var(--red)' : '';
+    // 說明 & 判讀多空
+    const meta = _EVENT_META[etype];
+    document.getElementById('sm-desc').textContent = meta ? meta.desc : '';
+    const smVerdict = document.getElementById('sm-verdict');
+    const s5avg = s5 ? s5.avg : 0;
+    const s5wr  = s5 ? s5.win_rate : 50;
+    const metaDir = meta ? meta.dir : '中性';
+    let verdict, verdictColor;
+    if (metaDir === '多') {
+      if (s5avg > 0 && s5wr >= 55) { verdict = '▲ 多方'; verdictColor = 'var(--green)'; }
+      else if (s5avg > 0)           { verdict = '△ 多方偏弱'; verdictColor = '#7dd99e'; }
+      else                           { verdict = '▷ 中性偏多'; verdictColor = 'var(--muted)'; }
+    } else if (metaDir === '空') {
+      if (s5avg < 0 && s5wr < 45)  { verdict = '▼ 空方'; verdictColor = 'var(--red)'; }
+      else if (s5avg < 0)           { verdict = '▽ 空方偏弱'; verdictColor = '#f47e7a'; }
+      else                           { verdict = '◁ 中性偏空'; verdictColor = 'var(--muted)'; }
+    } else {
+      if (s5avg > 1 && s5wr >= 55)  { verdict = '▲ 偏多'; verdictColor = 'var(--green)'; }
+      else if (s5avg < -1 && s5wr < 45) { verdict = '▼ 偏空'; verdictColor = 'var(--red)'; }
+      else                           { verdict = '◆ 中性'; verdictColor = 'var(--muted)'; }
+    }
+    smVerdict.textContent = verdict;
+    smVerdict.style.color = verdictColor;
     miniStats.style.display = 'flex';
   } catch(e) { miniStats.style.display = 'none'; }
 }

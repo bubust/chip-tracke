@@ -492,13 +492,15 @@ function renderHistoryTable(history) {
   const rows = [...history].reverse().slice(0, 30);
   const html = `<table>
     <tr>
-      <th>日期</th><th>狀態</th><th>方向</th><th>風險</th><th>廣度</th><th>竭盡</th>
+      <th>日期</th><th>狀態</th><th>方向</th><th>風險</th><th>廣度</th><th>竭盡</th><th>過熱</th><th>恐慌</th>
     </tr>
     ${rows.map(d => {
       const dir = d.direction ?? 0;
       const risk = d.risk_score ?? 0;
       const breadth = d.breadth;
       const ex = d.exhaustion;
+      const oh = d.overheating;
+      const pa = d.panic;
       const dColor = dir > 30 ? '#3fb950' : dir < -30 ? '#f85149' : '#d29922';
       const rColor = risk > 70 ? '#f85149' : risk > 50 ? '#d29922' : '#3fb950';
       // 廣度：正=綠，負=紅，深淺依強度
@@ -513,6 +515,20 @@ function renderHistoryTable(history) {
         ? (ex === 0 ? '<span style="color:#484f58">— 正常</span>'
           : `<b style="color:${exColor}">${ex > 0 ? '+' : ''}${ex}</b>`)
         : '—';
+      // 過熱指數：>50% 紅，否則綠
+      const ohPct = oh != null ? (oh * 100).toFixed(1) + '%' : '—';
+      const ohColor = oh == null ? '#8b949e' : oh >= 0.5 ? '#f85149' : '#3fb950';
+      const ohAlert = oh != null && oh >= 0.5;
+      const ohStr = oh != null
+        ? `<span style="color:${ohColor};font-weight:${ohAlert ? 700 : 400}">${ohPct}${ohAlert ? ' 🔴' : ''}</span>`
+        : '<span style="color:#484f58">—</span>';
+      // 恐慌指數：>75% 紅，否則綠
+      const paPct = pa != null ? (pa * 100).toFixed(1) + '%' : '—';
+      const paColor = pa == null ? '#8b949e' : pa >= 0.75 ? '#f85149' : '#3fb950';
+      const paAlert = pa != null && pa >= 0.75;
+      const paStr = pa != null
+        ? `<span style="color:${paColor};font-weight:${paAlert ? 700 : 400}">${paPct}${paAlert ? ' 🔴' : ''}</span>`
+        : '<span style="color:#484f58">—</span>';
       return `<tr>
         <td style="color:#8b949e">${d.date || ''}</td>
         <td>${d.regime_label || '—'}</td>
@@ -520,6 +536,8 @@ function renderHistoryTable(history) {
         <td style="color:${rColor}">${risk}</td>
         <td style="color:${bColor};font-weight:${Math.abs(breadth ?? 0) > 30 ? 600 : 400}">${bStr}</td>
         <td>${exStr}</td>
+        <td>${ohStr}</td>
+        <td>${paStr}</td>
       </tr>`;
     }).join('')}
   </table>`;
