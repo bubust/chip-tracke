@@ -692,6 +692,19 @@ def api_watchlist_debug():
         "price_daily_cached": [dict(r) for r in cached_stocks[:50]],
     }
 
+@app.get("/api/server/time")
+def api_server_time():
+    """回傳伺服器當前時間（UTC 與台灣時間）"""
+    from datetime import datetime, timezone, timedelta
+    tw_tz = timezone(timedelta(hours=8))
+    now_utc = datetime.now(timezone.utc)
+    now_tw = datetime.now(tw_tz)
+    return {
+        "utc": now_utc.strftime("%Y-%m-%d %H:%M:%S"),
+        "taiwan": now_tw.strftime("%Y-%m-%d %H:%M:%S"),
+        "is_trading_hours": _is_tw_trading_hours(),
+    }
+
 @app.get("/api/indices")
 async def api_indices():
     """市場指數列：加權指數、上櫃指數、台指近、金融近、電子近"""
