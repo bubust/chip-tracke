@@ -444,29 +444,42 @@ async def lifespan(app: FastAPI):
             import asyncio as _aio, time as _t, logging as _lg
             _t.sleep(15)   # 等 update_price_cache 先跑完
             async def _inner():
-                from price_cache import get_cached_dates
+                from price_cache import (get_cached_dates, get_price_cache_status,
+                                         update_price_cache)
                 n = len(get_cached_dates())
-                if n >= 60:
-                    _lg.getLogger(__name__).info(f"[price_cache] 快取已有 {n} 天，跳過回填")
+                st = get_price_cache_status()
+                stock_cnt = st.get("stocks", 0)
+                # 日數夠 AND 最新交易日股票數 >= 1000，才算真的就緒
+                if n >= 60 and stock_cnt >= 1000:
+                    _lg.getLogger(__name__).info(
+                        f"[price_cache] 快取已有 {n} 天 / {stock_cnt} 支，跳過回填")
                     _warmup_status["phase"] = "ready"
                     _warmup_status["days"]  = n
                     return
-                # ── Supabase 恢復 ─────────────────────────────────────────
+                _lg.getLogger(__name__).info(
+                    f"[price_cache] 冷啟動（{n} 天 / {stock_cnt} 支），開始補全流程...")
+                # ── step0：先抓今日 TWSE 全市場，確保股票清單完整 ──────────
                 _warmup_status["phase"] = "supabase"
                 _warmup_status["days"]  = n
-                _lg.getLogger(__name__).info(f"[price_cache] 冷啟動（{n} 天），先嘗試 Supabase 恢復...")
                 try:
-                    from price_cache import restore_from_supabase
-                    restored = await restore_from_supabase()
-                    _lg.getLogger(__name__).info(f"[price_cache] Supabase 恢復：{restored} 筆")
-                except Exception as _se:
-                    _lg.getLogger(__name__).warning(f"[price_cache] Supabase 恢復失敗：{_se}")
-                # ── 若還不夠，FinMind 回填 ────────────────────────────────
-                n2 = len(get_cached_dates())
-                _warmup_status["days"] = n2
-                if n2 < 60 and _os.environ.get("FINMIND_TOKEN"):
+                    await update_price_cache(local_mode=False)
+                    _lg.getLogger(__name__).info("[price_cache] 今日 TWSE openapi 更新完成")
+                except Exception as _ue:
+                    _lg.getLogger(__name__).warning(f"[price_cache] openapi 更新失敗：{_ue}")
+                # ── step1：Supabase 恢復（若歷史天數不足）────────────────
+                if len(get_cached_dates()) < 60:
+                    try:
+                        from price_cache import restore_from_supabase
+                        restored = await restore_from_supabase()
+                        _lg.getLogger(__name__).info(f"[price_cache] Supabase 恢復：{restored} 筆")
+                    except Exception as _se:
+                        _lg.getLogger(__name__).warning(f"[price_cache] Supabase 恢復失敗：{_se}")
+                # ── step2：FinMind 回填（確保全市場歷史完整）────────────
+                if _os.environ.get("FINMIND_TOKEN"):
                     _warmup_status["phase"] = "finmind"
-                    _lg.getLogger(__name__).info(f"[price_cache] 仍不足（{n2} 天），改用 FinMind 回填...")
+                    n2 = len(get_cached_dates())
+                    _warmup_status["days"] = n2
+                    _lg.getLogger(__name__).info(f"[price_cache] FinMind 回填（{n2} 天）...")
                     from price_cache import backfill_from_finmind
                     result = await backfill_from_finmind(days=260)
                     _warmup_status["days"] = len(get_cached_dates())

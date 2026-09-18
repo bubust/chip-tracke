@@ -311,7 +311,10 @@ def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
     suffixes = [".TW"] if market == "twse" else [".TWO", ".TW"]
     now_ts = int(time.time())
     params = {"interval": "1d", "period1": now_ts - 730 * 86400, "period2": now_ts}
-    sess = _get_scan_session()
+    try:
+        sess = _get_scan_session()
+    except Exception:
+        return pd.DataFrame()
     for suffix in suffixes:
         for host in ["query1", "query2"]:
             try:
@@ -441,7 +444,10 @@ async def run_market_scan(strategy_params: dict = None):
 
         def _one(sid, mkt):
             """單支股票：fetch → scan，在 worker thread 執行。"""
-            df = _fetch_for_scan(sid, mkt)
+            try:
+                df = _fetch_for_scan(sid, mkt)
+            except Exception:
+                df = pd.DataFrame()
             with _status_lock:
                 _scan_status["progress"] += 1
                 if df.empty or len(df) < 5:
@@ -449,8 +455,11 @@ async def run_market_scan(strategy_params: dict = None):
                     _scan_status["failed_stocks"].append(sid)
                     return None, None
                 _scan_status["yahoo_ok"] += 1
-            result = scan_one_stock(df, sid, names.get(sid, ""),
-                                    strategy_params=_strategy_params)
+            try:
+                result = scan_one_stock(df, sid, names.get(sid, ""),
+                                        strategy_params=_strategy_params)
+            except Exception:
+                result = {}
             return result, df
 
         def _run_blocking():

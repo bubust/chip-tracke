@@ -225,8 +225,9 @@ async def backfill_from_finmind(days: int = 260, concurrency: int = 8) -> dict:
         stock_ids = [r[0] for r in rows]
     conn.close()
 
-    if not stock_ids:
-        # 先用 OpenAPI 抓今日資料取得股票清單
+    if len(stock_ids) < 1000:
+        # DB 股票清單不足（< 1000 支），先用 OpenAPI 抓今日全市場取得完整清單
+        print(f"[PRICE] DB 股票清單不足（{len(stock_ids)} 支），改用 TWSE OpenAPI 取得完整清單")
         async with httpx.AsyncClient() as client:
             dt_str, records = await fetch_price_latest_openapi(client)
         if records:
