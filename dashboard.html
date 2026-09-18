@@ -173,7 +173,8 @@
   <h1>📈 大戶選股</h1>
   <span class="sub">台股籌碼追蹤</span>
   <div class="pill-status" id="status-pill" onclick="loadPill()">載入中...</div>
-  <button id="btn-global-refresh" onclick="globalRefreshAll()" style="margin-left:auto;padding:6px 14px;background:#238636;border:1px solid #2ea043;border-radius:6px;color:#fff;cursor:pointer;font-size:.82rem;white-space:nowrap">🔄 全系統更新</button>
+  <span id="live-clock" style="margin-left:auto;font-size:.82rem;color:#8b949e;font-variant-numeric:tabular-nums;white-space:nowrap"></span>
+  <button id="btn-global-refresh" onclick="globalRefreshAll()" style="margin-left:8px;padding:6px 14px;background:#238636;border:1px solid #2ea043;border-radius:6px;color:#fff;cursor:pointer;font-size:.82rem;white-space:nowrap">🔄 全系統更新</button>
 
 <!-- 全系統更新進度 Modal -->
 <div id="refresh-progress-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center">
@@ -3808,6 +3809,29 @@ async function saveAllStratParams() {
     setTimeout(() => { if (msg) msg.textContent = ''; }, 4000);
   }
 }
+
+// ── 即時時鐘（台灣時間 UTC+8）──
+(function() {
+  function updateClock() {
+    const el = document.getElementById('live-clock');
+    if (!el) return;
+    const now = new Date();
+    const tw = new Date(now.getTime() + (8 * 60 - now.getTimezoneOffset()) * 60000);
+    const pad = n => String(n).padStart(2, '0');
+    const days = ['日','一','二','三','四','五','六'];
+    const dow = days[tw.getUTCDay()];
+    const hh = pad(tw.getUTCHours()), mm = pad(tw.getUTCMinutes()), ss = pad(tw.getUTCSeconds());
+    const isTrading = tw.getUTCDay() >= 1 && tw.getUTCDay() <= 5
+      && (tw.getUTCHours() * 60 + tw.getUTCMinutes()) >= 540
+      && (tw.getUTCHours() * 60 + tw.getUTCMinutes()) <= 815;
+    const dot = isTrading
+      ? '<span style="color:#3fb950">●</span> 盤中'
+      : '<span style="color:#8b949e">●</span> 盤後';
+    el.innerHTML = `${dot} &nbsp;週${dow} ${hh}:${mm}:${ss} (台灣)`;
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+})();
 </script>
 
 <!-- 千張大戶歷史 Modal -->
