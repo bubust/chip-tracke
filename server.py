@@ -431,6 +431,29 @@ async def lifespan(app: FastAPI):
         threading.Thread(target=_price_init_today, daemon=True).start()
     except Exception as _pcbe:
         import logging; logging.getLogger(__name__).warning(f"[price_cache_init] {_pcbe}")
+    # 冷啟動偵測：若歷史快取 < 60 天（剛部署或重啟），用 FinMind 回填 260 天歷史
+    # 有了歷史，掃描就能直接讀 cache，不必打 Yahoo，消除 IP 限流問題
+    try:
+        import os as _os
+        if _os.environ.get("FINMIND_TOKEN"):
+            def _price_backfill_cold():
+                import asyncio as _aio, time as _t, logging as _lg
+                _t.sleep(15)   # 等 update_price_cache 先跑完
+                async def _inner():
+                    from price_cache import get_cached_dates, backfill_from_finmind
+                    n = len(get_cached_dates())
+                    if n < 60:
+                        _lg.getLogger(__name__).info(
+                            f"[price_cache] 冷啟動（{n} 天），觸發 FinMind 回填 260 天...")
+                        result = await backfill_from_finmind(days=260)
+                        _lg.getLogger(__name__).info(f"[price_cache] 回填完成：{result}")
+                    else:
+                        _lg.getLogger(__name__).info(
+                            f"[price_cache] 快取已有 {n} 天，跳過 FinMind 回填")
+                _aio.run(_inner())
+            threading.Thread(target=_price_backfill_cold, daemon=True).start()
+    except Exception as _bfe:
+        import logging; logging.getLogger(__name__).warning(f"[price_cache_backfill] {_bfe}")
     yield
     stop_warrant_scheduler()
 
@@ -2440,6 +2463,22 @@ def _load_strategy_params() -> dict:
         except Exception:
             pass
     return result
+
+@app.post("/api/price-cache/backfill")
+async def api_price_cache_backfill(background_tasks: BackgroundTasks, days: int = 260):
+    """手動觸發 FinMind 歷史回填（掃描前如快取是冷的，先跑這個）"""
+    import os
+    if not os.environ.get("FINMIND_TOKEN"):
+        return {"ok": False, "message": "未設定 FINMIND_TOKEN 環境變數"}
+    from price_cache import backfill_from_finmind
+    background_tasks.add_task(backfill_from_finmind, days=days)
+    return {"ok": True, "message": f"FinMind 回填已啟動（{days} 天），請稍候 5~10 分鐘後再掃描"}
+
+@app.get("/api/price-cache/status")
+def api_price_cache_status():
+    """查看 price_cache 目前有幾天資料"""
+    from price_cache import get_price_cache_status
+    return get_price_cache_status()
 
 @app.post("/api/screen/run")
 async def api_screen_run(background_tasks: BackgroundTasks):
