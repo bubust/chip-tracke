@@ -431,27 +431,36 @@ async def lifespan(app: FastAPI):
         threading.Thread(target=_price_init_today, daemon=True).start()
     except Exception as _pcbe:
         import logging; logging.getLogger(__name__).warning(f"[price_cache_init] {_pcbe}")
-    # 冷啟動偵測：若歷史快取 < 60 天（剛部署或重啟），用 FinMind 回填 260 天歷史
+    # 冷啟動偵測：若歷史快取 < 60 天，先試 Supabase 恢復（快），不夠再用 FinMind 回填
     # 有了歷史，掃描就能直接讀 cache，不必打 Yahoo，消除 IP 限流問題
     try:
         import os as _os
-        if _os.environ.get("FINMIND_TOKEN"):
-            def _price_backfill_cold():
-                import asyncio as _aio, time as _t, logging as _lg
-                _t.sleep(15)   # 等 update_price_cache 先跑完
-                async def _inner():
-                    from price_cache import get_cached_dates, backfill_from_finmind
-                    n = len(get_cached_dates())
-                    if n < 60:
-                        _lg.getLogger(__name__).info(
-                            f"[price_cache] 冷啟動（{n} 天），觸發 FinMind 回填 260 天...")
-                        result = await backfill_from_finmind(days=260)
-                        _lg.getLogger(__name__).info(f"[price_cache] 回填完成：{result}")
-                    else:
-                        _lg.getLogger(__name__).info(
-                            f"[price_cache] 快取已有 {n} 天，跳過 FinMind 回填")
-                _aio.run(_inner())
-            threading.Thread(target=_price_backfill_cold, daemon=True).start()
+        def _price_backfill_cold():
+            import asyncio as _aio, time as _t, logging as _lg
+            _t.sleep(15)   # 等 update_price_cache 先跑完
+            async def _inner():
+                from price_cache import get_cached_dates
+                n = len(get_cached_dates())
+                if n >= 60:
+                    _lg.getLogger(__name__).info(f"[price_cache] 快取已有 {n} 天，跳過回填")
+                    return
+                _lg.getLogger(__name__).info(f"[price_cache] 冷啟動（{n} 天），先嘗試 Supabase 恢復...")
+                try:
+                    from price_cache import restore_from_supabase
+                    restored = await restore_from_supabase()
+                    _lg.getLogger(__name__).info(f"[price_cache] Supabase 恢復：{restored} 筆")
+                except Exception as _se:
+                    _lg.getLogger(__name__).warning(f"[price_cache] Supabase 恢復失敗：{_se}")
+                    restored = 0
+                # Supabase 沒資料或不夠，改用 FinMind
+                n2 = len(get_cached_dates())
+                if n2 < 60 and _os.environ.get("FINMIND_TOKEN"):
+                    _lg.getLogger(__name__).info(f"[price_cache] 仍不足（{n2} 天），改用 FinMind 回填...")
+                    from price_cache import backfill_from_finmind
+                    result = await backfill_from_finmind(days=260)
+                    _lg.getLogger(__name__).info(f"[price_cache] FinMind 回填完成：{result}")
+            _aio.run(_inner())
+        threading.Thread(target=_price_backfill_cold, daemon=True).start()
     except Exception as _bfe:
         import logging; logging.getLogger(__name__).warning(f"[price_cache_backfill] {_bfe}")
     yield
