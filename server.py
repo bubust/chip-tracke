@@ -657,6 +657,24 @@ async def api_update_note(stock_id: str, request: Request):
     conn.close()
     return {"ok": True}
 
+@app.post("/api/watchlist/sync_to_supabase")
+def api_sync_watchlist_to_supabase():
+    """將本地 SQLite watchlist 全部補推到 Supabase（修復清單遺失用）"""
+    if not sb._enabled():
+        return {"ok": False, "msg": "Supabase 未設定"}
+    sb_rows = sb.wl_list() or []
+    sb_ids = {r["stock_id"] for r in sb_rows}
+    conn = get_conn()
+    all_local = conn.execute("SELECT stock_id, name, added_at, note FROM watchlist").fetchall()
+    conn.close()
+    pushed = []
+    for r in all_local:
+        if r["stock_id"] not in sb_ids:
+            ok = sb.wl_add(r["stock_id"], r["name"] or "", r["added_at"] or "", r["note"] or "")
+            if ok:
+                pushed.append(r["stock_id"])
+    return {"ok": True, "pushed": pushed, "total_local": len(all_local), "already_in_sb": len(sb_ids)}
+
 @app.get("/api/indices")
 async def api_indices():
     """市場指數列：加權指數、上櫃指數、台指近、金融近、電子近"""
@@ -872,19 +890,34 @@ async def api_watchlist_prices():
 async def api_watchlist_summary():
     from yahoo_price import get_stock_list
 
-    # Supabase 優先：Render 重啟後 SQLite 是空的，從 Supabase 同步回來
+    # 雙向同步：Supabase ↔ 本地 SQLite（持久磁碟）
+    # 方向一：Supabase → 本地（已有才同步；Supabase 有但本地沒有 → INSERT）
     sb_rows = sb.wl_list()
-    if sb_rows is not None and sb_rows:
-        conn = get_conn()
-        local_ids = {r["stock_id"] for r in conn.execute("SELECT stock_id FROM watchlist").fetchall()}
-        for r in sb_rows:
-            if r["stock_id"] not in local_ids:
-                conn.execute(
-                    "INSERT OR IGNORE INTO watchlist (stock_id, name, added_at, note) VALUES (?,?,?,?)",
-                    (r["stock_id"], r.get("name", ""), r.get("added_at", ""), r.get("note", ""))
-                )
-        conn.commit()
-        conn.close()
+    sb_ids = set()
+    if sb_rows is not None:
+        sb_ids = {r["stock_id"] for r in sb_rows}
+        if sb_rows:
+            conn = get_conn()
+            local_ids = {r["stock_id"] for r in conn.execute("SELECT stock_id FROM watchlist").fetchall()}
+            for r in sb_rows:
+                if r["stock_id"] not in local_ids:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO watchlist (stock_id, name, added_at, note) VALUES (?,?,?,?)",
+                        (r["stock_id"], r.get("name", ""), r.get("added_at", ""), r.get("note", ""))
+                    )
+            conn.commit()
+            conn.close()
+    # 方向二：本地 → Supabase（持久磁碟有但 Supabase 沒有 → 補上去）
+    if sb._enabled():
+        try:
+            conn = get_conn()
+            all_local = conn.execute("SELECT stock_id, name, added_at, note FROM watchlist").fetchall()
+            conn.close()
+            for r in all_local:
+                if r["stock_id"] not in sb_ids:
+                    sb.wl_add(r["stock_id"], r["name"] or "", r["added_at"] or "", r["note"] or "")
+        except Exception:
+            pass
 
     # stocks.csv → 備用股名 + 市場類型（OTC 補查 MIS 用）
     stocks_df  = get_stock_list()
