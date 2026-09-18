@@ -201,7 +201,7 @@ async def fetch_prices_for_stocks(stock_list: list) -> dict:
                 from scanner import classify_stage
                 stage = classify_stage(df)
             except Exception:
-                stage = {"code": "unknown", "label": "—", "color": "muted", "desc": ""}
+                stage = {"code": "unknown", "label": "資料不足", "color": "muted", "desc": "無法計算階段"}
             result[sid] = {"close": round(close, 2), "change_pct": pct,
                            "bb_score": bb_score, "stage": stage}
         except Exception:

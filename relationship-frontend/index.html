@@ -32,10 +32,10 @@ body { background: var(--bg); color: var(--text); font-family: 'Segoe UI','PingF
 .pos { color: var(--green); } .neg { color: var(--red); } .neu { color: var(--muted); }
 .layout { display: grid; grid-template-columns: 1fr 300px; gap: 0; flex: 1; min-height: 0; overflow: hidden; }
 .charts-col { display: flex; flex-direction: column; overflow: hidden; }
-.chart-section { flex: 2; border-bottom: 1px solid var(--border); }
-.chart-section.small { flex: 1; }
-.chart-label { font-size: .72rem; color: var(--muted); padding: 6px 12px; background: var(--card); border-bottom: 1px solid var(--border); }
-#chart-taiex, #chart-tx { width: 100%; }
+.chart-section { flex: 2; min-height: 0; overflow: hidden; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; }
+.chart-section.small { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.chart-label { font-size: .72rem; color: var(--muted); padding: 6px 12px; background: var(--card); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+#chart-taiex, #chart-tx { width: 100%; flex: 1; min-height: 0; }
 .event-timeline { padding: 6px 12px; background: var(--card); border-top: 1px solid var(--border); display: flex; gap: 4px; overflow-x: auto; align-items: center; min-height: 32px; }
 .ev-dot { width: 8px; height: 8px; border-radius: 50%; cursor: pointer; flex-shrink: 0; title: ''; }
 .ev-dot.lv3 { width: 12px; height: 12px; }
@@ -223,8 +223,7 @@ function initCharts() {
   };
 
   const taiexEl = document.getElementById('chart-taiex');
-  taiexEl.style.height = '280px';
-  _taiexChart = LightweightCharts.createChart(taiexEl, { ...chartOpts, height: 280 });
+  _taiexChart = LightweightCharts.createChart(taiexEl, { ...chartOpts, autoSize: true });
   _taiexSeries = _taiexChart.addCandlestickSeries({
     upColor: '#3fb950', downColor: '#f85149',
     borderUpColor: '#3fb950', borderDownColor: '#f85149',
@@ -234,8 +233,7 @@ function initCharts() {
   _ma60Series = _taiexChart.addLineSeries({ color: '#d29922', lineWidth: 1, priceLineVisible: false });
 
   const txEl = document.getElementById('chart-tx');
-  txEl.style.height = '180px';
-  _txChart = LightweightCharts.createChart(txEl, { ...chartOpts, height: 180 });
+  _txChart = LightweightCharts.createChart(txEl, { ...chartOpts, autoSize: true });
   _txSeries = _txChart.addCandlestickSeries({
     upColor: '#3fb950', downColor: '#f85149',
     borderUpColor: '#3fb950', borderDownColor: '#f85149',
@@ -313,6 +311,9 @@ function renderCharts() {
   _txSeries.setData(txCandles);
   if (ma20Pts.length) _ma20Series.setData(ma20Pts);
   if (ma60Pts.length) _ma60Series.setData(ma60Pts);
+  // 縮放到資料範圍，不浪費空白
+  _taiexChart.timeScale().fitContent();
+  _txChart.timeScale().fitContent();
 
   // Event markers
   const markerMap = {};

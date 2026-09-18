@@ -276,7 +276,10 @@
   <!-- 觀察清單表格 -->
   <div class="card" id="watchlist-card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div class="section-title" style="margin:0">我的選股清單</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="section-title" style="margin:0">我的選股清單</div>
+        <span id="chip-data-date" style="font-size:.75rem;color:var(--muted);background:var(--card2);padding:2px 8px;border-radius:6px;border:1px solid var(--border);display:none"></span>
+      </div>
       <div style="display:flex;align-items:center;gap:8px">
         <button class="btn sm ghost" onclick="exportWatchlist()" title="匯出觀察清單為 CSV，可用手機 Excel/Numbers 查看">📤 匯出清單</button>
         <button class="btn sm ghost" id="btn-refresh-tdcc" onclick="refreshWatchlistTdcc()" title="用 FinMind 更新觀察清單的千張大戶週資料">🏦 更新千張大戶</button>
@@ -284,7 +287,7 @@
         <input id="price-refresh-sec" type="number" min="5" max="3600" value="5" style="width:60px;text-align:center;background:var(--card2);border:1px solid var(--border);border-radius:4px;color:var(--fg);padding:2px 4px;font-size:.82rem" title="刷新間隔（秒）">
         <span style="color:var(--muted);font-size:.8rem">秒</span>
         <button id="btn-price-refresh-toggle" class="btn sm ghost" onclick="togglePriceRefresh()" title="開始/暫停現價自動刷新">▶ 啟動</button>
-        <span id="price-refresh-status" style="font-size:.75rem;color:var(--muted)"></span>
+        <span id="price-refresh-status" style="font-size:.75rem;color:var(--muted);min-width:120px;text-align:right"></span>
       </div>
     </div>
     <div id="wl-loading" class="loading" style="display:none"><span class="spinner"></span>載入中...</div>
@@ -784,6 +787,17 @@ function renderWatchlist() {
   document.getElementById('wl-empty').style.display = 'none';
   _wlChartList = _wlData.map(s => s.stock_id);
   _wlData.forEach(s => { if (s.name) _chartNames[s.stock_id] = s.name; });
+  // 顯示籌碼資料最新日期
+  const _latestDate = _wlData.filter(s => s.date).map(s => s.date).sort().reverse()[0];
+  const _dateEl = document.getElementById('chip-data-date');
+  if (_dateEl) {
+    if (_latestDate) {
+      _dateEl.textContent = `📅 籌碼資料 ${_latestDate}`;
+      _dateEl.style.display = 'inline-block';
+    } else {
+      _dateEl.style.display = 'none';
+    }
+  };
 
   tbody.innerHTML = _wlData.map(s => {
     const priceCell = (() => {
@@ -833,24 +847,17 @@ function renderWatchlist() {
     const bb = s.bb_score ?? null;
     const bbCell = (() => {
       if (bb === null || bb === undefined) return `<td class="muted" style="white-space:nowrap">—</td>`;
-      let zone, zoneColor;
-      if (bb > 10)       { zone = '超上軌'; zoneColor = '#f85149'; }
-      else if (bb > 5)   { zone = '近上軌'; zoneColor = '#ff9800'; }
-      else if (bb > -5)  { zone = '中軌';   zoneColor = '#8b949e'; }
-      else if (bb > -10) { zone = '近下軌'; zoneColor = '#58a6ff'; }
-      else               { zone = '超下軌'; zoneColor = '#38bdf8'; }
+      let zone;
+      if (bb > 10)       zone = '超上軌';
+      else if (bb > 5)   zone = '近上軌';
+      else if (bb > -5)  zone = '中軌';
+      else if (bb > -10) zone = '近下軌';
+      else               zone = '超下軌';
       const numColor = bb > 5 ? '#f85149' : bb > 0 ? '#ff9800' : bb > -5 ? '#8b949e' : '#58a6ff';
       const sign = bb > 0 ? '+' : '';
-      const clampedBB = Math.max(-15, Math.min(15, bb));
-      const dotPct = ((clampedBB + 15) / 30 * 100).toFixed(1);
       const tipText = bb > 10 ? '已突破上軌' : bb < -10 ? '已跌破下軌' : '軌道內';
-      return `<td title="布林軌道位置（上軌=+10 中軌=0 下軌=-10）｜${tipText}" style="white-space:nowrap">
-        <span style="color:${numColor};font-weight:700;font-size:.85rem">${sign}${bb}</span><span style="color:${zoneColor};font-size:.68rem;margin-left:3px">${zone}</span>
-        <div style="margin-top:3px;height:3px;background:#21262d;border-radius:2px;width:56px;position:relative;display:inline-block;vertical-align:middle;margin-left:4px">
-          <div style="position:absolute;left:33.3%;width:1px;height:3px;background:#555"></div>
-          <div style="position:absolute;left:66.6%;width:1px;height:3px;background:#555"></div>
-          <div style="position:absolute;left:${dotPct}%;transform:translateX(-50%);top:-1px;width:5px;height:5px;border-radius:50%;background:${numColor}"></div>
-        </div>
+      return `<td title="布林軌道位置（上軌=+10 中軌=0 下軌=-10）｜${zone}｜${tipText}" style="white-space:nowrap">
+        <span style="color:${numColor};font-weight:700;font-size:.85rem">${sign}${bb}</span>
       </td>`;
     })();
     const kpct = s.kpct;
@@ -3162,16 +3169,78 @@ async function openChart(stockId, savedRange = null) {
   try {
     await _loadLWC();
     const _ohlcvBase = _chartOhlcvUrl || `/api/stock/${stockId}/ohlcv`;
-    const ohlcv = await api('GET', `${_ohlcvBase}?interval=${_chartInterval}`);
+    // 同時取 OHLCV + 籌碼歷史（chip history），不等待 chip 失敗
+    const [ohlcv, chipResp] = await Promise.all([
+      api('GET', `${_ohlcvBase}?interval=${_chartInterval}`),
+      (stockId.startsWith('__idx_') ? Promise.resolve(null) :
+        api('GET', `/api/stock/${stockId}?days=500`).catch(() => null)),
+    ]);
+    // chipDateMap: YYYYMMDD → {signal_level, signal_emoji, signal_title, whale_flow_lots}
+    const chipDateMap = {};
+    if (chipResp && chipResp.data) {
+      chipResp.data.forEach(d => {
+        if (d.date) chipDateMap[String(d.date).replace(/-/g, '')] = d;
+      });
+    }
     const _trading = _isTWTradingHours();
-    title.innerHTML = `${stockId}${_chartStockName ? ' ' + _chartStockName : ''} K 線圖` +
+
+    // ── 🎯 方向分數（1-10）──
+    // 由 BB位置、近期籌碼訊號加總 → 標準化到 1-10
+    let _dirScore = 5; // 中性預設
+    if (!stockId.startsWith('__idx_')) {
+      try {
+        const _n = ohlcv.length;
+        // BB 貢獻（-2 ~ +2）
+        let _bbContrib = 0;
+        if (_n >= 20) {
+          const _cls = ohlcv.map(r => r.close);
+          const _ma20 = _calcMA(_cls, 20)[_n - 1];
+          const _std20 = (() => {
+            const s = _cls.slice(-20);
+            const m = s.reduce((a,b)=>a+b,0)/s.length;
+            return Math.sqrt(s.reduce((a,b)=>a+(b-m)**2,0)/s.length);
+          })();
+          if (!isNaN(_ma20) && _std20 > 0) {
+            const _bbRaw = (_cls[_n-1] - _ma20) / (2 * _std20) * 10;
+            _bbContrib = Math.max(-2, Math.min(2, _bbRaw / 5));
+          }
+        }
+        // 近5筆 chip 訊號貢獻（-3 ~ +3）
+        let _chipContrib = 0;
+        const _recentChip = ohlcv.slice(-5).map(r => chipDateMap[String(r.date).replace(/-/g,'')]).filter(Boolean);
+        if (_recentChip.length > 0) {
+          const _chipSum = _recentChip.reduce((a, c) => a + (c.signal_level || 0), 0);
+          _chipContrib = Math.max(-3, Math.min(3, _chipSum / 3));
+        }
+        // MA趨勢貢獻（-1 ~ +1）
+        let _maContrib = 0;
+        if (_n >= 10) {
+          const _cls2 = ohlcv.map(r => r.close);
+          const _ma10v = _calcMA(_cls2, 10);
+          const _ma20v = _calcMA(_cls2, 20);
+          if (!isNaN(_ma10v[_n-1]) && !isNaN(_ma20v[_n-1]))
+            _maContrib = _ma10v[_n-1] > _ma20v[_n-1] ? 1 : -1;
+        }
+        // 合計 → 映射到 1-10（中性=5）
+        const _raw = _bbContrib + _chipContrib + _maContrib; // -6 ~ +6
+        _dirScore = Math.round(Math.max(1, Math.min(10, 5 + _raw * (4/6))));
+      } catch(e) { _dirScore = 5; }
+    }
+    const _dirColor = _dirScore >= 7 ? '#22c55e' : _dirScore >= 6 ? '#4ade80' : _dirScore <= 3 ? '#ef4444' : _dirScore <= 4 ? '#f87171' : '#8b949e';
+    const _dirLabel = _dirScore >= 8 ? '強多' : _dirScore >= 6 ? '偏多' : _dirScore <= 2 ? '強空' : _dirScore <= 4 ? '偏空' : '中性';
+    const _dirBadge = stockId.startsWith('__idx_') ? '' :
+      ` <span title="方向分數（1空→10多）：BB位置+籌碼訊號+均線趨勢" style="font-size:.72rem;padding:1px 8px;border-radius:8px;border:1px solid ${_dirColor}44;background:${_dirColor}18;color:${_dirColor};margin-left:4px">🎯 ${_dirScore} ${_dirLabel}</span>`;
+
+    title.innerHTML = `${stockId}${_chartStockName ? ' ' + _chartStockName : ''} K 線圖` + _dirBadge +
       (_trading ? ' <span style="font-size:.72rem;color:#22c55e;background:rgba(34,197,94,.12);padding:1px 8px;border-radius:8px;border:1px solid rgba(34,197,94,.3)">🔴 盤中 · 每分鐘更新</span>' : '');
 
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
     container.innerHTML = `
-      <div id="lwc-candle" style="width:100%;height:44%;position:relative"></div>
-      <div id="lwc-vol"    style="width:100%;height:10%;border-top:1px solid #2a2e39;position:relative"></div>
-      <div id="lwc-macd"  style="width:100%;height:23%;border-top:1px solid #2a2e39;position:relative"></div>
-      <div id="lwc-macd2" style="width:100%;height:23%;border-top:1px solid #2a2e39;position:relative"></div>`;
+      <div id="lwc-candle" style="width:100%;flex:5;min-height:0;position:relative"></div>
+      <div id="lwc-vol"    style="width:100%;flex:1;min-height:0;border-top:1px solid #2a2e39;position:relative"></div>
+      <div id="lwc-macd"  style="width:100%;flex:2;min-height:0;border-top:1px solid #2a2e39;position:relative"></div>
+      <div id="lwc-macd2" style="width:100%;flex:2;min-height:0;border-top:1px solid #2a2e39;position:relative"></div>`;
 
     const BASE = {
       layout: { background: { color: '#131722' }, textColor: '#9598a1' },
@@ -3338,6 +3407,35 @@ async function openChart(stockId, savedRange = null) {
         color: curr.type === 'H' ? '#ef5350' : '#26a69a',
         shape: 'circle', size: 1,
         text: `${sign}${pct}%`,
+      });
+    }
+    // ── 籌碼事件標記（從 chip history API 取）──
+    if (Object.keys(chipDateMap).length > 0) {
+      ohlcv.forEach(r => {
+        const dateKey = String(r.date).replace(/-/g, '');
+        const chip = chipDateMap[dateKey];
+        if (!chip) return;
+        const lvl = chip.signal_level || 0;
+        // 只標記強訊號（level >= 3 買訊 或 <= -3 賣訊）
+        if (lvl >= 3) {
+          markers.push({
+            time: _rt(r),
+            position: 'belowBar',
+            color: lvl >= 5 ? '#22c55e' : '#4ade80',
+            shape: lvl >= 5 ? 'arrowUp' : 'circle',
+            size: lvl >= 5 ? 2 : 1,
+            text: chip.signal_emoji ? `${chip.signal_emoji}` : '▲籌',
+          });
+        } else if (lvl <= -3) {
+          markers.push({
+            time: _rt(r),
+            position: 'aboveBar',
+            color: lvl <= -5 ? '#ef4444' : '#f87171',
+            shape: lvl <= -5 ? 'arrowDown' : 'circle',
+            size: lvl <= -5 ? 2 : 1,
+            text: chip.signal_emoji ? `${chip.signal_emoji}` : '▼籌',
+          });
+        }
       });
     }
     markers.sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0);

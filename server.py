@@ -265,18 +265,38 @@ async def lifespan(app: FastAPI):
             except Exception as _e:
                 import logging; logging.getLogger(__name__).error(f"[sector_auto_calc] {_e}")
         threading.Thread(target=_sector_auto_calc, daemon=True).start()
-    # 若 relationship.db 無資料，背景啟動初始更新
-    from relationship.db import get_conn as _rel_conn
-    _rel_cnt = _rel_conn().execute("SELECT COUNT(*) FROM market_daily").fetchone()[0]
-    if _rel_cnt == 0:
-        def _relationship_init():
-            try:
-                from relationship.router import _run_refresh as _rel_refresh
-                import logging; logging.getLogger(__name__).info("[relationship] 初始資料抓取（約需 30 秒）...")
-                _rel_refresh(days=200)
-            except Exception as _e:
-                import logging; logging.getLogger(__name__).error(f"[relationship_init] {_e}")
-        threading.Thread(target=_relationship_init, daemon=True).start()
+    # 若 relationship.db 無資料或資料過時，背景啟動初始更新
+    try:
+        from relationship.db import get_conn as _rel_conn
+        _rel_row = _rel_conn().execute("SELECT COUNT(*) as cnt, MAX(observation_date) as latest FROM market_daily").fetchone()
+        _rel_cnt = _rel_row["cnt"] if _rel_row else 0
+        _rel_latest = _rel_row["latest"] if _rel_row else None
+        from datetime import date as _date_cls, timedelta as _td_cls
+        _rel_stale = (_rel_latest is None) or (str(_rel_latest) < str((_date_cls.today() - _td_cls(days=2)).isoformat()))
+        if _rel_cnt == 0 or _rel_stale:
+            def _relationship_init():
+                try:
+                    from relationship.router import _run_refresh as _rel_refresh
+                    import logging; logging.getLogger(__name__).info(f"[relationship] 資料過時（{_rel_latest}），補抓近 90 天...")
+                    _rel_refresh(days=90)
+                except Exception as _e:
+                    import logging; logging.getLogger(__name__).error(f"[relationship_init] {_e}")
+            threading.Thread(target=_relationship_init, daemon=True).start()
+    except Exception as _rel_e:
+        import logging; logging.getLogger(__name__).warning(f"[relationship_check] {_rel_e}")
+    # 啟動 relationship 排程（每個交易日 17:00 自動更新）
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler as _RelSched
+        import pytz as _pytz
+        _rel_scheduler = _RelSched(timezone=_pytz.timezone("Asia/Taipei"))
+        _rel_scheduler.add_job(
+            lambda: __import__('threading').Thread(target=lambda: __import__('relationship.router', fromlist=['_run_refresh'])._run_refresh(days=5), daemon=True).start(),
+            "cron", day_of_week="mon-fri", hour=17, minute=0,
+            id="relationship_daily", replace_existing=True,
+        )
+        _rel_scheduler.start()
+    except Exception as _rel_sch_e:
+        import logging; logging.getLogger(__name__).warning(f"[relationship_scheduler] {_rel_sch_e}")
     # 啟動 positioning 排程（每個交易日 16:45 自動更新）
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
@@ -294,6 +314,75 @@ async def lifespan(app: FastAPI):
         _pos_scheduler.start()
     except Exception as _e:
         import logging; logging.getLogger(__name__).warning(f"[positioning_scheduler] {_e}")
+    # 若 positioning_daily 無資料，背景啟動歷史回填（30個交易日）
+    try:
+        from positioning.db import get_conn as _pos_conn
+        _pos_cnt = _pos_conn().execute("SELECT COUNT(*) FROM positioning_daily").fetchone()[0]
+        if _pos_cnt == 0:
+            def _positioning_init():
+                try:
+                    import asyncio
+                    from datetime import date, timedelta, datetime, timezone
+                    import logging as _log
+                    _log.getLogger(__name__).info("[positioning] DB 空，啟動歷史回填（30 交易日）...")
+                    from positioning.fetcher import fetch_all
+                    from positioning.calculator import compute_positioning
+                    tw_now = datetime.now(timezone(timedelta(hours=8)))
+                    td = tw_now.date()
+                    if tw_now.hour < 16:
+                        td -= timedelta(days=1)
+                    count = 0
+                    for i in range(60):  # iterate extra to skip weekends
+                        d = td - timedelta(days=i)
+                        if d.weekday() >= 5:
+                            continue
+                        if count >= 30:
+                            break
+                        try:
+                            raw = asyncio.run(fetch_all(d))
+                            compute_positioning(raw, target_date=raw.get("observation_date"))
+                            count += 1
+                        except Exception as _day_e:
+                            _log.getLogger(__name__).warning(f"[positioning_init] {d}: {_day_e}")
+                    _log.getLogger(__name__).info(f"[positioning] 回填完成，共 {count} 筆")
+                except Exception as _e:
+                    import logging; logging.getLogger(__name__).error(f"[positioning_init] {_e}")
+            threading.Thread(target=_positioning_init, daemon=True).start()
+    except Exception as _pos_e:
+        import logging; logging.getLogger(__name__).warning(f"[positioning_init_check] {_pos_e}")
+    # 啟動觀察清單籌碼每日自動更新（週一至五 15:00 更新，確保資料不斷檔）
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler as _ChipSched
+        import pytz as _cpytz
+        _chip_scheduler = _ChipSched(timezone=_cpytz.timezone("Asia/Taipei"))
+        async def _auto_chip_refresh():
+            import logging as _lg
+            try:
+                _lg.getLogger(__name__).info("[auto_chip] 自動更新觀察清單籌碼...")
+                import supabase_store as _sb
+                _sids = _sb.wl_get_ids()
+                if not _sids:
+                    _conn = get_conn()
+                    _rows = _conn.execute("SELECT stock_id FROM watchlist").fetchall()
+                    _conn.close()
+                    _sids = [r["stock_id"] for r in _rows]
+                if _sids:
+                    await update_stocks(_sids, days=5)
+                    settings_set("last_refresh", datetime.now().isoformat())
+                    _lg.getLogger(__name__).info(f"[auto_chip] 完成 {len(_sids)} 檔")
+            except Exception as _ace:
+                _lg.getLogger(__name__).error(f"[auto_chip] {_ace}")
+        def _auto_chip_sync():
+            import asyncio as _aio
+            _aio.run(_auto_chip_refresh())
+        _chip_scheduler.add_job(
+            _auto_chip_sync, "cron",
+            day_of_week="mon-fri", hour=15, minute=0,
+            id="chip_daily", replace_existing=True,
+        )
+        _chip_scheduler.start()
+    except Exception as _cp_e:
+        import logging; logging.getLogger(__name__).warning(f"[chip_scheduler] {_cp_e}")
     yield
     stop_warrant_scheduler()
 
@@ -808,7 +897,7 @@ async def api_watchlist_summary():
             "close":      price_info.get("close"),
             "change_pct": price_info.get("change_pct"),
             "bb_score":   price_info.get("bb_score", 0.0),
-            "stage":      price_info.get("stage", {"code": "unknown", "label": "—", "color": "muted", "desc": ""}),
+            "stage":      price_info.get("stage", {"code": "unknown", "label": "資料不足", "color": "muted", "desc": "無法取得價格資料"}),
         }
         if records:
             latest = records[-1]
