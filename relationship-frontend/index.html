@@ -570,7 +570,7 @@ async function applyStrategyOverlay(etype) {
     if (s10) sm10.style.color = s10.avg > 0 ? 'var(--green)' : s10.avg < 0 ? 'var(--red)' : '';
     // 說明 & 判讀多空
     const meta = _EVENT_META[etype];
-    document.getElementById('sm-desc').textContent = meta ? meta.desc : '';
+    document.getElementById('sm-desc').textContent = d.description || '';
     const smVerdict = document.getElementById('sm-verdict');
     const s5avg = s5 ? s5.avg : 0;
     const s5wr  = s5 ? s5.win_rate : 50;

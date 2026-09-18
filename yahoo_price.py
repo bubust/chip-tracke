@@ -339,7 +339,7 @@ def get_scan_results() -> dict:
     return _scan_status["results"]
 
 
-async def run_market_scan(concurrency: int = 30, strategy_params: dict = None):
+async def run_market_scan(concurrency: int = 15, strategy_params: dict = None):
     """
     背景執行全市場策略掃描（上市 + 上櫃，全部 stocks.csv 股票）。
     - 掃全部股票，不做有量過濾（避免漏掉低量漲停或上櫃股票）
@@ -390,7 +390,27 @@ async def run_market_scan(concurrency: int = 30, strategy_params: dict = None):
 
             async def _fetch_scan_inner(sid, mkt):
                 """抓取 + 策略計算，成功回傳 {strategy: result}，失敗回傳 None"""
-                df = await _fetch_yahoo_async(client, sem, sid, mkt, range_="2y")
+                import datetime as _dt
+                df = pd.DataFrame()
+                # ── 優先讀本地 price_cache，避免 Yahoo 限流 ────────────────────
+                try:
+                    from price_cache import get_stock_ohlcv, save_stock_ohlcv as _save_ohlcv
+                    cached = get_stock_ohlcv(sid, days=520)
+                    if not cached.empty and len(cached) >= 100:
+                        today_m5 = (_dt.date.today() - _dt.timedelta(days=5)).strftime("%Y%m%d")
+                        if str(cached.iloc[-1]["date"]) >= today_m5:
+                            df = cached
+                except Exception:
+                    pass
+                # ── cache 不夠新或缺資料才去打 Yahoo ─────────────────────────
+                if df.empty:
+                    df = await _fetch_yahoo_async(client, sem, sid, mkt, range_="2y")
+                    if not df.empty and len(df) >= 5:
+                        try:
+                            from price_cache import save_stock_ohlcv as _save_ohlcv
+                            _save_ohlcv(sid, df)
+                        except Exception:
+                            pass
                 if df.empty or len(df) < 5:
                     return None
                 all_prices[sid] = df
