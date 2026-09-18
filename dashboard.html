@@ -2934,6 +2934,9 @@ let _chartInterval = '1d';   // 目前選擇的週期
 const _chartOverlayState = { ma5: true, ma10: true, ma20: true, ma60: true, bb: false };
 let _maSeriesRefs = {};
 let _bbSeriesRefs = [];
+let _fakeBdMA    = 'ma10';   // 假跌破偵測均線（null = 關閉）
+let _fakeBdPivot = false;    // 前高/前低突破模式
+let _chartCachedMarkerData = null; // 用於重算 markers 無需整圖重繪
 
 function setChartPeriod(period) {
   _chartInterval = period;
@@ -3054,6 +3057,135 @@ function toggleChartOverlay(key) {
     try { _maSeriesRefs[key].applyOptions({ visible: _chartOverlayState[key] }); } catch(e) {}
   }
 }
+function _rebuildChartMarkers() {
+  if (!_chartCachedMarkerData) return;
+  const { ohlcv, closes, ma5, ma10, ma20, chipDateMap, cSeries } = _chartCachedMarkerData;
+  const n = ohlcv.length;
+  const maMap = { ma5, ma10, ma20 };
+  const markers = [];
+
+  // ── 假跌破 / 假突破（MA 模式）──
+  if (_fakeBdMA) {
+    const selMA = maMap[_fakeBdMA];
+    if (selMA) {
+      for (let i = 1; i < n - 1; i++) {
+        if (isNaN(selMA[i]) || isNaN(selMA[i + 1])) continue;
+        // i 日跌破 MAx，i+1 日收復 → 假跌破
+        if (closes[i] < selMA[i] && closes[i + 1] > selMA[i + 1]) {
+          markers.push({ time: _rt(ohlcv[i + 1]), position: 'belowBar', color: '#fbbf24', shape: 'arrowUp', text: '假跌破', size: 1 });
+        }
+        // i 日突破 MAx，i+1 日跌回 → 假突破
+        if (closes[i] > selMA[i] && closes[i + 1] < selMA[i + 1]) {
+          markers.push({ time: _rt(ohlcv[i + 1]), position: 'aboveBar', color: '#ef5350', shape: 'arrowDown', text: '假突破', size: 1 });
+        }
+      }
+    }
+  }
+
+  // ── 假跌破 / 假突破（前高/前低 模式）──
+  if (_fakeBdPivot) {
+    const W = 10;
+    for (let i = W + 1; i < n - 1; i++) {
+      let prevHigh = -Infinity, prevLow = Infinity;
+      for (let k = i - W; k < i; k++) {
+        if (ohlcv[k].high > prevHigh) prevHigh = ohlcv[k].high;
+        if (ohlcv[k].low  < prevLow)  prevLow  = ohlcv[k].low;
+      }
+      // 跌破前低隔日收復 → 假跌破前低
+      if (closes[i] < prevLow && closes[i + 1] > prevLow) {
+        markers.push({ time: _rt(ohlcv[i + 1]), position: 'belowBar', color: '#38bdf8', shape: 'arrowUp', text: '前低↑', size: 1 });
+      }
+      // 突破前高隔日跌回 → 假突破前高
+      if (closes[i] > prevHigh && closes[i + 1] < prevHigh) {
+        markers.push({ time: _rt(ohlcv[i + 1]), position: 'aboveBar', color: '#f97316', shape: 'arrowDown', text: '前高↓', size: 1 });
+      }
+    }
+  }
+
+  // ── 段落力道標示（最近 12 段）──
+  const PW = 5;
+  const pivots = [];
+  for (let i = PW; i < n - PW; i++) {
+    const c = closes[i];
+    let hi = true, lo = true;
+    for (let k = 1; k <= PW; k++) {
+      if (closes[i - k] >= c || closes[i + k] >= c) hi = false;
+      if (closes[i - k] <= c || closes[i + k] <= c) lo = false;
+    }
+    if (hi) pivots.push({ idx: i, type: 'H', price: c });
+    if (lo) pivots.push({ idx: i, type: 'L', price: c });
+  }
+  const cp = [];
+  for (const p of pivots) {
+    if (!cp.length || cp[cp.length - 1].type !== p.type) {
+      cp.push({ ...p });
+    } else {
+      const last = cp[cp.length - 1];
+      if ((p.type === 'H' && p.price > last.price) || (p.type === 'L' && p.price < last.price))
+        cp[cp.length - 1] = { ...p };
+    }
+  }
+  const recent = cp.slice(-12);
+  for (let i = 1; i < recent.length; i++) {
+    const prev = recent[i - 1], curr = recent[i];
+    const pct = ((curr.price - prev.price) / prev.price * 100).toFixed(1);
+    const sign = pct >= 0 ? '+' : '';
+    markers.push({
+      time: _rt(ohlcv[curr.idx]),
+      position: curr.type === 'H' ? 'aboveBar' : 'belowBar',
+      color: curr.type === 'H' ? '#ef5350' : '#26a69a',
+      shape: 'circle', size: 1,
+      text: `${sign}${pct}%`,
+    });
+  }
+
+  // ── 籌碼事件標記 ──
+  if (Object.keys(chipDateMap).length > 0) {
+    ohlcv.forEach(r => {
+      const dateKey = String(r.date).replace(/-/g, '');
+      const chip = chipDateMap[dateKey];
+      if (!chip) return;
+      const lvl = chip.signal_level || 0;
+      if (lvl >= 3) {
+        markers.push({
+          time: _rt(r), position: 'belowBar',
+          color: lvl >= 5 ? '#22c55e' : '#4ade80',
+          shape: lvl >= 5 ? 'arrowUp' : 'circle',
+          size: lvl >= 5 ? 2 : 1,
+          text: chip.signal_emoji ? `${chip.signal_emoji}` : '▲籌',
+        });
+      } else if (lvl <= -3) {
+        markers.push({
+          time: _rt(r), position: 'aboveBar',
+          color: lvl <= -5 ? '#ef4444' : '#f87171',
+          shape: lvl <= -5 ? 'arrowDown' : 'circle',
+          size: lvl <= -5 ? 2 : 1,
+          text: chip.signal_emoji ? `${chip.signal_emoji}` : '▼籌',
+        });
+      }
+    });
+  }
+
+  markers.sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0);
+  try { cSeries.setMarkers(markers); } catch(e) {}
+}
+
+function setFakeBdMA(key) {
+  _fakeBdMA = (_fakeBdMA === key) ? null : key;
+  ['ma5','ma10','ma20'].forEach(k => {
+    const btn = document.getElementById(`fbd-ma-btn-${k}`);
+    if (btn) btn.classList.toggle('active', _fakeBdMA === k);
+  });
+  _rebuildChartMarkers();
+}
+
+function toggleFakeBdPivot() {
+  _fakeBdPivot = !_fakeBdPivot;
+  const btn = document.getElementById('fbd-pivot-btn');
+  if (btn) btn.classList.toggle('active', _fakeBdPivot);
+  _rebuildChartMarkers();
+}
+
 function openWlChart(sid)     { _frozenChartList = [..._wlChartList];     _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = '';             _chartOhlcvUrl = null; _resetChartPeriod(); openChart(sid); }
 function openMktChart(sid)    { _frozenChartList = [..._mktChartList];    _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = '全市場排行';   _chartOhlcvUrl = null; _resetChartPeriod(); openChart(sid); }
 function openScreenChart(sid) { _frozenChartList = [..._screenChartList]; _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = (_viewingStrategy ? (STRATEGY_LABELS[_viewingStrategy] || _viewingStrategy).replace(/[（(][^）)]{10,}[）)]/g,'').trim() : ''); _chartOhlcvUrl = null; _resetChartPeriod(); openChart(sid); }
@@ -3421,94 +3553,9 @@ async function openChart(stockId, savedRange = null) {
     bbMidS.setData(ohlcv.map((r, i) => isNaN(ma20[i]) ? null : { time: _rt(r), value: ma20[i] }).filter(Boolean));
     [bbUpperS, bbLowerS, bbMidS].forEach(s => { s.applyOptions({ visible: _chartOverlayState.bb }); _bbSeriesRefs.push(s); });
 
-    // ── 假跌破 / 假突破標記 ──
-    const markers = [];
-    for (let i = 1; i < n - 1; i++) {
-      if (isNaN(ma10[i]) || isNaN(ma10[i + 1])) continue;
-      // i 日跌破 MA10，i+1 日收復 → 假跌破
-      if (closes[i] < ma10[i] && closes[i + 1] > ma10[i + 1]) {
-        markers.push({
-          time: _rt(ohlcv[i + 1]),
-          position: 'belowBar', color: '#fbbf24', shape: 'arrowUp', text: '假跌破', size: 1,
-        });
-      }
-      // i 日突破 MA10，i+1 日跌回 → 假突破
-      if (closes[i] > ma10[i] && closes[i + 1] < ma10[i + 1]) {
-        markers.push({
-          time: _rt(ohlcv[i + 1]),
-          position: 'aboveBar', color: '#ef5350', shape: 'arrowDown', text: '假突破', size: 1,
-        });
-      }
-    }
-
-    // ── 段落力道標示（最近 12 段）──
-    const W = 5;
-    const pivots = [];
-    for (let i = W; i < n - W; i++) {
-      const c = closes[i];
-      let hi = true, lo = true;
-      for (let k = 1; k <= W; k++) {
-        if (closes[i - k] >= c || closes[i + k] >= c) hi = false;
-        if (closes[i - k] <= c || closes[i + k] <= c) lo = false;
-      }
-      if (hi) pivots.push({ idx: i, type: 'H', price: c });
-      if (lo) pivots.push({ idx: i, type: 'L', price: c });
-    }
-    // 合併相鄰同類型，保留最極端
-    const cp = [];
-    for (const p of pivots) {
-      if (!cp.length || cp[cp.length - 1].type !== p.type) {
-        cp.push({ ...p });
-      } else {
-        const last = cp[cp.length - 1];
-        if ((p.type === 'H' && p.price > last.price) || (p.type === 'L' && p.price < last.price))
-          cp[cp.length - 1] = { ...p };
-      }
-    }
-    const recent = cp.slice(-12);
-    for (let i = 1; i < recent.length; i++) {
-      const prev = recent[i - 1], curr = recent[i];
-      const pct = ((curr.price - prev.price) / prev.price * 100).toFixed(1);
-      const sign = pct >= 0 ? '+' : '';
-      markers.push({
-        time: _rt(ohlcv[curr.idx]),
-        position: curr.type === 'H' ? 'aboveBar' : 'belowBar',
-        color: curr.type === 'H' ? '#ef5350' : '#26a69a',
-        shape: 'circle', size: 1,
-        text: `${sign}${pct}%`,
-      });
-    }
-    // ── 籌碼事件標記（從 chip history API 取）──
-    if (Object.keys(chipDateMap).length > 0) {
-      ohlcv.forEach(r => {
-        const dateKey = String(r.date).replace(/-/g, '');
-        const chip = chipDateMap[dateKey];
-        if (!chip) return;
-        const lvl = chip.signal_level || 0;
-        // 只標記強訊號（level >= 3 買訊 或 <= -3 賣訊）
-        if (lvl >= 3) {
-          markers.push({
-            time: _rt(r),
-            position: 'belowBar',
-            color: lvl >= 5 ? '#22c55e' : '#4ade80',
-            shape: lvl >= 5 ? 'arrowUp' : 'circle',
-            size: lvl >= 5 ? 2 : 1,
-            text: chip.signal_emoji ? `${chip.signal_emoji}` : '▲籌',
-          });
-        } else if (lvl <= -3) {
-          markers.push({
-            time: _rt(r),
-            position: 'aboveBar',
-            color: lvl <= -5 ? '#ef4444' : '#f87171',
-            shape: lvl <= -5 ? 'arrowDown' : 'circle',
-            size: lvl <= -5 ? 2 : 1,
-            text: chip.signal_emoji ? `${chip.signal_emoji}` : '▼籌',
-          });
-        }
-      });
-    }
-    markers.sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0);
-    cSeries.setMarkers(markers);
+    // ── 快取資料 + 建立所有標記 ──
+    _chartCachedMarkerData = { ohlcv, closes, ma5, ma10, ma20, chipDateMap, cSeries };
+    _rebuildChartMarkers();
 
     // 蠟燭 legend
     const cLeg = _mkLegend(cEl);
@@ -3671,6 +3718,7 @@ function closeChart() {
   _lwcCharts = [];
   document.getElementById('chart-tv-container').innerHTML = '';
   document.body.style.overflow = '';
+  _chartCachedMarkerData = null;
 }
 
 // ── 策略參數編輯器 ──────────────────────────────────────────────────────────
@@ -3937,6 +3985,30 @@ async function saveAllStratParams() {
         <button id="draw-btn-tline" class="btn sm ghost draw-btn" onclick="setDrawMode('tline')" title="趨勢線（點兩個K線點）" style="font-size:.8rem;padding:3px 8px">📐 趨勢線</button>
         <button class="btn sm ghost" onclick="clearDrawings()" title="清除所有畫線" style="font-size:.8rem;padding:3px 8px">🗑️</button>
       </span>
+      <span style="width:1px;height:16px;background:#2a2e39;margin:0 4px"></span>
+      <span style="display:flex;gap:3px;align-items:center">
+        <span style="font-size:.68rem;color:#6b7280;margin-right:2px">假跌破:</span>
+        <button id="fbd-ma-btn-ma5"  class="btn sm ghost chart-overlay-btn" onclick="setFakeBdMA('ma5')"  style="padding:2px 7px;font-size:.72rem;color:#4caf50;border-color:#4caf50" title="以 MA5 判斷假跌破/假突破">MA5</button>
+        <button id="fbd-ma-btn-ma10" class="btn sm ghost chart-overlay-btn active" onclick="setFakeBdMA('ma10')" style="padding:2px 7px;font-size:.72rem;color:#ffeb3b;border-color:#ffeb3b" title="以 MA10 判斷假跌破/假突破">MA10</button>
+        <button id="fbd-ma-btn-ma20" class="btn sm ghost chart-overlay-btn" onclick="setFakeBdMA('ma20')" style="padding:2px 7px;font-size:.72rem;color:#e91e63;border-color:#e91e63" title="以 MA20 判斷假跌破/假突破">MA20</button>
+        <button id="fbd-pivot-btn"   class="btn sm ghost chart-overlay-btn" onclick="toggleFakeBdPivot()" style="padding:2px 7px;font-size:.72rem;color:#38bdf8;border-color:#38bdf8" title="偵測跌破前10日最低點後次日收復（前低↑），或突破前10日最高點後次日跌回（前高↓）">前高/前低</button>
+      </span>
+    </div>
+    <!-- 圖例說明列 -->
+    <div style="display:flex;align-items:center;padding:3px 16px;background:#0a0f1a;flex-shrink:0;flex-wrap:wrap;gap:10px;border-bottom:1px solid #1a1f2e">
+      <span style="font-size:.65rem;color:#484f58;white-space:nowrap">圖例：</span>
+      <span style="font-size:.65rem;color:#fbbf24;white-space:nowrap" title="跌破 MAx 次日收復，看多訊號">▲黃 假跌破（MAx）</span>
+      <span style="font-size:.65rem;color:#ef5350;white-space:nowrap" title="突破 MAx 次日跌回，看空訊號">▼紅 假突破（MAx）</span>
+      <span style="font-size:.65rem;color:#38bdf8;white-space:nowrap" title="收盤跌破前10日低點，次日收復">▲藍 前低↑</span>
+      <span style="font-size:.65rem;color:#f97316;white-space:nowrap" title="收盤突破前10日高點，次日跌回">▼橙 前高↓</span>
+      <span style="font-size:.65rem;color:#6b7280;white-space:nowrap">｜</span>
+      <span style="font-size:.65rem;color:#4ade80;white-space:nowrap" title="籌碼買入（level 3~4）">○綠下 籌碼買入</span>
+      <span style="font-size:.65rem;color:#22c55e;white-space:nowrap" title="籌碼強力買入（level ≥5）">▲綠 籌碼強買</span>
+      <span style="font-size:.65rem;color:#f87171;white-space:nowrap" title="籌碼賣壓（level -3~-4）">○紅上 籌碼賣壓</span>
+      <span style="font-size:.65rem;color:#ef4444;white-space:nowrap" title="籌碼強力賣出（level ≤-5）">▼紅 籌碼強賣</span>
+      <span style="font-size:.65rem;color:#6b7280;white-space:nowrap">｜</span>
+      <span style="font-size:.65rem;color:#ef5350;white-space:nowrap" title="近12個段落的局部最高點，顯示與前段的漲跌幅%">○紅 段落高點</span>
+      <span style="font-size:.65rem;color:#26a69a;white-space:nowrap" title="近12個段落的局部最低點，顯示與前段的漲跌幅%">○綠 段落低點</span>
     </div>
     <div id="chart-tv-container" style="flex:1;overflow:hidden"></div>
   </div>
