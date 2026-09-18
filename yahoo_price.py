@@ -273,6 +273,70 @@ def fetch_yahoo(stock_id: str, market: str = "twse") -> pd.DataFrame:
 STRATEGY_KEYS = ["S1", "S1_SHORT", "S1_2", "S2", "S5", "S17A", "S17B", "S10", "CHIP",
                  "S_PB", "S_FBD", "S_RES", "S_KD", "S_VOLX", "S_VOLX_SHORT"]
 
+_SCAN_WORKERS = 12   # 同 tw-macd-scan；過高會被 Yahoo 擋
+
+# 各 worker thread 維護自己的 requests.Session，避免 race condition
+_scan_thread_local = threading.local()
+
+def _get_scan_session():
+    """回傳當前 thread 專屬的 requests.Session（lazy init）。"""
+    if not hasattr(_scan_thread_local, "session"):
+        import requests as _req, urllib3 as _u3
+        _u3.disable_warnings(_u3.exceptions.InsecureRequestWarning)
+        s = _req.Session()
+        s.verify = False
+        s.headers.update({"User-Agent": _rand_ua(), **_SCAN_HEADERS})
+        _scan_thread_local.session = s
+    return _scan_thread_local.session
+
+
+def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
+    """
+    同步版 fetch（供 ThreadPoolExecutor worker 呼叫）：
+    1. 優先讀 price_cache（5 天內的快取直接用，不打 Yahoo）
+    2. Cache 缺/舊 → requests.get Yahoo，成功後存入 cache
+    """
+    import datetime as _dt
+    # ── 1. price_cache ────────────────────────────────────────────────────────
+    try:
+        from price_cache import get_stock_ohlcv, save_stock_ohlcv as _save
+        cached = get_stock_ohlcv(sid, days=520)
+        if not cached.empty and len(cached) >= 100:
+            today_m5 = (_dt.date.today() - _dt.timedelta(days=5)).strftime("%Y%m%d")
+            if str(cached.iloc[-1]["date"]) >= today_m5:
+                return cached
+    except Exception:
+        pass
+    # ── 2. Yahoo Finance ──────────────────────────────────────────────────────
+    suffixes = [".TW"] if market == "twse" else [".TWO", ".TW"]
+    now_ts = int(time.time())
+    params = {"interval": "1d", "period1": now_ts - 730 * 86400, "period2": now_ts}
+    sess = _get_scan_session()
+    for suffix in suffixes:
+        for host in ["query1", "query2"]:
+            try:
+                url = f"https://{host}.finance.yahoo.com/v8/finance/chart/{sid}{suffix}"
+                r = sess.get(url, params=params,
+                             headers={"User-Agent": _rand_ua(), **_SCAN_HEADERS},
+                             timeout=20)
+                if r.status_code == 429:
+                    time.sleep(random.uniform(2.0, 4.0))
+                    r = sess.get(url, params=params,
+                                 headers={"User-Agent": _rand_ua(), **_SCAN_HEADERS},
+                                 timeout=20)
+                r.raise_for_status()
+                df = _parse_yahoo_json(r.json())
+                if not df.empty and len(df) >= 5:
+                    try:
+                        from price_cache import save_stock_ohlcv as _save
+                        _save(sid, df)
+                    except Exception:
+                        pass
+                    return df
+            except Exception:
+                pass
+    return pd.DataFrame()
+
 _scan_status: dict = {
     "running":      False,
     "progress":     0,
@@ -339,19 +403,19 @@ def get_scan_results() -> dict:
     return _scan_status["results"]
 
 
-async def run_market_scan(concurrency: int = 15, strategy_params: dict = None):
+async def run_market_scan(strategy_params: dict = None):
     """
     背景執行全市場策略掃描（上市 + 上櫃，全部 stocks.csv 股票）。
-    - 掃全部股票，不做有量過濾（避免漏掉低量漲停或上櫃股票）
-    - Semaphore(30) 控制並發 + 0~150ms jitter + Referer header（減少 Yahoo 限流）
-    - scan_one_stock 跑在 ThreadPoolExecutor(24)，不阻塞 event loop
-    - 第一輪失敗 → 等 5s → 重試一次；仍失敗 → 等 8s → 第二次重試
-    - strategy_params: {strategy_key: {param_key: value}} 各策略自訂參數
+    架構仿照 tw-macd-scan：
+    - thread-local requests.Session（每 worker 自己的連線）
+    - ThreadPoolExecutor(_SCAN_WORKERS=12)，不用 asyncio/Semaphore
+    - 先查 price_cache，5 天內的快取直接跑計算，不打 Yahoo
+    - Cache 缺/舊才 fetch Yahoo，並自動存回 cache
     """
-    import concurrent.futures
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     from scanner import scan_one_stock, screen_chip
-    from tdcc_chip import get_tdcc_data
     _strategy_params = strategy_params or {}
+    _status_lock = threading.Lock()
 
     _scan_status["running"]       = True
     _scan_status["progress"]      = 0
@@ -369,104 +433,44 @@ async def run_market_scan(concurrency: int = 15, strategy_params: dict = None):
         names  = dict(zip(stocks["stock_id"], stocks["stock_name"]))
         tasks  = list(stocks[["stock_id", "type"]].itertuples(index=False, name=None))
 
-        print(f"[SCAN] 全市場掃描：共 {len(tasks)} 支（無量過濾）")
+        print(f"[SCAN] 全市場掃描：共 {len(tasks)} 支，{_SCAN_WORKERS} workers")
         _scan_status["total"] = len(tasks)
 
-        all_results  = {k: [] for k in STRATEGY_KEYS}
-        all_prices   = {}   # 收集所有價格資料，供 CHIP 使用
-        sem = asyncio.Semaphore(concurrency)
-        loop = asyncio.get_running_loop()
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=24)
+        all_results = {k: [] for k in STRATEGY_KEYS}
+        all_prices  = {}   # 收集所有價格資料，供 CHIP 使用
 
-        timeout_cfg = httpx.Timeout(connect=4.0, read=12.0, write=4.0, pool=4.0)
-
-        async with httpx.AsyncClient(
-            verify=False,
-            timeout=timeout_cfg,
-            follow_redirects=True,
-            limits=httpx.Limits(max_connections=50, max_keepalive_connections=40),
-        ) as client:
-            import functools
-
-            async def _fetch_scan_inner(sid, mkt):
-                """抓取 + 策略計算，成功回傳 {strategy: result}，失敗回傳 None"""
-                import datetime as _dt
-                df = pd.DataFrame()
-                # ── 優先讀本地 price_cache，避免 Yahoo 限流 ────────────────────
-                try:
-                    from price_cache import get_stock_ohlcv, save_stock_ohlcv as _save_ohlcv
-                    cached = get_stock_ohlcv(sid, days=520)
-                    if not cached.empty and len(cached) >= 100:
-                        today_m5 = (_dt.date.today() - _dt.timedelta(days=5)).strftime("%Y%m%d")
-                        if str(cached.iloc[-1]["date"]) >= today_m5:
-                            df = cached
-                except Exception:
-                    pass
-                # ── cache 不夠新或缺資料才去打 Yahoo ─────────────────────────
-                if df.empty:
-                    df = await _fetch_yahoo_async(client, sem, sid, mkt, range_="2y")
-                    if not df.empty and len(df) >= 5:
-                        try:
-                            from price_cache import save_stock_ohlcv as _save_ohlcv
-                            _save_ohlcv(sid, df)
-                        except Exception:
-                            pass
+        def _one(sid, mkt):
+            """單支股票：fetch → scan，在 worker thread 執行。"""
+            df = _fetch_for_scan(sid, mkt)
+            with _status_lock:
+                _scan_status["progress"] += 1
                 if df.empty or len(df) < 5:
-                    return None
-                all_prices[sid] = df
-                return await loop.run_in_executor(
-                    executor,
-                    functools.partial(scan_one_stock, df, sid, names.get(sid, ""),
-                                      strategy_params=_strategy_params)
-                )
-
-            async def _fetch_scan(sid, mkt):
-                out = await _fetch_scan_inner(sid, mkt)
-                _scan_status["progress"] += 1   # 只在首輪計數
-                if out is None:
                     _scan_status["yahoo_fail"] += 1
                     _scan_status["failed_stocks"].append(sid)
-                    return {}
+                    return None, None
                 _scan_status["yahoo_ok"] += 1
-                return out
+            result = scan_one_stock(df, sid, names.get(sid, ""),
+                                    strategy_params=_strategy_params)
+            return result, df
 
-            async def _fetch_scan_retry(sid, mkt):
-                """重試版本：不再累加 progress（避免進度條超過 100%）"""
-                out = await _fetch_scan_inner(sid, mkt)
-                if out is None:
-                    _scan_status["yahoo_fail"] += 1
-                    _scan_status["failed_stocks"].append(sid)
-                    return {}
-                _scan_status["yahoo_ok"] += 1
-                return out
+        def _run_blocking():
+            with ThreadPoolExecutor(max_workers=_SCAN_WORKERS) as ex:
+                futures = {ex.submit(_one, sid, mkt): sid for sid, mkt in tasks}
+                for fut in as_completed(futures):
+                    try:
+                        result, df = fut.result()
+                        if result is None or df is None:
+                            continue
+                        sid = futures[fut]
+                        all_prices[sid] = df
+                        for strat, r in result.items():
+                            if r is not None:
+                                all_results[strat].append(r)
+                    except Exception:
+                        pass
 
-            coros   = [_fetch_scan(sid, mkt) for sid, mkt in tasks]
-            results = await asyncio.gather(*coros, return_exceptions=True)
-
-            # ── 重試兩輪：第一輪等 5s，第二輪再等 8s ──────────────────────────
-            for retry_round, wait_secs in enumerate([(5, "第1輪重試"), (8, "第2輪重試")], 1):
-                wait_secs, label = wait_secs
-                failed_set = set(_scan_status["failed_stocks"])
-                retry_list = [(sid, mkt) for sid, mkt in tasks if sid in failed_set]
-                if not retry_list:
-                    break
-                print(f"[SCAN] {label}: {len(retry_list)} 支，等待 {wait_secs}s...")
-                await asyncio.sleep(wait_secs)
-                # 重試時清除這批失敗記錄
-                _scan_status["failed_stocks"] = [s for s in _scan_status["failed_stocks"]
-                                                  if s not in failed_set]
-                _scan_status["yahoo_fail"] = len(_scan_status["failed_stocks"])
-                retry_coros = [_fetch_scan_retry(sid, mkt) for sid, mkt in retry_list]
-                retry_results = await asyncio.gather(*retry_coros, return_exceptions=True)
-                results = list(results) + list(retry_results)
-
-        executor.shutdown(wait=False)
-
-        for out in results:
-            if isinstance(out, dict):
-                for strat, result in out.items():
-                    if result is not None:
-                        all_results[strat].append(result)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, _run_blocking)
 
         # CHIP：MA 預篩 → TDCC 爬蟲（只爬通過的股票）→ screen_chip
         from tdcc_chip import refresh_for_stocks, get_tdcc_data
