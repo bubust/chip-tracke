@@ -415,24 +415,22 @@ async def lifespan(app: FastAPI):
         _price_sched.start()
     except Exception as _pce:
         import logging; logging.getLogger(__name__).warning(f"[price_cache_scheduler] {_pce}")
-    # 啟動時若 price_daily 無資料，用 FinMind 補近 30 天（供 Yahoo fallback 使用）
+    # 啟動時初始化 price_daily 表，抓今日 TWSE 全市場收盤（輕量，~1MB，無 OOM 風險）
     try:
-        from price_cache import get_price_cache_status, init_price_db
+        from price_cache import init_price_db
         init_price_db()
-        _pc_status = get_price_cache_status()
-        if _pc_status["days_cached"] < 20:
-            def _price_backfill():
-                import asyncio as _aio
-                async def _inner():
-                    import logging as _lg
-                    _lg.getLogger(__name__).info("[price_cache] 初始化：用 FinMind 補近 30 天資料...")
-                    from price_cache import backfill_from_finmind
-                    result = await backfill_from_finmind(days=30, concurrency=5)
-                    _lg.getLogger(__name__).info(f"[price_cache] 初始化完成：{result}")
-                _aio.run(_inner())
-            threading.Thread(target=_price_backfill, daemon=True).start()
+        def _price_init_today():
+            import asyncio as _aio
+            async def _inner():
+                import logging as _lg
+                _lg.getLogger(__name__).info("[price_cache] 抓今日 TWSE 收盤資料...")
+                from price_cache import update_price_cache
+                result = await update_price_cache(local_mode=False)
+                _lg.getLogger(__name__).info(f"[price_cache] 完成：{result}")
+            _aio.run(_inner())
+        threading.Thread(target=_price_init_today, daemon=True).start()
     except Exception as _pcbe:
-        import logging; logging.getLogger(__name__).warning(f"[price_cache_backfill] {_pcbe}")
+        import logging; logging.getLogger(__name__).warning(f"[price_cache_init] {_pcbe}")
     yield
     stop_warrant_scheduler()
 
