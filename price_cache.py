@@ -200,10 +200,12 @@ async def restore_from_supabase() -> int:
 
 # ── FinMind 回填（歷史資料，Cloud Run 可用）──────────────────────────────
 
-async def backfill_from_finmind(days: int = 260, concurrency: int = 8) -> dict:
+async def backfill_from_finmind(days: int = 260, concurrency: int = 20) -> dict:
     """
     用 FinMind API 批量抓取所有上市股票歷史資料（Cloud Run 可用，不受 TWSE IP 限制）
     每次最多 concurrency 支同時請求，避免 FinMind 限流。
+    注意：不再用全局 cached_dates 跳過日期，改由 SQLite INSERT OR REPLACE 處理重複。
+    這樣 Supabase 還原只有 2 支股票時不會讓新股票的近期資料被誤跳。
     """
     import os
     from datetime import timedelta
@@ -212,7 +214,6 @@ async def backfill_from_finmind(days: int = 260, concurrency: int = 8) -> dict:
         return {"error": "未設定 FINMIND_TOKEN 環境變數"}
 
     init_price_db()
-    cached_dates = get_cached_dates()
 
     # 股票清單：永遠從 stocks.csv 取（上市 + 上櫃共 2119 支）
     # 不用 DB 的最新日（OpenAPI 只有上市 ~1700，上櫃 ~900 支會漏）
@@ -255,19 +256,19 @@ async def backfill_from_finmind(days: int = 260, concurrency: int = 8) -> dict:
         url = f"https://api.finmindtrade.com/api/v4/data?{params}"
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=20) as resp:
+            with urllib.request.urlopen(req, timeout=30) as resp:
                 data = _json.loads(resp.read())
             if data.get("status") != 200:
                 return []
             records = []
             for row in data.get("data", []):
                 dt_str = _fmt_date(row["date"])
-                if dt_str in cached_dates:
-                    continue
+                # 不做全局 cached_dates 跳過（避免 Supabase 只有 2 支時近期日期被誤跳）
+                # SQLite 用 INSERT OR REPLACE 處理重複
                 vol_lots = round(row.get("Trading_Volume", 0) / 1000)
                 records.append({
                     "date": dt_str, "stock_id": sid,
-                    "name": "",  # FinMind 不含股名，由 OpenAPI 資料補
+                    "name": "",
                     "open": row.get("open"), "high": row.get("max"),
                     "low": row.get("min"), "close": row.get("close"),
                     "volume": vol_lots,

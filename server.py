@@ -2530,7 +2530,9 @@ def api_price_cache_status():
     s = get_price_cache_status()
     s["warmup_phase"] = _warmup_status["phase"]
     s["warmup_days"]  = _warmup_status["days"]
-    s["ready"] = s["days_cached"] >= 60   # 只看實際資料天數，不信任 phase
+    # 日數夠 AND 最新日股票數 >= 1000，才算真的可掃描
+    # （避免 Supabase 只有 2 支時 days_cached=243 就被誤判 ready）
+    s["ready"] = s["days_cached"] >= 60 and s["stocks"] >= 1000
     return s
 
 @app.post("/api/screen/run")
