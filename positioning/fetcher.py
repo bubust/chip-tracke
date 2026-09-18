@@ -243,14 +243,23 @@ async def fetch_taifex_large_trader(target_date: date | None = None) -> dict:
                     },
                 )
                 for row in r.json().get("data", []):
-                    contract_id = row.get("data_id", "TX")
+                    # FinMind TaiwanFuturesLargeTrader 欄位：支援多個別名
+                    contract_id = row.get("data_id") or row.get("FuturesID") or row.get("futures_id") or "TX"
+                    def _fm_int(row, *keys):
+                        for k in keys:
+                            v = row.get(k)
+                            if v is not None:
+                                r2 = _int(str(v))
+                                if r2 is not None:
+                                    return r2
+                        return 0
                     result[contract_id] = {
-                        "top5_long":  _int(str(row.get("top_5_oi_buy", 0) or 0)),
-                        "top5_short": _int(str(row.get("top_5_oi_sell", 0) or 0)),
-                        "top10_long":  _int(str(row.get("top_10_oi_buy", 0) or 0)),
-                        "top10_short": _int(str(row.get("top_10_oi_sell", 0) or 0)),
-                        "market_long":  _int(str(row.get("market_oi_buy", 0) or 0)),
-                        "market_short": _int(str(row.get("market_oi_sell", 0) or 0)),
+                        "top5_long":   _fm_int(row, "top5_buy_open_interest",  "top_5_oi_buy",  "top5_long"),
+                        "top5_short":  _fm_int(row, "top5_sell_open_interest", "top_5_oi_sell", "top5_short"),
+                        "top10_long":  _fm_int(row, "top10_buy_open_interest",  "top_10_oi_buy",  "top10_long"),
+                        "top10_short": _fm_int(row, "top10_sell_open_interest", "top_10_oi_sell", "top10_short"),
+                        "market_long":  _fm_int(row, "market_buy_open_interest",  "market_oi_buy",  "market_long"),
+                        "market_short": _fm_int(row, "market_sell_open_interest", "market_oi_sell", "market_short"),
                     }
             log.info(f"[positioning] FinMind LargeTrader 備援: {len(result)} contracts")
         except Exception as e:
@@ -427,23 +436,50 @@ async def fetch_twse_institutional_spot(target_date: date | None = None) -> dict
             try:
                 r = await client.get(url)
                 j = r.json()
-                # openapi returns list; twse returns {"data": [...], "fields": [...]}
-                if isinstance(j, list):
-                    # Find the "合計" row or last row with totals
+                # openapi returns list (per-stock); twse returns {"data": [...], "fields": [...]}
+                if isinstance(j, list) and j:
+                    # OpenAPI: 先找「合計」row，找不到則對所有股票加總
+                    _total_row = None
                     for item in j:
-                        if item.get("SecuritiesType") == "合計" or \
-                           "合計" in item.get("Name", "") or \
-                           item.get("Name") == "合計":
-                            data = item
+                        stype = item.get("SecuritiesType", "")
+                        name = item.get("Name", "") or item.get("name", "")
+                        if stype == "合計" or name == "合計" or "合計" in name:
+                            _total_row = item
                             break
-                    if not data and j:
-                        data = j[-1]  # fallback to last row
+                    if _total_row:
+                        data = _total_row
+                    else:
+                        # 無合計行：加總所有 per-stock 數值
+                        _sum: dict = {}
+                        _fields_to_sum = [
+                            "foreignDealersExcluded", "foreignDealers",
+                            "sitc", "dealersTotal", "dealersSelf", "dealersHedge",
+                        ]
+                        for item in j:
+                            for fld in _fields_to_sum:
+                                if fld in item:
+                                    try:
+                                        _sum[fld] = _sum.get(fld, 0) + int(str(item[fld]).replace(",", ""))
+                                    except Exception:
+                                        pass
+                        if _sum:
+                            data = _sum
+                        else:
+                            data = j[-1]  # last resort
                 elif isinstance(j, dict) and "data" in j:
                     rows = j["data"]
                     fields = j.get("fields", [])
                     if rows:
+                        # 傳統 rwd 端點：最後一行通常是「合計」
                         last = rows[-1]
                         data = dict(zip(fields, last)) if fields else {"raw": last}
+                        # 若最後一行不是合計，往前找
+                        if data and "合計" not in str(list(data.values())[:3]):
+                            for row in reversed(rows):
+                                d2 = dict(zip(fields, row)) if fields else {}
+                                if any("合計" in str(v) for v in list(d2.values())[:3]):
+                                    data = d2
+                                    break
                 if data:
                     break
             except Exception as e:
@@ -464,13 +500,24 @@ async def fetch_twse_institutional_spot(target_date: date | None = None) -> dict
         return None
 
     if data:
+        log.debug(f"[T86] data keys: {list(data.keys())[:10]}")
         foreign = _parse_bn(_get(data,
-            "foreignDealersExcluded", "外陸資買賣超股數(不含外資自營商)",
-            "foreignNetBuySell", "外資買賣超"))
+            # OpenAPI 英文欄位（千元）
+            "foreignDealersExcluded",
+            # 傳統 rwd 中文欄位（千元）- 全形括號 vs 半形括號
+            "外陸資買賣超金額(不含外資自營商)", "外陸資買賣超金額（不含外資自營商）",
+            # OpenAPI 有時回傳股數欄位（千股）
+            "外陸資買賣超股數(不含外資自營商)", "外陸資買賣超股數（不含外資自營商）",
+            "foreignNetBuySell", "外資買賣超金額", "外資買賣超"))
         trust = _parse_bn(_get(data,
-            "sitc", "投信買賣超股數", "trustNetBuySell", "投信買賣超"))
+            "sitc",
+            "投信買賣超金額", "投信買賣超股數",
+            "trustNetBuySell", "投信買賣超"))
         dealer = _parse_bn(_get(data,
-            "dealersTotal", "自營商買賣超股數(合計)", "dealerNetBuySell", "自營商買賣超"))
+            "dealersTotal",
+            "自營商買賣超金額(合計)", "自營商買賣超金額（合計）",
+            "自營商買賣超股數(合計)", "自營商買賣超股數（合計）",
+            "dealerNetBuySell", "自營商買賣超金額", "自營商買賣超"))
         if any(v is not None for v in [foreign, trust, dealer]):
             return {
                 "foreign_cash_net": foreign,

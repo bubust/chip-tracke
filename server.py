@@ -896,7 +896,7 @@ async def api_watchlist_summary():
             "memo":       (r["memo"] or "").strip() if "memo" in r.keys() else "",
             "close":      price_info.get("close"),
             "change_pct": price_info.get("change_pct"),
-            "bb_score":   price_info.get("bb_score", 0.0),
+            "bb_score":   price_info.get("bb_score"),  # None → 前端顯示 "—"（MIS/FinMind fallback 無OHLCV無法計算BB）
             "stage":      price_info.get("stage", {"code": "unknown", "label": "—", "color": "muted", "desc": "無法取得價格資料"}),
         }
         if records:
@@ -944,7 +944,76 @@ async def api_watchlist_summary():
             item["kpct_prev"]   = None
             item["kpct_change"] = None
             item["kpct_date"]   = None
+    # ── 注入策略掃描訊號：優先補充 has_data=False 及 signal_title="—" 的股票 ──
+    try:
+        from yahoo_price import get_scan_results
+        _scan_res = get_scan_results()
+        _SIG_PRIORITY = {
+            "S10":          (10, "🚀", "漲停",    3),
+            "CHIP":         (9,  "💎", "主力籌碼", 3),
+            "S1":           (8,  "📈", "雙MACD多", 2),
+            "S2":           (7,  "📈", "W底確認",  2),
+            "S5":           (6,  "📈", "站上均線", 2),
+            "S1_SHORT":     (5,  "📉", "雙MACD空", 2),
+            "S17A":         (4,  "🔍", "底部翻試", 1),
+            "S17B":         (3,  "🔍", "撈底加碼", 1),
+            "S_VOLX":       (2,  "💥", "量爆拉升", 1),
+            "S_VOLX_SHORT": (2,  "💥", "量爆下殺", 1),
+            "S_PB":         (1,  "📊", "均線拉回", 1),
+            "S_FBD":        (3,  "🔻", "假跌破",  1),
+            "S_RES":        (2,  "📐", "壓力區",  1),
+            "S_KD":         (2,  "📊", "KD交叉",  1),
+        }
+        _best_scan: dict = {}
+        for _sk, _sresults in _scan_res.items():
+            if _sk not in _SIG_PRIORITY:
+                continue
+            _entry = _SIG_PRIORITY[_sk]
+            for _sr in (_sresults or []):
+                _sid = _sr.get("stock_id", "")
+                if not _sid:
+                    continue
+                if _sid not in _best_scan or _entry[0] > _best_scan[_sid][0]:
+                    _best_scan[_sid] = _entry
+        for _item in result:
+            _scan_sig = _best_scan.get(_item["stock_id"])
+            if _scan_sig:
+                # 對 has_data=False 股票直接設定策略訊號
+                # 對 has_data=True 但 signal_title="—" 的股票也補充策略訊號
+                _existing_title = _item.get("signal_title", "—")
+                if not _item.get("has_data") or _existing_title == "—":
+                    _item["signal_emoji"] = _scan_sig[1]
+                    _item["signal_title"] = _scan_sig[2]
+                    _item["signal_level"] = _scan_sig[3]
+    except Exception:
+        pass
+
     last_refresh = settings_get("last_refresh")
+
+    # ── 問題三：若有無籌碼資料的股票，且距上次更新超過 6 小時，自動背景更新 ──
+    no_data_ids = [item["stock_id"] for item in result if not item.get("has_data")]
+    if no_data_ids:
+        _should_auto = False
+        try:
+            _last_auto = settings_get("last_auto_chip_trigger")
+            if _last_auto is None:
+                _should_auto = True
+            else:
+                _last_auto_dt = datetime.fromisoformat(_last_auto)
+                _should_auto = (datetime.now() - _last_auto_dt).total_seconds() > 6 * 3600
+        except Exception:
+            _should_auto = True
+        if _should_auto:
+            import asyncio as _auto_asyncio
+            import threading as _auto_threading
+            settings_set("last_auto_chip_trigger", datetime.now().isoformat())
+            def _auto_bg_refresh():
+                try:
+                    _auto_asyncio.run(update_stocks(no_data_ids, days=30))
+                except Exception as _ae:
+                    import logging; logging.getLogger(__name__).warning(f"[auto_chip_trigger] {_ae}")
+            _auto_threading.Thread(target=_auto_bg_refresh, daemon=True).start()
+
     return {"items": result, "last_refresh": last_refresh}
 
 
@@ -1065,7 +1134,7 @@ async def api_refresh_all():
         try:
             _set_step("tdcc", "running")
             from tdcc_chip import refresh_for_stocks
-            refresh_for_stocks()
+            _asyncio.run(refresh_for_stocks())   # async 函數必須用 asyncio.run()
             _set_step("tdcc", "done")
         except Exception as e:
             lg.error(f"[refresh_all] tdcc: {e}")
