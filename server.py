@@ -458,14 +458,25 @@ async def lifespan(app: FastAPI):
                     return
                 _lg.getLogger(__name__).info(
                     f"[price_cache] 冷啟動（{n} 天 / {stock_cnt} 支），開始補全流程...")
-                # ── step0：先抓今日 TWSE 全市場，確保股票清單完整 ──────────
+                # ── step0：強制抓 TWSE 全市場，確保股票清單完整 ─────────
+                # 注意：不能用 update_price_cache，它遇到 dt_str 已快取就提前返回，
+                # 導致只有 37 支舊資料的日期被跳過，FinMind 只回填那 37 支。
+                # 這裡直接呼叫 openapi 並強制 save，覆蓋不完整的資料。
                 _warmup_status["phase"] = "supabase"
                 _warmup_status["days"]  = n
                 try:
-                    await update_price_cache(local_mode=False)
-                    _lg.getLogger(__name__).info("[price_cache] 今日 TWSE openapi 更新完成")
+                    import httpx as _httpx
+                    from price_cache import fetch_price_latest_openapi, save_price_day
+                    async with _httpx.AsyncClient() as _hc:
+                        _dt_str, _records = await fetch_price_latest_openapi(_hc)
+                    if _records:
+                        save_price_day(_dt_str, _records)
+                        _lg.getLogger(__name__).info(
+                            f"[price_cache] OpenAPI 強制更新 {_dt_str}：{len(_records)} 支")
+                    else:
+                        _lg.getLogger(__name__).warning("[price_cache] OpenAPI 回傳空資料")
                 except Exception as _ue:
-                    _lg.getLogger(__name__).warning(f"[price_cache] openapi 更新失敗：{_ue}")
+                    _lg.getLogger(__name__).warning(f"[price_cache] OpenAPI 強制更新失敗：{_ue}")
                 # ── step1：Supabase 恢復（若歷史天數不足）────────────────
                 if len(get_cached_dates()) < 60:
                     try:
