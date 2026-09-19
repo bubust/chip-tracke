@@ -424,6 +424,7 @@
     </div>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
       <button class="btn green" id="btn-screen" onclick="runScreen()">🔍 掃描全市場（所有策略）</button>
+      <button class="btn ghost" id="btn-trigger-gh" onclick="triggerGithubScan()" title="透過 GitHub Actions 掃描（fresh IP，不受 Yahoo 限流）">⚡ GitHub Actions 掃描</button>
       <span id="screen-progress-text" style="color:var(--muted);font-size:.82rem"></span>
     </div>
     <div id="screen-progress-bar-wrap" style="display:none;margin-bottom:10px">
@@ -2662,6 +2663,54 @@ async function runScreen() {
     btn.textContent = '🔍 掃描全市場（所有策略）';
     document.getElementById('screen-progress-bar-wrap').style.display = 'none';
     toast('啟動失敗：' + e.message, true);
+  }
+}
+
+let _ghPollTimer = null;
+
+async function triggerGithubScan() {
+  const btn = document.getElementById('btn-trigger-gh');
+  btn.disabled = true;
+  btn.textContent = '⏳ 觸發中...';
+  try {
+    const res = await api('POST', '/api/trigger-scan');
+    if (res.ok) {
+      toast('⚡ ' + res.message);
+      btn.textContent = '⚡ 掃描中（約 5~10 分鐘）';
+      document.getElementById('screen-progress-text').textContent = 'GitHub Actions 掃描中，完成後自動載入結果...';
+      // 每 30 秒輪詢一次，偵測 Supabase 結果更新
+      if (_ghPollTimer) clearInterval(_ghPollTimer);
+      _ghPollTimer = setInterval(async () => {
+        try {
+          const s = await api('GET', '/api/screen/status');
+          if (!s.running && s.finished_at) {
+            const r = await api('GET', '/api/screen/results');
+            _screenAllResults = r.results || {};
+            const newTotal = Object.values(_screenAllResults).reduce((s,a)=>s+a.length,0);
+            if (newTotal > 0) {
+              lsSaveScreen(_screenAllResults);
+              renderStratBar();
+              const first = Object.keys(STRATEGY_LABELS).find(k => (_screenAllResults[k] || []).length > 0);
+              if (first) viewStrategy(first);
+              toast(`✅ GitHub Actions 掃描完成，共找到 ${newTotal} 支`);
+              clearInterval(_ghPollTimer);
+              _ghPollTimer = null;
+              btn.disabled = false;
+              btn.textContent = '⚡ GitHub Actions 掃描';
+              document.getElementById('screen-progress-text').textContent = '';
+            }
+          }
+        } catch(e) { /* ignore */ }
+      }, 30000);
+    } else {
+      toast('觸發失敗：' + res.message, true);
+      btn.disabled = false;
+      btn.textContent = '⚡ GitHub Actions 掃描';
+    }
+  } catch (e) {
+    toast('觸發失敗：' + e.message, true);
+    btn.disabled = false;
+    btn.textContent = '⚡ GitHub Actions 掃描';
   }
 }
 

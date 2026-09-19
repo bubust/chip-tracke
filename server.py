@@ -219,6 +219,20 @@ async def lifespan(app: FastAPI):
     init_positioning_db()
     init_relationship_db()
     start_warrant_scheduler()
+    # 從 Supabase 載入最新掃描結果（若本地 JSON 為空）
+    try:
+        from yahoo_price import _scan_status, _load_scan_cache
+        if not _scan_status.get("results"):
+            import supabase_store as _sb2
+            import json as _json2
+            _sb_raw = _sb2.kv_get("scan_latest")
+            if _sb_raw:
+                _sb_data = _json2.loads(_sb_raw)
+                _scan_status["results"] = _sb_data.get("results", {})
+                _scan_status["finished_at"] = _sb_data.get("scanned_at")
+                print(f"[startup] 從 Supabase 載入掃描結果，scanned_at={_sb_data.get('scanned_at')}")
+    except Exception as _e:
+        print(f"[startup] 載入 Supabase 掃描結果失敗：{_e}")
     # 若 regime.db 無資料，背景啟動初始更新
     import threading
     from regime.db import db as _rdb
@@ -2595,6 +2609,28 @@ def api_screen_results():
 def _scan_status_ts():
     from yahoo_price import get_scan_status
     return get_scan_status()["finished_at"]
+
+@app.post("/api/trigger-scan")
+async def api_trigger_scan():
+    """觸發 GitHub Actions 掃描 workflow"""
+    import os, httpx
+    token = os.getenv("GITHUB_PAT", "")
+    if not token:
+        raise HTTPException(status_code=500, detail="GITHUB_PAT 未設定")
+    repo = os.getenv("GITHUB_REPO", "bubust/chip-tracke")
+    workflow = "scan.yml"
+    url = f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches"
+    try:
+        r = httpx.post(url, headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }, json={"ref": "main"}, timeout=15)
+        if r.status_code == 204:
+            return {"ok": True, "message": "GitHub Actions 掃描已觸發，約 5~10 分鐘後完成"}
+        return {"ok": False, "message": f"GitHub API 回應 {r.status_code}: {r.text[:200]}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 

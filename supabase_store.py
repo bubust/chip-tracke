@@ -170,3 +170,22 @@ def pd_restore_page(limit: int = 1000, offset: int = 0) -> list:
     if not _enabled():
         return []
     return _get(f"price_daily?order=date,stock_id&limit={limit}&offset={offset}") or []
+
+
+# ── KV Store（用於掃描結果等通用儲存）───────────────────────────────────────
+
+def kv_set(key: str, value: str) -> bool:
+    """儲存 key-value（用 scan_cache 表）"""
+    if not _enabled():
+        return False
+    return _post("scan_cache", {"key": key, "value": value},
+                 prefer="resolution=merge-duplicates,return=minimal")
+
+def kv_get(key: str) -> str | None:
+    """讀取 key-value"""
+    if not _enabled():
+        return None
+    rows = _get(f"scan_cache?key=eq.{key}&select=value&limit=1")
+    if rows and isinstance(rows, list) and rows[0]:
+        return rows[0].get("value")
+    return None

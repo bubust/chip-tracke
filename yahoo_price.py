@@ -527,6 +527,22 @@ async def run_market_scan(strategy_params: dict = None):
         _scan_status["results"] = all_results
         _save_scan_cache(all_results)  # 持久化，重啟後訊號不消失
 
+        # 同步到 Supabase（讓 GitHub Actions → Supabase → Render 的架構也能用）
+        try:
+            import supabase_store as _sb_scan
+            import json as _json_scan
+            import datetime as _dt_scan
+            if _sb_scan._enabled():
+                _payload = _json_scan.dumps({
+                    "results": all_results,
+                    "scanned_at": _dt_scan.datetime.now().isoformat(),
+                    "yahoo_ok": _scan_status["yahoo_ok"],
+                    "yahoo_fail": _scan_status["yahoo_fail"],
+                }, ensure_ascii=False)
+                _sb_scan.kv_set("scan_latest", _payload)
+        except Exception:
+            pass
+
     except Exception as e:
         _scan_status["error"] = str(e)
     finally:
