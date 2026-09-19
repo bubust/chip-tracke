@@ -2679,7 +2679,10 @@ async function pollScreenStatus() {
       const okInfo = (s.yahoo_ok !== undefined)
         ? `  成功 ${s.yahoo_ok} 失敗 ${s.yahoo_fail}` : '';
       let progressText;
-      if (s.phase === 'tdcc') {
+      if (s.phase === 'backfilling') {
+        progressText = `歷史資料不足，正在自動補充（FinMind 回填中，約 5~8 分鐘）⏱ ${_elapsedStr}`;
+        btn.textContent = `⏳ 補充歷史資料中...`;
+      } else if (s.phase === 'tdcc') {
         progressText = `Yahoo 完成 ${s.yahoo_ok}支  →  爬 TDCC 中（${s.tdcc_total} 支，請稍候...）  ⏱ ${_elapsedStr}`;
         btn.textContent = `⏳ TDCC 爬蟲中`;
       } else {

@@ -432,6 +432,20 @@ async def run_market_scan(strategy_params: dict = None):
     _scan_status["finished_at"]   = None
 
     try:
+        # ── 自動偵測 cache 冷熱，不夠就先 FinMind 回填 ────────────────────
+        try:
+            from price_cache import get_price_cache_status, backfill_from_finmind
+            _cs = get_price_cache_status()
+            _days = _cs.get("days_cached", 0)
+            if _days < 60:
+                print(f"[SCAN] cache 只有 {_days} 天，自動啟動 FinMind 回填...")
+                _scan_status["phase"] = "backfilling"
+                await backfill_from_finmind(days=260)
+                print("[SCAN] FinMind 回填完成，繼續掃描")
+        except Exception as _be:
+            print(f"[SCAN] 自動回填失敗（繼續掃描）：{_be}")
+        _scan_status["phase"] = "yahoo"
+
         stocks = get_stock_list()
         names  = dict(zip(stocks["stock_id"], stocks["stock_name"]))
         tasks  = list(stocks[["stock_id", "type"]].itertuples(index=False, name=None))
