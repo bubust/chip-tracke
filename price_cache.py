@@ -319,7 +319,6 @@ async def backfill_from_finmind(days: int = 260, concurrency: int = 20) -> dict:
     sem = asyncio.Semaphore(concurrency)
     loop = asyncio.get_event_loop()
     total_stocks = len(stock_ids)
-    all_new_records: list = []  # 收集本次新增的所有記錄，一起同步 Supabase
 
     # 建立 stock_id → name 對照表（從 price_daily 現有資料）
     conn = sqlite3.connect(str(DB_PATH))
@@ -350,23 +349,19 @@ async def backfill_from_finmind(days: int = 260, concurrency: int = 20) -> dict:
             )
             conn2.commit()
             conn2.close()
-            all_new_records.extend(records)
+            # 每支股票立即同步 Supabase，避免累積 55 萬筆導致 OOM
+            try:
+                import supabase_store as _sb
+                if _sb._enabled():
+                    _sb.pd_upsert(records)
+            except Exception:
+                pass
             return len(records)
 
     tasks = [fetch_one(sid) for sid in stock_ids]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     new_rows = sum(r for r in results if isinstance(r, int))
     print(f"[PRICE] FinMind 回填完成：{new_rows} 筆新資料，共 {total_stocks} 支股票")
-
-    # 只上傳本次新增的資料到 Supabase（不重傳舊資料）
-    try:
-        import supabase_store as sb
-        if sb._enabled() and all_new_records:
-            print(f"[PRICE] 同步 {len(all_new_records)} 筆新資料到 Supabase...")
-            sb.pd_upsert(all_new_records)
-            print(f"[PRICE] Supabase 同步完成")
-    except Exception as e:
-        print(f"[PRICE] Supabase 同步失敗: {e}")
 
     return {
         "new_rows": new_rows,
@@ -522,13 +517,8 @@ def save_stock_ohlcv(stock_id: str, df: pd.DataFrame):
             )
             conn.commit()
             conn.close()
-            # 同步到 Supabase（跨重啟持久化）
-            try:
-                import supabase_store as sb
-                if sb._enabled():
-                    sb.pd_upsert(records)
-            except Exception:
-                pass
+            # 注意：掃描時不在此同步 Supabase（12 thread 同時打會 OOM）
+            # Supabase 備份由 backfill_from_finmind 負責
     except Exception as e:
         print(f"[PRICE] save_stock_ohlcv {stock_id}: {e}")
 
