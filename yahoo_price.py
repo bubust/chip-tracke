@@ -302,8 +302,9 @@ def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
         from price_cache import get_stock_ohlcv, save_stock_ohlcv as _save
         cached = get_stock_ohlcv(sid, days=520)
         if not cached.empty and len(cached) >= 100:
-            today_m5 = (_dt.date.today() - _dt.timedelta(days=5)).strftime("%Y%m%d")
-            if str(cached.iloc[-1]["date"]) >= today_m5:
+            # 14 天容忍：FinMind/backfill 資料可能落後 1-2 天，不需強制最新
+            today_m14 = (_dt.date.today() - _dt.timedelta(days=14)).strftime("%Y%m%d")
+            if str(cached.iloc[-1]["date"]) >= today_m14:
                 return cached
     except Exception:
         pass
@@ -432,20 +433,6 @@ async def run_market_scan(strategy_params: dict = None):
     _scan_status["finished_at"]   = None
 
     try:
-        # ── 自動偵測 cache 冷熱，不夠就先 FinMind 回填 ────────────────────
-        # 用「有 100+ 天歷史的股票數」判斷，而非「distinct date 數」
-        # 因為 TPEX 股票重啟後只有 1 天，但 distinct date 仍顯示 243 而誤判 cache 夠熱
-        try:
-            from price_cache import get_stocks_with_history, backfill_from_finmind
-            _warm_stocks = get_stocks_with_history(min_days=100)
-            print(f"[SCAN] cache 熱股票數：{_warm_stocks}")
-            if _warm_stocks < 1500:
-                print(f"[SCAN] 只有 {_warm_stocks} 支有足夠歷史，自動啟動 FinMind 回填...")
-                _scan_status["phase"] = "backfilling"
-                await backfill_from_finmind(days=260)
-                print("[SCAN] FinMind 回填完成，繼續掃描")
-        except Exception as _be:
-            print(f"[SCAN] 自動回填失敗（繼續掃描）：{_be}")
         _scan_status["phase"] = "yahoo"
 
         stocks = get_stock_list()

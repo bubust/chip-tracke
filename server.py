@@ -445,19 +445,21 @@ async def lifespan(app: FastAPI):
             _t.sleep(15)   # 等 update_price_cache 先跑完
             async def _inner():
                 from price_cache import (get_cached_dates, get_price_cache_status,
-                                         update_price_cache)
+                                         get_stocks_with_history, update_price_cache)
                 n = len(get_cached_dates())
                 st = get_price_cache_status()
                 stock_cnt = st.get("stocks", 0)
-                # 日數夠 AND 最新交易日股票數 >= 1000，才算真的就緒
-                if n >= 60 and stock_cnt >= 1000:
+                # 用「有 100 天歷史的股票數」判斷，避免 TPEX 只有 1 天被誤判為就緒
+                warm_stocks = get_stocks_with_history(min_days=100)
+                # 熱股票數夠（涵蓋上市+上櫃 2119 支中的多數）才算真的就緒
+                if warm_stocks >= 1500:
                     _lg.getLogger(__name__).info(
-                        f"[price_cache] 快取已有 {n} 天 / {stock_cnt} 支，跳過回填")
+                        f"[price_cache] 快取已有 {n} 天 / {warm_stocks} 支（100天+），跳過回填")
                     _warmup_status["phase"] = "ready"
                     _warmup_status["days"]  = n
                     return
                 _lg.getLogger(__name__).info(
-                    f"[price_cache] 冷啟動（{n} 天 / {stock_cnt} 支），開始補全流程...")
+                    f"[price_cache] 冷啟動（{n} 天 / {warm_stocks} 支有歷史），開始補全流程...")
                 # ── step0：強制抓 TWSE（上市）+TPEX（上櫃）全市場，確保股票清單完整 ──
                 # 注意：不能用 update_price_cache，它遇到 dt_str 已快取就提前返回，
                 # 導致只有 37 支舊資料的日期被跳過，FinMind 只回填那 37 支。
