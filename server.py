@@ -2633,6 +2633,18 @@ async def api_trigger_scan():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/scan-progress")
+async def api_scan_progress():
+    """讀取 GitHub Actions 掃描進度（從 GitHub repo scan_data/scan_progress.json）"""
+    import supabase_store as sb
+    raw = sb.kv_get("scan_progress")
+    if not raw:
+        return {"running": False, "progress": 0, "total": 0, "found": 0}
+    try:
+        import json
+        return json.loads(raw)
+    except Exception:
+        return {"running": False, "progress": 0, "total": 0, "found": 0}
 
 
 # ════════════════════════════════════════════════════════════════════════════
