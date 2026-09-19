@@ -433,12 +433,14 @@ async def run_market_scan(strategy_params: dict = None):
 
     try:
         # ── 自動偵測 cache 冷熱，不夠就先 FinMind 回填 ────────────────────
+        # 用「有 100+ 天歷史的股票數」判斷，而非「distinct date 數」
+        # 因為 TPEX 股票重啟後只有 1 天，但 distinct date 仍顯示 243 而誤判 cache 夠熱
         try:
-            from price_cache import get_price_cache_status, backfill_from_finmind
-            _cs = get_price_cache_status()
-            _days = _cs.get("days_cached", 0)
-            if _days < 60:
-                print(f"[SCAN] cache 只有 {_days} 天，自動啟動 FinMind 回填...")
+            from price_cache import get_stocks_with_history, backfill_from_finmind
+            _warm_stocks = get_stocks_with_history(min_days=100)
+            print(f"[SCAN] cache 熱股票數：{_warm_stocks}")
+            if _warm_stocks < 1500:
+                print(f"[SCAN] 只有 {_warm_stocks} 支有足夠歷史，自動啟動 FinMind 回填...")
                 _scan_status["phase"] = "backfilling"
                 await backfill_from_finmind(days=260)
                 print("[SCAN] FinMind 回填完成，繼續掃描")

@@ -522,8 +522,26 @@ def save_stock_ohlcv(stock_id: str, df: pd.DataFrame):
             )
             conn.commit()
             conn.close()
+            # 同步到 Supabase（跨重啟持久化）
+            try:
+                import supabase_store as sb
+                if sb._enabled():
+                    sb.pd_upsert(records)
+            except Exception:
+                pass
     except Exception as e:
         print(f"[PRICE] save_stock_ohlcv {stock_id}: {e}")
+
+def get_stocks_with_history(min_days: int = 100) -> int:
+    """回傳 price_daily 中有 >= min_days 筆資料的股票數（判斷 cache 是否夠熱）"""
+    init_price_db()
+    conn = sqlite3.connect(str(DB_PATH))
+    result = conn.execute(
+        "SELECT COUNT(*) FROM (SELECT stock_id FROM price_daily GROUP BY stock_id HAVING COUNT(*) >= ?)",
+        (min_days,)
+    ).fetchone()[0]
+    conn.close()
+    return result
 
 def get_price_cache_status() -> dict:
     init_price_db()
