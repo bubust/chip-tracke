@@ -411,17 +411,8 @@
 
   <div class="card">
     <!-- Cache 預熱狀態列 -->
-    <div id="cache-warmup-bar" style="display:none;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:12px;font-size:.82rem;background:rgba(210,153,34,.08);border:1px solid rgba(210,153,34,.3)">
-      <span id="cache-warmup-icon" style="font-size:1rem">⏳</span>
-      <span id="cache-warmup-msg" style="color:var(--yellow)">快取準備中...</span>
-      <div style="flex:1;background:var(--border);border-radius:4px;height:5px;overflow:hidden;max-width:200px">
-        <div id="cache-warmup-prog" style="height:100%;background:var(--yellow);transition:width .5s;width:0%"></div>
-      </div>
-      <span id="cache-warmup-days" style="color:var(--muted)"></span>
-    </div>
-    <div id="cache-ready-bar" style="display:none;align-items:center;gap:8px;padding:6px 12px;border-radius:8px;margin-bottom:12px;font-size:.82rem;background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.3)">
-      <span id="cache-ready-msg" style="color:var(--green)">快取就緒，可以掃描</span>
-    </div>
+    <div id="cache-warmup-bar" style="display:none !important"></div>
+    <div id="cache-ready-bar" style="display:none !important"></div>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
       <button class="btn green" id="btn-trigger-gh" onclick="triggerGithubScan()" title="透過 GitHub Actions 掃描（fresh IP，不受 Yahoo 限流）">⚡ GitHub Actions 掃描</button>
       <span id="screen-progress-text" style="color:var(--muted);font-size:.82rem"></span>
