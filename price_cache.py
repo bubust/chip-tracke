@@ -96,6 +96,45 @@ async def fetch_price_latest_openapi(client: httpx.AsyncClient) -> tuple[str, li
         print(f"[PRICE] openapi fetch failed: {type(e).__name__}: {str(e)[:80]}")
         return "", []
 
+async def fetch_price_latest_tpex(client: httpx.AsyncClient) -> tuple[str, list]:
+    """從 tpex.org.tw 取得最新一天全市場上櫃收盤資料"""
+    url = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"
+    try:
+        r = await client.get(url, timeout=30)
+        if r.status_code != 200 or not r.text.strip():
+            return "", []
+        data = r.json()
+        if not isinstance(data, list) or not data:
+            return "", []
+        dt_roc = data[0].get("Date", "")
+        dt_str = _roc_to_twse(dt_roc)
+        if not dt_str or len(dt_str) != 8:
+            return "", []
+        parsed = []
+        for row in data:
+            sid = str(row.get("SecuritiesCompanyCode", "")).strip()
+            if not sid or not sid[:4].isdigit():
+                continue
+            name = str(row.get("CompanyName", "")).strip()
+            close_p = _to_float(row.get("Close"))
+            if close_p is None or close_p <= 0:
+                continue
+            open_p  = _to_float(row.get("Open"))
+            high_p  = _to_float(row.get("High"))
+            low_p   = _to_float(row.get("Low"))
+            vol_raw = _to_float(row.get("TradingShares"))
+            volume_lots = round(vol_raw / 1000) if vol_raw else 0
+            parsed.append({
+                "date": dt_str, "stock_id": sid, "name": name,
+                "open": open_p, "high": high_p, "low": low_p,
+                "close": close_p, "volume": volume_lots,
+            })
+        print(f"[PRICE] tpex openapi 取得 {dt_str}：{len(parsed)} 支")
+        return dt_str, parsed
+    except Exception as e:
+        print(f"[PRICE] tpex fetch failed: {type(e).__name__}: {str(e)[:80]}")
+        return "", []
+
 # ── rwd fetch（本機回填用，Cloud Run 可能被擋）──────────────────────────
 
 async def fetch_price_day_rwd(client: httpx.AsyncClient, dt: date) -> tuple[str, list]:
@@ -347,18 +386,28 @@ async def update_price_cache(days: int = 260, local_mode: bool = False) -> dict:
     cached = get_cached_dates()
 
     if not local_mode:
-        # Cloud Run 模式：只抓最新一天
+        # Cloud Run 模式：同時抓 TWSE（上市）+ TPEX（上櫃）最新一天
         async with httpx.AsyncClient() as client:
-            dt_str, records = await fetch_price_latest_openapi(client)
-        if not dt_str:
+            twse_task = fetch_price_latest_openapi(client)
+            tpex_task = fetch_price_latest_tpex(client)
+            (dt_str, records), (tpex_dt, tpex_records) = await asyncio.gather(twse_task, tpex_task)
+        # 合併上市 + 上櫃（以 TWSE 日期為主，TPEX 同日才合併）
+        if not dt_str and not tpex_dt:
             return {"updated": 0, "cached_days": len(cached), "error": "openapi 無資料"}
-        if dt_str in cached:
-            return {"updated": 0, "cached_days": len(cached), "message": f"{dt_str} 已有資料"}
+        # 取有效日期
+        final_dt = dt_str or tpex_dt
+        if tpex_records and tpex_dt == final_dt:
+            # 合併，去除重複 stock_id（TWSE 優先）
+            existing_ids = {r["stock_id"] for r in records}
+            records = records + [r for r in tpex_records if r["stock_id"] not in existing_ids]
+            print(f"[PRICE] 合併 TWSE+TPEX：{final_dt} 共 {len(records)} 支")
+        if final_dt in cached:
+            return {"updated": 0, "cached_days": len(cached), "message": f"{final_dt} 已有資料"}
         if records:
-            save_price_day(dt_str, records)
-            cached.add(dt_str)
-            print(f"[PRICE] 儲存 {dt_str}: {len(records)} 支")
-            return {"updated": 1, "cached_days": len(cached), "latest": dt_str}
+            save_price_day(final_dt, records)
+            cached.add(final_dt)
+            print(f"[PRICE] 儲存 {final_dt}: {len(records)} 支")
+            return {"updated": 1, "cached_days": len(cached), "latest": final_dt}
         return {"updated": 0, "cached_days": len(cached), "error": "openapi 回傳空資料"}
     else:
         # 本機模式：補全所有缺少的歷史日期

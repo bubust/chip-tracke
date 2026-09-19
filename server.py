@@ -458,21 +458,29 @@ async def lifespan(app: FastAPI):
                     return
                 _lg.getLogger(__name__).info(
                     f"[price_cache] 冷啟動（{n} 天 / {stock_cnt} 支），開始補全流程...")
-                # ── step0：強制抓 TWSE 全市場，確保股票清單完整 ─────────
+                # ── step0：強制抓 TWSE（上市）+TPEX（上櫃）全市場，確保股票清單完整 ──
                 # 注意：不能用 update_price_cache，它遇到 dt_str 已快取就提前返回，
                 # 導致只有 37 支舊資料的日期被跳過，FinMind 只回填那 37 支。
                 # 這裡直接呼叫 openapi 並強制 save，覆蓋不完整的資料。
                 _warmup_status["phase"] = "supabase"
                 _warmup_status["days"]  = n
                 try:
-                    import httpx as _httpx
-                    from price_cache import fetch_price_latest_openapi, save_price_day
+                    import httpx as _httpx, asyncio as _aio2
+                    from price_cache import fetch_price_latest_openapi, fetch_price_latest_tpex, save_price_day
                     async with _httpx.AsyncClient() as _hc:
-                        _dt_str, _records = await fetch_price_latest_openapi(_hc)
+                        (_dt_str, _records), (_tpex_dt, _tpex_rec) = await _aio2.gather(
+                            fetch_price_latest_openapi(_hc),
+                            fetch_price_latest_tpex(_hc),
+                        )
+                    # 合併上市 + 上櫃
+                    _final_dt = _dt_str or _tpex_dt
+                    if _tpex_rec and _tpex_dt == _final_dt:
+                        _existing = {r["stock_id"] for r in _records}
+                        _records = _records + [r for r in _tpex_rec if r["stock_id"] not in _existing]
                     if _records:
-                        save_price_day(_dt_str, _records)
+                        save_price_day(_final_dt, _records)
                         _lg.getLogger(__name__).info(
-                            f"[price_cache] OpenAPI 強制更新 {_dt_str}：{len(_records)} 支")
+                            f"[price_cache] OpenAPI 強制更新 {_final_dt}：{len(_records)} 支（含上櫃）")
                     else:
                         _lg.getLogger(__name__).warning("[price_cache] OpenAPI 回傳空資料")
                 except Exception as _ue:
