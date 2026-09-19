@@ -401,8 +401,8 @@ async def update_price_cache(days: int = 260, local_mode: bool = False) -> dict:
             existing_ids = {r["stock_id"] for r in records}
             records = records + [r for r in tpex_records if r["stock_id"] not in existing_ids]
             print(f"[PRICE] 合併 TWSE+TPEX：{final_dt} 共 {len(records)} 支")
-        if final_dt in cached:
-            return {"updated": 0, "cached_days": len(cached), "message": f"{final_dt} 已有資料"}
+        # 注意：不在這裡做 cached 日期跳過，因為 TPEX 可能是第一次加入當天已有的 TWSE 日期
+        # save_price_day 用 INSERT OR REPLACE，重複執行安全
         if records:
             save_price_day(final_dt, records)
             cached.add(final_dt)
