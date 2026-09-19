@@ -221,15 +221,15 @@ def kv_set(key: str, value: str) -> bool:
         return False
 
 def kv_get(key: str) -> str | None:
-    """讀取 key-value（從 GitHub raw 檔案）"""
+    """讀取 key-value（走 GitHub Contents API，不受 CDN 快取影響）"""
+    import base64 as _b64_get
     filepath = _KV_FILE_MAP.get(key, f"scan_data/{key}.json")
-    repo = _GITHUB_REPO
-    raw_url = f"https://raw.githubusercontent.com/{repo}/main/{filepath}"
+    api_url = f"https://api.github.com/repos/{_GITHUB_REPO}/contents/{filepath}"
     try:
-        req = _urllib_req.Request(raw_url, headers={"User-Agent": "chip-tracker",
-                                                     "Cache-Control": "no-cache"})
+        req = _urllib_req.Request(api_url, headers={**_gh_headers(), "Cache-Control": "no-cache"})
         with _urllib_req.urlopen(req, timeout=10) as r:
-            return r.read().decode()
+            data = _json_kv.loads(r.read())
+            return _b64_get.b64decode(data["content"]).decode()
     except Exception as e:
         print(f"[KV] get {key} failed: {e}")
         return None
