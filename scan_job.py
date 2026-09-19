@@ -37,19 +37,16 @@ async def main():
         print("[SCAN_JOB] 無結果，不儲存")
         return
 
-    # 存到 Supabase
+    # 存到 GitHub repo (scan_data/latest.json)
     import supabase_store as sb
-    if sb._enabled():
-        payload = json.dumps({
-            "results": results,
-            "scanned_at": datetime.datetime.now().isoformat(),
-            "yahoo_ok": status["yahoo_ok"],
-            "yahoo_fail": status["yahoo_fail"],
-        }, ensure_ascii=False)
-        ok = sb.kv_set("scan_latest", payload)
-        print(f"[SCAN_JOB] Supabase 儲存{'成功' if ok else '失敗'}")
-    else:
-        print("[SCAN_JOB] Supabase 未設定，結果未儲存")
+    payload = json.dumps({
+        "results": results,
+        "scanned_at": datetime.datetime.now().isoformat(),
+        "yahoo_ok": status["yahoo_ok"],
+        "yahoo_fail": status["yahoo_fail"],
+    }, ensure_ascii=False)
+    ok = sb.kv_set("scan_latest", payload)
+    print(f"[SCAN_JOB] 結果儲存{'成功' if ok else '失敗'}")
 
 if __name__ == "__main__":
     asyncio.run(main())

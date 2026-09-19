@@ -25,4 +25,6 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+          GITHUB_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_REPO: bubust/chip-tracke
         run: python scan_job.py

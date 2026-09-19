@@ -172,20 +172,64 @@ def pd_restore_page(limit: int = 1000, offset: int = 0) -> list:
     return _get(f"price_daily?order=date,stock_id&limit={limit}&offset={offset}") or []
 
 
-# ── KV Store（用於掃描結果等通用儲存）───────────────────────────────────────
+# ── KV Store（用 GitHub Contents API 儲存掃描結果）────────────────────────────
+
+import base64 as _b64
+import urllib.request as _urllib_req
+import json as _json_kv
+
+_GITHUB_PAT = os.getenv("GITHUB_PAT", "")
+_GITHUB_REPO = os.getenv("GITHUB_REPO", "bubust/chip-tracke")
+_KV_FILE_MAP = {
+    "scan_latest": "scan_data/latest.json",
+}
+
+def _gh_headers():
+    return {
+        "Authorization": f"token {_GITHUB_PAT}",
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "chip-tracker",
+        "Content-Type": "application/json",
+    }
 
 def kv_set(key: str, value: str) -> bool:
-    """儲存 key-value（用 scan_cache 表）"""
-    if not _enabled():
+    """儲存 key-value（用 GitHub Contents API，以 repo 檔案持久化）"""
+    if not _GITHUB_PAT:
         return False
-    return _post("scan_cache", {"key": key, "value": value},
-                 prefer="resolution=merge-duplicates,return=minimal")
+    filepath = _KV_FILE_MAP.get(key, f"scan_data/{key}.json")
+    api_url = f"https://api.github.com/repos/{_GITHUB_REPO}/contents/{filepath}"
+    # 先取得現有 SHA（更新時必須帶 sha）
+    try:
+        req = _urllib_req.Request(api_url, headers=_gh_headers())
+        with _urllib_req.urlopen(req, timeout=10) as r:
+            existing = _json_kv.loads(r.read())
+            sha = existing.get("sha", "")
+    except Exception:
+        sha = ""
+    encoded = _b64.b64encode(value.encode()).decode()
+    payload = _json_kv.dumps({
+        "message": f"scan: update {key}",
+        "content": encoded,
+        **({"sha": sha} if sha else {}),
+    }).encode()
+    try:
+        req2 = _urllib_req.Request(api_url, data=payload, method="PUT", headers=_gh_headers())
+        with _urllib_req.urlopen(req2, timeout=15) as r:
+            return r.status in (200, 201)
+    except Exception as e:
+        print(f"[KV] set {key} failed: {e}")
+        return False
 
 def kv_get(key: str) -> str | None:
-    """讀取 key-value"""
-    if not _enabled():
+    """讀取 key-value（從 GitHub raw 檔案）"""
+    filepath = _KV_FILE_MAP.get(key, f"scan_data/{key}.json")
+    repo = _GITHUB_REPO
+    raw_url = f"https://raw.githubusercontent.com/{repo}/main/{filepath}"
+    try:
+        req = _urllib_req.Request(raw_url, headers={"User-Agent": "chip-tracker",
+                                                     "Cache-Control": "no-cache"})
+        with _urllib_req.urlopen(req, timeout=10) as r:
+            return r.read().decode()
+    except Exception as e:
+        print(f"[KV] get {key} failed: {e}")
         return None
-    rows = _get(f"scan_cache?key=eq.{key}&select=value&limit=1")
-    if rows and isinstance(rows, list) and rows[0]:
-        return rows[0].get("value")
-    return None
