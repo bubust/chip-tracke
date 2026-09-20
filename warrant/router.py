@@ -684,43 +684,15 @@ def trigger_scanner_run():
 
 @router.get("/api/warrant-status")
 def warrant_status():
-    import traceback
     status: dict = {"time": datetime.now().isoformat()}
-
-    # DB 基本狀態
     try:
         with _db.db() as conn:
-            status["warrants"]    = conn.execute("SELECT COUNT(*) FROM warrants WHERE is_active=1").fetchone()[0]
-            status["underlyings"] = conn.execute("SELECT COUNT(*) FROM underlyings").fetchone()[0]
-            status["iv_records"]  = conn.execute("SELECT COUNT(*) FROM iv_daily").fetchone()[0]
-            # 最新幾筆 warrant sample（有無 underlying_code）
-            sample = conn.execute("""
-                SELECT code, underlying_code, last_trade_date, issued_lots
-                FROM warrants ORDER BY rowid DESC LIMIT 5
-            """).fetchall()
+            status["warrants"]         = conn.execute("SELECT COUNT(*) FROM warrants WHERE is_active=1").fetchone()[0]
+            status["underlyings"]      = conn.execute("SELECT COUNT(*) FROM underlyings").fetchone()[0]
+            status["iv_records"]       = conn.execute("SELECT COUNT(*) FROM iv_daily").fetchone()[0]
+            status["null_underlying"]  = conn.execute("SELECT COUNT(*) FROM warrants WHERE underlying_code IS NULL AND is_active=1").fetchone()[0]
+            sample = conn.execute("SELECT code, underlying_code, last_trade_date FROM warrants ORDER BY rowid DESC LIMIT 5").fetchall()
             status["sample"] = [dict(r) for r in sample]
-            status["null_underlying"] = conn.execute(
-                "SELECT COUNT(*) FROM warrants WHERE underlying_code IS NULL AND is_active=1"
-            ).fetchone()[0]
     except Exception as e:
         status["db_error"] = str(e)
-
-    # 快速 TWSE fetch 測試（只抓，不解析，確認 API 通不通）
-    try:
-        import requests as _req
-        r = _req.get("https://openapi.twse.com.tw/v1/opendata/t187ap37_L",
-                     headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
-        data = r.json()
-        status["twse_api_rows"] = len(data) if isinstance(data, list) else "NOT_LIST"
-        status["twse_fields"] = list(data[0].keys()) if isinstance(data, list) and data else []
-        # 看 K/N/date 欄位是否存在
-        if isinstance(data, list) and data:
-            row0 = data[0]
-            status["twse_K_field"]    = row0.get("最新履約價格(元)/履約指數", "MISSING")
-            status["twse_N_field"]    = row0.get("最新標的履約配發數量(每仟單位權證)", "MISSING")
-            status["twse_date_field"] = row0.get("最後交易日", "MISSING")
-            status["twse_kind_field"] = row0.get("權證類型", "MISSING")
-    except Exception as e:
-        status["twse_error"] = str(e)
-
     return status
