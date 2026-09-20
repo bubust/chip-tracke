@@ -632,6 +632,49 @@ def get_scanner(min_bid_lots: int = Query(3000, ge=100, le=50000)):
     }
 
 
+@router.get("/api/ingest/debug")
+def ingest_debug():
+    """診斷：同步抓 TWSE/TPEx 幾筆，回傳欄位名稱與解析結果，用於排錯"""
+    import traceback
+    result = {}
+
+    # 1. TWSE
+    try:
+        rows = ingester.fetch_twse_warrants()
+        result["twse_count"] = len(rows)
+        result["twse_fields"] = list(rows[0].keys()) if rows else []
+        # 試解析前 3 筆
+        parsed = []
+        for r in rows[:3]:
+            p = ingester._parse_warrant_row(r, "TSE", {}, {})
+            parsed.append({"raw_code": r.get("權證代號","?"), "parsed": p is not None,
+                           "K": r.get("最新履約價格(元)/履約指數","MISSING"),
+                           "N": r.get("最新標的履約配發數量(每仟單位權證)","MISSING"),
+                           "last_td": r.get("最後交易日","MISSING")})
+        result["twse_sample"] = parsed
+    except Exception as e:
+        result["twse_error"] = str(e)
+        result["twse_trace"] = traceback.format_exc()[-500:]
+
+    # 2. TPEx
+    try:
+        rows2 = ingester.fetch_tpex_warrants()
+        result["tpex_count"] = len(rows2)
+        result["tpex_fields"] = list(rows2[0].keys()) if rows2 else []
+    except Exception as e:
+        result["tpex_error"] = str(e)
+
+    # 3. DB 狀態
+    try:
+        with _db.db() as conn:
+            result["db_warrants"]    = conn.execute("SELECT COUNT(*) FROM warrants").fetchone()[0]
+            result["db_underlyings"] = conn.execute("SELECT COUNT(*) FROM underlyings").fetchone()[0]
+    except Exception as e:
+        result["db_error"] = str(e)
+
+    return result
+
+
 @router.post("/api/scanner/run")
 def trigger_scanner_run():
     import threading
