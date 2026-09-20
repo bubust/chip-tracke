@@ -134,6 +134,12 @@
   </div>
 
   <div id="scannerStatus" class="scan-status"></div>
+
+  <div class="side-switch" id="scanViewSwitch" style="margin:8px 12px 0">
+    <button class="side-btn active" id="scanViewBtnWarrant" onclick="setScanView('warrant')">全部權證</button>
+    <button class="side-btn"        id="scanViewBtnUnderlying" onclick="setScanView('underlying')">標的彙總</button>
+  </div>
+
   <div id="scannerTable" class="scan-table-wrap"></div>
 
 </div><!-- /scannerSection -->

@@ -465,6 +465,7 @@ let _scanMinValue  = 0;
 let _scanKind      = 'all';
 let _scanData      = null;
 let _scanMode      = 'after';  // 'open' | 'after'
+let _scanView      = 'warrant'; // 'warrant' | 'underlying'
 
 function onScanLotChange(v) {
   _scanMinLots = parseInt(v);
@@ -573,7 +574,22 @@ function updateScanStatus(data) {
     `共掃 <b>${data.total_scanned || 0}</b> 檔　找到 <b>${cnt}</b> 檔${note}`;
 }
 
+function setScanView(v) {
+  _scanView = v;
+  $('scanViewBtnWarrant').classList.toggle('active',    v === 'warrant');
+  $('scanViewBtnUnderlying').classList.toggle('active', v === 'underlying');
+  renderScanner(_scanData);
+}
+
+async function loadScannerUnderlying() {
+  const minLots = _scanMode === 'open' ? _scanMinLots : 100;
+  const minVol  = _scanMinVolume;
+  const res  = await fetch(`/warrant/api/scanner/underlying?min_bid_lots=${minLots}&min_volume=${minVol}`);
+  return res.json();
+}
+
 function renderScanner(data) {
+  if (_scanView === 'underlying') { renderScannerUnderlying(); return; }
   const tbl = $('scannerTable');
   if (!data) { tbl.innerHTML = '<div class="scan-empty">尚無資料，請點「立刻掃描」</div>'; return; }
 
@@ -641,4 +657,76 @@ function renderScanner(data) {
       </tbody>
     </table>
     <div class="scan-count">${rows.length} 筆</div>`;
+}
+
+async function renderScannerUnderlying() {
+  const tbl = $('scannerTable');
+  tbl.innerHTML = '<div class="scan-empty">載入中...</div>';
+  try {
+    const data = await loadScannerUnderlying();
+    const rows = (data.results || []).filter(r => {
+      if (_scanKind === 'call' && r.call_vol === 0) return false;
+      if (_scanKind === 'put'  && r.put_vol  === 0) return false;
+      return true;
+    });
+    if (!rows.length) {
+      tbl.innerHTML = '<div class="scan-empty">目前沒有資料，請先掃描</div>';
+      return;
+    }
+    const isOpen   = _scanMode === 'open';
+    const volLabel = isOpen ? '委買量' : '成交量';
+    const maxVol   = rows[0]?.total_vol || 1;
+
+    const barPct = v => Math.max(2, Math.round(v / maxVol * 100));
+    const fmtK   = v => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(v);
+
+    tbl.innerHTML = `
+      <table class="scan-table">
+        <thead>
+          <tr>
+            <th>標的</th>
+            <th style="text-align:center">認購 ${volLabel}</th>
+            <th style="text-align:center">認售 ${volLabel}</th>
+            <th style="text-align:center">偏向</th>
+            <th>代表權證</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => {
+            const total   = r.total_vol;
+            const callPct = total > 0 ? r.call_vol / total : 0;
+            const biasLbl = r.bias > total * 0.3
+              ? '<span style="color:var(--green);font-weight:700">偏多 ▲</span>'
+              : r.bias < -total * 0.3
+                ? '<span style="color:var(--red);font-weight:700">偏空 ▼</span>'
+                : '<span style="color:var(--text-dim)">中性 —</span>';
+            const topCallStr = r.top_call.map(w =>
+              `<span class="scan-badge scan-badge--call" style="cursor:pointer" onclick="switchTab('warrant');copyCode('${escHtml(w.code)}')">${escHtml(w.code)}<small> ${fmtK(w.vol)}</small></span>`
+            ).join(' ');
+            const topPutStr  = r.top_put.map(w =>
+              `<span class="scan-badge scan-badge--put" style="cursor:pointer" onclick="switchTab('warrant');copyCode('${escHtml(w.code)}')">${escHtml(w.code)}<small> ${fmtK(w.vol)}</small></span>`
+            ).join(' ');
+            return `<tr class="scan-row" onclick="selectUnderlying('${escHtml(r.underlying_code)}','${escHtml(r.underlying_name)}'); switchTab('warrant')">
+              <td>
+                <div class="scan-ul">${escHtml(r.underlying_name || r.underlying_code)}</div>
+                <div class="scan-issuer">${escHtml(r.underlying_code)}</div>
+              </td>
+              <td class="scan-num">
+                <div style="color:var(--green)">${r.call_vol.toLocaleString()}</div>
+                <div class="scan-mini-bar" style="background:var(--green);opacity:.7;width:${barPct(r.call_vol)}%;height:3px;border-radius:2px"></div>
+              </td>
+              <td class="scan-num">
+                <div style="color:var(--red)">${r.put_vol.toLocaleString()}</div>
+                <div class="scan-mini-bar" style="background:var(--red);opacity:.7;width:${barPct(r.put_vol)}%;height:3px;border-radius:2px"></div>
+              </td>
+              <td style="text-align:center">${biasLbl}</td>
+              <td style="font-size:.7rem;line-height:1.6">${topCallStr}${topPutStr || ''}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      <div class="scan-count">${rows.length} 檔標的</div>`;
+  } catch(e) {
+    tbl.innerHTML = `<div class="scan-empty">載入失敗：${e.message}</div>`;
+  }
 }

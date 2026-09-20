@@ -691,6 +691,70 @@ def get_scanner(min_bid_lots: int = Query(500, ge=100, le=50000),
     }
 
 
+@router.get("/api/scanner/underlying")
+def get_scanner_underlying(min_bid_lots: int = Query(500, ge=100, le=50000),
+                           min_volume:   int = Query(100, ge=0)):
+    """
+    掃描結果依標的股彙總：
+      - call_vol / put_vol = 認購 / 認售 成交量（張）
+      - bias = call_vol - put_vol (>0 偏多，<0 偏空)
+    """
+    mode = _scanner_cache.get("mode", "盤外")
+    if mode == "盤中":
+        src = [r for r in _scanner_cache["results"] if r["bid_lots"] >= min_bid_lots]
+        vol_key = "bid_lots"
+    else:
+        src = [r for r in _scanner_cache["results"] if r["volume"] >= min_volume]
+        vol_key = "volume"
+
+    # 彙總
+    agg: dict = {}
+    for r in src:
+        ul = r.get("underlying_code") or "UNKNOWN"
+        if ul not in agg:
+            agg[ul] = {
+                "underlying_code": ul,
+                "underlying_name": r.get("underlying_name", ""),
+                "call_vol": 0,
+                "put_vol":  0,
+                "call_warrants": [],
+                "put_warrants":  [],
+            }
+        vol = r.get(vol_key, 0) or 0
+        if r["kind"] == "CALL":
+            agg[ul]["call_vol"] += vol
+            agg[ul]["call_warrants"].append({"code": r["code"], "vol": vol})
+        else:
+            agg[ul]["put_vol"] += vol
+            agg[ul]["put_warrants"].append({"code": r["code"], "vol": vol})
+
+    rows = []
+    for ul, d in agg.items():
+        total = d["call_vol"] + d["put_vol"]
+        bias  = d["call_vol"] - d["put_vol"]
+        # 只保留 top-3 代表
+        top_call = sorted(d["call_warrants"], key=lambda x: x["vol"], reverse=True)[:3]
+        top_put  = sorted(d["put_warrants"],  key=lambda x: x["vol"], reverse=True)[:3]
+        rows.append({
+            "underlying_code": ul,
+            "underlying_name": d["underlying_name"],
+            "call_vol":        d["call_vol"],
+            "put_vol":         d["put_vol"],
+            "total_vol":       total,
+            "bias":            bias,
+            "top_call":        top_call,
+            "top_put":         top_put,
+        })
+
+    rows.sort(key=lambda x: x["total_vol"], reverse=True)
+    return {
+        "results":    rows,
+        "scanned_at": _scanner_cache.get("scanned_at"),
+        "is_scanning":_scanner_cache.get("is_scanning", False),
+        "mode":       mode,
+    }
+
+
 @router.get("/api/ingest/log")
 def ingest_log():
     """回傳最後一次 ingest_contracts() 的執行結果"""
