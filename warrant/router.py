@@ -38,6 +38,24 @@ WARNINGS = CFG["warnings"]
 router = APIRouter()
 router.include_router(_futures_router)
 
+# ── Ingest 執行紀錄 ─────────────────────────────────────────────────
+_last_ingest_log: dict = {"ran_at": None, "result": None, "error": None}
+
+_orig_ingest = ingester.ingest_contracts
+def _instrumented_ingest():
+    global _last_ingest_log
+    _last_ingest_log["ran_at"] = datetime.now().isoformat(timespec="seconds")
+    try:
+        result = _orig_ingest()
+        _last_ingest_log["result"] = result
+        _last_ingest_log["error"] = None
+    except Exception as e:
+        import traceback
+        _last_ingest_log["result"] = None
+        _last_ingest_log["error"] = traceback.format_exc()[-800:]
+        raise
+ingester.ingest_contracts = _instrumented_ingest
+
 # ── 掃描器快取 ──────────────────────────────────────────────────────
 _scanner_lock = _Lock()
 _scanner_cache: dict = {
@@ -629,6 +647,19 @@ def get_scanner(min_bid_lots: int = Query(3000, ge=100, le=50000)):
         "total_scanned": _scanner_cache["total_scanned"],
         "db_warrants":   db_warrants,
         "min_bid_lots":  min_bid_lots,
+    }
+
+
+@router.get("/api/ingest/log")
+def ingest_log():
+    """回傳最後一次 ingest_contracts() 的執行結果"""
+    with _db.db() as conn:
+        w = conn.execute("SELECT COUNT(*) FROM warrants").fetchone()[0]
+        u = conn.execute("SELECT COUNT(*) FROM underlyings").fetchone()[0]
+    return {
+        "db_warrants": w,
+        "db_underlyings": u,
+        "last_ingest": _last_ingest_log,
     }
 
 
