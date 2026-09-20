@@ -531,11 +531,19 @@ async function triggerScan() {
 
 function updateScanStatus(data) {
   if (!data) return;
-  const t   = data.scanned_at ? data.scanned_at.slice(11, 19) : '—';
-  const cnt = (data.results || []).length;
+  const t    = data.scanned_at ? data.scanned_at.slice(11, 19) : '—';
+  const cnt  = (data.results || []).length;
+  const db   = data.db_warrants != null ? data.db_warrants : '?';
+  const note = data.total_scanned === 0 && db === 0
+    ? '　<span style="color:var(--red)">⚠ 資料庫無權證，請先點「更新合約」</span>'
+    : data.total_scanned === 0 && db > 0
+      ? '　<span style="color:var(--yellow)">⚠ 尚未掃描，請點「立刻掃描」</span>'
+      : cnt === 0
+        ? '　<span style="color:var(--muted)">（盤後無委買量，盤中才有資料）</span>'
+        : '';
   $('scannerStatus').innerHTML =
-    `上次掃描：<b>${t}</b>　共掃 <b>${data.total_scanned || 0}</b> 檔　` +
-    `找到 <b>${cnt}</b> 檔委買量 ≥ 500 張`;
+    `DB 權證：<b>${db}</b> 檔　上次掃描：<b>${t}</b>　` +
+    `共掃 <b>${data.total_scanned || 0}</b> 檔　找到 <b>${cnt}</b> 檔委買量 ≥ 500 張${note}`;
 }
 
 function renderScanner(data) {
@@ -580,14 +588,14 @@ function renderScanner(data) {
       </thead>
       <tbody>
         ${rows.map(r => `
-          <tr class="scan-row" onclick="selectUnderlying('${escHtml(r.underlying_code)}','${escHtml(r.underlying_name)}'); switchTab('warrant')">
+          <tr class="scan-row" ${r.underlying_code ? `onclick="selectUnderlying('${escHtml(r.underlying_code)}','${escHtml(r.underlying_name)}'); switchTab('warrant')"` : ''}>
             <td>
               <div class="scan-code">${escHtml(r.code)}</div>
               <div class="scan-issuer">${escHtml(r.issuer)}</div>
             </td>
             <td>
-              <div class="scan-ul">${escHtml(r.underlying_name)}</div>
-              <div class="scan-issuer">${escHtml(r.underlying_code)}</div>
+              <div class="scan-ul">${escHtml(r.underlying_name || r.underlying_code || '—')}</div>
+              <div class="scan-issuer">${escHtml(r.underlying_code || '')}</div>
             </td>
             <td>${kindBadge(r.kind)}</td>
             <td class="scan-num">${r.bid != null ? r.bid.toFixed(2) : '—'}</td>

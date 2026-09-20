@@ -70,7 +70,6 @@ def run_scanner():
                 LEFT JOIN underlyings u ON u.code = w.underlying_code
                 WHERE w.is_active = 1 AND w.style = 'PLAIN'
                   AND w.last_trade_date >= date('now', '+7 days')
-                  AND w.underlying_code IS NOT NULL
                 ORDER BY w.issued_lots DESC
                 LIMIT ?
             """, (SCAN_WARRANT_LIMIT,)).fetchall()
@@ -621,11 +620,14 @@ def trigger_ingest():
 @router.get("/api/scanner")
 def get_scanner(min_bid_lots: int = Query(3000, ge=100, le=50000)):
     filtered = [r for r in _scanner_cache["results"] if r["bid_lots"] >= min_bid_lots]
+    with _db.db() as conn:
+        db_warrants = conn.execute("SELECT COUNT(*) FROM warrants WHERE is_active=1").fetchone()[0]
     return {
         "results":       filtered,
         "scanned_at":    _scanner_cache["scanned_at"],
         "is_scanning":   _scanner_cache["is_scanning"],
         "total_scanned": _scanner_cache["total_scanned"],
+        "db_warrants":   db_warrants,
         "min_bid_lots":  min_bid_lots,
     }
 
