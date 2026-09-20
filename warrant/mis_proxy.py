@@ -133,12 +133,16 @@ def parse_price(item: dict) -> dict:
     except Exception:
         data_ts = None
 
+    # 成交量 v = 累積成交張數（盤後可用）
+    volume = int(float(item.get("v", 0) or 0))
+
     return {
         "price":      price,
         "bid":        bid,
         "ask":        ask,
         "bid_lots":   bid_lots,
         "ask_lots":   ask_lots,
+        "volume":     volume,
         "prev_close": y,
         "limit_up":   safe_float(item.get("u")),
         "limit_down": safe_float(item.get("w")),

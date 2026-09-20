@@ -103,15 +103,24 @@
 <div id="scannerSection" class="hidden">
 
   <div class="scan-controls">
-    <div class="scan-filter">
-      <label>委買量 ≥ <span id="scanLotLabel">3000</span> 張</label>
-      <input id="scanLotSlider" type="range" min="500" max="10000" value="3000" step="500"
-             oninput="onScanLotChange(this.value)">
+    <div id="scanLotWrap">
+      <div class="scan-filter">
+        <label>委買量 ≥ <span id="scanLotLabel">3000</span> 張</label>
+        <input id="scanLotSlider" type="range" min="500" max="10000" value="3000" step="500"
+               oninput="onScanLotChange(this.value)">
+      </div>
+      <div class="scan-filter">
+        <label>委買金額 ≥ <span id="scanValueLabel">0</span> 萬</label>
+        <input id="scanValueSlider" type="range" min="0" max="500" value="0" step="10"
+               oninput="onScanValueChange(this.value)">
+      </div>
     </div>
-    <div class="scan-filter">
-      <label>委買金額 ≥ <span id="scanValueLabel">0</span> 萬</label>
-      <input id="scanValueSlider" type="range" min="0" max="500" value="0" step="10"
-             oninput="onScanValueChange(this.value)">
+    <div id="scanVolWrap" class="hidden">
+      <div class="scan-filter">
+        <label>成交量 ≥ <span id="scanVolLabel">500</span> 張</label>
+        <input id="scanVolSlider" type="range" min="100" max="5000" value="500" step="100"
+               oninput="onScanVolumeChange(this.value)">
+      </div>
     </div>
     <div class="scan-filter">
       <label style="margin-right:6px">類型</label>

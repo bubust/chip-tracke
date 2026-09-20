@@ -69,16 +69,31 @@ SCAN_PRE_FILTER    = 500
 SCAN_WARRANT_LIMIT = 2000
 
 
+def _is_market_open() -> bool:
+    now = datetime.now()
+    if now.weekday() >= 5:
+        return False
+    t = now.hour * 60 + now.minute
+    return 9 * 60 <= t < 13 * 60 + 30
+
+
 def run_scanner():
-    """全市場掃描：找委買量異常的權證"""
+    """全市場掃描：
+      盤中 → 委買量 (bid_lots) 異常
+      盤外 → 當日成交量 (volume) 異常（收盤選股用）
+    """
     global _scanner_cache
     with _scanner_lock:
         if _scanner_cache["is_scanning"]:
             log.info("[scanner] 上次掃描尚未完成，跳過")
             return
         _scanner_cache["is_scanning"] = True
+
+    market_open = _is_market_open()
+    mode = "盤中" if market_open else "盤外"
+    log.info(f"[scanner] 開始全市場掃描（{mode}模式）...")
+
     try:
-        log.info("[scanner] 開始全市場掃描 ...")
         with _db.db() as conn:
             candidates = conn.execute("""
                 SELECT w.code, w.name, w.market, w.kind, w.strike,
@@ -118,24 +133,42 @@ def run_scanner():
                 pd2      = mis.parse_price(item)
                 bid      = pd2.get("bid")
                 bid_lots = pd2.get("bid_lots", 0)
-                if not bid or bid <= 0 or bid_lots < SCAN_PRE_FILTER:
-                    continue
+                volume   = pd2.get("volume", 0)
+                price    = pd2.get("price") or bid or pd2.get("prev_close")
+
+                if market_open:
+                    # 盤中：委買量達門檻
+                    if not bid or bid <= 0 or bid_lots < SCAN_PRE_FILTER:
+                        continue
+                    sort_key = bid_lots
+                else:
+                    # 盤外：成交量達門檻（100張以上才列入）
+                    if volume < 100:
+                        continue
+                    sort_key = volume
+
                 results.append({
                     "code":            code,
                     "name":            w_row["name"],
                     "underlying_code": w_row["underlying_code"],
                     "underlying_name": w_row["underlying_name"] or "",
                     "kind":            w_row["kind"],
+                    "price":           price,
                     "bid":             bid,
                     "ask":             pd2.get("ask"),
                     "bid_lots":        bid_lots,
-                    "bid_value":       int(bid * bid_lots * 1000),
+                    "volume":          volume,
+                    "bid_value":       int(bid * bid_lots * 1000) if bid else 0,
                     "expiry_date":     w_row["last_trade_date"],
                     "strike":          w_row["strike"],
                     "issuer":          w_row["issuer"],
+                    "_sort":           sort_key,
                 })
 
-        results.sort(key=lambda x: x["bid_lots"], reverse=True)
+        results.sort(key=lambda x: x["_sort"], reverse=True)
+        for r in results:
+            r.pop("_sort", None)
+
         with _scanner_lock:
             _scanner_cache.update({
                 "results":       results,
@@ -143,8 +176,9 @@ def run_scanner():
                 "total_scanned": len(candidates),
                 "errors":        errors,
                 "is_scanning":   False,
+                "mode":          mode,
             })
-        log.info(f"[scanner] 完成：{len(results)} 檔 bid_lots≥{SCAN_PRE_FILTER}，掃 {len(candidates)} 檔")
+        log.info(f"[scanner] 完成（{mode}）：{len(results)} 檔，掃 {len(candidates)} 檔")
     except Exception as e:
         log.error(f"[scanner] 失敗: {e}")
         with _scanner_lock:
@@ -636,8 +670,13 @@ def trigger_ingest():
     return {"ok": True, "message": "更新已啟動，約 2 分鐘後完成"}
 
 @router.get("/api/scanner")
-def get_scanner(min_bid_lots: int = Query(3000, ge=100, le=50000)):
-    filtered = [r for r in _scanner_cache["results"] if r["bid_lots"] >= min_bid_lots]
+def get_scanner(min_bid_lots: int = Query(500, ge=100, le=50000),
+                min_volume:   int = Query(100, ge=0)):
+    mode = _scanner_cache.get("mode", "盤外")
+    if mode == "盤中":
+        filtered = [r for r in _scanner_cache["results"] if r["bid_lots"] >= min_bid_lots]
+    else:
+        filtered = [r for r in _scanner_cache["results"] if r["volume"] >= min_volume]
     with _db.db() as conn:
         db_warrants = conn.execute("SELECT COUNT(*) FROM warrants WHERE is_active=1").fetchone()[0]
     return {
@@ -646,7 +685,9 @@ def get_scanner(min_bid_lots: int = Query(3000, ge=100, le=50000)):
         "is_scanning":   _scanner_cache["is_scanning"],
         "total_scanned": _scanner_cache["total_scanned"],
         "db_warrants":   db_warrants,
+        "mode":          mode,
         "min_bid_lots":  min_bid_lots,
+        "min_volume":    min_volume,
     }
 
 

@@ -459,14 +459,22 @@ function escHtml(s) {
 }
 
 /* ════ 掃描器 ════ */
-let _scanMinLots  = 3000;
-let _scanMinValue = 0;
-let _scanKind     = 'all';
-let _scanData     = null;
+let _scanMinLots   = 3000;
+let _scanMinVolume = 500;
+let _scanMinValue  = 0;
+let _scanKind      = 'all';
+let _scanData      = null;
+let _scanMode      = 'after';  // 'open' | 'after'
 
 function onScanLotChange(v) {
   _scanMinLots = parseInt(v);
   $('scanLotLabel').textContent = Number(v).toLocaleString();
+  renderScanner(_scanData);
+}
+
+function onScanVolumeChange(v) {
+  _scanMinVolume = parseInt(v);
+  $('scanVolLabel').textContent = Number(v).toLocaleString();
   renderScanner(_scanData);
 }
 
@@ -486,9 +494,11 @@ function setScanKind(kind) {
 
 async function loadScanner() {
   try {
-    const res  = await fetch('/warrant/api/scanner?min_bid_lots=500');
+    const res  = await fetch('/warrant/api/scanner?min_bid_lots=100&min_volume=100');
     const data = await res.json();
-    _scanData  = data;
+    _scanData = data;
+    _scanMode = (data.mode === '盤中') ? 'open' : 'after';
+    updateScanControls();
     updateScanStatus(data);
     renderScanner(data);
   } catch(e) {
@@ -509,13 +519,15 @@ async function triggerScan() {
   const poll = setInterval(async () => {
     tries++;
     try {
-      const res  = await fetch('/warrant/api/scanner?min_bid_lots=500');
+      const res  = await fetch('/warrant/api/scanner?min_bid_lots=100&min_volume=100');
       const data = await res.json();
       if (!data.is_scanning || tries > 60) {
         clearInterval(poll);
         btn.disabled = false;
         btn.textContent = '立刻掃描';
         _scanData = data;
+        _scanMode = (data.mode === '盤中') ? 'open' : 'after';
+        updateScanControls();
         updateScanStatus(data);
         renderScanner(data);
       } else {
@@ -529,31 +541,48 @@ async function triggerScan() {
   }, 2000);
 }
 
+function updateScanControls() {
+  // 依盤中/盤外切換滑桿標籤
+  const lotWrap = $('scanLotWrap');
+  const volWrap = $('scanVolWrap');
+  if (_scanMode === 'open') {
+    if (lotWrap) lotWrap.style.display = '';
+    if (volWrap) volWrap.style.display = 'none';
+  } else {
+    if (lotWrap) lotWrap.style.display = 'none';
+    if (volWrap) volWrap.style.display = '';
+  }
+}
+
 function updateScanStatus(data) {
   if (!data) return;
   const t    = data.scanned_at ? data.scanned_at.slice(11, 19) : '—';
   const cnt  = (data.results || []).length;
   const db   = data.db_warrants != null ? data.db_warrants : '?';
+  const mode = data.mode || '盤外';
   const note = data.total_scanned === 0 && db === 0
     ? '　<span style="color:var(--red)">⚠ 資料庫無權證，請先點「更新合約」</span>'
     : data.total_scanned === 0 && db > 0
       ? '　<span style="color:var(--yellow)">⚠ 尚未掃描，請點「立刻掃描」</span>'
-      : cnt === 0
-        ? '　<span style="color:var(--muted)">（盤後無委買量，盤中才有資料）</span>'
-        : '';
+      : '';
+  const modeTag = mode === '盤中'
+    ? '<span style="color:var(--green);font-weight:700">盤中 委買量模式</span>'
+    : '<span style="color:var(--yellow);font-weight:700">盤外 成交量模式</span>';
   $('scannerStatus').innerHTML =
-    `DB 權證：<b>${db}</b> 檔　上次掃描：<b>${t}</b>　` +
-    `共掃 <b>${data.total_scanned || 0}</b> 檔　找到 <b>${cnt}</b> 檔委買量 ≥ 500 張${note}`;
+    `${modeTag}　DB：<b>${db}</b> 檔　上次掃描：<b>${t}</b>　` +
+    `共掃 <b>${data.total_scanned || 0}</b> 檔　找到 <b>${cnt}</b> 檔${note}`;
 }
 
 function renderScanner(data) {
   const tbl = $('scannerTable');
   if (!data) { tbl.innerHTML = '<div class="scan-empty">尚無資料，請點「立刻掃描」</div>'; return; }
 
+  const isOpen = _scanMode === 'open';
   const minVal = _scanMinValue * 10000;
 
   const rows = (data.results || []).filter(r => {
-    if (r.bid_lots < _scanMinLots) return false;
+    if (isOpen && r.bid_lots < _scanMinLots) return false;
+    if (!isOpen && r.volume < _scanMinVolume) return false;
     if (minVal > 0 && r.bid_value < minVal) return false;
     if (_scanKind === 'call' && r.kind !== 'CALL') return false;
     if (_scanKind === 'put'  && r.kind !== 'PUT')  return false;
@@ -570,6 +599,10 @@ function renderScanner(data) {
     : '<span class="scan-badge scan-badge--put">認售</span>';
 
   const fmtWan = v => v >= 10000 ? (v / 10000).toFixed(1) + '萬' : v.toLocaleString();
+  const fmtPrice = v => v != null ? Number(v).toFixed(2) : '—';
+
+  const keyColHeader = isOpen ? '委買量 (張)' : '成交量 (張)';
+  const keyColClass  = 'scan-th-lots';
 
   tbl.innerHTML = `
     <table class="scan-table">
@@ -578,9 +611,9 @@ function renderScanner(data) {
           <th>代號</th>
           <th>標的</th>
           <th>類型</th>
-          <th>委買價</th>
-          <th class="scan-th-lots">委買量 (張)</th>
-          <th>委買金額</th>
+          <th>${isOpen ? '委買價' : '收盤價'}</th>
+          <th class="${keyColClass}">${keyColHeader}</th>
+          ${isOpen ? '<th>委買金額</th>' : ''}
           <th>履約價</th>
           <th>到期日</th>
           <th></th>
@@ -598,9 +631,9 @@ function renderScanner(data) {
               <div class="scan-issuer">${escHtml(r.underlying_code || '')}</div>
             </td>
             <td>${kindBadge(r.kind)}</td>
-            <td class="scan-num">${r.bid != null ? r.bid.toFixed(2) : '—'}</td>
-            <td class="scan-num scan-lots">${r.bid_lots.toLocaleString()}</td>
-            <td class="scan-num">${fmtWan(r.bid_value)}</td>
+            <td class="scan-num">${isOpen ? fmtPrice(r.bid) : fmtPrice(r.price)}</td>
+            <td class="scan-num scan-lots">${isOpen ? r.bid_lots.toLocaleString() : (r.volume||0).toLocaleString()}</td>
+            ${isOpen ? `<td class="scan-num">${fmtWan(r.bid_value)}</td>` : ''}
             <td class="scan-num">${r.strike != null ? r.strike : '—'}</td>
             <td class="scan-date">${(r.expiry_date || '').slice(2)}</td>
             <td><button class="wc-copy" onclick="copyCode('${escHtml(r.code)}',event)">複製</button></td>
