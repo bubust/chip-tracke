@@ -632,6 +632,37 @@ def get_scanner(min_bid_lots: int = Query(3000, ge=100, le=50000)):
     }
 
 
+@router.get("/api/ingest/fields")
+def ingest_fields():
+    """只看 TWSE/TPEx API 回傳的欄位名稱，不做完整解析"""
+    import requests as _req
+    out = {}
+    try:
+        r = _req.get("https://openapi.twse.com.tw/v1/opendata/t187ap37_L",
+                     headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
+        data = r.json()
+        if isinstance(data, list) and data:
+            out["twse_rows"]   = len(data)
+            out["twse_fields"] = list(data[0].keys())
+            out["twse_row0"]   = {k: v for k, v in list(data[0].items())[:10]}
+        else:
+            out["twse_raw_type"] = str(type(data))
+    except Exception as e:
+        out["twse_error"] = str(e)
+    try:
+        r2 = _req.get("https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap37_O",
+                      headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
+        data2 = r2.json()
+        if isinstance(data2, list) and data2:
+            out["tpex_rows"]   = len(data2)
+            out["tpex_fields"] = list(data2[0].keys())
+        else:
+            out["tpex_raw_type"] = str(type(data2))
+    except Exception as e:
+        out["tpex_error"] = str(e)
+    return out
+
+
 @router.get("/api/ingest/debug")
 def ingest_debug():
     """診斷：同步抓 TWSE/TPEx 幾筆，回傳欄位名稱與解析結果，用於排錯"""
