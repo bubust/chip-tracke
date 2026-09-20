@@ -457,3 +457,147 @@ function escHtml(s) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+
+/* ════ 掃描器 ════ */
+let _scanMinLots  = 3000;
+let _scanMinValue = 0;
+let _scanKind     = 'all';
+let _scanData     = null;
+
+function onScanLotChange(v) {
+  _scanMinLots = parseInt(v);
+  $('scanLotLabel').textContent = Number(v).toLocaleString();
+  renderScanner(_scanData);
+}
+
+function onScanValueChange(v) {
+  _scanMinValue = parseInt(v);
+  $('scanValueLabel').textContent = v;
+  renderScanner(_scanData);
+}
+
+function setScanKind(kind) {
+  _scanKind = kind;
+  $('scanBtnAll').classList.toggle('active',  kind === 'all');
+  $('scanBtnCall').classList.toggle('active', kind === 'call');
+  $('scanBtnPut').classList.toggle('active',  kind === 'put');
+  renderScanner(_scanData);
+}
+
+async function loadScanner() {
+  try {
+    const res  = await fetch('/warrant/api/scanner?min_bid_lots=500');
+    const data = await res.json();
+    _scanData  = data;
+    updateScanStatus(data);
+    renderScanner(data);
+  } catch(e) {
+    $('scannerStatus').textContent = '載入失敗：' + e.message;
+  }
+}
+
+async function triggerScan() {
+  const btn = $('scanRunBtn');
+  btn.disabled = true;
+  btn.textContent = '掃描中...';
+  $('scannerStatus').textContent = '⏳ 掃描中，約需 20~40 秒...';
+  try {
+    await fetch('/warrant/api/scanner/run', { method: 'POST' });
+  } catch(e) { /* ignore */ }
+
+  let tries = 0;
+  const poll = setInterval(async () => {
+    tries++;
+    try {
+      const res  = await fetch('/warrant/api/scanner?min_bid_lots=500');
+      const data = await res.json();
+      if (!data.is_scanning || tries > 60) {
+        clearInterval(poll);
+        btn.disabled = false;
+        btn.textContent = '立刻掃描';
+        _scanData = data;
+        updateScanStatus(data);
+        renderScanner(data);
+      } else {
+        $('scannerStatus').textContent = `⏳ 掃描中... (${tries * 2}s)`;
+      }
+    } catch(e) {
+      clearInterval(poll);
+      btn.disabled = false;
+      btn.textContent = '立刻掃描';
+    }
+  }, 2000);
+}
+
+function updateScanStatus(data) {
+  if (!data) return;
+  const t   = data.scanned_at ? data.scanned_at.slice(11, 19) : '—';
+  const cnt = (data.results || []).length;
+  $('scannerStatus').innerHTML =
+    `上次掃描：<b>${t}</b>　共掃 <b>${data.total_scanned || 0}</b> 檔　` +
+    `找到 <b>${cnt}</b> 檔委買量 ≥ 500 張`;
+}
+
+function renderScanner(data) {
+  const tbl = $('scannerTable');
+  if (!data) { tbl.innerHTML = '<div class="scan-empty">尚無資料，請點「立刻掃描」</div>'; return; }
+
+  const minVal = _scanMinValue * 10000;
+
+  const rows = (data.results || []).filter(r => {
+    if (r.bid_lots < _scanMinLots) return false;
+    if (minVal > 0 && r.bid_value < minVal) return false;
+    if (_scanKind === 'call' && r.kind !== 'CALL') return false;
+    if (_scanKind === 'put'  && r.kind !== 'PUT')  return false;
+    return true;
+  });
+
+  if (!rows.length) {
+    tbl.innerHTML = '<div class="scan-empty">目前沒有符合條件的權證</div>';
+    return;
+  }
+
+  const kindBadge = k => k === 'CALL'
+    ? '<span class="scan-badge scan-badge--call">認購</span>'
+    : '<span class="scan-badge scan-badge--put">認售</span>';
+
+  const fmtWan = v => v >= 10000 ? (v / 10000).toFixed(1) + '萬' : v.toLocaleString();
+
+  tbl.innerHTML = `
+    <table class="scan-table">
+      <thead>
+        <tr>
+          <th>代號</th>
+          <th>標的</th>
+          <th>類型</th>
+          <th>委買價</th>
+          <th class="scan-th-lots">委買量 (張)</th>
+          <th>委買金額</th>
+          <th>履約價</th>
+          <th>到期日</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr class="scan-row" onclick="selectUnderlying('${escHtml(r.underlying_code)}','${escHtml(r.underlying_name)}'); switchTab('warrant')">
+            <td>
+              <div class="scan-code">${escHtml(r.code)}</div>
+              <div class="scan-issuer">${escHtml(r.issuer)}</div>
+            </td>
+            <td>
+              <div class="scan-ul">${escHtml(r.underlying_name)}</div>
+              <div class="scan-issuer">${escHtml(r.underlying_code)}</div>
+            </td>
+            <td>${kindBadge(r.kind)}</td>
+            <td class="scan-num">${r.bid != null ? r.bid.toFixed(2) : '—'}</td>
+            <td class="scan-num scan-lots">${r.bid_lots.toLocaleString()}</td>
+            <td class="scan-num">${fmtWan(r.bid_value)}</td>
+            <td class="scan-num">${r.strike != null ? r.strike : '—'}</td>
+            <td class="scan-date">${(r.expiry_date || '').slice(2)}</td>
+            <td><button class="wc-copy" onclick="copyCode('${escHtml(r.code)}',event)">複製</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="scan-count">${rows.length} 筆</div>`;
+}

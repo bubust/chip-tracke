@@ -6,12 +6,14 @@ let _futStockId = null;
 
 /* ── Tab 切換 ── */
 function switchTab(tab) {
-  const isWarrant = tab === 'warrant';
-  document.getElementById('tabWarrant').classList.toggle('active', isWarrant);
-  document.getElementById('tabFutures').classList.toggle('active', !isWarrant);
-  document.getElementById('warrantSection').classList.toggle('hidden', !isWarrant);
-  document.getElementById('futuresSection').classList.toggle('hidden', isWarrant);
-  if (!isWarrant && _futStockId) loadFutures(_futStockId);
+  document.getElementById('tabWarrant').classList.toggle('active', tab === 'warrant');
+  document.getElementById('tabFutures').classList.toggle('active', tab === 'futures');
+  document.getElementById('tabScanner').classList.toggle('active', tab === 'scanner');
+  document.getElementById('warrantSection').classList.toggle('hidden', tab !== 'warrant');
+  document.getElementById('futuresSection').classList.toggle('hidden', tab !== 'futures');
+  document.getElementById('scannerSection').classList.toggle('hidden', tab !== 'scanner');
+  if (tab === 'futures' && _futStockId) loadFutures(_futStockId);
+  if (tab === 'scanner') loadScanner();
 }
 
 /* ── 方向切換 ── */

@@ -27,6 +27,7 @@
 <div class="tab-bar">
   <button class="tab-btn active" id="tabWarrant" onclick="switchTab('warrant')">📋 權證</button>
   <button class="tab-btn"        id="tabFutures" onclick="switchTab('futures')">📊 個股期</button>
+  <button class="tab-btn"        id="tabScanner" onclick="switchTab('scanner')">🔍 掃描</button>
 </div>
 
 <!-- ── 標的資訊列（共用） ── -->
@@ -97,6 +98,36 @@
     </div>
   </div>
 </div><!-- /futuresSection -->
+
+<!-- ════ 掃描器 ════ -->
+<div id="scannerSection" class="hidden">
+
+  <div class="scan-controls">
+    <div class="scan-filter">
+      <label>委買量 ≥ <span id="scanLotLabel">3000</span> 張</label>
+      <input id="scanLotSlider" type="range" min="500" max="10000" value="3000" step="500"
+             oninput="onScanLotChange(this.value)">
+    </div>
+    <div class="scan-filter">
+      <label>委買金額 ≥ <span id="scanValueLabel">0</span> 萬</label>
+      <input id="scanValueSlider" type="range" min="0" max="500" value="0" step="10"
+             oninput="onScanValueChange(this.value)">
+    </div>
+    <div class="scan-filter">
+      <label style="margin-right:6px">類型</label>
+      <div class="side-switch">
+        <button class="side-btn active" id="scanBtnAll"  onclick="setScanKind('all')">全部</button>
+        <button class="side-btn"        id="scanBtnCall" onclick="setScanKind('call')">認購</button>
+        <button class="side-btn"        id="scanBtnPut"  onclick="setScanKind('put')">認售</button>
+      </div>
+    </div>
+    <button class="scan-run-btn" id="scanRunBtn" onclick="triggerScan()">立刻掃描</button>
+  </div>
+
+  <div id="scannerStatus" class="scan-status"></div>
+  <div id="scannerTable" class="scan-table-wrap"></div>
+
+</div><!-- /scannerSection -->
 
 <!-- ── Toast ── -->
 <div id="toast" class="toast hidden"></div>

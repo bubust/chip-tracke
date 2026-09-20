@@ -6,6 +6,7 @@ import logging
 import math
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from threading import Lock as _Lock
 from typing import Optional
 
 import httpx
@@ -36,6 +37,101 @@ WARNINGS = CFG["warnings"]
 
 router = APIRouter()
 router.include_router(_futures_router)
+
+# ── 掃描器快取 ──────────────────────────────────────────────────────
+_scanner_lock = _Lock()
+_scanner_cache: dict = {
+    "results":       [],
+    "scanned_at":    None,
+    "is_scanning":   False,
+    "total_scanned": 0,
+    "errors":        0,
+}
+SCAN_PRE_FILTER    = 500
+SCAN_WARRANT_LIMIT = 2000
+
+
+def run_scanner():
+    """全市場掃描：找委買量異常的權證"""
+    global _scanner_cache
+    with _scanner_lock:
+        if _scanner_cache["is_scanning"]:
+            log.info("[scanner] 上次掃描尚未完成，跳過")
+            return
+        _scanner_cache["is_scanning"] = True
+    try:
+        log.info("[scanner] 開始全市場掃描 ...")
+        with _db.db() as conn:
+            candidates = conn.execute("""
+                SELECT w.code, w.name, w.market, w.kind, w.strike,
+                       w.last_trade_date, w.issuer, w.underlying_code,
+                       u.name AS underlying_name
+                FROM warrants w
+                LEFT JOIN underlyings u ON u.code = w.underlying_code
+                WHERE w.is_active = 1 AND w.style = 'PLAIN'
+                  AND w.last_trade_date >= date('now', '+7 days')
+                  AND w.underlying_code IS NOT NULL
+                ORDER BY w.issued_lots DESC
+                LIMIT ?
+            """, (SCAN_WARRANT_LIMIT,)).fetchall()
+
+        results = []
+        errors  = 0
+        BATCH   = 50
+
+        for i in range(0, len(candidates), BATCH):
+            batch = candidates[i:i + BATCH]
+            codes = [
+                f"otc_{r['code']}" if r["market"] == "OTC" else r["code"]
+                for r in batch
+            ]
+            try:
+                mis_data = mis.get_quotes(codes, cache_ttl=0)
+            except Exception as e:
+                log.warning(f"[scanner] batch {i//BATCH} 失敗: {e}")
+                errors += 1
+                continue
+
+            for w_row in batch:
+                code    = w_row["code"]
+                mis_key = f"otc_{code}" if w_row["market"] == "OTC" else code
+                item    = mis_data.get(code) or mis_data.get(mis_key, {})
+                if not item:
+                    continue
+                pd2      = mis.parse_price(item)
+                bid      = pd2.get("bid")
+                bid_lots = pd2.get("bid_lots", 0)
+                if not bid or bid <= 0 or bid_lots < SCAN_PRE_FILTER:
+                    continue
+                results.append({
+                    "code":            code,
+                    "name":            w_row["name"],
+                    "underlying_code": w_row["underlying_code"],
+                    "underlying_name": w_row["underlying_name"] or "",
+                    "kind":            w_row["kind"],
+                    "bid":             bid,
+                    "ask":             pd2.get("ask"),
+                    "bid_lots":        bid_lots,
+                    "bid_value":       int(bid * bid_lots * 1000),
+                    "expiry_date":     w_row["last_trade_date"],
+                    "strike":          w_row["strike"],
+                    "issuer":          w_row["issuer"],
+                })
+
+        results.sort(key=lambda x: x["bid_lots"], reverse=True)
+        with _scanner_lock:
+            _scanner_cache.update({
+                "results":       results,
+                "scanned_at":    datetime.now().isoformat(timespec="seconds"),
+                "total_scanned": len(candidates),
+                "errors":        errors,
+                "is_scanning":   False,
+            })
+        log.info(f"[scanner] 完成：{len(results)} 檔 bid_lots≥{SCAN_PRE_FILTER}，掃 {len(candidates)} 檔")
+    except Exception as e:
+        log.error(f"[scanner] 失敗: {e}")
+        with _scanner_lock:
+            _scanner_cache["is_scanning"] = False
 
 # ── Scheduler ───────────────────────────────────────────────────────────
 scheduler = BackgroundScheduler(timezone="Asia/Taipei")
@@ -70,6 +166,9 @@ def init_warrant():
 def start_warrant_scheduler():
     scheduler.add_job(lambda: ingester.ingest_contracts(), "cron", hour=8, minute=0, id="w_contracts", replace_existing=True)
     scheduler.add_job(lambda: ingester.backfill_biv_for_underlyings(ingester.get_active_underlying_codes()[:50]), "cron", hour=8, minute=45, id="w_biv", replace_existing=True)
+    scheduler.add_job(run_scanner, "cron", day_of_week="mon-fri",
+                      hour="9-13", minute="0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45,48,51,54,57",
+                      id="w_scanner", replace_existing=True)
     if not scheduler.running:
         scheduler.start()
 
@@ -518,6 +617,25 @@ def trigger_ingest():
             log.error(f"[warrant] 手動更新合約失敗: {e}")
     threading.Thread(target=_bg, daemon=True).start()
     return {"ok": True, "message": "更新已啟動，約 2 分鐘後完成"}
+
+@router.get("/api/scanner")
+def get_scanner(min_bid_lots: int = Query(3000, ge=100, le=50000)):
+    filtered = [r for r in _scanner_cache["results"] if r["bid_lots"] >= min_bid_lots]
+    return {
+        "results":       filtered,
+        "scanned_at":    _scanner_cache["scanned_at"],
+        "is_scanning":   _scanner_cache["is_scanning"],
+        "total_scanned": _scanner_cache["total_scanned"],
+        "min_bid_lots":  min_bid_lots,
+    }
+
+
+@router.post("/api/scanner/run")
+def trigger_scanner_run():
+    import threading
+    threading.Thread(target=run_scanner, daemon=True).start()
+    return {"ok": True, "message": "掃描已在背景啟動"}
+
 
 @router.get("/api/warrant-status")
 def warrant_status():
