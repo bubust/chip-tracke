@@ -219,6 +219,21 @@ async def lifespan(app: FastAPI):
     init_positioning_db()
     init_relationship_db()
     start_warrant_scheduler()
+    # 從 Supabase 恢復 watchlist 到本地 SQLite（Render 重啟後 SQLite 為空）
+    try:
+        _sb_wl = sb.wl_list()
+        if _sb_wl:
+            _wl_conn = get_conn()
+            for _r in _sb_wl:
+                _wl_conn.execute(
+                    "INSERT OR IGNORE INTO watchlist (stock_id, name, added_at, note) VALUES (?,?,?,?)",
+                    (_r["stock_id"], _r.get("name",""), _r.get("added_at",""), _r.get("note",""))
+                )
+            _wl_conn.commit()
+            _wl_conn.close()
+            print(f"[startup] 從 Supabase 恢復 {len(_sb_wl)} 筆觀察清單")
+    except Exception as _wl_e:
+        print(f"[startup] 觀察清單恢復失敗：{_wl_e}")
     # 從 Supabase 載入最新掃描結果（若本地 JSON 為空）
     try:
         from yahoo_price import _scan_status, _load_scan_cache

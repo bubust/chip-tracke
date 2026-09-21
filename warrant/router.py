@@ -200,7 +200,8 @@ def init_warrant():
         def _bg_init():
             try:
                 ingester.ingest_contracts()
-                log.info("[warrant] 初始合約檔完成")
+                log.info("[warrant] 初始合約檔完成，自動觸發掃描...")
+                run_scanner()
             except Exception as e:
                 log.error(f"[warrant] 初始合約檔失敗: {e}")
         threading.Thread(target=_bg_init, daemon=True).start()
