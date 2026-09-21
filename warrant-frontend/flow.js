@@ -22,9 +22,14 @@ async function loadFlowDates() {
     const sel   = document.getElementById('flowDateSel');
     sel.innerHTML = '';
 
-    // 加入今天（可能還沒有資料）
-    const today = new Date().toISOString().slice(0, 10);
-    const allDates = dates.includes(today) ? dates : [today, ...dates];
+    const today     = new Date().toISOString().slice(0, 10);
+    const dow       = new Date().getDay();           // 0=日, 6=六
+    const isWeekday = dow >= 1 && dow <= 5;
+
+    // 只在平日才加入今天（假日無盤後資料）
+    const allDates = (isWeekday && !dates.includes(today))
+      ? [today, ...dates]
+      : (dates.length ? dates : [today]);
 
     allDates.forEach(d => {
       const opt = document.createElement('option');
@@ -33,7 +38,8 @@ async function loadFlowDates() {
       sel.appendChild(opt);
     });
 
-    _flowDate = allDates[0] || today;
+    // 預設選最近有資料的日期，而非今天（週末時避免選到無資料日）
+    _flowDate = dates[0] || today;
     sel.value = _flowDate;
     loadFlowTable();
   } catch(e) {

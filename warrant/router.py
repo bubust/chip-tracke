@@ -41,11 +41,15 @@ router.include_router(_futures_router)
 
 # ── Ingest 執行紀錄 ─────────────────────────────────────────────────
 _last_ingest_log: dict = {"ran_at": None, "result": None, "error": None}
+_ingest_running: bool = False
 
 _orig_ingest = ingester.ingest_contracts
 def _instrumented_ingest():
-    global _last_ingest_log
+    global _last_ingest_log, _ingest_running
+    _ingest_running = True
     _last_ingest_log["ran_at"] = datetime.now().isoformat(timespec="seconds")
+    _last_ingest_log["result"] = None
+    _last_ingest_log["error"]  = None
     try:
         result = _orig_ingest()
         _last_ingest_log["result"] = result
@@ -55,6 +59,8 @@ def _instrumented_ingest():
         _last_ingest_log["result"] = None
         _last_ingest_log["error"] = traceback.format_exc()[-800:]
         raise
+    finally:
+        _ingest_running = False
 ingester.ingest_contracts = _instrumented_ingest
 
 # ── 掃描器快取 ──────────────────────────────────────────────────────
@@ -770,6 +776,7 @@ def ingest_log():
     return {
         "db_warrants": w,
         "db_underlyings": u,
+        "running": _ingest_running,
         "last_ingest": _last_ingest_log,
     }
 

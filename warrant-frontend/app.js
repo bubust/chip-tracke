@@ -130,6 +130,15 @@ async function loadWarrants() {
   try {
     const url = `/warrant/api/warrants?underlying=${currentUnderlying.code}&side=${currentSide}&holding_days=${holdingDays}&max_otm=${maxOtmPct / 100}&sort=${sortMode}`;
     const res = await fetch(url);
+    if (!res.ok || res.headers.get('content-type')?.includes('text/html')) {
+      const txt = await res.text();
+      if (txt.includes('<') || res.status >= 500) {
+        $('resultArea').innerHTML = `<div class="empty">伺服器喚醒中，請稍後 30 秒再試
+          <button onclick="loadWarrants()" style="margin-left:8px;padding:3px 10px;background:var(--accent);border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:13px">🔄 重試</button>
+        </div>`;
+        return;
+      }
+    }
     const data = await res.json();
 
     updateUnderlyingBar(data.underlying || {});
@@ -140,7 +149,11 @@ async function loadWarrants() {
     lastFetchTime = Date.now();
     startQuoteTimer();
   } catch (e) {
-    $('resultArea').innerHTML = `<div class="empty">載入失敗：${e.message}</div>`;
+    const isHtml = e.message.includes("token '<'") || e.message.includes('Unexpected token');
+    $('resultArea').innerHTML = `<div class="empty">
+      ${isHtml ? '伺服器喚醒中，請稍後 30 秒再試' : '載入失敗：' + e.message}
+      <button onclick="loadWarrants()" style="margin-left:8px;padding:3px 10px;background:var(--accent);border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:13px">🔄 重試</button>
+    </div>`;
   }
 }
 
@@ -432,20 +445,51 @@ function showExcludedModal(count, reasons) {
 function closeModal() { hide($('modal')); }
 
 /* ── Re-ingest Contracts ── */
+let _ingestPollTimer = null;
+
 async function reingestContracts() {
   const btn = document.getElementById('btn-reingest');
   if (!btn) return;
   btn.textContent = '⏳ 更新中...';
   btn.style.pointerEvents = 'none';
   try {
-    const r = await fetch('/warrant/api/ingest/now', { method: 'POST' });
-    const d = await r.json();
+    await fetch('/warrant/api/ingest/now', { method: 'POST' });
     showToast('合約更新已啟動，約 2 分鐘後完成');
-    setTimeout(() => { btn.textContent = '🔄 更新合約'; btn.style.pointerEvents = ''; }, 5000);
+    _startIngestPoll();
   } catch (e) {
     btn.textContent = '❌ 失敗';
     setTimeout(() => { btn.textContent = '🔄 更新合約'; btn.style.pointerEvents = ''; }, 3000);
   }
+}
+
+function _startIngestPoll() {
+  if (_ingestPollTimer) return;
+  let elapsed = 0;
+  _ingestPollTimer = setInterval(async () => {
+    elapsed += 5;
+    try {
+      const r = await fetch('/warrant/api/ingest/log');
+      const d = await r.json();
+      const btn = document.getElementById('btn-reingest');
+      if (d.db_warrants > 0 && !d.running) {
+        // 完成
+        clearInterval(_ingestPollTimer); _ingestPollTimer = null;
+        if (btn) { btn.textContent = `✅ ${d.db_warrants} 檔`; btn.style.pointerEvents = ''; }
+        setTimeout(() => { if (btn) btn.textContent = '🔄 更新合約'; }, 4000);
+        // 重新載入掃描結果
+        if (!document.getElementById('scannerSection')?.classList.contains('hidden')) {
+          loadScanner();
+        }
+      } else {
+        if (btn) btn.textContent = `⏳ 更新中 ${elapsed}s`;
+      }
+      // 逾時 5 分鐘
+      if (elapsed > 300) {
+        clearInterval(_ingestPollTimer); _ingestPollTimer = null;
+        if (btn) { btn.textContent = '🔄 更新合約'; btn.style.pointerEvents = ''; }
+      }
+    } catch(e) {}
+  }, 5000);
 }
 
 /* ── Escape HTML ── */
@@ -561,11 +605,18 @@ function updateScanStatus(data) {
   const cnt  = (data.results || []).length;
   const db   = data.db_warrants != null ? data.db_warrants : '?';
   const mode = data.mode || '盤外';
-  const note = data.total_scanned === 0 && db === 0
-    ? '　<span style="color:var(--red)">⚠ 資料庫無權證，請先點「更新合約」</span>'
-    : data.total_scanned === 0 && db > 0
-      ? '　<span style="color:var(--yellow)">⚠ 尚未掃描，請點「立刻掃描」</span>'
-      : '';
+
+  // DB 空時自動開始輪詢 ingest 進度
+  if (db === 0) {
+    $('scannerStatus').innerHTML =
+      '<span style="color:var(--yellow)">⏳ 合約資料初始化中（約 2 分鐘），請稍候…</span>';
+    _startIngestPoll();
+    return;
+  }
+
+  const note = data.total_scanned === 0 && db > 0
+    ? '　<span style="color:var(--yellow)">⚠ 尚未掃描，請點「立刻掃描」</span>'
+    : '';
   const modeTag = mode === '盤中'
     ? '<span style="color:var(--green);font-weight:700">盤中 委買量模式</span>'
     : '<span style="color:var(--yellow);font-weight:700">盤外 成交量模式</span>';
