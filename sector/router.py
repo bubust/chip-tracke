@@ -314,6 +314,80 @@ def api_sectors_history(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# GET /api/sector/{sector_id}/stocks  — 產業內個股近況
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/api/sector/{sector_id}/stocks")
+def api_sector_stocks(sector_id: str):
+    """回傳產業內各股近況：股號、股名、現價、成交量（張）、近20日漲幅"""
+    from chip_tracker_v2 import DB_PATH
+
+    with db() as sconn:
+        stock_rows = sconn.execute(
+            "SELECT stock_id FROM stock_sector_map WHERE sector_id = ? ORDER BY stock_id",
+            (sector_id,),
+        ).fetchall()
+
+    stock_ids = [r["stock_id"] for r in stock_rows]
+    if not stock_ids:
+        return {"stocks": []}
+
+    try:
+        cache_conn = sqlite3.connect(str(DB_PATH))
+        cache_conn.row_factory = sqlite3.Row
+        placeholders = ",".join("?" * len(stock_ids))
+        # 取最近 25 個交易日，足以算 20 日漲幅
+        rows = cache_conn.execute(f"""
+            SELECT date, stock_id, name, close, volume
+            FROM price_daily
+            WHERE stock_id IN ({placeholders})
+              AND date IN (
+                SELECT DISTINCT date FROM price_daily
+                ORDER BY date DESC LIMIT 25
+              )
+            ORDER BY stock_id, date DESC
+        """, stock_ids).fetchall()
+        cache_conn.close()
+    except Exception as e:
+        log.error(f"[sector] stocks DB read: {e}")
+        return {"stocks": [{"stock_id": sid, "name": sid} for sid in stock_ids]}
+
+    # 按股票整理
+    from collections import defaultdict
+    price_map: dict = defaultdict(list)
+    for r in rows:
+        price_map[r["stock_id"]].append(dict(r))
+
+    result = []
+    for sid in stock_ids:
+        days_data = price_map.get(sid, [])   # 已依 date DESC 排列
+        if not days_data:
+            result.append({"stock_id": sid, "name": sid,
+                           "close": None, "volume": None, "return_20d": None})
+            continue
+        latest   = days_data[0]
+        close    = latest.get("close")
+        volume   = latest.get("volume")
+        name     = latest.get("name") or sid
+        ret_20d  = None
+        if len(days_data) >= 20 and close:
+            old = days_data[19].get("close")
+            if old and old > 0:
+                ret_20d = round((close / old - 1) * 100, 2)
+        result.append({
+            "stock_id":  sid,
+            "name":      name,
+            "close":     round(float(close), 2) if close else None,
+            "volume":    int(volume) if volume else None,
+            "return_20d": ret_20d,
+        })
+
+    # 依 20 日漲幅由強到弱排序
+    result.sort(key=lambda x: (x["return_20d"] is None, -(x["return_20d"] or 0)))
+    return {"stocks": result}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # GET /api/sector/{sector_id}/correlation  — 產業內股票相關係數
 # ─────────────────────────────────────────────────────────────────────────────
 

@@ -219,6 +219,8 @@ async function toggleDetail(i, sectorId) {
       const r = await fetch(`${BASE}/sector/api/sector/${encodeURIComponent(sectorId)}?days=30`);
       const d = await r.json();
       inner.innerHTML = buildExpandContent(d.latest, d.stocks);
+      // 非同步載入個股明細
+      loadExpandStocks(sectorId, d.latest?.sector_id || sectorId);
     } catch (e) {
       inner.innerHTML = '<span style="color:var(--red)">載入失敗</span>';
     }
@@ -258,19 +260,61 @@ function buildExpandContent(latest, stocks) {
     `<div class="detail-item"><span class="detail-label">${label}</span><span class="detail-value">${val ?? "—"}</span></div>`
   ).join("");
 
-  const stockList = (stocks || []).slice(0, 20).join("、");
-  const moreStocks = (stocks || []).length > 20 ? ` 等 ${(stocks || []).length} 支` : "";
-
   return `
     <div class="expand-section">
       <h4>詳細指標</h4>
       <div class="detail-grid">${gridItems}</div>
     </div>
-    <div class="expand-section" style="flex:1;min-width:200px">
+    <div class="expand-section" style="flex:1;min-width:240px">
       <h4>成份股（${(stocks || []).length} 支）</h4>
-      <div style="color:var(--muted);font-size:.78rem;line-height:1.7">${stockList}${moreStocks}</div>
+      <div id="expand-stocks-${latest.sector_id || 'x'}" class="expand-stocks-wrap">
+        <div style="color:var(--muted);font-size:.78rem">載入中…</div>
+      </div>
     </div>
   `;
+}
+
+// ── 個股明細表格 ────────────────────────────────────────────────────────────────
+
+async function loadExpandStocks(sectorId, domId) {
+  const el = document.getElementById(`expand-stocks-${domId}`);
+  if (!el) return;
+  try {
+    const r = await fetch(`${BASE}/sector/api/sector/${encodeURIComponent(sectorId)}/stocks`);
+    const d = await r.json();
+    el.innerHTML = renderStocksTable(d.stocks || []);
+  } catch (e) {
+    if (el) el.innerHTML = '<span style="color:var(--red)">載入失敗</span>';
+  }
+}
+
+function renderStocksTable(stocks) {
+  if (!stocks || stocks.length === 0) return '<div style="color:var(--muted);font-size:.8rem">無資料</div>';
+  const rows = stocks.map(s => {
+    const ret = s.return_20d;
+    const retCls = ret === null ? '' : ret > 0 ? 'ret-pos' : ret < 0 ? 'ret-neg' : '';
+    const retStr = ret === null ? '—' : (ret > 0 ? '+' : '') + ret.toFixed(2) + '%';
+    const vol = s.volume ? (s.volume >= 10000 ? (s.volume/10000).toFixed(1)+'萬' : s.volume.toLocaleString()) : '—';
+    return `<tr>
+      <td style="font-weight:600;color:var(--accent)">${s.stock_id}</td>
+      <td style="color:var(--text-dim)">${escHtml(s.name || '—')}</td>
+      <td style="text-align:right">${s.close != null ? s.close.toFixed(2) : '—'}</td>
+      <td style="text-align:right;color:var(--muted)">${vol}</td>
+      <td class="${retCls}" style="text-align:right;font-weight:600">${retStr}</td>
+    </tr>`;
+  }).join('');
+  return `<div style="overflow-x:auto;max-height:300px;overflow-y:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:.78rem">
+      <thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)">
+        <th style="padding:4px 6px;text-align:left">股號</th>
+        <th style="padding:4px 6px;text-align:left">股名</th>
+        <th style="padding:4px 6px;text-align:right">股價</th>
+        <th style="padding:4px 6px;text-align:right">成交量(張)</th>
+        <th style="padding:4px 6px;text-align:right">20日漲幅</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
 }
 
 // ── 產業詳細頁 ────────────────────────────────────────────────────────────────
@@ -286,6 +330,11 @@ async function openDetail(sectorId) {
     const r = await fetch(`${BASE}/sector/api/sector/${encodeURIComponent(sectorId)}?days=60`);
     const d = await r.json();
     renderDetailPage(d);
+    // 非同步載入個股明細
+    const sr = await fetch(`${BASE}/sector/api/sector/${encodeURIComponent(sectorId)}/stocks`);
+    const sd = await sr.json();
+    const el = document.getElementById("detail-stocks-wrap");
+    if (el) el.innerHTML = renderStocksTable(sd.stocks || []);
   } catch (e) {
     document.getElementById("detail-content").innerHTML = `<div style="color:var(--red)">載入失敗：${e.message}</div>`;
   }
@@ -368,9 +417,7 @@ function renderDetailPage(d) {
 
     <div style="margin-top:20px">
       <h4 style="color:var(--muted);margin-bottom:10px;font-size:.85rem">成份股（${(d.stocks||[]).length} 支）</h4>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">
-        ${(d.stocks||[]).map(sid => `<span style="display:inline-block;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:.8rem;color:var(--accent);font-weight:600">${sid}</span>`).join('')}
-      </div>
+      <div id="detail-stocks-wrap"><div style="color:var(--muted);font-size:.8rem">載入中…</div></div>
     </div>
   `;
 }
@@ -784,8 +831,11 @@ async function onBubbleClick(sectorId, name) {
     metricsEl.innerHTML = metrics.map(m =>
       `<div class="bubble-side-metric"><div class="lbl">${m.lbl}</div><div class="val ${retClass(typeof m.val === 'number' ? m.val : null)}">${m.val}</div></div>`
     ).join("");
-    const stocks = d.stocks || [];
-    stocksEl.innerHTML = `<b style="color:var(--text)">成份股（${stocks.length}支）</b><br>` + stocks.join("、");
+    // 非同步載入個股明細
+    const sr = await fetch(`${BASE}/sector/api/sector/${encodeURIComponent(sectorId)}/stocks`);
+    const sd = await sr.json();
+    const stks = sd.stocks || [];
+    stocksEl.innerHTML = `<b style="color:var(--text);font-size:.8rem">成份股（${stks.length}支）</b>` + renderStocksTable(stks);
   } catch (e) {
     metricsEl.innerHTML = `<div style="color:var(--red)">載入失敗</div>`;
   }
