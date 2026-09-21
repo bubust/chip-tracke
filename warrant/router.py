@@ -873,6 +873,21 @@ def warrant_status():
 
 # ── 金流 API ──────────────────────────────────────────────────────────────────
 
+@router.get("/api/flow/warrants")
+def flow_warrants(
+    date:    str = Query(None,        description="YYYY-MM-DD，空=今天"),
+    kind:    str = Query(None,        description="CALL|PUT|空=全部"),
+    sort_by: str = Query("turnover",  description="turnover|volume"),
+    limit:   int = Query(30,          ge=1, le=200),
+):
+    """個別權證金流排行（TOP N），未依標的股彙整"""
+    from datetime import date as _date
+    d = date or _date.today().strftime("%Y-%m-%d")
+    rows = _flow.get_warrant_ranking(d, kind=kind or None,
+                                     sort_by=sort_by, limit=limit)
+    return {"date": d, "kind": kind, "count": len(rows), "rows": rows}
+
+
 @router.get("/api/flow/dates")
 def flow_dates():
     """有金流資料的日期清單"""

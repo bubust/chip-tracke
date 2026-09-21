@@ -75,8 +75,8 @@ async function loadFlowTable() {
 
   try {
     const [callData, putData, fullData] = await Promise.all([
-      fetch(`/warrant/api/flow/daily?date=${_flowDate}&sort_by=net&min_total=10000&direction=CALL&limit=30`).then(r => r.json()),
-      fetch(`/warrant/api/flow/daily?date=${_flowDate}&sort_by=net&min_total=10000&direction=PUT&limit=30`).then(r => r.json()),
+      fetch(`/warrant/api/flow/warrants?date=${_flowDate}&kind=CALL&sort_by=turnover&limit=30`).then(r => r.json()),
+      fetch(`/warrant/api/flow/warrants?date=${_flowDate}&kind=PUT&sort_by=turnover&limit=30`).then(r => r.json()),
       fetch(`/warrant/api/flow/daily?date=${_flowDate}&sort_by=${_flowSort}&min_total=10000&limit=200`).then(r => r.json()),
     ]);
 
@@ -114,34 +114,37 @@ function renderFlowTable(callRows, putRows, allRows) {
     : cp <= 0.33 ? `<span style="color:var(--red);font-weight:700">${cp.toFixed(2)}</span>`
     : cp.toFixed(2);
 
-  /* ── Top 30 雙欄面板 ── */
+  /* ── Top 30 個別權證雙欄面板 ── */
   const buildPanelRows = (rows, isCall) => rows.map((r, i) => {
-    const amt = isCall ? r.call_turnover : r.put_turnover;
-    const net = r.net_turnover;
-    const sign = net > 0 ? '+' : '';
+    const expiry = r.expiry_date ? r.expiry_date.slice(0, 10) : '—';
+    const price  = r.close_price > 0 ? r.close_price.toFixed(2) : '—';
+    const strike = r.strike != null ? r.strike : '—';
     return `<tr class="flow-top-row ${isCall ? 'flow-top-call' : 'flow-top-put'}"
-               onclick="showFlowDetail('${r.underlying_code}','${escHtml(r.underlying_name || r.underlying_code)}')">
+               onclick="showFlowDetail('${r.underlying_code}','${escHtml(r.underlying_name || r.underlying_code || r.warrant_code)}')">
       <td class="flow-rank">${i+1}</td>
-      <td class="flow-code">${r.underlying_code}</td>
-      <td class="flow-name">${r.underlying_name || '—'}</td>
-      <td class="${isCall ? 'flow-call-amt' : 'flow-put-amt'}">${fmtMoney(amt)}</td>
-      <td class="flow-net ${net > 0 ? 'flow-net-pos' : net < 0 ? 'flow-net-neg' : ''}">${sign}${fmtMoney(net)}</td>
+      <td class="flow-code">${r.warrant_code}</td>
+      <td class="flow-name">${escHtml(r.underlying_name || r.underlying_code || '—')}</td>
+      <td class="flow-price">${price}</td>
+      <td class="flow-vol">${fmtVol(r.volume)}</td>
+      <td class="${isCall ? 'flow-call-amt' : 'flow-put-amt'}">${fmtMoney(r.turnover_wan)}</td>
+      <td class="flow-strike">${strike}</td>
+      <td class="flow-expiry">${expiry}</td>
     </tr>`;
   }).join('');
 
   let html = `
   <div class="flow-top-panels">
     <div class="flow-top-panel flow-top-panel-call">
-      <div class="flow-top-panel-title">▲ 認購多 Top 30</div>
+      <div class="flow-top-panel-title">▲ 認購成交 Top 30</div>
       <table class="flow-table flow-top-table">
-        <thead><tr><th>#</th><th>股號</th><th>股名</th><th>認購金額</th><th>淨流量</th></tr></thead>
+        <thead><tr><th>#</th><th>代號</th><th>標的股</th><th>收盤</th><th>成交量</th><th>成交金額</th><th>履約價</th><th>到期日</th></tr></thead>
         <tbody>${buildPanelRows(callRows, true)}</tbody>
       </table>
     </div>
     <div class="flow-top-panel flow-top-panel-put">
-      <div class="flow-top-panel-title">▼ 認售多 Top 30</div>
+      <div class="flow-top-panel-title">▼ 認售成交 Top 30</div>
       <table class="flow-table flow-top-table">
-        <thead><tr><th>#</th><th>股號</th><th>股名</th><th>認售金額</th><th>淨流量</th></tr></thead>
+        <thead><tr><th>#</th><th>代號</th><th>標的股</th><th>收盤</th><th>成交量</th><th>成交金額</th><th>履約價</th><th>到期日</th></tr></thead>
         <tbody>${buildPanelRows(putRows, false)}</tbody>
       </table>
     </div>

@@ -142,6 +142,25 @@ CREATE TABLE IF NOT EXISTS warrant_flow (
 
 CREATE INDEX IF NOT EXISTS idx_warrant_flow_date
     ON warrant_flow(trade_date, total_turnover);
+
+CREATE TABLE IF NOT EXISTS warrant_flow_raw (
+    trade_date       TEXT NOT NULL,
+    warrant_code     TEXT NOT NULL,
+    warrant_name     TEXT,
+    kind             TEXT NOT NULL,
+    underlying_code  TEXT,
+    underlying_name  TEXT,
+    volume           INTEGER DEFAULT 0,
+    turnover         REAL DEFAULT 0,
+    close_price      REAL DEFAULT 0,
+    strike           REAL,
+    expiry_date      TEXT,
+    updated_at       TEXT,
+    PRIMARY KEY (trade_date, warrant_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_warrant_flow_raw_date_kind
+    ON warrant_flow_raw(trade_date, kind, volume);
 """
 
 

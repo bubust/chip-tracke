@@ -129,12 +129,14 @@ def calc_and_save(date_str: Optional[str] = None) -> int:
         log.warning(f"[flow] {date_str} 無任何成交資料，跳過")
         return 0
 
-    # 建立 warrant_code → {underlying_code, kind, underlying_name} 對照
+    # 建立 warrant_code → {underlying_code, kind, underlying_name, ...} 對照
     codes = [r["code"] for r in all_rows]
     with _db.db() as conn:
         placeholders = ",".join("?" * len(codes))
         wmap_rows = conn.execute(f"""
-            SELECT w.code, w.kind, w.underlying_code, u.name AS underlying_name
+            SELECT w.code, w.kind, w.underlying_code,
+                   w.name AS warrant_name, w.strike, w.last_trade_date AS expiry_date,
+                   u.name AS underlying_name
             FROM warrants w
             LEFT JOIN underlyings u ON w.underlying_code = u.code
             WHERE w.code IN ({placeholders})
@@ -181,6 +183,7 @@ def calc_and_save(date_str: Optional[str] = None) -> int:
             round(net), round(total), cp, now_s
         ))
 
+    # 寫入彙整表
     with _db.db() as conn:
         conn.executemany("""
             INSERT OR REPLACE INTO warrant_flow
@@ -191,7 +194,29 @@ def calc_and_save(date_str: Optional[str] = None) -> int:
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, insert_rows)
 
-    log.info(f"[flow] {date_str} 寫入 {len(insert_rows)} 筆")
+    # 寫入逐檔明細表
+    raw_rows = []
+    for r in all_rows:
+        info = wmap.get(r["code"])
+        if not info or not info["underlying_code"]:
+            continue
+        raw_rows.append((
+            date_str, r["code"], info.get("warrant_name"), info["kind"],
+            info["underlying_code"], info.get("underlying_name"),
+            r["volume"], round(r["turnover"]), r["close"],
+            info.get("strike"), info.get("expiry_date"), now_s
+        ))
+    with _db.db() as conn:
+        conn.executemany("""
+            INSERT OR REPLACE INTO warrant_flow_raw
+            (trade_date, warrant_code, warrant_name, kind,
+             underlying_code, underlying_name,
+             volume, turnover, close_price,
+             strike, expiry_date, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        """, raw_rows)
+
+    log.info(f"[flow] {date_str} 彙整 {len(insert_rows)} 筆，逐檔 {len(raw_rows)} 筆")
     return len(insert_rows)
 
 
@@ -244,6 +269,40 @@ def get_ranking(
         # 轉成萬元方便顯示
         for key in ("call_turnover", "put_turnover", "net_turnover", "total_turnover"):
             d[key] = round(d[key] / 10000, 1)  # 元 → 萬元
+        result.append(d)
+    return result
+
+
+def get_warrant_ranking(
+    date_str: Optional[str] = None,
+    kind: Optional[str] = None,       # 'CALL' | 'PUT' | None
+    sort_by: str = "turnover",        # 'turnover' | 'volume'
+    limit: int = 30,
+) -> list[dict]:
+    """個別權證成交量/金額排行"""
+    if date_str is None:
+        date_str = date.today().strftime("%Y-%m-%d")
+    sort_col = "volume" if sort_by == "volume" else "turnover"
+    kind_clause = ""
+    kind_params: list = []
+    if kind in ("CALL", "PUT"):
+        kind_clause = "AND kind = ?"
+        kind_params = [kind]
+    with _db.db() as conn:
+        rows = conn.execute(f"""
+            SELECT trade_date, warrant_code, warrant_name, kind,
+                   underlying_code, underlying_name,
+                   volume, turnover, close_price, strike, expiry_date
+            FROM warrant_flow_raw
+            WHERE trade_date = ? AND volume > 0
+              {kind_clause}
+            ORDER BY {sort_col} DESC
+            LIMIT ?
+        """, [date_str] + kind_params + [limit]).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["turnover_wan"] = round(d["turnover"] / 10000, 1)
         result.append(d)
     return result
 

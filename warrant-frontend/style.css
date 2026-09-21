@@ -347,7 +347,10 @@ html, body { min-height: 100vh; background: var(--bg); color: var(--text);
 .flow-net   { font-weight: 700; text-align: right; font-size: 14px; }
 .flow-net-pos { color: var(--green); }
 .flow-net-neg { color: var(--red); }
-.flow-cp    { text-align: right; font-size: 13px; }
+.flow-cp      { text-align: right; font-size: 13px; }
+.flow-price   { text-align: right; font-size: 13px; }
+.flow-strike  { text-align: right; font-size: 12px; color: var(--muted); }
+.flow-expiry  { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
 .flow-dir-call { color: var(--green); font-weight: 700; }
 .flow-dir-put  { color: var(--red);   font-weight: 700; }
 .flow-dir-flat { color: var(--muted); }
