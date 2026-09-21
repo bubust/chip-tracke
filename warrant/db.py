@@ -122,6 +122,26 @@ CREATE TABLE IF NOT EXISTS config (
     key     TEXT PRIMARY KEY,
     value   TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS warrant_flow (
+    trade_date       TEXT NOT NULL,
+    underlying_code  TEXT NOT NULL,
+    underlying_name  TEXT,
+    call_volume      INTEGER DEFAULT 0,
+    call_turnover    REAL DEFAULT 0,
+    call_count       INTEGER DEFAULT 0,
+    put_volume       INTEGER DEFAULT 0,
+    put_turnover     REAL DEFAULT 0,
+    put_count        INTEGER DEFAULT 0,
+    net_turnover     REAL DEFAULT 0,
+    total_turnover   REAL DEFAULT 0,
+    cp_ratio         REAL,
+    updated_at       TEXT,
+    PRIMARY KEY (trade_date, underlying_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_warrant_flow_date
+    ON warrant_flow(trade_date, total_turnover);
 """
 
 

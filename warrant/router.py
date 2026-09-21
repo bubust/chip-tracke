@@ -18,6 +18,7 @@ from . import db as _db
 from . import calculator as calc
 from . import ingester
 from . import mis_proxy as mis
+from . import flow as _flow
 from .futures import router as _futures_router
 
 log = logging.getLogger(__name__)
@@ -221,6 +222,10 @@ def start_warrant_scheduler():
     scheduler.add_job(run_scanner, "cron", day_of_week="mon-fri",
                       hour="9-13", minute="0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45,48,51,54,57",
                       id="w_scanner", replace_existing=True)
+    # 每日 14:10 自動計算金流日報（確保盤後資料已發布）
+    scheduler.add_job(lambda: _flow.calc_and_save(), "cron",
+                      day_of_week="mon-fri", hour=14, minute=10,
+                      id="w_flow", replace_existing=True)
     if not scheduler.running:
         scheduler.start()
 
@@ -864,3 +869,71 @@ def warrant_status():
     except Exception as e:
         status["db_error"] = str(e)
     return status
+
+
+# ── 金流 API ──────────────────────────────────────────────────────────────────
+
+@router.get("/api/flow/dates")
+def flow_dates():
+    """有金流資料的日期清單"""
+    return _flow.get_available_dates(30)
+
+
+@router.get("/api/flow/daily")
+def flow_daily(
+    date:        str   = Query(None,   description="YYYY-MM-DD，空=今天"),
+    min_total:   float = Query(100000, description="最低總成交金額（元）"),
+    direction:   str   = Query(None,   description="CALL|PUT|空=全部"),
+    sort_by:     str   = Query("net",  description="net|total|call|put|cp"),
+    limit:       int   = Query(200,    ge=1, le=500),
+):
+    """當日權證金流排行（依標的股彙整）"""
+    from datetime import date as _date
+    d = date or _date.today().strftime("%Y-%m-%d")
+    rows = _flow.get_ranking(d, min_total=min_total,
+                             direction=direction or None,
+                             sort_by=sort_by, limit=limit)
+    return {"date": d, "count": len(rows), "rows": rows}
+
+
+@router.get("/api/flow/stock/{code}")
+def flow_stock(code: str, days: int = Query(20, ge=1, le=60)):
+    """單支標的股近期金流歷史"""
+    rows = _flow.get_stock_history(code, days)
+    return {"underlying_code": code, "rows": rows}
+
+
+@router.post("/api/flow/run")
+def flow_run(date: str = Query(None, description="YYYY-MM-DD，空=今天")):
+    """手動觸發當日金流計算"""
+    import threading
+    from datetime import date as _date
+    d = date or _date.today().strftime("%Y-%m-%d")
+
+    _flow_status["running"] = True
+    _flow_status["date"] = d
+    _flow_status["error"] = None
+
+    def _bg():
+        try:
+            n = _flow.calc_and_save(d)
+            _flow_status["last_count"] = n
+            _flow_status["ran_at"] = datetime.now().isoformat(timespec="seconds")
+        except Exception as e:
+            _flow_status["error"] = str(e)
+        finally:
+            _flow_status["running"] = False
+
+    threading.Thread(target=_bg, daemon=True).start()
+    return {"ok": True, "date": d, "message": "金流計算已在背景啟動"}
+
+
+@router.get("/api/flow/status")
+def flow_status():
+    return _flow_status
+
+
+_flow_status: dict = {
+    "running": False, "date": None, "ran_at": None,
+    "last_count": None, "error": None,
+}

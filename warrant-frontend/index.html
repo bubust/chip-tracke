@@ -28,6 +28,7 @@
   <button class="tab-btn active" id="tabWarrant" onclick="switchTab('warrant')">📋 權證</button>
   <button class="tab-btn"        id="tabFutures" onclick="switchTab('futures')">📊 個股期</button>
   <button class="tab-btn"        id="tabScanner" onclick="switchTab('scanner')">🔍 掃描</button>
+  <button class="tab-btn"        id="tabFlow"    onclick="switchTab('flow')">💰 金流</button>
 </div>
 
 <!-- ── 標的資訊列（共用） ── -->
@@ -144,6 +145,50 @@
 
 </div><!-- /scannerSection -->
 
+<!-- ════ 金流區 ════ -->
+<div id="flowSection" class="hidden">
+
+  <!-- 控制列 -->
+  <div class="flow-controls">
+    <div class="flow-ctrl-row">
+      <label>日期</label>
+      <select id="flowDateSel" onchange="onFlowDateChange()"></select>
+
+      <label style="margin-left:12px">方向</label>
+      <div class="side-switch">
+        <button class="side-btn active" id="flowBtnAll"  onclick="setFlowDir('all')">全部</button>
+        <button class="side-btn"        id="flowBtnCall" onclick="setFlowDir('CALL')">認購多</button>
+        <button class="side-btn"        id="flowBtnPut"  onclick="setFlowDir('PUT')">認售多</button>
+      </div>
+
+      <label style="margin-left:12px">排序</label>
+      <div class="side-switch">
+        <button class="side-btn active" id="flowSortNet"   onclick="setFlowSort('net')">淨流量</button>
+        <button class="side-btn"        id="flowSortTotal" onclick="setFlowSort('total')">總成交</button>
+        <button class="side-btn"        id="flowSortCp"    onclick="setFlowSort('cp')">C/P比</button>
+      </div>
+
+      <button class="scan-run-btn" style="margin-left:auto" onclick="triggerFlowRun()">立刻計算</button>
+    </div>
+    <div id="flowStatus" class="scan-status" style="margin-top:4px"></div>
+  </div>
+
+  <!-- 表格 -->
+  <div id="flowTableWrap" class="flow-table-wrap">
+    <div class="flow-placeholder">選擇日期後載入金流資料，<br>若今日尚無資料請點「立刻計算」（14:10 後自動更新）</div>
+  </div>
+
+  <!-- 個股歷史 Panel -->
+  <div id="flowDetail" class="flow-detail hidden">
+    <div class="flow-detail-header">
+      <span id="flowDetailTitle"></span>
+      <button onclick="closeFlowDetail()">✕</button>
+    </div>
+    <div id="flowDetailChart"></div>
+  </div>
+
+</div><!-- /flowSection -->
+
 <!-- ── Toast ── -->
 <div id="toast" class="toast hidden"></div>
 
@@ -157,5 +202,6 @@
 
 <script src="/warrant/static/app.js"></script>
 <script src="/warrant/static/futures.js"></script>
+<script src="/warrant/static/flow.js"></script>
 </body>
 </html>
