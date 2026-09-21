@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>產業關聯星圖</title>
+<style>
+  :root {
+    --bg:     #0d1117;
+    --card:   #161b22;
+    --surface2: #21262d;
+    --border: #30363d;
+    --text:   #e6edf3;
+    --muted:  #8b949e;
+    --accent: #58a6ff;
+    --green:  #3fb950;
+    --red:    #f85149;
+    --yellow: #d29922;
+    --blue:   #388bfd;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  /* header */
+  .header {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .header h1 { font-size: 1rem; font-weight: 600; flex-shrink: 0; }
+  .back-link { color: var(--accent); text-decoration: none; font-size: .85rem; }
+  .back-link:hover { text-decoration: underline; }
+
+  /* controls */
+  .controls {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 20px;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .ctrl-group { display: flex; align-items: center; gap: 8px; }
+  .ctrl-group label { color: var(--muted); font-size: .82rem; white-space: nowrap; }
+  select, input[type=range] { background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 4px 8px; font-size: .82rem; }
+  select:focus { outline: none; border-color: var(--accent); }
+  .radio-group { display: flex; gap: 6px; }
+  .radio-group label {
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-size: .8rem;
+    color: var(--muted);
+    transition: .15s;
+  }
+  .radio-group input[type=radio] { display: none; }
+  .radio-group input[type=radio]:checked + label {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0d1117;
+    font-weight: 600;
+  }
+  .threshold-val { font-size: .82rem; color: var(--accent); min-width: 30px; }
+
+  /* main layout */
+  .main {
+    display: flex;
+    gap: 0;
+    height: calc(100vh - 102px);
+  }
+  .graph-area {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    overflow: hidden;
+  }
+  #graphSvg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .right-panel {
+    width: 280px;
+    flex-shrink: 0;
+    background: var(--card);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .panel-section h3 {
+    font-size: .8rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 10px;
+  }
+  .corr-pair {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: .82rem;
+  }
+  .corr-pair:last-child { border-bottom: none; }
+  .corr-pair-names { color: var(--text); line-height: 1.5; }
+  .corr-pair-val { font-weight: 700; flex-shrink: 0; margin-left: 8px; }
+  .corr-pos { color: var(--green); }
+  .corr-neg { color: var(--red); }
+  .no-neg-msg { font-size: .8rem; color: var(--muted); line-height: 1.6; }
+
+  /* loading / empty */
+  .overlay-msg {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: .9rem;
+    gap: 10px;
+    pointer-events: none;
+  }
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* SVG node/edge styles */
+  .node-circle { cursor: pointer; transition: stroke-width .15s; }
+  .node-circle:hover { stroke-width: 3px !important; }
+  .node-label { font-size: 9px; fill: #fff; text-anchor: middle; dominant-baseline: middle;
+                pointer-events: none; font-family: -apple-system, sans-serif; }
+  .edge-line { stroke-opacity: 0.6; transition: stroke-opacity .15s; }
+  .edge-line.dimmed { stroke-opacity: 0.1; }
+  .edge-line.highlight { stroke-opacity: 1; }
+
+  @media (max-width: 640px) {
+    .main { flex-direction: column; height: auto; }
+    .right-panel { width: 100%; border-left: none; border-top: 1px solid var(--border); }
+    .graph-area { height: 60vw; min-height: 300px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a class="back-link" href="/sector/static/index.html">← 返回產業輪動</a>
+  <h1>🌐 產業關聯星圖</h1>
+</div>
+
+<div class="controls">
+  <div class="ctrl-group">
+    <label>產業</label>
+    <select id="sectorSel" onchange="loadCorrelation()">
+      <option value="">— 選擇產業 —</option>
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <label>天數</label>
+    <div class="radio-group">
+      <input type="radio" name="days" id="d20" value="20"><label for="d20">20D</label>
+      <input type="radio" name="days" id="d60" value="60" checked><label for="d60">60D</label>
+      <input type="radio" name="days" id="d120" value="120"><label for="d120">120D</label>
+    </div>
+  </div>
+  <div class="ctrl-group">
+    <label>相關門檻</label>
+    <input type="range" id="threshSlider" min="0" max="1" step="0.05" value="0.5"
+           oninput="document.getElementById('threshVal').textContent=parseFloat(this.value).toFixed(2); loadCorrelation()">
+    <span class="threshold-val" id="threshVal">0.50</span>
+  </div>
+</div>
+
+<div class="main">
+  <div class="graph-area">
+    <svg id="graphSvg"></svg>
+    <div class="overlay-msg" id="overlayMsg">請選擇產業</div>
+  </div>
+  <div class="right-panel">
+    <div class="panel-section">
+      <h3>連動最強配對</h3>
+      <div id="topPositive"><span style="color:var(--muted);font-size:.8rem">—</span></div>
+    </div>
+    <div class="panel-section">
+      <h3>負相關避險組合</h3>
+      <div id="topNegative"><span style="color:var(--muted);font-size:.8rem">—</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const BASE = "";
+let _nodes = [], _edges = [], _nameMap = {};
+let _simTimer = null;
+let _positions = {};  // id → {x, y, vx, vy}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    const r = await fetch(`${BASE}/sector/api/sectors?sort_by=rank5d`);
+    const d = await r.json();
+    const sectors = d.sectors || [];
+    const sel = document.getElementById("sectorSel");
+    sectors.forEach(s => {
+      const opt = document.createElement("option");
+      opt.value = s.sector_id;
+      opt.textContent = s.sector_name || s.sector_id;
+      sel.appendChild(opt);
+    });
+  } catch (e) {
+    console.error("init:", e);
+  }
+
+  // 天數切換觸發
+  document.querySelectorAll("input[name=days]").forEach(r =>
+    r.addEventListener("change", loadCorrelation)
+  );
+}
+
+// ── Load correlation ────────────────────────────────────────────────────────
+async function loadCorrelation() {
+  const sectorId = document.getElementById("sectorSel").value;
+  if (!sectorId) return;
+  const days = document.querySelector("input[name=days]:checked")?.value || "60";
+  const thresh = document.getElementById("threshSlider").value;
+
+  setOverlay("loading");
+  clearGraph();
+
+  try {
+    const r = await fetch(`${BASE}/sector/api/sector/${encodeURIComponent(sectorId)}/correlation?days=${days}&threshold=${thresh}`);
+    const d = await r.json();
+
+    _nodes = d.nodes || [];
+    _edges = d.edges || [];
+    _nameMap = {};
+    _nodes.forEach(n => _nameMap[n.id] = n.name);
+
+    renderPanel(d.top_positive, d.top_negative);
+
+    if (_nodes.length === 0) {
+      setOverlay("empty");
+      return;
+    }
+
+    setOverlay("none");
+    startSimulation();
+  } catch (e) {
+    setOverlay("error", e.message);
+  }
+}
+
+// ── Force simulation ────────────────────────────────────────────────────────
+const NODE_RADIUS = 20;
+const REPULSION   = 3500;
+const SPRING_K    = 0.04;
+const DAMPING     = 0.82;
+const GRAVITY     = 0.012;
+const MAX_ITER    = 300;
+
+function startSimulation() {
+  if (_simTimer) clearInterval(_simTimer);
+
+  const svg = document.getElementById("graphSvg");
+  const W = svg.clientWidth  || 600;
+  const H = svg.clientHeight || 400;
+  const cx = W / 2, cy = H / 2;
+
+  // 初始位置：圓形排列
+  _positions = {};
+  _nodes.forEach((n, i) => {
+    const angle = (i / _nodes.length) * 2 * Math.PI;
+    const r = Math.min(W, H) * 0.3;
+    _positions[n.id] = {
+      x: cx + r * Math.cos(angle),
+      y: cy + r * Math.sin(angle),
+      vx: 0, vy: 0,
+    };
+  });
+
+  initSvgElements(W, H);
+
+  let iter = 0;
+  _simTimer = setInterval(() => {
+    iter++;
+    simulateStep(W, H);
+    updateSvgPositions();
+    if (iter >= MAX_ITER) {
+      clearInterval(_simTimer);
+      _simTimer = null;
+    }
+  }, 16);
+}
+
+function simulateStep(W, H) {
+  const cx = W / 2, cy = H / 2;
+  const nodeIds = _nodes.map(n => n.id);
+
+  // 初始化力
+  const forces = {};
+  nodeIds.forEach(id => { forces[id] = { fx: 0, fy: 0 }; });
+
+  // 排斥力
+  for (let i = 0; i < nodeIds.length; i++) {
+    for (let j = i + 1; j < nodeIds.length; j++) {
+      const a = nodeIds[i], b = nodeIds[j];
+      const pa = _positions[a], pb = _positions[b];
+      const dx = pa.x - pb.x, dy = pa.y - pb.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
+      const f = REPULSION / (dist * dist);
+      const fx = f * dx / dist, fy = f * dy / dist;
+      forces[a].fx += fx; forces[a].fy += fy;
+      forces[b].fx -= fx; forces[b].fy -= fy;
+    }
+  }
+
+  // 彈簧力（邊）
+  _edges.forEach(e => {
+    const pa = _positions[e.source], pb = _positions[e.target];
+    if (!pa || !pb) return;
+    const dx = pb.x - pa.x, dy = pb.y - pa.y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
+    // 目標距離依相關係數：越強越近
+    const targetDist = 80 + (1 - Math.abs(e.corr)) * 160;
+    const f = SPRING_K * (dist - targetDist);
+    const fx = f * dx / dist, fy = f * dy / dist;
+    forces[e.source].fx += fx; forces[e.source].fy += fy;
+    forces[e.target].fx -= fx; forces[e.target].fy -= fy;
+  });
+
+  // 向心力
+  nodeIds.forEach(id => {
+    const p = _positions[id];
+    forces[id].fx += GRAVITY * (cx - p.x);
+    forces[id].fy += GRAVITY * (cy - p.y);
+  });
+
+  // 更新速度 & 位置
+  nodeIds.forEach(id => {
+    const p = _positions[id];
+    p.vx = (p.vx + forces[id].fx) * DAMPING;
+    p.vy = (p.vy + forces[id].fy) * DAMPING;
+    p.x += p.vx;
+    p.y += p.vy;
+    // 邊界
+    p.x = Math.max(NODE_RADIUS + 2, Math.min(W - NODE_RADIUS - 2, p.x));
+    p.y = Math.max(NODE_RADIUS + 2, Math.min(H - NODE_RADIUS - 2, p.y));
+  });
+}
+
+// ── SVG rendering ──────────────────────────────────────────────────────────
+function initSvgElements(W, H) {
+  const svg = document.getElementById("graphSvg");
+  svg.innerHTML = "";
+
+  // 邊
+  _edges.forEach(e => {
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("class", "edge-line");
+    line.setAttribute("data-src", e.source);
+    line.setAttribute("data-tgt", e.target);
+    const col = e.corr >= 0 ? "#3fb950" : "#f85149";
+    const thick = 1 + Math.abs(e.corr) * 4;
+    line.setAttribute("stroke", col);
+    line.setAttribute("stroke-width", thick.toFixed(1));
+    line.setAttribute("data-corr", e.corr);
+    svg.appendChild(line);
+  });
+
+  // 節點
+  _nodes.forEach(n => {
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.setAttribute("data-id", n.id);
+    g.setAttribute("class", "node-g");
+    g.style.cursor = "pointer";
+
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("class", "node-circle");
+    circle.setAttribute("r", NODE_RADIUS);
+    const ret = n.return_60d || 0;
+    const col = ret >= 0 ? "#388bfd" : "#f85149";
+    circle.setAttribute("fill", col);
+    circle.setAttribute("fill-opacity", "0.85");
+    circle.setAttribute("stroke", col);
+    circle.setAttribute("stroke-width", "1.5");
+
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute("class", "node-label");
+    text.setAttribute("dy", "0.35em");
+    text.textContent = n.id;
+
+    g.appendChild(circle);
+    g.appendChild(text);
+
+    g.addEventListener("click", () => onNodeClick(n.id));
+    svg.appendChild(g);
+  });
+}
+
+function updateSvgPositions() {
+  const svg = document.getElementById("graphSvg");
+
+  // 更新邊
+  svg.querySelectorAll(".edge-line").forEach(line => {
+    const src = line.getAttribute("data-src");
+    const tgt = line.getAttribute("data-tgt");
+    const pa = _positions[src], pb = _positions[tgt];
+    if (!pa || !pb) return;
+    line.setAttribute("x1", pa.x.toFixed(1));
+    line.setAttribute("y1", pa.y.toFixed(1));
+    line.setAttribute("x2", pb.x.toFixed(1));
+    line.setAttribute("y2", pb.y.toFixed(1));
+  });
+
+  // 更新節點
+  svg.querySelectorAll(".node-g").forEach(g => {
+    const id = g.getAttribute("data-id");
+    const p = _positions[id];
+    if (!p) return;
+    g.setAttribute("transform", `translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`);
+  });
+}
+
+function clearGraph() {
+  if (_simTimer) { clearInterval(_simTimer); _simTimer = null; }
+  document.getElementById("graphSvg").innerHTML = "";
+  _nodes = []; _edges = []; _positions = {};
+}
+
+// ── Node highlight ──────────────────────────────────────────────────────────
+let _selectedNode = null;
+
+function onNodeClick(id) {
+  const svg = document.getElementById("graphSvg");
+  if (_selectedNode === id) {
+    // 取消選取
+    _selectedNode = null;
+    svg.querySelectorAll(".edge-line").forEach(l => {
+      l.classList.remove("dimmed", "highlight");
+    });
+    return;
+  }
+  _selectedNode = id;
+
+  // 找有連接此節點的邊
+  const connected = new Set();
+  _edges.forEach(e => {
+    if (e.source === id || e.target === id) {
+      connected.add(`${e.source}-${e.target}`);
+    }
+  });
+
+  svg.querySelectorAll(".edge-line").forEach(l => {
+    const src = l.getAttribute("data-src");
+    const tgt = l.getAttribute("data-tgt");
+    const key = `${src}-${tgt}`;
+    if (connected.has(key)) {
+      l.classList.remove("dimmed");
+      l.classList.add("highlight");
+    } else {
+      l.classList.remove("highlight");
+      l.classList.add("dimmed");
+    }
+  });
+}
+
+// ── Right panel ─────────────────────────────────────────────────────────────
+function renderPanel(topPos, topNeg) {
+  const posEl = document.getElementById("topPositive");
+  const negEl = document.getElementById("topNegative");
+
+  if (!topPos || topPos.length === 0) {
+    posEl.innerHTML = '<span style="color:var(--muted);font-size:.8rem">無資料</span>';
+  } else {
+    posEl.innerHTML = topPos.map(p =>
+      `<div class="corr-pair">
+        <div class="corr-pair-names">${_nameMap[p.a]||p.a}<br>${_nameMap[p.b]||p.b}</div>
+        <div class="corr-pair-val corr-pos">+${p.corr.toFixed(2)}</div>
+      </div>`
+    ).join("");
+  }
+
+  if (!topNeg || topNeg.length === 0) {
+    negEl.innerHTML = '<div class="no-neg-msg">此族群同漲同跌，無負相關避險機會</div>';
+  } else {
+    negEl.innerHTML = topNeg.map(p =>
+      `<div class="corr-pair">
+        <div class="corr-pair-names">${_nameMap[p.a]||p.a}<br>${_nameMap[p.b]||p.b}</div>
+        <div class="corr-pair-val corr-neg">${p.corr.toFixed(2)}</div>
+      </div>`
+    ).join("");
+  }
+}
+
+// ── Overlay ────────────────────────────────────────────────────────────────
+function setOverlay(state, msg) {
+  const el = document.getElementById("overlayMsg");
+  if (state === "loading") {
+    el.innerHTML = '<div class="spinner"></div> 計算中…';
+    el.style.display = "flex";
+    el.style.pointerEvents = "auto";
+  } else if (state === "empty") {
+    el.innerHTML = "此產業無足夠價格資料";
+    el.style.display = "flex";
+    el.style.pointerEvents = "none";
+  } else if (state === "error") {
+    el.innerHTML = `<span style="color:var(--red)">載入失敗：${msg || ""}</span>`;
+    el.style.display = "flex";
+    el.style.pointerEvents = "none";
+  } else {
+    el.style.display = "none";
+  }
+}
+
+init();
+</script>
+</body>
+</html>

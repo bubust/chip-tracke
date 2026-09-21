@@ -92,11 +92,19 @@ function switchSortTab(tab, el) {
     document.getElementById("sectors-panel").style.display = "none";
     document.getElementById("detail-panel").style.display = "none";
     document.getElementById("events-panel").style.display = "";
+    document.getElementById("bubble-panel").style.display = "none";
     loadEvents();
+  } else if (tab === "bubble") {
+    document.getElementById("sectors-panel").style.display = "none";
+    document.getElementById("detail-panel").style.display = "none";
+    document.getElementById("events-panel").style.display = "none";
+    document.getElementById("bubble-panel").style.display = "";
+    renderBubbleChart(_sectors.length > 0 ? _sectors : null);
   } else {
     document.getElementById("events-panel").style.display = "none";
     document.getElementById("detail-panel").style.display = "none";
     document.getElementById("sectors-panel").style.display = "";
+    document.getElementById("bubble-panel").style.display = "none";
     loadSectors(tab);
   }
 }
@@ -605,6 +613,182 @@ function showToast(msg, type = "ok") {
   t.textContent = msg;
   t.className = `toast show ${type}`;
   setTimeout(() => { t.className = "toast"; }, 3000);
+}
+
+// ── 泡泡圖 ───────────────────────────────────────────────────────────────────
+
+async function renderBubbleChart(sectors) {
+  const container = document.getElementById("bubbleSection");
+
+  // 若無資料，嘗試載入
+  if (!sectors || sectors.length === 0) {
+    container.innerHTML = '<div class="loading"><div class="spinner"></div> 載入中...</div>';
+    try {
+      const r = await fetch(`${BASE}/sector/api/sectors?sort_by=rank5d`);
+      const d = await r.json();
+      sectors = d.sectors || [];
+    } catch (e) {
+      container.innerHTML = `<div style="color:var(--red);padding:20px">載入失敗：${e.message}</div>`;
+      return;
+    }
+  }
+
+  if (!sectors || sectors.length === 0) {
+    container.innerHTML = '<div class="empty-state"><h3>尚無資料</h3><p>請先初始化並執行計算</p></div>';
+    return;
+  }
+
+  // SVG 尺寸與邊距
+  const W = 700, H = 500;
+  const margin = { top: 40, right: 40, bottom: 50, left: 60 };
+  const pw = W - margin.left - margin.right;
+  const ph = H - margin.top - margin.bottom;
+
+  // 取出有效資料
+  const pts = sectors.filter(s =>
+    s.return_ew_5d != null && s.return_ew_20d != null
+  );
+
+  // 座標範圍
+  const x20 = pts.map(s => s.return_ew_20d * 100);
+  const y5  = pts.map(s => s.return_ew_5d  * 100);
+  const xMin = Math.min(...x20), xMax = Math.max(...x20);
+  const yMin = Math.min(...y5),  yMax = Math.max(...y5);
+  const xPad = (xMax - xMin) * 0.15 || 2;
+  const yPad = (yMax - yMin) * 0.15 || 2;
+  const xL = xMin - xPad, xR = xMax + xPad;
+  const yB = yMin - yPad, yT = yMax + yPad;
+
+  const toSvgX = v => margin.left + ((v - xL) / (xR - xL)) * pw;
+  const toSvgY = v => margin.top  + ((yT - v) / (yT - yB)) * ph;
+  const x0 = toSvgX(0), y0 = toSvgY(0);
+
+  // 氣泡半徑
+  const maxCount = Math.max(...pts.map(s => s.stock_count || 1));
+  const bubbleR = s => {
+    const cnt = s.stock_count || 1;
+    return 6 + (cnt / maxCount) * 14;
+  };
+
+  // 顏色
+  const bubbleColor = s => {
+    const x = s.return_ew_20d, y = s.return_ew_5d;
+    if (y >= 0 && x >= 0) return "#f85149";
+    if (y >= 0 && x <  0) return "#d29922";
+    if (y <  0 && x >= 0) return "#388bfd";
+    return "#8b949e";
+  };
+
+  // 建立 SVG
+  let svgParts = [];
+
+  // 象限背景
+  const qBg = [
+    { x: x0, y: margin.top, w: margin.left + pw - x0, h: y0 - margin.top, color: "rgba(248,81,73,.05)" },   // 右上
+    { x: margin.left, y: margin.top, w: x0 - margin.left, h: y0 - margin.top, color: "rgba(210,153,34,.05)" }, // 左上
+    { x: margin.left, y: y0, w: x0 - margin.left, h: margin.top + ph - y0, color: "rgba(139,148,158,.04)" },   // 左下
+    { x: x0, y: y0, w: margin.left + pw - x0, h: margin.top + ph - y0, color: "rgba(56,139,253,.05)" },       // 右下
+  ];
+  qBg.forEach(q => {
+    svgParts.push(`<rect x="${q.x}" y="${q.y}" width="${Math.max(0,q.w)}" height="${Math.max(0,q.h)}" fill="${q.color}"/>`);
+  });
+
+  // 零線
+  svgParts.push(`<line x1="${x0}" y1="${margin.top}" x2="${x0}" y2="${margin.top+ph}" class="bubble-zero-line"/>`);
+  svgParts.push(`<line x1="${margin.left}" y1="${y0}" x2="${margin.left+pw}" y2="${y0}" class="bubble-zero-line"/>`);
+
+  // 象限標籤
+  const qlPad = 8;
+  const quadLabels = [
+    { text: "領漲・中短期皆強",   x: margin.left + pw - qlPad, y: margin.top + qlPad, anchor: "end" },
+    { text: "轉強・短強中弱",     x: margin.left + qlPad,      y: margin.top + qlPad, anchor: "start" },
+    { text: "領跌・中短期皆弱",   x: margin.left + qlPad,      y: margin.top + ph - qlPad, anchor: "start" },
+    { text: "落後・中強短弱",     x: margin.left + pw - qlPad, y: margin.top + ph - qlPad, anchor: "end" },
+  ];
+  quadLabels.forEach(q => {
+    svgParts.push(`<text x="${q.x}" y="${q.y}" text-anchor="${q.anchor}" class="bubble-quadrant-label">${q.text}</text>`);
+  });
+
+  // 軸刻度（簡單 4 格）
+  const xTicks = 5, yTicks = 5;
+  for (let i = 0; i <= xTicks; i++) {
+    const v = xL + (i / xTicks) * (xR - xL);
+    const sx = toSvgX(v);
+    svgParts.push(`<line x1="${sx}" y1="${margin.top+ph}" x2="${sx}" y2="${margin.top+ph+4}" stroke="var(--border)" stroke-width="1"/>`);
+    svgParts.push(`<text x="${sx}" y="${margin.top+ph+16}" text-anchor="middle" class="bubble-axis-label">${v.toFixed(1)}%</text>`);
+  }
+  for (let i = 0; i <= yTicks; i++) {
+    const v = yB + (i / yTicks) * (yT - yB);
+    const sy = toSvgY(v);
+    svgParts.push(`<line x1="${margin.left-4}" y1="${sy}" x2="${margin.left}" y2="${sy}" stroke="var(--border)" stroke-width="1"/>`);
+    svgParts.push(`<text x="${margin.left-8}" y="${sy+4}" text-anchor="end" class="bubble-axis-label">${v.toFixed(1)}%</text>`);
+  }
+
+  // 軸標籤
+  svgParts.push(`<text x="${margin.left+pw/2}" y="${H-6}" text-anchor="middle" class="bubble-axis-label" fill="var(--muted)">中期動能 (20日%)</text>`);
+  svgParts.push(`<text x="12" y="${margin.top+ph/2}" text-anchor="middle" transform="rotate(-90,12,${margin.top+ph/2})" class="bubble-axis-label" fill="var(--muted)">短期趨勢 (5日%)</text>`);
+
+  // 泡泡
+  pts.forEach((s, idx) => {
+    const cx = toSvgX(s.return_ew_20d * 100);
+    const cy = toSvgY(s.return_ew_5d  * 100);
+    const r  = bubbleR(s);
+    const col = bubbleColor(s);
+    const name = escHtml(s.sector_name || s.sector_id);
+    svgParts.push(`
+      <g class="bubble-node" onclick="onBubbleClick('${escHtml(s.sector_id)}','${name}')">
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="${col}" fill-opacity="0.75" stroke="${col}" stroke-width="1.5"/>
+        <text x="${cx}" y="${cy}" class="bubble-node-label" style="font-size:${Math.max(8, r*0.65)}px">${name.length > 5 ? name.slice(0,4)+'…' : name}</text>
+      </g>`);
+  });
+
+  // 邊框
+  svgParts.push(`<rect x="${margin.left}" y="${margin.top}" width="${pw}" height="${ph}" fill="none" stroke="var(--border)" stroke-width="1"/>`);
+
+  const svgHtml = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${svgParts.join("")}</svg>`;
+
+  container.innerHTML = `
+    <div class="bubble-wrap">
+      <div class="bubble-svg-wrap">${svgHtml}</div>
+      <div class="bubble-side-panel" id="bubble-side-panel">
+        <div class="bubble-side-title" id="bubble-side-title">—</div>
+        <div class="bubble-side-metrics" id="bubble-side-metrics"></div>
+        <div class="bubble-side-stocks" id="bubble-side-stocks"></div>
+      </div>
+    </div>`;
+}
+
+async function onBubbleClick(sectorId, name) {
+  const panel = document.getElementById("bubble-side-panel");
+  const titleEl = document.getElementById("bubble-side-title");
+  const metricsEl = document.getElementById("bubble-side-metrics");
+  const stocksEl = document.getElementById("bubble-side-stocks");
+
+  panel.classList.add("open");
+  titleEl.textContent = name;
+  metricsEl.innerHTML = '<div style="color:var(--muted);font-size:.8rem">載入中...</div>';
+  stocksEl.innerHTML = "";
+
+  try {
+    const r = await fetch(`${BASE}/sector/api/sector/${encodeURIComponent(sectorId)}?days=60`);
+    const d = await r.json();
+    const s = d.latest || {};
+    const metrics = [
+      { lbl: "5D%",  val: pctFmt(s.return_ew_5d)  },
+      { lbl: "20D%", val: pctFmt(s.return_ew_20d) },
+      { lbl: "60D%", val: pctFmt(s.return_ew_60d) },
+      { lbl: "趨勢",  val: s.trend_state || "—"    },
+      { lbl: "健康",  val: s.internal_health || "—"},
+      { lbl: "股票數", val: s.stock_count ?? "—"   },
+    ];
+    metricsEl.innerHTML = metrics.map(m =>
+      `<div class="bubble-side-metric"><div class="lbl">${m.lbl}</div><div class="val ${retClass(typeof m.val === 'number' ? m.val : null)}">${m.val}</div></div>`
+    ).join("");
+    const stocks = d.stocks || [];
+    stocksEl.innerHTML = `<b style="color:var(--text)">成份股（${stocks.length}支）</b><br>` + stocks.join("、");
+  } catch (e) {
+    metricsEl.innerHTML = `<div style="color:var(--red)">載入失敗</div>`;
+  }
 }
 
 // ── 啟動 ────────────────────────────────────────────────────────────────────

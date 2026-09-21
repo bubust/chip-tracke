@@ -222,9 +222,9 @@ def start_warrant_scheduler():
     scheduler.add_job(run_scanner, "cron", day_of_week="mon-fri",
                       hour="9-13", minute="0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45,48,51,54,57",
                       id="w_scanner", replace_existing=True)
-    # 每日 14:10 自動計算金流日報（確保盤後資料已發布）
+    # 每日 15:30 自動計算金流日報（確保盤後資料已發布）
     scheduler.add_job(lambda: _flow.calc_and_save(), "cron",
-                      day_of_week="mon-fri", hour=14, minute=10,
+                      day_of_week="mon-fri", hour=15, minute=30,
                       id="w_flow", replace_existing=True)
     if not scheduler.running:
         scheduler.start()

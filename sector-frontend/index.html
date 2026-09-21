@@ -286,6 +286,53 @@
   .health-bar-wrap { display: flex; align-items: center; gap: 8px; }
   .health-bar { height: 6px; border-radius: 3px; background: var(--border); flex: 1; max-width: 80px; overflow: hidden; }
   .health-bar-fill { height: 100%; background: var(--green); transition: width .3s; }
+
+  /* ── 泡泡圖 ── */
+  #bubbleSection { padding: 12px 20px 20px; }
+  .bubble-wrap {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  .bubble-svg-wrap {
+    flex: 1;
+    min-width: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .bubble-svg-wrap svg { display: block; width: 100%; height: auto; }
+  .bubble-side-panel {
+    width: 260px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    display: none;
+  }
+  .bubble-side-panel.open { display: block; }
+  .bubble-side-title { font-size: .9rem; font-weight: 600; margin-bottom: 10px; }
+  .bubble-side-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
+  .bubble-side-metric { background: var(--surface2); border-radius: 6px; padding: 6px 8px; }
+  .bubble-side-metric .lbl { font-size: .7rem; color: var(--muted); }
+  .bubble-side-metric .val { font-size: .9rem; font-weight: 600; margin-top: 2px; }
+  .bubble-side-stocks { font-size: .75rem; color: var(--muted); line-height: 1.7; }
+  .bubble-quadrant-label {
+    font-size: 10px;
+    fill: rgba(139,148,158,.6);
+    pointer-events: none;
+  }
+  .bubble-axis-label { font-size: 10px; fill: var(--muted); }
+  .bubble-node { cursor: pointer; transition: opacity .15s; }
+  .bubble-node:hover { opacity: .85; }
+  .bubble-node-label { font-size: 9px; fill: #fff; text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
+  .bubble-zero-line { stroke: rgba(139,148,158,.4); stroke-width: 1; stroke-dasharray: 4 4; }
+  @media (max-width: 700px) {
+    .bubble-wrap { flex-direction: column; }
+    .bubble-side-panel { width: 100%; }
+  }
 </style>
 </head>
 <body>
@@ -300,6 +347,7 @@
     <span id="engine-running-txt" style="display:none;color:var(--yellow)">⏳ 計算中...</span>
   </div>
   <div class="header-actions">
+    <a class="btn" href="/sector/static/correlation.html" style="text-decoration:none">🌐 關聯星圖</a>
     <button class="btn accent" onclick="triggerSmartRefresh()" id="btn-smart-refresh">🔄 初始化/更新</button>
   </div>
 </div>
@@ -310,6 +358,7 @@
   <button class="tab-btn" data-tab="change" onclick="switchSortTab('change', this)">排名改善</button>
   <button class="tab-btn" data-tab="event" onclick="switchSortTab('event', this)">結構事件</button>
   <button class="tab-btn" data-tab="events-list" onclick="switchSortTab('events-list', this)">📋 事件記錄</button>
+  <button class="tab-btn" data-tab="bubble" onclick="switchSortTab('bubble', this)">泡泡圖</button>
 </div>
 
 <!-- Content -->
@@ -347,6 +396,11 @@
   <!-- 事件記錄 -->
   <div id="events-panel" style="display:none">
     <div class="event-list" id="events-list-container"></div>
+  </div>
+
+  <!-- 泡泡圖 -->
+  <div id="bubble-panel" style="display:none">
+    <div id="bubbleSection"></div>
   </div>
 
   <!-- 產業詳細頁 -->

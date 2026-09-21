@@ -2,9 +2,13 @@
 sector/router.py — FastAPI routes for 產業輪動引擎
 """
 import logging
+import sqlite3
 import threading
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
+
+import pandas as pd
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
@@ -307,3 +311,161 @@ def api_sectors_history(
             result[sid] = [dict(r) for r in reversed(rows)]
 
     return {"series": result}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/sector/{sector_id}/correlation  — 產業內股票相關係數
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/api/sector/{sector_id}/correlation")
+def api_sector_correlation(
+    sector_id: str,
+    days: int = Query(60, ge=20, le=120),
+    threshold: float = Query(0.5, ge=0.0, le=1.0),
+):
+    """
+    計算產業內股票兩兩 Pearson 相關係數（依日報酬率），
+    回傳節點、邊、最強正相關、最強負相關。
+    """
+    from chip_tracker_v2 import DB_PATH  # cache.db 路徑
+
+    # 1. 取出該產業的股票清單與產業名稱
+    with db() as sconn:
+        sector_row = sconn.execute(
+            "SELECT sector_name FROM sector_master WHERE sector_id = ?",
+            (sector_id,),
+        ).fetchone()
+        if not sector_row:
+            raise HTTPException(status_code=404, detail=f"找不到產業：{sector_id}")
+        sector_name = sector_row["sector_name"]
+
+        stock_rows = sconn.execute(
+            "SELECT stock_id FROM stock_sector_map WHERE sector_id = ?",
+            (sector_id,),
+        ).fetchall()
+
+    stock_ids = [r["stock_id"] for r in stock_rows]
+    if len(stock_ids) < 2:
+        return {
+            "sector_id": sector_id,
+            "sector_name": sector_name,
+            "days": days,
+            "nodes": [],
+            "edges": [],
+            "top_positive": [],
+            "top_negative": [],
+        }
+
+    # 2. 從 cache.db 取 price_daily
+    cache_path = str(DB_PATH)
+    try:
+        cache_conn = sqlite3.connect(cache_path)
+        placeholders = ",".join("?" * len(stock_ids))
+        query = f"""
+            SELECT date, stock_id, close, name
+            FROM price_daily
+            WHERE stock_id IN ({placeholders})
+            ORDER BY date DESC
+        """
+        df = pd.read_sql_query(query, cache_conn, params=stock_ids)
+        cache_conn.close()
+    except Exception as e:
+        log.error(f"[sector] correlation DB read failed: {e}")
+        raise HTTPException(status_code=500, detail=f"無法讀取價格資料：{e}")
+
+    if df.empty:
+        return {
+            "sector_id": sector_id,
+            "sector_name": sector_name,
+            "days": days,
+            "nodes": [],
+            "edges": [],
+            "top_positive": [],
+            "top_negative": [],
+        }
+
+    # 取最近 days 個交易日
+    all_dates = sorted(df["date"].unique(), reverse=True)
+    use_dates = set(all_dates[:days])
+    df = df[df["date"].isin(use_dates)]
+
+    # pivot: index=date, columns=stock_id, values=close
+    pivot = df.pivot_table(index="date", columns="stock_id", values="close", aggfunc="last")
+    pivot = pivot.sort_index()
+
+    # 取名稱對照
+    name_map = df.groupby("stock_id")["name"].last().to_dict()
+
+    # 日報酬率
+    returns = pivot.pct_change().dropna(how="all")
+
+    # 計算 60d 累積報酬
+    total_return_map: dict = {}
+    for sid in pivot.columns:
+        if sid in pivot.columns:
+            prices = pivot[sid].dropna()
+            if len(prices) >= 2:
+                total_return_map[sid] = float(prices.iloc[-1] / prices.iloc[0] - 1)
+
+    # 只保留有足夠資料的股票
+    valid_stocks = [c for c in returns.columns if returns[c].notna().sum() >= max(10, days // 2)]
+    if len(valid_stocks) < 2:
+        return {
+            "sector_id": sector_id,
+            "sector_name": sector_name,
+            "days": days,
+            "nodes": [{"id": sid, "name": name_map.get(sid, sid), "return_60d": total_return_map.get(sid)}
+                      for sid in stock_ids],
+            "edges": [],
+            "top_positive": [],
+            "top_negative": [],
+        }
+
+    returns_valid = returns[valid_stocks]
+    corr_matrix = returns_valid.corr(method="pearson")
+
+    # 建立節點
+    nodes = []
+    for sid in valid_stocks:
+        nodes.append({
+            "id": sid,
+            "name": name_map.get(sid, sid),
+            "return_60d": round(total_return_map.get(sid, 0), 4),
+        })
+
+    # 建立邊（|corr| >= threshold）
+    edges = []
+    seen = set()
+    for i, a in enumerate(valid_stocks):
+        for j, b in enumerate(valid_stocks):
+            if i >= j:
+                continue
+            pair = (a, b)
+            if pair in seen:
+                continue
+            seen.add(pair)
+            v = corr_matrix.loc[a, b]
+            if pd.isna(v):
+                continue
+            if abs(v) >= threshold:
+                edges.append({"source": a, "target": b, "corr": round(float(v), 4)})
+
+    # top_positive / top_negative
+    all_pairs = []
+    for e in edges:
+        all_pairs.append({"a": e["source"], "b": e["target"], "corr": e["corr"]})
+
+    all_pairs.sort(key=lambda x: x["corr"], reverse=True)
+    top_positive = all_pairs[:5]
+    top_negative = sorted(all_pairs, key=lambda x: x["corr"])[:5]
+    top_negative = [p for p in top_negative if p["corr"] < 0]
+
+    return {
+        "sector_id": sector_id,
+        "sector_name": sector_name,
+        "days": days,
+        "nodes": nodes,
+        "edges": edges,
+        "top_positive": top_positive,
+        "top_negative": top_negative,
+    }

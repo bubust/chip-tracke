@@ -73,27 +73,33 @@ async function loadFlowTable() {
   const wrap = document.getElementById('flowTableWrap');
   wrap.innerHTML = '<div class="flow-placeholder">載入中…</div>';
 
-  const dir = _flowDir === 'all' ? '' : _flowDir;
-  const url = `/warrant/api/flow/daily?date=${_flowDate}&sort_by=${_flowSort}&min_total=10000`
-            + (dir ? `&direction=${dir}` : '');
   try {
-    const data = await fetch(url).then(r => r.json());
-    if (!data.rows || data.rows.length === 0) {
+    const [callData, putData, fullData] = await Promise.all([
+      fetch(`/warrant/api/flow/daily?date=${_flowDate}&sort_by=net&min_total=10000&direction=CALL&limit=30`).then(r => r.json()),
+      fetch(`/warrant/api/flow/daily?date=${_flowDate}&sort_by=net&min_total=10000&direction=PUT&limit=30`).then(r => r.json()),
+      fetch(`/warrant/api/flow/daily?date=${_flowDate}&sort_by=${_flowSort}&min_total=10000&limit=200`).then(r => r.json()),
+    ]);
+
+    if ((!fullData.rows || fullData.rows.length === 0) &&
+        (!callData.rows || callData.rows.length === 0) &&
+        (!putData.rows  || putData.rows.length === 0)) {
       wrap.innerHTML = `<div class="flow-placeholder">
         ${_flowDate} 尚無金流資料<br>
-        <small>盤後 14:10 自動更新，或點「立刻計算」手動觸發</small>
+        <small>盤後 15:30 自動更新，或點「立刻計算」手動觸發</small>
       </div>`;
       return;
     }
-    wrap.innerHTML = renderFlowTable(data.rows);
+
+    wrap.innerHTML = renderFlowTable(callData.rows || [], putData.rows || [], fullData.rows || []);
   } catch(e) {
     wrap.innerHTML = `<div class="flow-placeholder" style="color:var(--red)">載入失敗：${e.message}</div>`;
   }
 }
 
 /* ── 渲染表格 ── */
-function renderFlowTable(rows) {
+function renderFlowTable(callRows, putRows, allRows) {
   const fmtMoney = v => {
+    if (v == null) return '—';
     if (Math.abs(v) >= 10000) return (v/10000).toFixed(1) + '億';
     return v.toFixed(0) + '萬';
   };
@@ -108,7 +114,40 @@ function renderFlowTable(rows) {
     : cp <= 0.33 ? `<span style="color:var(--red);font-weight:700">${cp.toFixed(2)}</span>`
     : cp.toFixed(2);
 
+  /* ── Top 30 雙欄面板 ── */
+  const buildPanelRows = (rows, isCall) => rows.map((r, i) => {
+    const amt = isCall ? r.call_turnover : r.put_turnover;
+    const net = r.net_turnover;
+    const sign = net > 0 ? '+' : '';
+    return `<tr class="flow-top-row ${isCall ? 'flow-top-call' : 'flow-top-put'}"
+               onclick="showFlowDetail('${r.underlying_code}','${escHtml(r.underlying_name || r.underlying_code)}')">
+      <td class="flow-rank">${i+1}</td>
+      <td class="flow-code">${r.underlying_code}</td>
+      <td class="flow-name">${r.underlying_name || '—'}</td>
+      <td class="${isCall ? 'flow-call-amt' : 'flow-put-amt'}">${fmtMoney(amt)}</td>
+      <td class="flow-net ${net > 0 ? 'flow-net-pos' : net < 0 ? 'flow-net-neg' : ''}">${sign}${fmtMoney(net)}</td>
+    </tr>`;
+  }).join('');
+
   let html = `
+  <div class="flow-top-panels">
+    <div class="flow-top-panel flow-top-panel-call">
+      <div class="flow-top-panel-title">▲ 認購多 Top 30</div>
+      <table class="flow-table flow-top-table">
+        <thead><tr><th>#</th><th>股號</th><th>股名</th><th>認購金額</th><th>淨流量</th></tr></thead>
+        <tbody>${buildPanelRows(callRows, true)}</tbody>
+      </table>
+    </div>
+    <div class="flow-top-panel flow-top-panel-put">
+      <div class="flow-top-panel-title">▼ 認售多 Top 30</div>
+      <table class="flow-table flow-top-table">
+        <thead><tr><th>#</th><th>股號</th><th>股名</th><th>認售金額</th><th>淨流量</th></tr></thead>
+        <tbody>${buildPanelRows(putRows, false)}</tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="flow-full-title">全部排行</div>
   <table class="flow-table">
     <thead>
       <tr>
@@ -119,12 +158,10 @@ function renderFlowTable(rows) {
       </tr>
     </thead><tbody>`;
 
-  rows.forEach((r, i) => {
+  allRows.forEach((r, i) => {
     const isCall = r.direction === 'CALL';
     const isPut  = r.direction === 'PUT';
     const rowCls = isCall ? 'flow-row-call' : isPut ? 'flow-row-put' : '';
-    const netAbs = Math.abs(r.net_turnover);
-    // 淨流量 bar 寬度（最大 rows 中最大值）
     html += `
     <tr class="flow-row ${rowCls}" onclick="showFlowDetail('${r.underlying_code}','${escHtml(r.underlying_name || r.underlying_code)}')">
       <td class="flow-rank">${i+1}</td>
