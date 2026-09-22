@@ -372,13 +372,31 @@ def _save_scan_cache(results: dict):
 
 
 def _load_scan_cache() -> dict:
-    """啟動時載入上次掃描結果（讓訊號重啟後不消失）"""
+    """啟動時載入上次掃描結果（讓訊號重啟後不消失）
+    優先讀本地快取；若不存在（Render 重啟後），fallback 到 scan_data/latest.json
+    （GitHub Actions 掃描後提交到 repo，Render deploy 時一同佈署）。
+    """
+    # 1. 本地快取（本次環境 run_market_scan 寫入的）
     try:
         if _SCAN_CACHE_FILE.exists():
             with open(_SCAN_CACHE_FILE, "r", encoding="utf-8") as f:
-                return _json.load(f)
+                data = _json.load(f)
+                if data:
+                    return data
     except Exception as e:
         print(f"[SCAN] 載入快取失敗: {e}")
+    # 2. Fallback：讀 scan_data/latest.json（跟著 git deploy 到 Render）
+    _latest = _Path(__file__).parent / "scan_data" / "latest.json"
+    try:
+        if _latest.exists():
+            with open(_latest, "r", encoding="utf-8") as f:
+                d = _json.load(f)
+                results = d.get("results", {})
+                if results:
+                    print(f"[SCAN] 從 latest.json 載入結果 (掃描時間: {d.get('scanned_at', '')})")
+                    return results
+    except Exception as e:
+        print(f"[SCAN] 載入 latest.json 失敗: {e}")
     return {}
 
 
