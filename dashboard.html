@@ -640,8 +640,9 @@ async function api(method, path, body = null) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(API_BASE + path, opts);
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.detail || JSON.stringify(data));
+  let data;
+  try { data = await r.json(); } catch (_) { data = {}; }
+  if (!r.ok) throw new Error((data && data.detail) || `HTTP ${r.status}`);
   return data;
 }
 
@@ -2359,7 +2360,10 @@ async function loadPushLog() {
         <span>${l.signal_emoji || ''} ${l.signal_title || ''}</span>
       </div>
     `).join('');
-  } catch (e) {}
+  } catch (e) {
+    const el = document.getElementById('push-log');
+    if (el) el.innerHTML = '<div style="color:var(--muted);font-size:.84rem">載入失敗</div>';
+  }
 }
 
 // ═════════════════════════════ 股票搜尋（代號 + 名稱）═════════════════════════

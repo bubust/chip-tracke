@@ -88,7 +88,27 @@ def regime_history(days: int = 60):
         rows = conn.execute(
             "SELECT * FROM factors ORDER BY date DESC LIMIT ?", (days,)
         ).fetchall()
-    return [dict(r) for r in reversed(rows)]
+        dates = [r["date"] for r in rows]
+        oh_map, pa_map = {}, {}
+        if dates:
+            ph = ",".join("?" * len(dates))
+            for r2 in conn.execute(
+                f"SELECT date, value FROM market_daily "
+                f"WHERE series='OVERHEATING_INDEX' AND date IN ({ph})", dates
+            ).fetchall():
+                oh_map[r2["date"]] = r2["value"]
+            for r2 in conn.execute(
+                f"SELECT date, value FROM market_daily "
+                f"WHERE series='PANIC_INDEX' AND date IN ({ph})", dates
+            ).fetchall():
+                pa_map[r2["date"]] = r2["value"]
+    result = []
+    for r in reversed(rows):
+        d = dict(r)
+        d["overheating"] = oh_map.get(d["date"])
+        d["panic"]       = pa_map.get(d["date"])
+        result.append(d)
+    return result
 
 
 @router.get("/api/regime/series/{series}")

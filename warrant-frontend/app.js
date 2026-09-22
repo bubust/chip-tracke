@@ -511,6 +511,8 @@ let _scanKind      = 'all';
 let _scanData      = null;
 let _scanMode      = 'after';  // 'open' | 'after'
 let _scanView      = 'warrant'; // 'warrant' | 'underlying'
+let _scanSortCol   = null;
+let _scanSortAsc   = false;
 
 function onScanLotChange(v) {
   _scanMinLots = parseInt(v);
@@ -626,6 +628,12 @@ function updateScanStatus(data) {
     `共掃 <b>${data.total_scanned || 0}</b> 檔　找到 <b>${cnt}</b> 檔${note}`;
 }
 
+function sortScanner(col) {
+  if (_scanSortCol === col) { _scanSortAsc = !_scanSortAsc; }
+  else { _scanSortCol = col; _scanSortAsc = false; }
+  renderScanner(_scanData);
+}
+
 function setScanView(v) {
   _scanView = v;
   $('scanViewBtnWarrant').classList.toggle('active',    v === 'warrant');
@@ -662,6 +670,15 @@ function renderScanner(data) {
     return;
   }
 
+  // 排序
+  if (_scanSortCol) {
+    rows.sort((a, b) => {
+      const va = a[_scanSortCol] ?? 0;
+      const vb = b[_scanSortCol] ?? 0;
+      return _scanSortAsc ? va - vb : vb - va;
+    });
+  }
+
   const kindBadge = k => k === 'CALL'
     ? '<span class="scan-badge scan-badge--call">認購</span>'
     : '<span class="scan-badge scan-badge--put">認售</span>';
@@ -671,6 +688,8 @@ function renderScanner(data) {
 
   const keyColHeader = isOpen ? '委買量 (張)' : '成交量 (張)';
   const keyColClass  = 'scan-th-lots';
+  const keySortCol   = isOpen ? 'bid_lots' : 'volume';
+  const sortArrow    = col => _scanSortCol === col ? (_scanSortAsc ? ' ↑' : ' ↓') : '';
 
   tbl.innerHTML = `
     <table class="scan-table">
@@ -680,9 +699,9 @@ function renderScanner(data) {
           <th>標的</th>
           <th>類型</th>
           <th style="text-align:right">${isOpen ? '委買價' : '收盤價'}</th>
-          <th class="${keyColClass}" style="text-align:right">${keyColHeader}</th>
-          ${isOpen ? '<th style="text-align:right">委買金額</th>' : ''}
-          <th style="text-align:right">履約價</th>
+          <th class="${keyColClass}" style="text-align:right;cursor:pointer" onclick="sortScanner('${keySortCol}')">${keyColHeader}${sortArrow(keySortCol)}</th>
+          ${isOpen ? '<th style="text-align:right">委買金額</th>' : `<th style="text-align:right;cursor:pointer" onclick="sortScanner('turnover')">成交金額${sortArrow('turnover')}</th>`}
+          <th style="text-align:right;cursor:pointer" onclick="sortScanner('strike')">履約價${sortArrow('strike')}</th>
           <th>到期日</th>
           <th></th>
         </tr>
@@ -701,7 +720,7 @@ function renderScanner(data) {
             <td>${kindBadge(r.kind)}</td>
             <td class="scan-num">${isOpen ? fmtPrice(r.bid) : fmtPrice(r.price)}</td>
             <td class="scan-num scan-lots">${isOpen ? r.bid_lots.toLocaleString() : (r.volume||0).toLocaleString()}</td>
-            ${isOpen ? `<td class="scan-num">${fmtWan(r.bid_value)}</td>` : ''}
+            ${isOpen ? `<td class="scan-num">${fmtWan(r.bid_value)}</td>` : `<td class="scan-num">${fmtWan(r.turnover || 0)}</td>`}
             <td class="scan-num">${r.strike != null ? r.strike : '—'}</td>
             <td class="scan-date">${(r.expiry_date || '').slice(2)}</td>
             <td><button class="wc-copy" onclick="copyCode('${escHtml(r.code)}',event)">複製</button></td>

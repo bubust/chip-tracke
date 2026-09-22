@@ -143,6 +143,39 @@ def calc_and_save(date_str: Optional[str] = None) -> int:
         """, codes).fetchall()
     wmap = {r["code"]: dict(r) for r in wmap_rows}
 
+    # 若有 NULL underlying_code，嘗試從 Sinopac map 補回
+    null_codes = [c for c in codes if not wmap.get(c) or not (wmap[c].get("underlying_code"))]
+    if null_codes:
+        try:
+            from .ingester import load_sinopac_basic
+            sp_map = load_sinopac_basic()
+            if sp_map:
+                updated = False
+                with _db.db() as conn:
+                    for code in null_codes:
+                        uc = (sp_map.get(code) or {}).get("underlying_code")
+                        if uc:
+                            conn.execute(
+                                "UPDATE warrants SET underlying_code=? WHERE code=? AND underlying_code IS NULL",
+                                (uc, code)
+                            )
+                            updated = True
+                if updated:
+                    with _db.db() as conn:
+                        ph2 = ",".join("?" * len(codes))
+                        wmap_rows2 = conn.execute(f"""
+                            SELECT w.code, w.kind, w.underlying_code,
+                                   w.name AS warrant_name, w.strike,
+                                   w.last_trade_date AS expiry_date,
+                                   u.name AS underlying_name
+                            FROM warrants w
+                            LEFT JOIN underlyings u ON w.underlying_code = u.code
+                            WHERE w.code IN ({ph2})
+                        """, codes).fetchall()
+                    wmap = {r["code"]: dict(r) for r in wmap_rows2}
+        except Exception as _e:
+            log.warning(f"[flow] backfill underlying_code 失敗: {_e}")
+
     # 彙整
     flow: dict[str, dict] = {}
     for r in all_rows:

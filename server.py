@@ -268,9 +268,30 @@ async def lifespan(app: FastAPI):
                 import logging; logging.getLogger(__name__).error(f"[regime_init] {_e}")
         threading.Thread(target=_regime_init, daemon=True).start()
     else:
-        # 已有資料：背景補算缺失的歷史因子
+        # 已有資料：補算缺失系列後再補算歷史因子
         def _regime_backfill():
             try:
+                import logging as _log
+                _lg = _log.getLogger(__name__)
+                with _rdb() as _c2:
+                    has_breadth  = _c2.execute(
+                        "SELECT 1 FROM market_daily WHERE series='BREADTH_50MA' LIMIT 1"
+                    ).fetchone()
+                    has_futures  = _c2.execute(
+                        "SELECT 1 FROM market_daily WHERE series='FOREIGN_FUTURES_NET' LIMIT 1"
+                    ).fetchone()
+                    has_oh       = _c2.execute(
+                        "SELECT 1 FROM market_daily WHERE series='OVERHEATING_INDEX' LIMIT 1"
+                    ).fetchone()
+                if not has_breadth:
+                    _lg.info("[regime_backfill] BREADTH_50MA 缺失，重新抓取廣度資料")
+                    fetch_twse_market_breadth(lookback=90)
+                if not has_futures:
+                    _lg.info("[regime_backfill] FOREIGN_FUTURES_NET 缺失，重新抓取期貨資料")
+                    fetch_taifex_foreign_futures()
+                if not has_oh:
+                    _lg.info("[regime_backfill] OVERHEATING_INDEX 缺失，重新抓取 MI5MINS")
+                    fetch_mi5mins()
                 regime_backfill_factors(days=120)
             except Exception as _e:
                 import logging; logging.getLogger(__name__).error(f"[regime_backfill] {_e}")
