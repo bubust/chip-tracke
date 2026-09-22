@@ -132,12 +132,13 @@ async function loadWarrants() {
     const res = await fetch(url);
     if (!res.ok || res.headers.get('content-type')?.includes('text/html')) {
       const txt = await res.text();
-      if (txt.includes('<') || res.status >= 500) {
-        $('resultArea').innerHTML = `<div class="empty">伺服器喚醒中，請稍後 30 秒再試
-          <button onclick="loadWarrants()" style="margin-left:8px;padding:3px 10px;background:var(--accent);border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:13px">🔄 重試</button>
-        </div>`;
-        return;
-      }
+      const msg = (txt.includes('<') || res.status >= 500)
+        ? '伺服器喚醒中，請稍後 30 秒再試'
+        : `載入失敗：${res.status} ${txt.slice(0, 80)}`;
+      $('resultArea').innerHTML = `<div class="empty">${msg}
+        <button onclick="loadWarrants()" style="margin-left:8px;padding:3px 10px;background:var(--accent);border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:13px">🔄 重試</button>
+      </div>`;
+      return;
     }
     const data = await res.json();
 
