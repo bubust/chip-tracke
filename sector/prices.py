@@ -313,56 +313,65 @@ def backfill(days: int = 120) -> dict:
                     continue
         return []
 
-    async def _run_all():
-        limits = _httpx.Limits(max_connections=150, max_keepalive_connections=80)
-        timeout = _httpx.Timeout(connect=3.0, read=10.0, write=3.0, pool=3.0)
-        sem = asyncio.Semaphore(120)
-        all_rows = []
+    # 分批處理：每批 CHUNK_SIZE 支，立即存 DB 後釋放記憶體，防止 OOM
+    CHUNK_SIZE = 300
+    SEM_PER_CHUNK = 40
 
-        async def _fetch_with_sem(sid, mkt):
-            async with sem:
-                return await _fetch_one(client, sid, mkt)
+    async def _run_chunked():
+        total = 0
+        for chunk_start in range(0, len(stock_list), CHUNK_SIZE):
+            chunk = stock_list[chunk_start: chunk_start + CHUNK_SIZE]
+            sem = asyncio.Semaphore(SEM_PER_CHUNK)
+            limits = _httpx.Limits(max_connections=60, max_keepalive_connections=30)
+            timeout = _httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=5.0)
 
-        async with _httpx.AsyncClient(
-            headers={"User-Agent": _UA, "Accept": "application/json"},
-            verify=False,
-            timeout=timeout,
-            limits=limits,
-            follow_redirects=True,
-        ) as client:
-            tasks = [_fetch_with_sem(sid, mkt) for sid, mkt in stock_list]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            async def _fetch_with_sem(sid, mkt, _sem=sem):
+                async with _sem:
+                    return await _fetch_one(client, sid, mkt)
+
+            try:
+                async with _httpx.AsyncClient(
+                    headers={"User-Agent": _UA, "Accept": "application/json"},
+                    verify=False, timeout=timeout, limits=limits,
+                    follow_redirects=True,
+                ) as client:
+                    tasks = [_fetch_with_sem(sid, mkt) for sid, mkt in chunk]
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+            except Exception as chunk_e:
+                log.error(f"[prices] chunk {chunk_start} fetch 失敗: {chunk_e}")
+                continue
+
+            # 立即存入 DB，再釋放記憶體
+            chunk_rows = []
             for res in results:
                 if isinstance(res, list):
-                    all_rows.extend(res)
-        return all_rows
+                    chunk_rows.extend(res)
+            del results
 
+            if chunk_rows:
+                by_date: dict = {}
+                for row in chunk_rows:
+                    by_date.setdefault(row["date"], []).append(row)
+                for d, rows_d in sorted(by_date.items()):
+                    total += store_prices(d, rows_d)
+            del chunk_rows
+            log.info(f"[prices] backfill {min(chunk_start + CHUNK_SIZE, len(stock_list))}/{len(stock_list)} 完成，累計 {total} 筆")
+
+        return total
+
+    # 單一 event loop，try/finally 確保一定關閉
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        all_rows = loop.run_until_complete(_run_all())
-        loop.close()
+        total_stored = loop.run_until_complete(_run_chunked())
     except Exception as e:
-        log.error(f"[prices] backfill async 失敗: {e}")
+        log.error(f"[prices] backfill 失敗: {e}")
         return {"error": str(e)}
+    finally:
+        loop.close()
 
-    # 按日期分組存入 DB
-    if not all_rows:
-        log.warning("[prices] backfill: 沒有取得任何資料")
-        return {"stored": 0}
-
-    by_date: dict = {}
-    for row in all_rows:
-        d = row["date"]
-        by_date.setdefault(d, []).append(row)
-
-    total_stored = 0
-    for d, rows in sorted(by_date.items()):
-        n = store_prices(d, rows)
-        total_stored += n
-
-    log.info(f"[prices] backfill 完成：{len(by_date)} 天，{total_stored} 筆")
-    return {"backfilled_days": len(by_date), "stored": total_stored}
+    log.info(f"[prices] backfill 全部完成：{total_stored} 筆")
+    return {"stored": total_stored}
 
 
 def load_prices_from_db(stock_ids: list[str], min_dates: int = 60) -> dict:

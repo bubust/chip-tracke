@@ -484,6 +484,59 @@ async def run_market_scan(strategy_params: dict = None):
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, _run_blocking)
 
+        # ── 二次重試：對第一輪 Yahoo 失敗的股票（多為 rate-limit）再補抓一次 ──
+        if _scan_status["failed_stocks"]:
+            market_type_map = dict(zip(stocks["stock_id"], stocks["type"]))
+            retry_list = [
+                (sid, market_type_map.get(sid, "twse"))
+                for sid in list(_scan_status["failed_stocks"])
+            ]
+            log.info(f"[SCAN] 第一輪失敗 {len(retry_list)} 支，開始二次重試 (batch=40, sleep=4s)...")
+
+            def _retry_one(sid, mkt):
+                """重試版 fetch+scan，不修改 _scan_status progress，避免計數錯亂。"""
+                try:
+                    df = _fetch_for_scan(sid, mkt)
+                except Exception:
+                    df = pd.DataFrame()
+                if df.empty or len(df) < 5:
+                    return None, None
+                try:
+                    result = scan_one_stock(df, sid, names.get(sid, ""),
+                                            strategy_params=_strategy_params)
+                except Exception:
+                    result = {}
+                return result, df
+
+            def _run_retry_blocking():
+                RETRY_BATCH = 40
+                for i in range(0, len(retry_list), RETRY_BATCH):
+                    chunk = retry_list[i: i + RETRY_BATCH]
+                    time.sleep(4.0)   # 讓 Yahoo 冷卻，再打下一批
+                    with ThreadPoolExecutor(max_workers=4) as ex2:
+                        fut2s = {ex2.submit(_retry_one, sid, mkt): sid for sid, mkt in chunk}
+                        for fut2 in as_completed(fut2s):
+                            try:
+                                result2, df2 = fut2.result()
+                                if result2 is None or df2 is None:
+                                    continue
+                                sid2 = fut2s[fut2]
+                                # _status_lock 同時保護 _scan_status、all_prices、all_results
+                                with _status_lock:
+                                    if sid2 in _scan_status["failed_stocks"]:
+                                        _scan_status["failed_stocks"].remove(sid2)
+                                        _scan_status["yahoo_fail"] -= 1
+                                        _scan_status["yahoo_ok"] += 1
+                                    all_prices[sid2] = df2
+                                    for strat, r2 in result2.items():
+                                        if r2 is not None:
+                                            all_results[strat].append(r2)
+                            except Exception as _re:
+                                log.warning(f"[SCAN] retry 異常: {_re}")
+
+            await loop.run_in_executor(None, _run_retry_blocking)
+            log.info(f"[SCAN] 重試完成，剩餘失敗 {_scan_status['yahoo_fail']} 支")
+
         # CHIP：MA 預篩 → TDCC 爬蟲（只爬通過的股票）→ screen_chip
         from tdcc_chip import refresh_for_stocks, get_tdcc_data
 
