@@ -603,11 +603,17 @@ def sector_index():
 
 # 掛載 positioning 路由與前端靜態檔
 app.include_router(positioning_router)
-app.mount("/positioning", StaticFiles(directory="positioning-frontend", html=True), name="positioning-frontend")
+POSITIONING_FRONTEND = BASE_DIR / "positioning-frontend"
+app.mount("/positioning/static", StaticFiles(directory=str(POSITIONING_FRONTEND)), name="positioning_static")
+
+@app.get("/positioning/", include_in_schema=False)
+def positioning_index():
+    return FileResponse(str(POSITIONING_FRONTEND / "index.html"))
 
 # 掛載 relationship 路由與前端靜態檔
 app.include_router(relationship_router)
-app.mount("/relationship/static", StaticFiles(directory="relationship-frontend"), name="relationship_static")
+RELATIONSHIP_FRONTEND = BASE_DIR / "relationship-frontend"
+app.mount("/relationship/static", StaticFiles(directory=str(RELATIONSHIP_FRONTEND)), name="relationship_static")
 
 @app.get("/relationship/", include_in_schema=False)
 def relationship_index():

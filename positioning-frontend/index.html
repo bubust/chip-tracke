@@ -210,7 +210,11 @@ async function loadHistory() {
     };
     const st = latest.positioning_state;
     document.getElementById('t-state').textContent = stateMap[st] || st || '—';
-  } catch(e) { console.error(e); }
+  } catch(e) {
+    document.getElementById('update-date').textContent = '載入失敗';
+    document.getElementById('hist-body').innerHTML =
+      `<tr><td colspan="12" style="text-align:center;color:#f85149;padding:20px">載入失敗：${e.message}，請重新整理頁面或點擊「更新資料」</td></tr>`;
+  }
 }
 
 async function doRefresh() {

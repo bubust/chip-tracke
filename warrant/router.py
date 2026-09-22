@@ -467,25 +467,26 @@ def get_warrants(
     with _db.db() as conn:
         ul_row = conn.execute("SELECT * FROM underlyings WHERE code=?", (underlying,)).fetchone()
         if not ul_row:
-            # 嘗試從 warrants 表中動態建立 underlying stub
+            # 嘗試從 warrants 表中動態建立 underlying stub（含過期權證）
+            import csv as _csv
+            from pathlib import Path as _Path
             w_sample = conn.execute(
-                "SELECT market FROM warrants WHERE underlying_code=? AND is_active=1 LIMIT 1",
+                "SELECT market FROM warrants WHERE underlying_code=? LIMIT 1",
                 (underlying,)
             ).fetchone()
-            if w_sample:
-                import csv as _csv
-                from pathlib import Path as _Path
-                name = underlying
-                try:
-                    _csv_path = _Path(__file__).parent.parent / "stocks.csv"
-                    with open(_csv_path, encoding="utf-8") as _f:
-                        for _r in _csv.DictReader(_f):
-                            if _r.get("stock_id", "").strip() == underlying:
-                                name = _r.get("stock_name", underlying).strip()
-                                break
-                except Exception:
-                    pass
-                mkt = w_sample["market"] or "TSE"
+            name = underlying
+            try:
+                _csv_path = _Path(__file__).parent.parent / "stocks.csv"
+                with open(_csv_path, encoding="utf-8") as _f:
+                    for _r in _csv.DictReader(_f):
+                        if _r.get("stock_id", "").strip() == underlying:
+                            name = _r.get("stock_name", underlying).strip()
+                            break
+            except Exception:
+                pass
+            if w_sample or name != underlying:
+                # 有任何歷史權證或 stocks.csv 中有此標的 → 建立 stub
+                mkt = (w_sample["market"] if w_sample else None) or "TSE"
                 _db.upsert_underlying(conn, underlying, name, mkt)
                 ul_row = conn.execute("SELECT * FROM underlyings WHERE code=?", (underlying,)).fetchone()
     if not ul_row:

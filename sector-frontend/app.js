@@ -135,6 +135,7 @@ async function loadSectors(tab) {
     // 若 API 空但有快取，保留快取畫面不清除
   } catch (e) {
     showToast("載入失敗：" + e.message, "err");
+    if (_sectors.length === 0) showEmpty("載入失敗", "請重新整理頁面或點擊「初始化/更新」");
   } finally {
     showLoading(false);
   }
