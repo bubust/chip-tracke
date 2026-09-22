@@ -678,10 +678,10 @@ function renderScanner(data) {
           <th>代號</th>
           <th>標的</th>
           <th>類型</th>
-          <th>${isOpen ? '委買價' : '收盤價'}</th>
-          <th class="${keyColClass}">${keyColHeader}</th>
-          ${isOpen ? '<th>委買金額</th>' : ''}
-          <th>履約價</th>
+          <th style="text-align:right">${isOpen ? '委買價' : '收盤價'}</th>
+          <th class="${keyColClass}" style="text-align:right">${keyColHeader}</th>
+          ${isOpen ? '<th style="text-align:right">委買金額</th>' : ''}
+          <th style="text-align:right">履約價</th>
           <th>到期日</th>
           <th></th>
         </tr>

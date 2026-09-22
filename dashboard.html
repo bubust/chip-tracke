@@ -1107,7 +1107,7 @@ function togglePriceRefresh() {
   refreshPricesOnly();
   _priceRefreshTimer = setInterval(() => {
     refreshPricesOnly();
-    _startCountdown(sec);
+    if (_priceRefreshTimer) _startCountdown(sec);
   }, sec * 1000);
   _startCountdown(sec);
   if (btn) btn.textContent = `⏸ ${sec}s`;
@@ -3278,7 +3278,7 @@ function _rebuildChartMarkers() {
       if (lvl >= 3) {
         markers.push({
           time: _rt(r), position: 'belowBar',
-          color: lvl >= 5 ? '#22c55e' : '#4ade80',
+          color: lvl >= 5 ? '#ef4444' : '#f87171',
           shape: lvl >= 5 ? 'arrowUp' : 'circle',
           size: lvl >= 5 ? 2 : 1,
           text: chip.signal_emoji ? `${chip.signal_emoji}` : '▲籌',
@@ -3286,7 +3286,7 @@ function _rebuildChartMarkers() {
       } else if (lvl <= -3) {
         markers.push({
           time: _rt(r), position: 'aboveBar',
-          color: lvl <= -5 ? '#ef4444' : '#f87171',
+          color: lvl <= -5 ? '#22c55e' : '#4ade80',
           shape: lvl <= -5 ? 'arrowDown' : 'circle',
           size: lvl <= -5 ? 2 : 1,
           text: chip.signal_emoji ? `${chip.signal_emoji}` : '▼籌',
@@ -4131,10 +4131,10 @@ async function saveAllStratParams() {
       <span style="font-size:.65rem;color:#38bdf8;white-space:nowrap" title="收盤跌破前10日低點，次日收復">▲藍 前低↑</span>
       <span style="font-size:.65rem;color:#f97316;white-space:nowrap" title="收盤突破前10日高點，次日跌回">▼橙 前高↓</span>
       <span style="font-size:.65rem;color:#6b7280;white-space:nowrap">｜</span>
-      <span style="font-size:.65rem;color:#4ade80;white-space:nowrap" title="籌碼買入（level 3~4）">○綠下 籌碼買入</span>
-      <span style="font-size:.65rem;color:#22c55e;white-space:nowrap" title="籌碼強力買入（level ≥5）">▲綠 籌碼強買</span>
-      <span style="font-size:.65rem;color:#f87171;white-space:nowrap" title="籌碼賣壓（level -3~-4）">○紅上 籌碼賣壓</span>
-      <span style="font-size:.65rem;color:#ef4444;white-space:nowrap" title="籌碼強力賣出（level ≤-5）">▼紅 籌碼強賣</span>
+      <span style="font-size:.65rem;color:#f87171;white-space:nowrap" title="籌碼買入（level 3~4）">○紅下 籌碼買入</span>
+      <span style="font-size:.65rem;color:#ef4444;white-space:nowrap" title="籌碼強力買入（level ≥5）">▲紅 籌碼強買</span>
+      <span style="font-size:.65rem;color:#4ade80;white-space:nowrap" title="籌碼賣壓（level -3~-4）">○綠上 籌碼賣壓</span>
+      <span style="font-size:.65rem;color:#22c55e;white-space:nowrap" title="籌碼強力賣出（level ≤-5）">▼綠 籌碼強賣</span>
       <span style="font-size:.65rem;color:#6b7280;white-space:nowrap">｜</span>
       <span style="font-size:.65rem;color:#ef5350;white-space:nowrap" title="近12個段落的局部最高點，顯示與前段的漲跌幅%">○紅 段落高點</span>
       <span style="font-size:.65rem;color:#26a69a;white-space:nowrap" title="近12個段落的局部最低點，顯示與前段的漲跌幅%">○綠 段落低點</span>

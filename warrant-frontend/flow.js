@@ -266,6 +266,7 @@ async function refreshFlowStatus() {
       loadFlowTable();
     } else if (s.running) {
       setFlowStatusText('計算中…', false);
+      if (!_flowPolling) startFlowPolling();
     }
   } catch(e) {}
 }

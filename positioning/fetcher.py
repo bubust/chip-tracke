@@ -884,10 +884,10 @@ async def fetch_all(target_date: date | None = None) -> dict:
         # Large traders
         "top5_long_oi": tx_lt.get("top5_long"),
         "top5_short_oi": tx_lt.get("top5_short"),
-        "top5_net_oi": (tx_lt.get("top5_long") or 0) - (tx_lt.get("top5_short") or 0),
+        "top5_net_oi": (tx_lt["top5_long"] - tx_lt["top5_short"]) if (tx_lt.get("top5_long") is not None and tx_lt.get("top5_short") is not None) else None,
         "top10_long_oi": tx_lt.get("top10_long"),
         "top10_short_oi": tx_lt.get("top10_short"),
-        "top10_net_oi": (tx_lt.get("top10_long") or 0) - (tx_lt.get("top10_short") or 0),
+        "top10_net_oi": (tx_lt["top10_long"] - tx_lt["top10_short"]) if (tx_lt.get("top10_long") is not None and tx_lt.get("top10_short") is not None) else None,
         # PCR (from pcRatioDown)
         "pcr_oi_all": pcr_data.get("pcr_oi_all"),
         "pcr_oi_near": None,

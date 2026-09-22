@@ -274,7 +274,7 @@ async function loadData() {
     ]);
     const mData = await mRes.json();
     const eData = await eRes.json();
-    _data = mData.data || [];
+    _data = (mData.data || []).slice().sort((a, b) => a.observation_date < b.observation_date ? -1 : 1);
     _events = eData.events || [];
     renderCharts();
     renderTimeline();
