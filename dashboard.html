@@ -2958,7 +2958,7 @@ function renderScreenTable(strategy, data) {
   if (strategy === 'S10')  headRow += `${th('連續漲停','consec_limit_up')}`;
   if (strategy === 'S17B') headRow += `${th('頸線','neckline')}`;
   if (strategy === 'S_WARRANT_TOP') headRow += `${th('認購額(萬)','call_turnover_wan')}${th('認購/認售比','cp_ratio')}`;
-  headRow += `${th('成交量(張)','volume')}${th('BB位置','bb_score')}<th>操作</th></tr>`;
+  headRow += `${th('成交量(張)','volume')}${th('成交金額','turnover')}${th('BB位置','bb_score')}<th>操作</th></tr>`;
   document.getElementById('screen-thead').innerHTML = headRow;
 
   const tbody = document.getElementById('screen-tbody');
@@ -2997,6 +2997,7 @@ function renderScreenTable(strategy, data) {
       ${pctTd}
       ${extraTd}
       <td class="muted">${(() => { if (!row.volume) return '—'; const lots = Math.round(row.volume / 1000); return lots >= 10000 ? (lots/10000).toFixed(1)+'萬' : lots.toLocaleString('zh-TW'); })()}</td>
+      <td class="muted">${(() => { if (!row.close || !row.volume) return '—'; const amt = row.close * row.volume; if (amt >= 1e8) return (amt/1e8).toFixed(2)+'億'; if (amt >= 1e4) return Math.round(amt/1e4)+'萬'; return '—'; })()}</td>
       <td class="${(row.bb_score??0)>0?'pos':(row.bb_score??0)<0?'neg':'muted'}" title="上軌=+10 中軌=0 下軌=-10">${row.bb_score!=null ? ((row.bb_score>0?'+':'')+row.bb_score) : '—'}</td>
       <td><button class="btn sm ghost" onclick="addFromMarket('${row.stock_id}','${(STRATEGY_LABELS[strategy]||strategy).replace(/[（(][^）)]{10,}[）)]/g,'').trim()}')">+ 加入清單</button></td>
     </tr>`;

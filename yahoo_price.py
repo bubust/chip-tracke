@@ -462,24 +462,6 @@ async def run_market_scan(strategy_params: dict = None):
         print(f"[SCAN] 全市場掃描：共 {len(tasks)} 支，{_SCAN_WORKERS} workers")
         _scan_status["total"] = len(tasks)
 
-        # ── FinMind 冷啟動：cache 覆蓋率不足時先批量回填，再走快取掃描 ──
-        import os as _os
-        _fm_token = _os.getenv("FINMIND_TOKEN", "")
-        if _fm_token:
-            try:
-                from price_cache import get_stocks_with_history, backfill_from_finmind
-                _covered = get_stocks_with_history(min_days=100)
-                _total_n = len(tasks)
-                if _covered < _total_n * 0.80:
-                    print(f"[SCAN] Cache 覆蓋 {_covered}/{_total_n}（{_covered*100//_total_n}%），啟動 FinMind 回填...")
-                    _scan_status["phase"] = "finmind_warmup"
-                    await backfill_from_finmind(days=260, concurrency=10)
-                    print("[SCAN] FinMind 回填完成，開始策略掃描")
-                else:
-                    print(f"[SCAN] Cache 已熱（{_covered}/{_total_n}），跳過 FinMind 回填")
-            except Exception as _fme:
-                print(f"[SCAN] FinMind 回填失敗（繼續 Yahoo）: {_fme}")
-
         _scan_status["phase"] = "yahoo"
 
         all_results = {k: [] for k in STRATEGY_KEYS}
@@ -501,7 +483,14 @@ async def run_market_scan(strategy_params: dict = None):
                 result = scan_one_stock(df, sid, names.get(sid, ""),
                                         strategy_params=_strategy_params,
                                         min_vol_ratio=_min_vol_ratio)
-            except Exception:
+            except Exception as _scan_e:
+                with _status_lock:
+                    _ec = _scan_status.get("_scan_err_count", 0)
+                    if _ec < 3:
+                        import traceback as _tb
+                        print(f"[SCAN] scan_one_stock 異常 {sid}: {_scan_e}")
+                        _tb.print_exc()
+                        _scan_status["_scan_err_count"] = _ec + 1
                 result = {}
             return result  # 不回傳 df，讓 GC 立即釋放
 
@@ -522,6 +511,18 @@ async def run_market_scan(strategy_params: dict = None):
 
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, _run_blocking)
+        _first_pass_hits = sum(len(v) for v in all_results.values())
+        print(f"[SCAN] 第一輪完成：yahoo_ok={_scan_status['yahoo_ok']}, yahoo_fail={_scan_status['yahoo_fail']}, 命中={_first_pass_hits}")
+        if _first_pass_hits == 0 and _scan_status["yahoo_ok"] > 0:
+            # 抽樣 2330 診斷
+            try:
+                _dbg_df = _fetch_for_scan("2330", "twse")
+                if not _dbg_df.empty:
+                    from scanner import scan_one_stock as _dbg_scan
+                    _dbg_r = _dbg_scan(_dbg_df, "2330", "台積電")
+                    print(f"[SCAN DEBUG] 2330 最後日={_dbg_df.iloc[-1].get('date','?')}, rows={len(_dbg_df)}, 結果={_dbg_r}")
+            except Exception as _dbge:
+                print(f"[SCAN DEBUG] 2330 診斷失敗: {_dbge}")
 
         # ── 重試輔助：定義在條件外以便多輪複用 ──
         market_type_map = dict(zip(stocks["stock_id"], stocks["type"]))
