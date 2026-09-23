@@ -332,6 +332,14 @@ def api_sector_stocks(sector_id: str):
     if not stock_ids:
         return {"stocks": []}
 
+    # 從 stocks.csv 取得正確股名（price_daily.name 在 Yahoo 路徑為 NULL）
+    try:
+        from yahoo_price import get_stock_list as _gsl
+        _stk = _gsl()
+        _name_map = dict(zip(_stk["stock_id"], _stk["stock_name"]))
+    except Exception:
+        _name_map = {}
+
     try:
         cache_conn = sqlite3.connect(str(DB_PATH))
         cache_conn.row_factory = sqlite3.Row
@@ -362,13 +370,13 @@ def api_sector_stocks(sector_id: str):
     for sid in stock_ids:
         days_data = price_map.get(sid, [])   # 已依 date DESC 排列
         if not days_data:
-            result.append({"stock_id": sid, "name": sid,
+            result.append({"stock_id": sid, "name": _name_map.get(sid, sid),
                            "close": None, "volume": None, "return_20d": None})
             continue
         latest   = days_data[0]
         close    = latest.get("close")
         volume   = latest.get("volume")
-        name     = latest.get("name") or sid
+        name     = _name_map.get(sid) or latest.get("name") or sid
         ret_20d  = None
         if len(days_data) >= 20 and close:
             old = days_data[19].get("close")

@@ -749,7 +749,7 @@ async function renderBubbleChart(sectors) {
   const sorted = [...sectors].sort((a, b) => (a.relative_rank_5d || 99) - (b.relative_rank_5d || 99));
 
   // 計算樹狀圖佈局（使用左欄寬度，面板已顯示時 clientWidth 正確）
-  const W = Math.max(300, (leftEl ? leftEl.clientWidth : 0) || Math.round((container.clientWidth || 900) * 0.58));
+  const W = Math.max(280, (leftEl ? leftEl.clientWidth : 0) || Math.round((container.clientWidth || 900) * 0.46));
   const H = Math.max(260, Math.round(W * 0.56));
   const GAP = 3;
   const totalStocks = sorted.reduce((s, sec) => s + (sec.stock_count || 1), 0);

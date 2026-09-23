@@ -455,14 +455,32 @@ async def run_market_scan(strategy_params: dict = None):
     _scan_status["finished_at"]   = None
 
     try:
-        _scan_status["phase"] = "yahoo"
-
         stocks = get_stock_list()
         names  = dict(zip(stocks["stock_id"], stocks["stock_name"]))
         tasks  = list(stocks[["stock_id", "type"]].itertuples(index=False, name=None))
 
         print(f"[SCAN] 全市場掃描：共 {len(tasks)} 支，{_SCAN_WORKERS} workers")
         _scan_status["total"] = len(tasks)
+
+        # ── FinMind 冷啟動：cache 覆蓋率不足時先批量回填，再走快取掃描 ──
+        import os as _os
+        _fm_token = _os.getenv("FINMIND_TOKEN", "")
+        if _fm_token:
+            try:
+                from price_cache import get_stocks_with_history, backfill_from_finmind
+                _covered = get_stocks_with_history(min_days=100)
+                _total_n = len(tasks)
+                if _covered < _total_n * 0.80:
+                    print(f"[SCAN] Cache 覆蓋 {_covered}/{_total_n}（{_covered*100//_total_n}%），啟動 FinMind 回填...")
+                    _scan_status["phase"] = "finmind_warmup"
+                    await backfill_from_finmind(days=260, concurrency=10)
+                    print("[SCAN] FinMind 回填完成，開始策略掃描")
+                else:
+                    print(f"[SCAN] Cache 已熱（{_covered}/{_total_n}），跳過 FinMind 回填")
+            except Exception as _fme:
+                print(f"[SCAN] FinMind 回填失敗（繼續 Yahoo）: {_fme}")
+
+        _scan_status["phase"] = "yahoo"
 
         all_results = {k: [] for k in STRATEGY_KEYS}
 
