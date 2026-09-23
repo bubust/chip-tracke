@@ -287,24 +287,46 @@
   .health-bar { height: 6px; border-radius: 3px; background: var(--border); flex: 1; max-width: 80px; overflow: hidden; }
   .health-bar-fill { height: 100%; background: var(--green); transition: width .3s; }
 
-  /* ── 泡泡圖 ── */
-  #bubbleSection { padding: 12px 20px 20px; }
-  .bubble-wrap {
-    display: flex;
-    gap: 16px;
-    align-items: flex-start;
+  /* ── 熱力圖 ── */
+  #bubbleSection { padding: 12px 16px 20px; }
+  .heatmap-layout { display: flex; gap: 16px; align-items: flex-start; }
+  .heatmap-main { flex: 1; min-width: 0; }
+  .heatmap-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+    gap: 6px;
   }
-  .bubble-svg-wrap {
-    flex: 1;
-    min-width: 0;
-    background: var(--surface);
-    border: 1px solid var(--border);
+  .heat-cell {
     border-radius: 8px;
-    overflow: hidden;
+    padding: 10px 10px 8px;
+    cursor: pointer;
+    transition: filter .15s, transform .1s;
+    color: #fff;
+    min-height: 68px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    user-select: none;
   }
-  .bubble-svg-wrap svg { display: block; width: 100%; height: auto; }
+  .heat-cell:hover { filter: brightness(1.18); transform: scale(1.03); }
+  .heat-name { font-size: .7rem; font-weight: 600; line-height: 1.25; opacity: .92; margin-bottom: 5px; }
+  .heat-r5 { font-size: 1.05rem; font-weight: 700; line-height: 1; }
+  .heat-r20 { font-size: .68rem; opacity: .72; margin-top: 3px; }
+  .heat-legend {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    font-size: .68rem;
+    color: var(--muted);
+  }
+  .heat-legend-grad {
+    width: 80px; height: 7px;
+    border-radius: 4px;
+    background: linear-gradient(to right, #943028, #6e7681, #1a7f37);
+  }
   .bubble-side-panel {
-    width: 260px;
+    width: 250px;
     flex-shrink: 0;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -319,19 +341,10 @@
   .bubble-side-metric .lbl { font-size: .7rem; color: var(--muted); }
   .bubble-side-metric .val { font-size: .9rem; font-weight: 600; margin-top: 2px; }
   .bubble-side-stocks { font-size: .75rem; color: var(--muted); line-height: 1.7; }
-  .bubble-quadrant-label {
-    font-size: 10px;
-    fill: rgba(139,148,158,.6);
-    pointer-events: none;
-  }
-  .bubble-axis-label { font-size: 10px; fill: var(--muted); }
-  .bubble-node { cursor: pointer; transition: opacity .15s; }
-  .bubble-node:hover { opacity: .85; }
-  .bubble-node-label { font-size: 9px; fill: #fff; text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
-  .bubble-zero-line { stroke: rgba(139,148,158,.4); stroke-width: 1; stroke-dasharray: 4 4; }
   @media (max-width: 700px) {
-    .bubble-wrap { flex-direction: column; }
+    .heatmap-layout { flex-direction: column; }
     .bubble-side-panel { width: 100%; }
+    .heatmap-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); }
   }
 </style>
 </head>

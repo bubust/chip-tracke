@@ -286,9 +286,13 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
     if breadth_50ma and _look >= 3 and taiex and len(taiex) >= _look:
         b_trend = breadth_50ma[-1][1] - breadth_50ma[-_look][1]
         t_trend = (taiex[-1][1] - taiex[-_look][1]) / max(taiex[-_look][1], 1) * 100
-        # 背離：指數漲但廣度跌（或反之），閾值依資料多寡動態調整
+        # 背離：正值=底部訊號（指數跌但廣度撐），負值=見頂警訊（指數漲但廣度跌）
         threshold = max(2.0, 5.0 * _look / 10)
-        if (t_trend > 0 and b_trend < -threshold) or (t_trend < 0 and b_trend > threshold):
+        if t_trend > 0 and b_trend < -threshold:
+            # 指數漲但廣度跌 → 見頂警訊 → 負值
+            divergence = -round(min(100, abs(t_trend) * 5 + abs(b_trend)), 1)
+        elif t_trend < 0 and b_trend > threshold:
+            # 指數跌但廣度漲 → 底部訊號 → 正值
             divergence = round(min(100, abs(t_trend) * 5 + abs(b_trend)), 1)
     elif otc and len(otc) >= 10 and taiex and len(taiex) >= 10:
         # Fallback：OTC vs 加權 10日動能背離（中小型股與大型股齊漲跌=無背離；分歧=背離）
