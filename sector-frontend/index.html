@@ -348,24 +348,50 @@
   /* ── K線 Modal ── */
   .kline-modal {
     display: none; position: fixed; inset: 0; z-index: 1000;
-    background: rgba(0,0,0,.7);
-    align-items: center; justify-content: center;
+    background: rgba(0,0,0,.75);
+    align-items: center; justify-content: center; padding: 12px;
   }
   .kline-modal-box {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 20px;
-    width: min(700px, 95vw);
+    padding: 16px 18px;
+    width: min(920px, 98vw);
     max-height: 90vh;
-    overflow-y: auto;
+    display: flex;
+    gap: 16px;
+    overflow: hidden;
+  }
+  .kline-left {
+    flex: 3; min-width: 0;
+    display: flex; flex-direction: column;
+  }
+  .kline-right {
+    flex: 2; min-width: 180px; max-width: 260px;
+    display: flex; flex-direction: column;
+    gap: 10px; overflow-y: auto;
   }
   .kline-modal-header {
     display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 14px;
+    margin-bottom: 10px; flex-shrink: 0;
   }
-  .kline-modal-title { font-size: 1rem; font-weight: 600; }
-  #kline-chart { height: 320px; border-radius: 8px; overflow: hidden; background: #0d1117; }
+  .kline-modal-title { font-size: .95rem; font-weight: 600; }
+  #kline-chart { flex: 1; border-radius: 8px; overflow: hidden; background: #0d1117; min-height: 260px; }
+  .kline-info-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px;
+  }
+  .kline-info-card .ki-label { font-size: .68rem; color: var(--muted); margin-bottom: 2px; }
+  .kline-info-card .ki-val   { font-size: .95rem; font-weight: 700; }
+  .kline-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .kline-info-item { background: var(--surface2); border-radius: 6px; padding: 8px 10px; }
+  .kline-info-item .ki-label { font-size: .65rem; color: var(--muted); }
+  .kline-info-item .ki-val   { font-size: .88rem; font-weight: 600; margin-top: 2px; }
+  @media (max-width: 600px) {
+    .kline-modal-box { flex-direction: column; max-height: 95vh; overflow-y: auto; }
+    .kline-right { max-width: 100%; flex-direction: row; flex-wrap: wrap; gap: 6px; overflow-y: visible; }
+    .kline-info-grid { grid-template-columns: repeat(3, 1fr); }
+  }
   @media (max-width: 700px) {
     .sdp-metrics { grid-template-columns: repeat(3, 1fr); }
   }
@@ -452,14 +478,31 @@
 <!-- K線 Modal -->
 <div class="kline-modal" id="kline-modal" onclick="if(event.target===this)closeKlineModal()">
   <div class="kline-modal-box">
-    <div class="kline-modal-header">
-      <span class="kline-modal-title" id="kline-title">—</span>
-      <div style="display:flex;gap:8px">
-        <button class="btn green sm" id="kline-watch-btn" onclick="addToWatchlistFromModal()">+ 加入觀察清單</button>
+    <!-- 左：K線圖 -->
+    <div class="kline-left">
+      <div class="kline-modal-header">
+        <span class="kline-modal-title" id="kline-title">—</span>
         <button class="btn ghost sm" onclick="closeKlineModal()">✕ 關閉</button>
       </div>
+      <div id="kline-chart"></div>
     </div>
-    <div id="kline-chart"></div>
+    <!-- 右：股票資訊 -->
+    <div class="kline-right" id="kline-right">
+      <div class="kline-info-card" id="kline-price-card">
+        <div class="ki-label">收盤價</div>
+        <div class="ki-val" id="ki-close">—</div>
+        <div style="font-size:.75rem;margin-top:4px" id="ki-change">—</div>
+      </div>
+      <div class="kline-info-grid" id="kline-ma-grid">
+        <div class="kline-info-item"><div class="ki-label">MA5</div><div class="ki-val" id="ki-ma5">—</div></div>
+        <div class="kline-info-item"><div class="ki-label">MA10</div><div class="ki-val" id="ki-ma10">—</div></div>
+        <div class="kline-info-item"><div class="ki-label">MA20</div><div class="ki-val" id="ki-ma20">—</div></div>
+        <div class="kline-info-item"><div class="ki-label">BB位置</div><div class="ki-val" id="ki-bb">—</div></div>
+        <div class="kline-info-item"><div class="ki-label">成交量</div><div class="ki-val" id="ki-vol">—</div></div>
+        <div class="kline-info-item"><div class="ki-label">20日漲幅</div><div class="ki-val" id="ki-r20">—</div></div>
+      </div>
+      <button class="btn green" style="margin-top:auto" onclick="addToWatchlistFromModal()">+ 加入觀察清單</button>
+    </div>
   </div>
 </div>
 

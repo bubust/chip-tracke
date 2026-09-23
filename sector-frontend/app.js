@@ -887,20 +887,21 @@ async function openKline(stockId, name) {
   modal.style.display = 'flex';
   const chartEl = document.getElementById('kline-chart');
   chartEl.innerHTML = '<div style="color:var(--muted);padding:20px;text-align:center">K線載入中...</div>';
+  ['ki-close','ki-change','ki-ma5','ki-ma10','ki-ma20','ki-bb','ki-vol','ki-r20']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '—'; });
 
   if (window._klineChart) { try { window._klineChart.remove(); } catch(_){} window._klineChart = null; }
 
   try {
     const res = await fetch(`${BASE}/api/stock/${encodeURIComponent(stockId)}/ohlcv`);
     const d = await res.json();
-    const bars = (d.ohlcv || [])
-      .filter(b => b.date && b.close)
-      .map(b => ({time: b.date, open: +b.open, high: +b.high, low: +b.low, close: +b.close}));
+    const rawBars = (d.ohlcv || []).filter(b => b.date && b.close);
+    const bars = rawBars.map(b => ({time: b.date, open: +b.open, high: +b.high, low: +b.low, close: +b.close}));
 
     chartEl.innerHTML = '';
     const chart = LightweightCharts.createChart(chartEl, {
-      width: chartEl.clientWidth || 660,
-      height: 320,
+      width: chartEl.clientWidth || 500,
+      height: chartEl.clientHeight || 300,
       layout: { background: {color:'#0d1117'}, textColor:'#c9d1d9' },
       grid: { vertLines:{color:'#21262d'}, horzLines:{color:'#21262d'} },
       timeScale: { borderColor:'#30363d', timeVisible:true },
@@ -914,6 +915,55 @@ async function openKline(stockId, name) {
     cs.setData(bars);
     chart.timeScale().fitContent();
     window._klineChart = chart;
+
+    // ── 右側資訊面板 ──────────────────────────────────────────────
+    if (rawBars.length >= 2) {
+      const closes = rawBars.map(b => +b.close);
+      const last = rawBars[rawBars.length - 1];
+      const prev = rawBars[rawBars.length - 2];
+      const close = +last.close;
+      const changePct = prev.close ? ((close - +prev.close) / +prev.close * 100) : 0;
+      const changeStyle = changePct >= 0 ? 'color:var(--red)' : 'color:var(--green)';
+
+      const ma = (n) => {
+        if (closes.length < n) return null;
+        return (closes.slice(-n).reduce((s, v) => s + v, 0) / n).toFixed(2);
+      };
+      const ma5v  = ma(5);
+      const ma10v = ma(10);
+      const ma20v = ma(20);
+
+      // BB 分數
+      let bbScore = 0;
+      if (closes.length >= 20) {
+        const sl = closes.slice(-20);
+        const mean = sl.reduce((s,v)=>s+v,0)/20;
+        const std = Math.sqrt(sl.reduce((s,v)=>s+(v-mean)**2,0)/20);
+        if (std > 0) bbScore = Math.max(-10, Math.min(10, ((close - mean) / (2 * std) * 10)));
+      }
+
+      const vol = +last.volume || 0;
+      const volStr = vol >= 10000 ? (vol/10000).toFixed(1)+'萬' : vol.toLocaleString();
+
+      // 20日漲幅
+      let r20 = null;
+      if (rawBars.length >= 20) {
+        const base = +rawBars[rawBars.length - 20].close;
+        if (base > 0) r20 = ((close - base) / base * 100);
+      }
+
+      document.getElementById('ki-close').textContent = close.toFixed(2);
+      document.getElementById('ki-change').innerHTML =
+        `<span style="${changeStyle}">${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%</span> 今日`;
+      document.getElementById('ki-ma5').textContent  = ma5v  || '—';
+      document.getElementById('ki-ma10').textContent = ma10v || '—';
+      document.getElementById('ki-ma20').textContent = ma20v || '—';
+      document.getElementById('ki-bb').textContent   = bbScore.toFixed(1);
+      document.getElementById('ki-vol').textContent  = volStr;
+      document.getElementById('ki-r20').innerHTML    = r20 != null
+        ? `<span style="${r20>=0?'color:var(--red)':'color:var(--green)'}">${r20>=0?'+':''}${r20.toFixed(1)}%</span>`
+        : '—';
+    }
   } catch (e) {
     chartEl.innerHTML = `<div style="color:var(--red);padding:20px">載入失敗：${e.message}</div>`;
   }

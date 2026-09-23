@@ -438,7 +438,7 @@ async def run_market_scan(strategy_params: dict = None):
     - Cache 缺/舊才 fetch Yahoo，並自動存回 cache
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    from scanner import scan_one_stock, screen_chip
+    from scanner import scan_one_stock
     _strategy_params = strategy_params or {}
     _min_vol_ratio = (_strategy_params.get("_global") or {}).get("min_vol_ratio", 0.0)
     _status_lock = threading.Lock()
@@ -600,45 +600,10 @@ async def run_market_scan(strategy_params: dict = None):
             await loop.run_in_executor(None, _run_retry3_blocking)
             log.info(f"[SCAN] 三次重試完成，剩餘失敗 {_scan_status['yahoo_fail']} 支")
 
-        # CHIP：MA 預篩 → TDCC 爬蟲（只爬通過的股票）→ screen_chip
-        from tdcc_chip import refresh_for_stocks, get_tdcc_data
-
-        ma_candidates = []
-        for sid, df in all_prices.items():
-            if len(df) < 20:
-                continue
-            if float(df.iloc[-1]['close']) <= 10:
-                continue
-            closes = df['close']
-            ma5  = closes.rolling(5).mean().iloc[-1]
-            ma10 = closes.rolling(10).mean().iloc[-1]
-            ma20 = closes.rolling(20).mean().iloc[-1]
-            if pd.isna(ma5) or pd.isna(ma10) or pd.isna(ma20):
-                continue
-            if float(ma5) > float(ma10) > float(ma20):
-                ma_candidates.append(sid)
-
-        # 最多爬 400 支（避免 TDCC 爬太久），按收盤價降序優先
-        if len(ma_candidates) > 400:
-            ma_candidates.sort(key=lambda s: float(all_prices[s].iloc[-1]['close']), reverse=True)
-            ma_candidates = ma_candidates[:400]
-        _scan_status["phase"]      = "tdcc"
-        _scan_status["tdcc_total"] = len(ma_candidates)
-        print(f"[SCAN] CHIP MA預篩：{len(ma_candidates)} 支符合，開始爬 TDCC...")
-        if ma_candidates:
-            await refresh_for_stocks(ma_candidates)
-            tdcc_data = get_tdcc_data()
-            if tdcc_data and all_prices:
-                print(f"[SCAN] CHIP 掃描：TDCC {len(tdcc_data)} 支，價格 {len(all_prices)} 支")
-                chip_names = {sid: names.get(sid, '') for sid in all_prices}
-                stock_info = {sid: {'name': chip_names[sid]} for sid in all_prices}
-                all_results["CHIP"] = screen_chip(all_prices, tdcc_data, stock_info,
-                                                   params=_strategy_params.get("CHIP"))
-                print(f"[SCAN] CHIP 命中：{len(all_results['CHIP'])} 支")
-            else:
-                print("[SCAN] CHIP 跳過（TDCC 快取為空）")
-        else:
-            print("[SCAN] CHIP 跳過（無 MA 預篩通過股票）")
+        # 主要策略掃描完成，提早存結果（確保後續 block 失敗時主要策略仍可顯示）
+        _scan_status["results"] = all_results
+        _save_scan_cache(all_results)
+        print(f"[SCAN] 主要策略完成，結果已暫存")
 
         # S_WARRANT_TOP：認購權證前十大
         try:
