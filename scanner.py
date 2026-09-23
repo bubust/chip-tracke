@@ -1113,7 +1113,9 @@ def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "",
         import pandas as _pd
         today_vol = float(_last_v) if _pd.notna(_last_v) else 0.0
         prev_vol  = float(_prev_v) if _pd.notna(_prev_v) else 0.0
-        if prev_vol <= 0 or today_vol < prev_vol * min_vol_ratio:
+        # 最低成交量門檻：昨日 < 500 張視為冷門股，跳過量能比對（避免 1→2 張假觸發）
+        _MIN_ABS_VOL = 500
+        if prev_vol < _MIN_ABS_VOL or today_vol < prev_vol * min_vol_ratio:
             return {k: None for k in [
                 "S1", "S1_SHORT", "S2", "S5", "S17A", "S17B", "S10",
                 "S_PB", "S_FBD", "S_RES", "S_VOLX", "S_VOLX_SHORT",

@@ -2696,6 +2696,9 @@ async function triggerGithubScan() {
   // 儲存量能翻倍設定（供 run_market_scan 的 _load_strategy_params 讀取）
   const vol2x = document.getElementById('chk-vol2x')?.checked;
   try { await api('PUT', '/api/params/strategies/_global', { min_vol_ratio: vol2x ? 2.0 : 0.0 }); } catch(_) {}
+  // 更新 badge 顯示掃描狀態
+  const _vol2xBadge = document.getElementById('vol2x-badge');
+  if (vol2x && _vol2xBadge) { _vol2xBadge.textContent = '✅ 本次掃描已套用'; _vol2xBadge.style.display = ''; }
   try {
     const res = await api('POST', '/api/screen/run');
     if (res.ok || (res.ok === false && res.message && res.message.includes('掃描中'))) {
@@ -2767,6 +2770,9 @@ async function _pollGhProgress() {
       btn.textContent = '⚡ 全市場掃描';
       document.getElementById('screen-progress-text').textContent = '';
       document.getElementById('screen-progress-bar-wrap').style.display = 'none';
+      // 恢復量能翻倍 badge 為「下次掃描」提示
+      const _b = document.getElementById('vol2x-badge');
+      if (_b && _b.style.display !== 'none') { _b.textContent = '已啟用（下次掃描生效）'; }
     } else if (elapsed < 30) {
       document.getElementById('screen-progress-text').textContent =
         `掃描啟動中... ⏱ ${elapsedStr}`;

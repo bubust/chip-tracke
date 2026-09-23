@@ -1054,7 +1054,7 @@ async def api_indices():
             async with httpx.AsyncClient(timeout=8, verify=False, follow_redirects=True,
                 headers={"User-Agent": UA, "Accept": "application/json"}) as yc_otc:
                 yr_otc = await yc_otc.get(
-                    "https://query1.finance.yahoo.com/v8/finance/chart/%5ETWOII",
+                    "https://query1.finance.yahoo.com/v8/finance/chart/%5ETWOTC",
                     params={"interval": "1d", "range": "5d"},
                 )
                 if yr_otc.status_code == 200:
