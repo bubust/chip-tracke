@@ -745,87 +745,134 @@ async function renderBubbleChart(sectors) {
     return;
   }
 
-  const W = Math.max(320, (leftEl ? leftEl.clientWidth : 0) || Math.round((container.clientWidth || 900) * 0.46));
-  const H = Math.max(320, Math.round(W * 0.72));
-  const PAD = { top: 36, right: 24, bottom: 44, left: 52 };
+  const W = Math.max(340, (leftEl ? leftEl.clientWidth : 0) || Math.round((container.clientWidth || 900) * 0.46));
+  const H = Math.max(360, Math.round(W * 0.82));
+  const PAD = { top: 40, right: 28, bottom: 52, left: 58 };
   const iW = W - PAD.left - PAD.right;
   const iH = H - PAD.top - PAD.bottom;
 
-  // 軸範圍（以資料最大值動態調整，最小 ±3%）
+  // 軸範圍
   const r5vals  = sectors.map(s => (s.return_ew_5d  || 0) * 100);
   const r20vals = sectors.map(s => (s.return_ew_20d || 0) * 100);
-  const xMax = Math.max(3, ...r5vals.map(Math.abs)) * 1.15;
-  const yMax = Math.max(5, ...r20vals.map(Math.abs)) * 1.15;
+  const xMax = Math.max(4, ...r5vals.map(Math.abs)) * 1.2;
+  const yMax = Math.max(6, ...r20vals.map(Math.abs)) * 1.2;
 
-  // 最大 bubble 半徑
   const maxCount = Math.max(...sectors.map(s => s.stock_count || 1));
-  const rScale = v => Math.max(10, Math.min(36, Math.sqrt((v || 1) / maxCount) * 42));
+  const rScale = v => Math.max(12, Math.min(38, Math.sqrt((v || 1) / maxCount) * 46));
 
   const toX = v => PAD.left + ((Math.max(-xMax, Math.min(xMax, v)) + xMax) / (2 * xMax)) * iW;
   const toY = v => PAD.top  + ((yMax - Math.max(-yMax, Math.min(yMax, v))) / (2 * yMax)) * iH;
-
   const x0 = toX(0), y0 = toY(0);
 
   const trendColor = t => t === 'BULL' ? '#3fb950' : t === 'BEAR' ? '#f85149' : '#d29922';
   const fmtPct = v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
 
-  // SVG 象限標籤
-  const quadLabels = [
-    { x: PAD.left + iW * 0.75, y: PAD.top + 14, text: '強勢加速↗', fill: '#3fb950' },
-    { x: PAD.left + iW * 0.05, y: PAD.top + 14, text: '↖反彈修復', fill: '#58a6ff' },
-    { x: PAD.left + iW * 0.75, y: PAD.top + iH - 6, text: '短多長弱↘', fill: '#d29922' },
-    { x: PAD.left + iW * 0.05, y: PAD.top + iH - 6, text: '↙雙弱', fill: '#f85149' },
-  ].map(q => `<text x="${q.x}" y="${q.y}" font-size="10" fill="${q.fill}" opacity=".6">${q.text}</text>`).join('');
-
-  // 軸刻度
-  const xTicks = [-Math.round(xMax*0.6), 0, Math.round(xMax*0.6)]
-    .map(v => `<text x="${toX(v)}" y="${PAD.top+iH+14}" text-anchor="middle" font-size="9" fill="#8b949e">${v>0?'+':''}${v}%</text>
-               <line x1="${toX(v)}" y1="${PAD.top}" x2="${toX(v)}" y2="${PAD.top+iH}" stroke="#21262d" stroke-width="1"/>`).join('');
-  const yTicks = [-Math.round(yMax*0.6), 0, Math.round(yMax*0.6)]
-    .map(v => `<text x="${PAD.left-6}" y="${toY(v)+4}" text-anchor="end" font-size="9" fill="#8b949e">${v>0?'+':''}${v}%</text>
-               <line x1="${PAD.left}" y1="${toY(v)}" x2="${PAD.left+iW}" y2="${toY(v)}" stroke="#21262d" stroke-width="1"/>`).join('');
-
-  // Bubbles（後層 circle，前層 text）
+  // ── 初始座標 ────────────────────────────────────────────────────────
   const bubbles = sectors.map(s => {
-    const x = toX((s.return_ew_5d  || 0) * 100);
-    const y = toY((s.return_ew_20d || 0) * 100);
+    const ox = toX((s.return_ew_5d  || 0) * 100);
+    const oy = toY((s.return_ew_20d || 0) * 100);
     const rad = rScale(s.stock_count);
     const col = trendColor(s.trend_state);
     const name = escHtml(s.sector_name || s.sector_id);
     const sid  = escHtml(s.sector_id);
     const r5  = fmtPct((s.return_ew_5d  || 0) * 100);
     const r20 = fmtPct((s.return_ew_20d || 0) * 100);
-    const fs  = Math.max(8, Math.min(11, rad * 0.42));
-    return { x, y, rad, col, name, sid, r5, r20, fs };
+    return { ox, oy, x: ox, y: oy, rad, col, name, sid, r5, r20,
+             cnt: s.stock_count || 1 };
   });
 
-  const circles = bubbles.map(b =>
-    `<circle cx="${b.x}" cy="${b.y}" r="${b.rad}" fill="${b.col}" fill-opacity=".25"
-      stroke="${b.col}" stroke-width="1.5" cursor="pointer"
+  // ── Force separation（60 次迭代，把重疊泡泡推開）───────────────────
+  const GAP = 3;
+  for (let iter = 0; iter < 60; iter++) {
+    for (let i = 0; i < bubbles.length; i++) {
+      for (let j = i + 1; j < bubbles.length; j++) {
+        const bi = bubbles[i], bj = bubbles[j];
+        const dx = bj.x - bi.x, dy = bj.y - bi.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        const minD = bi.rad + bj.rad + GAP;
+        if (dist < minD) {
+          const push = (minD - dist) * 0.45;
+          const nx = dx / dist, ny = dy / dist;
+          bi.x -= nx * push; bi.y -= ny * push;
+          bj.x += nx * push; bj.y += ny * push;
+        }
+      }
+    }
+    // 夾回繪圖區
+    for (const b of bubbles) {
+      b.x = Math.max(PAD.left + b.rad, Math.min(PAD.left + iW - b.rad, b.x));
+      b.y = Math.max(PAD.top  + b.rad, Math.min(PAD.top  + iH - b.rad, b.y));
+    }
+  }
+
+  // ── 軸刻度（5 個）───────────────────────────────────────────────────
+  const nTick = 4;
+  const xTickVals = Array.from({length: nTick + 1}, (_, i) => -xMax + i * (2 * xMax / nTick));
+  const yTickVals = Array.from({length: nTick + 1}, (_, i) => -yMax + i * (2 * yMax / nTick));
+  const xTicks = xTickVals.map(v => {
+    const px = toX(v);
+    const lbl = (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+    return `<line x1="${px}" y1="${PAD.top}" x2="${px}" y2="${PAD.top+iH}" stroke="#21262d" stroke-width="1"/>
+            <line x1="${px}" y1="${PAD.top+iH}" x2="${px}" y2="${PAD.top+iH+4}" stroke="#484f58" stroke-width="1.5"/>
+            <text x="${px}" y="${PAD.top+iH+16}" text-anchor="middle" font-size="11" fill="#8b949e">${lbl}</text>`;
+  }).join('');
+  const yTicks = yTickVals.map(v => {
+    const py = toY(v);
+    const lbl = (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+    return `<line x1="${PAD.left}" y1="${py}" x2="${PAD.left+iW}" y2="${py}" stroke="#21262d" stroke-width="1"/>
+            <line x1="${PAD.left-4}" y1="${py}" x2="${PAD.left}" y2="${py}" stroke="#484f58" stroke-width="1.5"/>
+            <text x="${PAD.left-8}" y="${py+4}" text-anchor="end" font-size="11" fill="#8b949e">${lbl}</text>`;
+  }).join('');
+
+  // ── 象限標籤 ────────────────────────────────────────────────────────
+  const quadLabels = [
+    { x: PAD.left + iW * 0.76, y: PAD.top + 16, text: '強勢加速 ↗', fill: '#3fb950' },
+    { x: PAD.left + iW * 0.04, y: PAD.top + 16, text: '↖ 反彈修復', fill: '#58a6ff' },
+    { x: PAD.left + iW * 0.76, y: PAD.top + iH - 7, text: '短多長弱 ↘', fill: '#d29922' },
+    { x: PAD.left + iW * 0.04, y: PAD.top + iH - 7, text: '↙ 雙弱', fill: '#f85149' },
+  ].map(q => `<text x="${q.x}" y="${q.y}" font-size="11" fill="${q.fill}" opacity=".65" font-weight="500">${q.text}</text>`).join('');
+
+  // ── Bubbles + Labels ────────────────────────────────────────────────
+  // 大泡泡先畫（z 排序）
+  const sorted = [...bubbles].sort((a, b) => b.rad - a.rad);
+
+  const circles = sorted.map(b =>
+    `<circle cx="${b.x}" cy="${b.y}" r="${b.rad}" fill="${b.col}" fill-opacity=".22"
+      stroke="${b.col}" stroke-width="1.8" cursor="pointer"
       onclick="onBubbleClick('${b.sid}','${b.name}')"
-      title="${b.name} | 5日:${b.r5} 20日:${b.r20} | 成份股:${sectors.find(s=>escHtml(s.sector_id)===b.sid)?.stock_count||'?'}支"/>`
-  ).join('');
-  const labels = bubbles.map(b =>
-    `<text x="${b.x}" y="${b.y + b.fs*0.35}" text-anchor="middle" font-size="${b.fs}"
-      fill="#e6edf3" pointer-events="none" style="text-shadow:0 0 4px #000">${b.name}</text>`
+      title="${b.name}&#10;5日: ${b.r5}  20日: ${b.r20}&#10;成份股: ${b.cnt} 支"/>
+    ${Math.hypot(b.x - b.ox, b.y - b.oy) > b.rad * 0.5
+      ? `<line x1="${b.ox}" y1="${b.oy}" x2="${b.x}" y2="${b.y}" stroke="${b.col}" stroke-width="0.8" stroke-dasharray="3,2" opacity=".4" pointer-events="none"/>`
+      : ''}`
   ).join('');
 
+  const labels = sorted.map(b => {
+    if (b.rad < 14) return '';          // 太小不顯示
+    const fs = Math.max(9, Math.min(12, b.rad * 0.38));
+    const maxChars = Math.floor(b.rad * 1.6 / fs);
+    const label = b.name.length > maxChars ? b.name.slice(0, maxChars - 1) + '…' : b.name;
+    return `<text x="${b.x}" y="${b.y + fs * 0.38}" text-anchor="middle" font-size="${fs}"
+      fill="#e6edf3" pointer-events="none"
+      style="text-shadow:0 1px 3px #000,0 -1px 3px #000,1px 0 3px #000,-1px 0 3px #000">${label}</text>`;
+  }).join('');
+
   const svg = `<svg width="${W}" height="${H}" style="display:block;overflow:visible">
-    <!-- 背景 -->
+    <defs>
+      <clipPath id="bcp"><rect x="${PAD.left}" y="${PAD.top}" width="${iW}" height="${iH}"/></clipPath>
+    </defs>
     <rect x="${PAD.left}" y="${PAD.top}" width="${iW}" height="${iH}" fill="#161b22" rx="6"/>
-    <!-- 網格 + 刻度 -->
     ${xTicks}${yTicks}
+    <!-- 邊框 -->
+    <rect x="${PAD.left}" y="${PAD.top}" width="${iW}" height="${iH}" fill="none" stroke="#30363d" stroke-width="1" rx="6"/>
     <!-- 象限分隔線 -->
-    <line x1="${x0}" y1="${PAD.top}" x2="${x0}" y2="${PAD.top+iH}" stroke="#58a6ff" stroke-width="1" stroke-dasharray="4,3" opacity=".5"/>
-    <line x1="${PAD.left}" y1="${y0}" x2="${PAD.left+iW}" y2="${y0}" stroke="#58a6ff" stroke-width="1" stroke-dasharray="4,3" opacity=".5"/>
-    <!-- 象限標籤 -->
+    <line x1="${x0}" y1="${PAD.top}" x2="${x0}" y2="${PAD.top+iH}" stroke="#58a6ff" stroke-width="1.2" stroke-dasharray="5,3" opacity=".55"/>
+    <line x1="${PAD.left}" y1="${y0}" x2="${PAD.left+iW}" y2="${y0}" stroke="#58a6ff" stroke-width="1.2" stroke-dasharray="5,3" opacity=".55"/>
     ${quadLabels}
     <!-- 軸標題 -->
-    <text x="${PAD.left+iW/2}" y="${H-4}" text-anchor="middle" font-size="10" fill="#8b949e">5日報酬率 %（X）</text>
-    <text x="10" y="${PAD.top+iH/2}" text-anchor="middle" font-size="10" fill="#8b949e" transform="rotate(-90,10,${PAD.top+iH/2})">20日報酬率 %（Y）</text>
-    <!-- Bubbles -->
-    ${circles}
-    ${labels}
+    <text x="${PAD.left+iW/2}" y="${H-6}" text-anchor="middle" font-size="11" fill="#6e7681" font-weight="500">◀ 5日報酬率 % ▶</text>
+    <text x="13" y="${PAD.top+iH/2}" text-anchor="middle" font-size="11" fill="#6e7681" font-weight="500" transform="rotate(-90,13,${PAD.top+iH/2})">▼ 20日報酬率 % ▲</text>
+    <!-- Bubbles（clip 在圖區內）-->
+    <g clip-path="url(#bcp)">${circles}${labels}</g>
   </svg>`;
 
   const legend = `<div style="display:flex;gap:16px;margin-top:10px;font-size:.72rem;color:var(--muted);flex-wrap:wrap">
