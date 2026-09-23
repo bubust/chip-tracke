@@ -192,6 +192,7 @@ function buildSectorRow(s, i) {
 
   return `
     <td style="font-weight:600;cursor:pointer" onclick="toggleDetail(${i}, '${escHtml(s.sector_id)}')">${name}</td>
+    <td>${regimeBadge}</td>
     <td>${trendBadge}</td>
     <td>${rank5}</td>
     <td>${rank20}</td>
@@ -201,7 +202,6 @@ function buildSectorRow(s, i) {
     <td>${ret20}</td>
     <td>${evBadge}</td>
     <td>${healthBadge}</td>
-    <td>${regimeBadge}</td>
     <td><button class="btn" style="padding:3px 8px;font-size:.75rem" onclick="openDetail('${escHtml(s.sector_id)}')">詳細</button></td>
   `;
 }
@@ -686,9 +686,9 @@ async function renderBubbleChart(sectors) {
     return;
   }
 
-  // SVG 尺寸與邊距
-  const W = 700, H = 500;
-  const margin = { top: 40, right: 40, bottom: 50, left: 60 };
+  // ── SVG 尺寸（緊湊，適合不捲動） ────────────────────────────────────────
+  const W = 520, H = 340;
+  const margin = { top: 24, right: 20, bottom: 40, left: 50 };
   const pw = W - margin.left - margin.right;
   const ph = H - margin.top - margin.bottom;
 
@@ -697,7 +697,7 @@ async function renderBubbleChart(sectors) {
     s.return_ew_5d != null && s.return_ew_20d != null
   );
 
-  // 座標範圍（IQR-based 抗離群值 + 確保 0 在範圍內）
+  // IQR-based 抗離群值縮放（outlier 夾在邊界顯示）
   const x20 = pts.map(s => s.return_ew_20d * 100);
   const y5  = pts.map(s => s.return_ew_5d  * 100);
   function robustRange(vals) {
@@ -706,29 +706,32 @@ async function renderBubbleChart(sectors) {
     const q1 = sorted[Math.floor(n * 0.25)] ?? sorted[0];
     const q3 = sorted[Math.min(Math.ceil(n * 0.75), n - 1)] ?? sorted[n - 1];
     const iqr = q3 - q1;
-    const fence = Math.max(iqr * 1.5, 1.0);
+    const fence = Math.max(iqr * 1.8, 1.0);
     return { lo: q1 - fence, hi: q3 + fence };
   }
   const xRange = robustRange(x20);
   const yRange = robustRange(y5);
-  const xPad = (xRange.hi - xRange.lo) * 0.12 || 1.5;
-  const yPad = (yRange.hi - yRange.lo) * 0.12 || 1.5;
-  // 確保 0 在軸範圍內，視覺上零線可見
-  const xL = Math.min(xRange.lo - xPad, -0.5), xR = Math.max(xRange.hi + xPad, 0.5);
-  const yB = Math.min(yRange.lo - yPad, -0.5), yT = Math.max(yRange.hi + yPad, 0.5);
+  const xPad = Math.max((xRange.hi - xRange.lo) * 0.10, 1.0);
+  const yPad = Math.max((yRange.hi - yRange.lo) * 0.10, 1.0);
+  const xL = xRange.lo - xPad, xR = xRange.hi + xPad;
+  const yB = yRange.lo - yPad, yT = yRange.hi + yPad;
+
+  // Outlier 夾邊（不消失，顯示在邊界）
+  const clampX = v => Math.max(xL + (xR-xL)*0.015, Math.min(xR - (xR-xL)*0.015, v));
+  const clampY = v => Math.max(yB + (yT-yB)*0.015, Math.min(yT - (yT-yB)*0.015, v));
 
   const toSvgX = v => margin.left + ((v - xL) / (xR - xL)) * pw;
   const toSvgY = v => margin.top  + ((yT - v) / (yT - yB)) * ph;
-  const x0 = toSvgX(0), y0 = toSvgY(0);
 
-  // 氣泡半徑
+  // 零線（只在 0 在軸範圍內時顯示）
+  const x0inRange = xL < 0 && xR > 0, y0inRange = yB < 0 && yT > 0;
+  const x0 = x0inRange ? toSvgX(0) : null;
+  const y0 = y0inRange ? toSvgY(0) : null;
+
+  // 氣泡半徑（小，5-12px）
   const maxCount = Math.max(...pts.map(s => s.stock_count || 1));
-  const bubbleR = s => {
-    const cnt = s.stock_count || 1;
-    return 6 + (cnt / maxCount) * 14;
-  };
+  const bubbleR = s => Math.round(5 + ((s.stock_count || 1) / maxCount) * 7);
 
-  // 顏色
   const bubbleColor = s => {
     const x = s.return_ew_20d, y = s.return_ew_5d;
     if (y >= 0 && x >= 0) return "#f85149";
@@ -737,83 +740,105 @@ async function renderBubbleChart(sectors) {
     return "#8b949e";
   };
 
-  // 建立 SVG
+  // 依 5D 排名排序，編號供圖例對應
+  const sorted = [...pts].sort((a, b) => (a.relative_rank_5d||99) - (b.relative_rank_5d||99));
+  const numMap = new Map(sorted.map((s, i) => [s.sector_id, i + 1]));
+
   let svgParts = [];
 
-  // 象限背景
-  const qBg = [
-    { x: x0, y: margin.top, w: margin.left + pw - x0, h: y0 - margin.top, color: "rgba(248,81,73,.05)" },   // 右上
-    { x: margin.left, y: margin.top, w: x0 - margin.left, h: y0 - margin.top, color: "rgba(210,153,34,.05)" }, // 左上
-    { x: margin.left, y: y0, w: x0 - margin.left, h: margin.top + ph - y0, color: "rgba(139,148,158,.04)" },   // 左下
-    { x: x0, y: y0, w: margin.left + pw - x0, h: margin.top + ph - y0, color: "rgba(56,139,253,.05)" },       // 右下
-  ];
-  qBg.forEach(q => {
-    svgParts.push(`<rect x="${q.x}" y="${q.y}" width="${Math.max(0,q.w)}" height="${Math.max(0,q.h)}" fill="${q.color}"/>`);
-  });
-
-  // 零線
-  svgParts.push(`<line x1="${x0}" y1="${margin.top}" x2="${x0}" y2="${margin.top+ph}" class="bubble-zero-line"/>`);
-  svgParts.push(`<line x1="${margin.left}" y1="${y0}" x2="${margin.left+pw}" y2="${y0}" class="bubble-zero-line"/>`);
-
-  // 象限標籤
-  const qlPad = 8;
-  const quadLabels = [
-    { text: "領漲・中短期皆強",   x: margin.left + pw - qlPad, y: margin.top + qlPad, anchor: "end" },
-    { text: "轉強・短強中弱",     x: margin.left + qlPad,      y: margin.top + qlPad, anchor: "start" },
-    { text: "領跌・中短期皆弱",   x: margin.left + qlPad,      y: margin.top + ph - qlPad, anchor: "start" },
-    { text: "落後・中強短弱",     x: margin.left + pw - qlPad, y: margin.top + ph - qlPad, anchor: "end" },
-  ];
-  quadLabels.forEach(q => {
-    svgParts.push(`<text x="${q.x}" y="${q.y}" text-anchor="${q.anchor}" class="bubble-quadrant-label">${q.text}</text>`);
-  });
-
-  // 軸刻度（簡單 4 格）
-  const xTicks = 5, yTicks = 5;
-  for (let i = 0; i <= xTicks; i++) {
-    const v = xL + (i / xTicks) * (xR - xL);
-    const sx = toSvgX(v);
-    svgParts.push(`<line x1="${sx}" y1="${margin.top+ph}" x2="${sx}" y2="${margin.top+ph+4}" stroke="var(--border)" stroke-width="1"/>`);
-    svgParts.push(`<text x="${sx}" y="${margin.top+ph+16}" text-anchor="middle" class="bubble-axis-label">${v.toFixed(1)}%</text>`);
-  }
-  for (let i = 0; i <= yTicks; i++) {
-    const v = yB + (i / yTicks) * (yT - yB);
-    const sy = toSvgY(v);
-    svgParts.push(`<line x1="${margin.left-4}" y1="${sy}" x2="${margin.left}" y2="${sy}" stroke="var(--border)" stroke-width="1"/>`);
-    svgParts.push(`<text x="${margin.left-8}" y="${sy+4}" text-anchor="end" class="bubble-axis-label">${v.toFixed(1)}%</text>`);
+  // 象限背景（只在有零線時）
+  if (x0 && y0) {
+    [
+      { x: x0, y: margin.top, w: margin.left+pw-x0, h: y0-margin.top, c: "rgba(248,81,73,.04)" },
+      { x: margin.left, y: margin.top, w: x0-margin.left, h: y0-margin.top, c: "rgba(210,153,34,.04)" },
+      { x: margin.left, y: y0, w: x0-margin.left, h: margin.top+ph-y0, c: "rgba(139,148,158,.03)" },
+      { x: x0, y: y0, w: margin.left+pw-x0, h: margin.top+ph-y0, c: "rgba(56,139,253,.04)" },
+    ].forEach(q => svgParts.push(`<rect x="${q.x}" y="${q.y}" width="${Math.max(0,q.w)}" height="${Math.max(0,q.h)}" fill="${q.c}"/>`));
+    svgParts.push(`<line x1="${x0}" y1="${margin.top}" x2="${x0}" y2="${margin.top+ph}" class="bubble-zero-line"/>`);
+    svgParts.push(`<line x1="${margin.left}" y1="${y0}" x2="${margin.left+pw}" y2="${y0}" class="bubble-zero-line"/>`);
   }
 
-  // 軸標籤
-  svgParts.push(`<text x="${margin.left+pw/2}" y="${H-6}" text-anchor="middle" class="bubble-axis-label" fill="var(--muted)">中期動能 (20日%)</text>`);
-  svgParts.push(`<text x="12" y="${margin.top+ph/2}" text-anchor="middle" transform="rotate(-90,12,${margin.top+ph/2})" class="bubble-axis-label" fill="var(--muted)">短期趨勢 (5日%)</text>`);
+  // 軸刻度
+  for (let i = 0; i <= 4; i++) {
+    const v = xL + (i/4)*(xR-xL), sx = toSvgX(v);
+    svgParts.push(`<line x1="${sx}" y1="${margin.top+ph}" x2="${sx}" y2="${margin.top+ph+3}" stroke="var(--border)" stroke-width="1"/>`);
+    svgParts.push(`<text x="${sx}" y="${margin.top+ph+13}" text-anchor="middle" class="bubble-axis-label">${v.toFixed(1)}%</text>`);
+  }
+  for (let i = 0; i <= 4; i++) {
+    const v = yB + (i/4)*(yT-yB), sy = toSvgY(v);
+    svgParts.push(`<line x1="${margin.left-3}" y1="${sy}" x2="${margin.left}" y2="${sy}" stroke="var(--border)" stroke-width="1"/>`);
+    svgParts.push(`<text x="${margin.left-5}" y="${sy+3}" text-anchor="end" class="bubble-axis-label">${v.toFixed(1)}%</text>`);
+  }
+  svgParts.push(`<text x="${margin.left+pw/2}" y="${H-4}" text-anchor="middle" class="bubble-axis-label" fill="var(--muted)">中期動能 20日%</text>`);
+  svgParts.push(`<text x="9" y="${margin.top+ph/2}" text-anchor="middle" transform="rotate(-90,9,${margin.top+ph/2})" class="bubble-axis-label" fill="var(--muted)">短期 5日%</text>`);
+  svgParts.push(`<rect x="${margin.left}" y="${margin.top}" width="${pw}" height="${ph}" fill="none" stroke="var(--border)" stroke-width="1"/>`);
 
-  // 泡泡
-  pts.forEach((s, idx) => {
-    const cx = toSvgX(s.return_ew_20d * 100);
-    const cy = toSvgY(s.return_ew_5d  * 100);
+  // 泡泡（數字編號，tooltip 顯示全名）
+  pts.forEach(s => {
+    const rawX = s.return_ew_20d * 100, rawY = s.return_ew_5d * 100;
+    const isOut = rawX < xL || rawX > xR || rawY < yB || rawY > yT;
+    const cx = toSvgX(clampX(rawX));
+    const cy = toSvgY(clampY(rawY));
     const r  = bubbleR(s);
     const col = bubbleColor(s);
-    const name = escHtml(s.sector_name || s.sector_id);
+    const n   = numMap.get(s.sector_id) || '?';
+    const name = s.sector_name || s.sector_id;
+    const tip = `${name}\n5日: ${rawY.toFixed(2)}%  20日: ${rawX.toFixed(2)}%\n成份股: ${s.stock_count||'—'}支${isOut ? '\n(⚠ 數值超出軸範圍)' : ''}`;
+    const dash = isOut ? 'stroke-dasharray="3 2"' : '';
     svgParts.push(`
-      <g class="bubble-node" onclick="onBubbleClick('${escHtml(s.sector_id)}','${name}')">
-        <circle cx="${cx}" cy="${cy}" r="${r}" fill="${col}" fill-opacity="0.75" stroke="${col}" stroke-width="1.5"/>
-        <text x="${cx}" y="${cy}" class="bubble-node-label" style="font-size:${Math.max(8, r*0.65)}px">${name.length > 5 ? name.slice(0,4)+'…' : name}</text>
+      <g class="bubble-node" onclick="onBubbleClick('${escHtml(s.sector_id)}','${escHtml(name)}')">
+        <title>${escHtml(tip)}</title>
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="${col}" fill-opacity="0.8" stroke="${col}" stroke-width="1.2" ${dash}/>
+        <text x="${cx}" y="${cy+3}" class="bubble-node-label" style="font-size:${Math.max(7,Math.min(9,r))}px">${n}</text>
       </g>`);
   });
 
-  // 邊框
-  svgParts.push(`<rect x="${margin.left}" y="${margin.top}" width="${pw}" height="${ph}" fill="none" stroke="var(--border)" stroke-width="1"/>`);
+  const svgHtml = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:${W}px;height:auto">${svgParts.join("")}</svg>`;
 
-  const svgHtml = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${svgParts.join("")}</svg>`;
+  // 圖例表格（兩欄，5日排名排序，直接可讀）
+  const half = Math.ceil(sorted.length / 2);
+  const col1 = sorted.slice(0, half);
+  const col2 = sorted.slice(half);
+  const legendRow = (s, i_global) => {
+    if (!s) return '<td colspan="4"></td>';
+    const n = numMap.get(s.sector_id);
+    const col = bubbleColor(s);
+    const r5  = s.return_ew_5d  != null ? (s.return_ew_5d  * 100).toFixed(1) + '%' : '—';
+    const r20 = s.return_ew_20d != null ? (s.return_ew_20d * 100).toFixed(1) + '%' : '—';
+    const c5  = (s.return_ew_5d||0)  > 0 ? 'color:var(--green)' : (s.return_ew_5d||0)  < 0 ? 'color:var(--red)' : 'color:var(--muted)';
+    const c20 = (s.return_ew_20d||0) > 0 ? 'color:var(--green)' : (s.return_ew_20d||0) < 0 ? 'color:var(--red)' : 'color:var(--muted)';
+    const rawX = (s.return_ew_20d||0)*100, rawY = (s.return_ew_5d||0)*100;
+    const isOut = rawX < xL || rawX > xR || rawY < yB || rawY > yT;
+    return `<td style="padding:2px 4px;text-align:center">
+              <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${col};opacity:.8;line-height:14px;font-size:8px;color:#fff;text-align:center;font-weight:700">${n}</span>
+            </td>
+            <td style="padding:2px 6px;white-space:nowrap;font-size:.78rem">${escHtml(s.sector_name||s.sector_id)}${isOut?'↗':''}</td>
+            <td style="padding:2px 6px;text-align:right;font-size:.78rem;${c5}">${r5}</td>
+            <td style="padding:2px 6px;text-align:right;font-size:.78rem;${c20}">${r20}</td>`;
+  };
+  const tableRows = Array.from({length: half}, (_, i) => `<tr style="border-bottom:1px solid rgba(48,54,61,.5)">
+    ${legendRow(col1[i])}
+    <td style="width:16px;border-left:1px solid rgba(48,54,61,.5)"></td>
+    ${legendRow(col2[i])}
+  </tr>`).join('');
 
-  container.innerHTML = `
-    <div class="bubble-wrap">
-      <div class="bubble-svg-wrap">${svgHtml}</div>
-      <div class="bubble-side-panel" id="bubble-side-panel">
-        <div class="bubble-side-title" id="bubble-side-title">—</div>
-        <div class="bubble-side-metrics" id="bubble-side-metrics"></div>
-        <div class="bubble-side-stocks" id="bubble-side-stocks"></div>
-      </div>
-    </div>`;
+  const legendHtml = `<div style="margin-top:10px;overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="font-size:.72rem;color:var(--muted)">
+        <th colspan="2" style="padding:3px 4px;text-align:left">產業（依5日強弱）</th>
+        <th style="padding:3px 6px;text-align:right">5日%</th>
+        <th style="padding:3px 6px;text-align:right">20日%</th>
+        <th style="width:16px;border-left:1px solid rgba(48,54,61,.5)"></th>
+        <th colspan="2" style="padding:3px 4px;text-align:left">產業</th>
+        <th style="padding:3px 6px;text-align:right">5日%</th>
+        <th style="padding:3px 6px;text-align:right">20日%</th>
+      </tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+    <div style="font-size:.7rem;color:var(--muted);margin-top:6px">↗ 數值超出軸顯示範圍 ｜ 氣泡大小 = 成份股數量（無市值資料）｜ 點氣泡查看詳情</div>
+  </div>`;
+
+  container.innerHTML = `<div>${svgHtml}</div>${legendHtml}`;
 }
 
 async function onBubbleClick(sectorId, name) {

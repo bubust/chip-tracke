@@ -273,7 +273,7 @@ def fetch_yahoo(stock_id: str, market: str = "twse") -> pd.DataFrame:
 STRATEGY_KEYS = ["S1", "S1_SHORT", "S1_2", "S2", "S5", "S17A", "S17B", "S10", "CHIP",
                  "S_PB", "S_FBD", "S_RES", "S_KD", "S_VOLX", "S_VOLX_SHORT"]
 
-_SCAN_WORKERS = 8    # 同 tw-macd-scan；過高會被 Yahoo 擋
+_SCAN_WORKERS = 4    # Fly.io shared-cpu: 4 workers 避免 Yahoo 429 burst
 
 # 各 worker thread 維護自己的 requests.Session，避免 race condition
 _scan_thread_local = threading.local()
@@ -323,15 +323,14 @@ def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
                 r = sess.get(url, params=params,
                              headers={"User-Agent": _rand_ua(), **_SCAN_HEADERS},
                              timeout=20)
-                # 429 exponential backoff: 最多重試 3 次（2s/4s/8s 遞增）
-                _retries = 0
-                while r.status_code == 429 and _retries < 3:
-                    wait = 2.0 * (2 ** _retries) * random.uniform(0.8, 1.2)
-                    time.sleep(wait)
+                # 429 快速失敗（第一輪），重試由外層 retry pass 負責
+                if r.status_code == 429:
+                    time.sleep(random.uniform(0.8, 1.5))
                     r = sess.get(url, params=params,
                                  headers={"User-Agent": _rand_ua(), **_SCAN_HEADERS},
                                  timeout=20)
-                    _retries += 1
+                    if r.status_code == 429:
+                        return pd.DataFrame()   # 快速放棄，讓 retry pass 處理
                 r.raise_for_status()
                 df = _parse_yahoo_json(r.json())
                 if not df.empty and len(df) >= 5:

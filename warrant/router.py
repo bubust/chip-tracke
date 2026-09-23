@@ -912,13 +912,20 @@ def flow_daily(
     sort_by:     str   = Query("net",  description="net|total|call|put|cp"),
     limit:       int   = Query(200,    ge=1, le=500),
 ):
-    """當日權證金流排行（依標的股彙整）"""
-    from datetime import date as _date
-    d = date or _date.today().strftime("%Y-%m-%d")
-    rows = _flow.get_ranking(d, min_total=min_total,
-                             direction=direction or None,
-                             sort_by=sort_by, limit=limit)
-    return {"date": d, "count": len(rows), "rows": rows}
+    """當日權證金流排行 — 若今日無資料自動退回最近有資料日期（最多7天）"""
+    from datetime import date as _date, timedelta as _td
+    target = date or _date.today().strftime("%Y-%m-%d")
+    for i in range(8):
+        check = (_date.fromisoformat(target) - _td(days=i)).strftime("%Y-%m-%d")
+        rows = _flow.get_ranking(check, min_total=min_total,
+                                 direction=direction or None,
+                                 sort_by=sort_by, limit=limit)
+        if rows:
+            return {"date": check, "requested_date": target,
+                    "is_fallback": i > 0, "fallback_days": i,
+                    "count": len(rows), "rows": rows}
+    return {"date": target, "requested_date": target,
+            "is_fallback": False, "fallback_days": 0, "count": 0, "rows": []}
 
 
 @router.get("/api/flow/stock/{code}")

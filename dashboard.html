@@ -880,6 +880,7 @@ function renderWatchlist() {
         const sign = ndKpctChg > 0 ? '+' : '';
         return `<td class="${cls}" onclick="${onclick}" style="cursor:pointer" title="千張大戶%，點擊查看歷史">
           ${ndKpct.toFixed(1)}% <small>${arrow}${sign}${ndKpctChg != null ? ndKpctChg.toFixed(1) : '─'}%</small>
+          <span id="kpct-streak-${s.stock_id}" style="display:block;font-size:.68rem;line-height:1.2"></span>
         </td>`;
       })();
       // 狀態欄（同樣顯示 stage）
@@ -945,6 +946,7 @@ function renderWatchlist() {
       const sign = kpctChg > 0 ? '+' : '';
       return `<td class="${cls}" onclick="${onclick}" style="cursor:pointer" title="千張大戶%，點擊查看歷史">
         ${kpct.toFixed(1)}% <small>${arrow}${sign}${kpctChg != null ? kpctChg.toFixed(1) : '─'}%</small>
+        <span id="kpct-streak-${s.stock_id}" style="display:block;font-size:.68rem;line-height:1.2"></span>
       </td>`;
     })();
     // 自動狀態燈號（系統判定，不可手動修改）
@@ -990,6 +992,8 @@ function renderWatchlist() {
       </td>
     </tr>`;
   }).join('');
+  // 非同步補充千張大戶多週趨勢
+  enrichTdccTrends().catch(() => {});
 }
 
 // 觀察清單上下移動
@@ -1895,6 +1899,28 @@ async function pushSingle() {
 function closeDetail() {
   document.getElementById('detail-panel').style.display = 'none';
   _detailSid = '';
+}
+
+// ── 非同步補充千張大戶多週趨勢（渲染後執行）────────────────────────────────
+async function enrichTdccTrends() {
+  const sids = _wlData.map(s => s.stock_id);
+  for (const sid of sids) {
+    const el = document.getElementById(`kpct-streak-${sid}`);
+    if (!el) continue;
+    try {
+      const r = await api('GET', `/api/stock/${sid}/tdcc`);
+      const hist = r.history || [];
+      if (hist.length < 2) continue;
+      const { streak, dir } = _tdccTrend(hist);
+      if (streak >= 2) {
+        el.textContent = dir === 'up' ? `▲ 連增${streak}週` : `▼ 連減${streak}週`;
+        el.style.color = dir === 'up' ? 'var(--green)' : 'var(--red)';
+      } else if (streak === 1) {
+        el.textContent = dir === 'up' ? '▲ 增' : '▼ 減';
+        el.style.color = dir === 'up' ? 'var(--green)' : 'var(--red)';
+      }
+    } catch(_) {}
+  }
 }
 
 // ═════════════════════════════ TDCC 千張大戶 Modal ═════════════════════════════
