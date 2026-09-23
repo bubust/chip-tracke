@@ -422,11 +422,12 @@
       </div>
     </div>
     <!-- 量能翻倍過濾 -->
-    <div style="margin-bottom:10px">
+    <div style="margin-bottom:10px;display:flex;align-items:center;gap:10px">
       <label style="display:inline-flex;align-items:center;gap:6px;font-size:.82rem;color:var(--muted);cursor:pointer;user-select:none">
         <input type="checkbox" id="chk-vol2x" style="cursor:pointer">
         量能翻倍（今日量 &ge; 昨日 &times;2，篩剛啟動股票）
       </label>
+      <span id="vol2x-badge" style="display:none;font-size:.72rem;background:#3fb95022;color:#3fb950;border:1px solid #3fb95055;border-radius:4px;padding:1px 7px">已啟用（下次掃描生效）</span>
     </div>
     <!-- 策略快篩（掃描前後都顯示；掃描完後顯示各策略命中數） -->
     <div id="screen-strat-bar" style="display:flex;flex-wrap:wrap;gap:6px">
@@ -3083,6 +3084,21 @@ async function warmupServer() {
     _mkt = _savedMkt;
     renderMarket();
   }
+
+  // 恢復量能翻倍設定（localStorage 持久化）
+  (function() {
+    const _chk = document.getElementById('chk-vol2x');
+    const _badge = document.getElementById('vol2x-badge');
+    if (!_chk) return;
+    if (localStorage.getItem('vol2x') === '1') {
+      _chk.checked = true;
+      if (_badge) _badge.style.display = '';
+    }
+    _chk.addEventListener('change', e => {
+      localStorage.setItem('vol2x', e.target.checked ? '1' : '0');
+      if (_badge) _badge.style.display = e.target.checked ? '' : 'none';
+    });
+  })();
 
   await loadWatchlist();
   await loadPill();

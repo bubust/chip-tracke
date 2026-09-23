@@ -757,7 +757,7 @@ async function renderBubbleChart(sectors) {
   const xMax = Math.max(4, ...r5vals.map(Math.abs)) * 1.2;
   const yMax = Math.max(6, ...r20vals.map(Math.abs)) * 1.2;
 
-  const FIXED_RAD = 24;  // 所有泡泡固定大小
+  const FIXED_RAD = 20;  // 所有泡泡固定大小（縮小以減少重疊）
   const toX = v => PAD.left + ((Math.max(-xMax, Math.min(xMax, v)) + xMax) / (2 * xMax)) * iW;
   const toY = v => PAD.top  + ((yMax - Math.max(-yMax, Math.min(yMax, v))) / (2 * yMax)) * iH;
   const x0 = toX(0), y0 = toY(0);
@@ -803,13 +803,51 @@ async function renderBubbleChart(sectors) {
             <text x="${PAD.left-8}" y="${py+4}" text-anchor="end" font-size="11" fill="#8b949e">${lbl}</text>`;
   }).join('');
 
-  // ── 象限標籤 ────────────────────────────────────────────────────────
+  // ── 象限標題帶（四角 header bar）───────────────────────────────────
+  const BAND_H = 22;
+  const halfW  = (x0 - PAD.left);       // 左半寬
+  const rightW = (PAD.left + iW - x0);  // 右半寬
   const quadLabels = [
-    { x: PAD.left + iW * 0.76, y: PAD.top + 16, text: '強勢加速 ↗', fill: '#3fb950' },
-    { x: PAD.left + iW * 0.04, y: PAD.top + 16, text: '↖ 反彈修復', fill: '#58a6ff' },
-    { x: PAD.left + iW * 0.76, y: PAD.top + iH - 7, text: '短多長弱 ↘', fill: '#d29922' },
-    { x: PAD.left + iW * 0.04, y: PAD.top + iH - 7, text: '↙ 雙弱', fill: '#f85149' },
-  ].map(q => `<text x="${q.x}" y="${q.y}" font-size="11" fill="${q.fill}" opacity=".65" font-weight="500">${q.text}</text>`).join('');
+    // 右上：強勢加速
+    `<rect x="${x0}" y="${PAD.top}" width="${rightW}" height="${BAND_H}" fill="#3fb950" fill-opacity=".10" rx="0"/>
+     <text x="${x0 + rightW - 6}" y="${PAD.top + 15}" text-anchor="end" font-size="12" font-weight="700" fill="#3fb950" opacity=".85">強勢加速 ↗</text>`,
+    // 左上：反彈修復
+    `<rect x="${PAD.left}" y="${PAD.top}" width="${halfW}" height="${BAND_H}" fill="#58a6ff" fill-opacity=".10" rx="0"/>
+     <text x="${PAD.left + 6}" y="${PAD.top + 15}" text-anchor="start" font-size="12" font-weight="700" fill="#58a6ff" opacity=".85">↖ 反彈修復</text>`,
+    // 右下：短多長弱
+    `<rect x="${x0}" y="${PAD.top + iH - BAND_H}" width="${rightW}" height="${BAND_H}" fill="#d29922" fill-opacity=".10" rx="0"/>
+     <text x="${x0 + rightW - 6}" y="${PAD.top + iH - 7}" text-anchor="end" font-size="12" font-weight="700" fill="#d29922" opacity=".85">短多長弱 ↘</text>`,
+    // 左下：雙弱
+    `<rect x="${PAD.left}" y="${PAD.top + iH - BAND_H}" width="${halfW}" height="${BAND_H}" fill="#f85149" fill-opacity=".10" rx="0"/>
+     <text x="${PAD.left + 6}" y="${PAD.top + iH - 7}" text-anchor="start" font-size="12" font-weight="700" fill="#f85149" opacity=".85">↙ 雙弱</text>`,
+  ].join('');
+
+  // ── 限制位移的分離（讓重疊泡泡可各自被點到）────────────────────────
+  const MAX_DISP = FIXED_RAD * 1.5;  // 最多偏移 1.5 倍半徑
+  for (let iter = 0; iter < 25; iter++) {
+    for (let i = 0; i < bubbles.length; i++) {
+      for (let j = i + 1; j < bubbles.length; j++) {
+        const bi = bubbles[i], bj = bubbles[j];
+        const dx = bj.x - bi.x, dy = bj.y - bi.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        const minD = bi.rad + bj.rad + 2;
+        if (dist < minD) {
+          const push = (minD - dist) * 0.35;
+          const nx = dx / dist, ny = dy / dist;
+          bi.x -= nx * push; bi.y -= ny * push;
+          bj.x += nx * push; bj.y += ny * push;
+        }
+      }
+    }
+    // 限制每個泡泡偏移量不超過 MAX_DISP（避免漂移）
+    for (const b of bubbles) {
+      const ddx = b.x - b.ox, ddy = b.y - b.oy;
+      const d = Math.sqrt(ddx * ddx + ddy * ddy);
+      if (d > MAX_DISP) { b.x = b.ox + ddx / d * MAX_DISP; b.y = b.oy + ddy / d * MAX_DISP; }
+      b.x = Math.max(PAD.left + b.rad, Math.min(PAD.left + iW - b.rad, b.x));
+      b.y = Math.max(PAD.top  + b.rad, Math.min(PAD.top  + iH - b.rad, b.y));
+    }
+  }
 
   // ── Bubbles + Labels ────────────────────────────────────────────────
   const sorted = [...bubbles];
