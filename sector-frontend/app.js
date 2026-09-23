@@ -725,31 +725,32 @@ function squarifyLayout(items, x0, y0, w, h, rects) {
 }
 
 async function renderBubbleChart(sectors) {
+  const leftEl = document.getElementById("bubble-left");
   const container = document.getElementById("bubbleSection");
 
   if (!sectors || sectors.length === 0) {
-    container.innerHTML = '<div class="loading"><div class="spinner"></div> 載入中...</div>';
+    if (leftEl) leftEl.innerHTML = '<div class="loading"><div class="spinner"></div> 載入中...</div>';
     try {
       const r = await fetch(`${BASE}/sector/api/sectors?sort_by=rank5d`);
       const d = await r.json();
       sectors = d.sectors || [];
     } catch (e) {
-      container.innerHTML = `<div style="color:var(--red);padding:20px">載入失敗：${e.message}</div>`;
+      if (leftEl) leftEl.innerHTML = `<div style="color:var(--red);padding:20px">載入失敗：${e.message}</div>`;
       return;
     }
   }
 
   if (!sectors || sectors.length === 0) {
-    container.innerHTML = '<div class="empty-state"><h3>尚無資料</h3><p>請先初始化並執行計算</p></div>';
+    if (leftEl) leftEl.innerHTML = '<div class="empty-state"><h3>尚無資料</h3><p>請先初始化並執行計算</p></div>';
     return;
   }
 
   // 依 5D 排名排序（強到弱）
   const sorted = [...sectors].sort((a, b) => (a.relative_rank_5d || 99) - (b.relative_rank_5d || 99));
 
-  // 計算樹狀圖佈局
-  const W = Math.max(400, container.clientWidth || 800);
-  const H = Math.max(260, Math.round(W * 0.46));
+  // 計算樹狀圖佈局（使用左欄寬度，面板已顯示時 clientWidth 正確）
+  const W = Math.max(300, (leftEl ? leftEl.clientWidth : 0) || Math.round((container.clientWidth || 900) * 0.58));
+  const H = Math.max(260, Math.round(W * 0.56));
   const GAP = 3;
   const totalStocks = sorted.reduce((s, sec) => s + (sec.stock_count || 1), 0);
   const items = sorted.map(s => ({...s, area: ((s.stock_count || 1) / totalStocks) * W * H}));
@@ -782,29 +783,22 @@ async function renderBubbleChart(sectors) {
     </div>`;
   }).join('');
 
-  container.innerHTML = `
+  if (leftEl) leftEl.innerHTML = `
     <div class="tm-wrap" style="height:${H}px">${tiles}</div>
     <div class="heat-legend">
       <span>弱</span>
       <div class="heat-legend-grad"></div>
       <span>強</span>
-      <span style="margin-left:8px">顏色=5日漲跌 ｜ 大小=成份股數量 ｜ 點擊查看詳情</span>
-    </div>
-    <div class="sector-detail-panel" id="sector-detail-panel" style="display:none">
-      <div class="sdp-header">
-        <span class="sdp-title" id="sdp-title">—</span>
-        <button class="btn ghost sm" onclick="document.getElementById('sector-detail-panel').style.display='none'">✕ 關閉</button>
-      </div>
-      <div class="sdp-metrics" id="sdp-metrics"></div>
-      <div id="sdp-stocks"></div>
+      <span style="margin-left:8px">顏色=5日漲跌 ｜ 大小=成份股數量 ｜ 點擊左側查看詳情</span>
     </div>`;
 }
 
 async function onBubbleClick(sectorId, name) {
-  const panel = document.getElementById("sector-detail-panel");
-  if (!panel) return;
-  panel.style.display = 'block';
-  panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  const placeholder = document.getElementById("sdp-placeholder");
+  const main = document.getElementById("sdp-main");
+  if (!main) return;
+  if (placeholder) placeholder.style.display = 'none';
+  main.style.display = '';
 
   document.getElementById("sdp-title").textContent = name;
   document.getElementById("sdp-metrics").innerHTML =

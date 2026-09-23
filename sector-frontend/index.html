@@ -288,7 +288,13 @@
   .health-bar-fill { height: 100%; background: var(--green); transition: width .3s; }
 
   /* ── 樹狀熱力圖 ── */
-  #bubbleSection { padding: 12px 16px 20px; }
+  #bubbleSection {
+    padding: 12px 16px 20px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  .bubble-left { flex: 3; min-width: 0; }
   .tm-wrap { position: relative; width: 100%; overflow: hidden; border-radius: 8px; }
   .tm-cell {
     position: absolute;
@@ -316,13 +322,25 @@
     width: 80px; height: 7px; border-radius: 4px;
     background: linear-gradient(to right, #943028, #6e7681, #1a7f37);
   }
-  /* ── 底部詳情面板 ── */
+  /* ── 右側詳情面板 ── */
   .sector-detail-panel {
-    margin-top: 16px;
+    flex: 2;
+    min-width: 260px;
+    max-width: 420px;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 16px 20px 20px;
+  }
+  .sdp-placeholder {
+    color: var(--muted);
+    font-size: .85rem;
+    text-align: center;
+    padding: 40px 0;
+  }
+  @media (max-width: 800px) {
+    #bubbleSection { flex-direction: column; }
+    .sector-detail-panel { max-width: 100%; min-width: 0; }
   }
   .sdp-header {
     display: flex; align-items: center; justify-content: space-between;
@@ -462,7 +480,23 @@
 
   <!-- 泡泡圖 -->
   <div id="bubble-panel" style="display:none">
-    <div id="bubbleSection"></div>
+    <div id="bubbleSection">
+      <div class="bubble-left" id="bubble-left">
+        <div class="loading"><div class="spinner"></div> 載入中...</div>
+      </div>
+      <div class="sector-detail-panel" id="sector-detail-panel">
+        <div class="sdp-placeholder" id="sdp-placeholder">← 點擊左側產業查看詳情</div>
+        <div id="sdp-main" style="display:none">
+          <div class="sdp-header">
+            <span class="sdp-title" id="sdp-title">—</span>
+            <button class="btn" style="padding:4px 8px;font-size:.75rem"
+              onclick="document.getElementById('sdp-main').style.display='none';document.getElementById('sdp-placeholder').style.display=''">✕</button>
+          </div>
+          <div class="sdp-metrics" id="sdp-metrics"></div>
+          <div id="sdp-stocks"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- 產業詳細頁 -->

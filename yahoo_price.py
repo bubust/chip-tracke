@@ -465,7 +465,6 @@ async def run_market_scan(strategy_params: dict = None):
         _scan_status["total"] = len(tasks)
 
         all_results = {k: [] for k in STRATEGY_KEYS}
-        all_prices  = {}   # 收集所有價格資料，供 CHIP 使用
 
         def _one(sid, mkt):
             """單支股票：fetch → scan，在 worker thread 執行。"""
@@ -497,7 +496,6 @@ async def run_market_scan(strategy_params: dict = None):
                         if result is None or df is None:
                             continue
                         sid = futures[fut]
-                        all_prices[sid] = df
                         for strat, r in result.items():
                             if r is not None:
                                 all_results[strat].append(r)
@@ -547,13 +545,12 @@ async def run_market_scan(strategy_params: dict = None):
                                 if result2 is None or df2 is None:
                                     continue
                                 sid2 = fut2s[fut2]
-                                # _status_lock 同時保護 _scan_status、all_prices、all_results
+                                # _status_lock 同時保護 _scan_status、all_results
                                 with _status_lock:
                                     if sid2 in _scan_status["failed_stocks"]:
                                         _scan_status["failed_stocks"].remove(sid2)
                                         _scan_status["yahoo_fail"] -= 1
                                         _scan_status["yahoo_ok"] += 1
-                                    all_prices[sid2] = df2
                                     for strat, r2 in result2.items():
                                         if r2 is not None:
                                             all_results[strat].append(r2)
@@ -590,7 +587,6 @@ async def run_market_scan(strategy_params: dict = None):
                                         _scan_status["failed_stocks"].remove(sid3)
                                         _scan_status["yahoo_fail"] -= 1
                                         _scan_status["yahoo_ok"] += 1
-                                    all_prices[sid3] = df3
                                     for strat, r3 in result3.items():
                                         if r3 is not None:
                                             all_results[strat].append(r3)
@@ -605,7 +601,7 @@ async def run_market_scan(strategy_params: dict = None):
         _save_scan_cache(all_results)
         print(f"[SCAN] 主要策略完成，結果已暫存")
 
-        # S_WARRANT_TOP：認購權證前十大
+        # S_WARRANT_TOP：認購權證前十大（按需 fetch 價格，不再依賴已移除的 all_prices）
         try:
             from warrant.flow import get_available_dates as _wf_dates_fn, get_ranking as _wf_ranking
             from scanner import screen_s_warrant_top
@@ -616,8 +612,21 @@ async def run_market_scan(strategy_params: dict = None):
                 _wf_limit  = int(_wf_params.get("limit", 10))
                 _wf_fetch  = min(_wf_limit * 3, 60)
                 _wf_rows   = _wf_ranking(date_str=_wf_date, sort_by="call", limit=_wf_fetch)
+                # 只為權證標的股票按需取得價格（通常 10-30 支，不再累積全市場）
+                _warrant_prices = {}
+                def _fetch_warrant_prices():
+                    for _wr in _wf_rows:
+                        _wsid = _wr.get("underlying_code", "")
+                        if _wsid and _wsid not in _warrant_prices:
+                            try:
+                                _wdf = _fetch_for_scan(_wsid, market_type_map.get(_wsid, "twse"))
+                                if not _wdf.empty:
+                                    _warrant_prices[_wsid] = _wdf
+                            except Exception:
+                                pass
+                await loop.run_in_executor(None, _fetch_warrant_prices)
                 all_results["S_WARRANT_TOP"] = screen_s_warrant_top(
-                    _wf_rows, all_prices, names, params=_wf_params
+                    _wf_rows, _warrant_prices, names, params=_wf_params
                 )
                 print(f"[SCAN] S_WARRANT_TOP {_wf_date} 命中：{len(all_results['S_WARRANT_TOP'])} 支")
             else:
