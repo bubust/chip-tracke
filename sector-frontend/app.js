@@ -757,55 +757,34 @@ async function renderBubbleChart(sectors) {
   const xMax = Math.max(4, ...r5vals.map(Math.abs)) * 1.2;
   const yMax = Math.max(6, ...r20vals.map(Math.abs)) * 1.2;
 
-  const maxCount = Math.max(...sectors.map(s => s.stock_count || 1));
-  const rScale = v => Math.max(12, Math.min(38, Math.sqrt((v || 1) / maxCount) * 46));
-
+  const FIXED_RAD = 24;  // 所有泡泡固定大小
   const toX = v => PAD.left + ((Math.max(-xMax, Math.min(xMax, v)) + xMax) / (2 * xMax)) * iW;
   const toY = v => PAD.top  + ((yMax - Math.max(-yMax, Math.min(yMax, v))) / (2 * yMax)) * iH;
   const x0 = toX(0), y0 = toY(0);
 
-  const trendColor = t => t === 'BULL' ? '#3fb950' : t === 'BEAR' ? '#f85149' : '#d29922';
+  // 象限顏色：依 5d/20d 正負決定
+  const quadColor = (r5, r20) => {
+    if (r5 >= 0 && r20 >= 0) return '#3fb950';  // 右上：強勢加速（綠）
+    if (r5 <  0 && r20 >= 0) return '#58a6ff';  // 左上：反彈修復（藍）
+    if (r5 >= 0 && r20 <  0) return '#d29922';  // 右下：短多長弱（黃）
+    return '#f85149';                             // 左下：雙弱（紅）
+  };
   const fmtPct = v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
 
-  // ── 初始座標 ────────────────────────────────────────────────────────
+  // ── 初始座標（固定大小，依象限著色）──────────────────────────────
   const bubbles = sectors.map(s => {
-    const ox = toX((s.return_ew_5d  || 0) * 100);
-    const oy = toY((s.return_ew_20d || 0) * 100);
-    const rad = rScale(s.stock_count);
-    const col = trendColor(s.trend_state);
+    const v5  = (s.return_ew_5d  || 0) * 100;
+    const v20 = (s.return_ew_20d || 0) * 100;
+    const ox  = toX(v5);
+    const oy  = toY(v20);
+    const col = quadColor(v5, v20);
     const name = escHtml(s.sector_name || s.sector_id);
     const sid  = escHtml(s.sector_id);
-    const r5  = fmtPct((s.return_ew_5d  || 0) * 100);
-    const r20 = fmtPct((s.return_ew_20d || 0) * 100);
-    return { ox, oy, x: ox, y: oy, rad, col, name, sid, r5, r20,
-             cnt: s.stock_count || 1 };
+    return { ox, oy, x: ox, y: oy, rad: FIXED_RAD, col, name, sid,
+             r5: fmtPct(v5), r20: fmtPct(v20), cnt: s.stock_count || 1 };
   });
 
-  // ── Force separation（60 次迭代，把重疊泡泡推開）───────────────────
-  const GAP = 3;
-  for (let iter = 0; iter < 60; iter++) {
-    for (let i = 0; i < bubbles.length; i++) {
-      for (let j = i + 1; j < bubbles.length; j++) {
-        const bi = bubbles[i], bj = bubbles[j];
-        const dx = bj.x - bi.x, dy = bj.y - bi.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
-        const minD = bi.rad + bj.rad + GAP;
-        if (dist < minD) {
-          const push = (minD - dist) * 0.45;
-          const nx = dx / dist, ny = dy / dist;
-          bi.x -= nx * push; bi.y -= ny * push;
-          bj.x += nx * push; bj.y += ny * push;
-        }
-      }
-    }
-    // 夾回繪圖區
-    for (const b of bubbles) {
-      b.x = Math.max(PAD.left + b.rad, Math.min(PAD.left + iW - b.rad, b.x));
-      b.y = Math.max(PAD.top  + b.rad, Math.min(PAD.top  + iH - b.rad, b.y));
-    }
-  }
-
-  // ── 軸刻度（5 個）───────────────────────────────────────────────────
+  // ── 軸刻度 ──────────────────────────────────────────────────────────
   const nTick = 4;
   const xTickVals = Array.from({length: nTick + 1}, (_, i) => -xMax + i * (2 * xMax / nTick));
   const yTickVals = Array.from({length: nTick + 1}, (_, i) => -yMax + i * (2 * yMax / nTick));
@@ -833,17 +812,13 @@ async function renderBubbleChart(sectors) {
   ].map(q => `<text x="${q.x}" y="${q.y}" font-size="11" fill="${q.fill}" opacity=".65" font-weight="500">${q.text}</text>`).join('');
 
   // ── Bubbles + Labels ────────────────────────────────────────────────
-  // 大泡泡先畫（z 排序）
-  const sorted = [...bubbles].sort((a, b) => b.rad - a.rad);
+  const sorted = [...bubbles];
 
   const circles = sorted.map(b =>
     `<circle cx="${b.x}" cy="${b.y}" r="${b.rad}" fill="${b.col}" fill-opacity=".22"
       stroke="${b.col}" stroke-width="1.8" cursor="pointer"
       onclick="onBubbleClick('${b.sid}','${b.name}')"
-      title="${b.name}&#10;5日: ${b.r5}  20日: ${b.r20}&#10;成份股: ${b.cnt} 支"/>
-    ${Math.hypot(b.x - b.ox, b.y - b.oy) > b.rad * 0.5
-      ? `<line x1="${b.ox}" y1="${b.oy}" x2="${b.x}" y2="${b.y}" stroke="${b.col}" stroke-width="0.8" stroke-dasharray="3,2" opacity=".4" pointer-events="none"/>`
-      : ''}`
+      title="${b.name}&#10;5日: ${b.r5}  20日: ${b.r20}&#10;成份股: ${b.cnt} 支"/>`
   ).join('');
 
   const labels = sorted.map(b => {
@@ -876,10 +851,11 @@ async function renderBubbleChart(sectors) {
   </svg>`;
 
   const legend = `<div style="display:flex;gap:16px;margin-top:10px;font-size:.72rem;color:var(--muted);flex-wrap:wrap">
-    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3fb950;margin-right:4px"></span>多頭</span>
-    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f85149;margin-right:4px"></span>空頭</span>
-    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#d29922;margin-right:4px"></span>盤整</span>
-    <span style="margin-left:8px">大小=成份股數量 ｜ 點擊查看詳情</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3fb950;margin-right:4px"></span>強勢加速（右上）</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#58a6ff;margin-right:4px"></span>反彈修復（左上）</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#d29922;margin-right:4px"></span>短多長弱（右下）</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f85149;margin-right:4px"></span>雙弱（左下）</span>
+    <span style="margin-left:8px">點擊查看詳情</span>
   </div>`;
 
   if (leftEl) leftEl.innerHTML = svg + legend;
@@ -905,8 +881,8 @@ async function onBubbleClick(sectorId, name) {
       { lbl: '5日%',   val: pctFmt(s.return_ew_5d)  },
       { lbl: '20日%',  val: pctFmt(s.return_ew_20d) },
       { lbl: '60日%',  val: pctFmt(s.return_ew_60d) },
-      { lbl: '趨勢',   val: s.trend_state || '—'    },
-      { lbl: '健康',   val: s.internal_health || '—'},
+      { lbl: '趨勢',   val: trendBadgeHtml(s.trend_state)    },
+      { lbl: '健康',   val: healthBadgeHtml(s.internal_health) },
       { lbl: '成份股', val: s.stock_count ?? '—'    },
     ];
     document.getElementById("sdp-metrics").innerHTML = metrics.map(m => {
