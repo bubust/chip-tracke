@@ -485,7 +485,7 @@ async def run_market_scan(strategy_params: dict = None):
         all_results = {k: [] for k in STRATEGY_KEYS}
 
         def _one(sid, mkt):
-            """單支股票：fetch → scan，在 worker thread 執行。"""
+            """單支股票：fetch → scan，在 worker thread 執行。只回傳 result dict，不回傳 df（避免 Future 持有大量 DataFrame）"""
             try:
                 df = _fetch_for_scan(sid, mkt)
             except Exception:
@@ -495,7 +495,7 @@ async def run_market_scan(strategy_params: dict = None):
                 if df.empty or len(df) < 5:
                     _scan_status["yahoo_fail"] += 1
                     _scan_status["failed_stocks"].append(sid)
-                    return None, None
+                    return None
                 _scan_status["yahoo_ok"] += 1
             try:
                 result = scan_one_stock(df, sid, names.get(sid, ""),
@@ -503,15 +503,15 @@ async def run_market_scan(strategy_params: dict = None):
                                         min_vol_ratio=_min_vol_ratio)
             except Exception:
                 result = {}
-            return result, df
+            return result  # 不回傳 df，讓 GC 立即釋放
 
         def _run_blocking():
             with ThreadPoolExecutor(max_workers=_SCAN_WORKERS) as ex:
                 futures = {ex.submit(_one, sid, mkt): sid for sid, mkt in tasks}
                 for fut in as_completed(futures):
                     try:
-                        result, df = fut.result()
-                        if result is None or df is None:
+                        result = fut.result()
+                        if result is None:
                             continue
                         sid = futures[fut]
                         for strat, r in result.items():
@@ -527,20 +527,20 @@ async def run_market_scan(strategy_params: dict = None):
         market_type_map = dict(zip(stocks["stock_id"], stocks["type"]))
 
         def _retry_one(sid, mkt):
-            """重試版 fetch+scan，不修改 _scan_status progress，避免計數錯亂。"""
+            """重試版 fetch+scan，不修改 _scan_status progress，避免計數錯亂。只回傳 result dict。"""
             try:
                 df = _fetch_for_scan(sid, mkt)
             except Exception:
                 df = pd.DataFrame()
             if df.empty or len(df) < 5:
-                return None, None
+                return None
             try:
                 result = scan_one_stock(df, sid, names.get(sid, ""),
                                         strategy_params=_strategy_params,
                                         min_vol_ratio=_min_vol_ratio)
             except Exception:
                 result = {}
-            return result, df
+            return result  # 不回傳 df
 
         # ── 二次重試：對第一輪 Yahoo 失敗的股票（多為 rate-limit）再補抓一次 ──
         if _scan_status["failed_stocks"]:
@@ -559,8 +559,8 @@ async def run_market_scan(strategy_params: dict = None):
                         fut2s = {ex2.submit(_retry_one, sid, mkt): sid for sid, mkt in chunk}
                         for fut2 in as_completed(fut2s):
                             try:
-                                result2, df2 = fut2.result()
-                                if result2 is None or df2 is None:
+                                result2 = fut2.result()
+                                if result2 is None:
                                     continue
                                 sid2 = fut2s[fut2]
                                 # _status_lock 同時保護 _scan_status、all_results
@@ -596,8 +596,8 @@ async def run_market_scan(strategy_params: dict = None):
                         fut3s = {ex3.submit(_retry_one, sid, mkt): sid for sid, mkt in chunk}
                         for fut3 in as_completed(fut3s):
                             try:
-                                result3, df3 = fut3.result()
-                                if result3 is None or df3 is None:
+                                result3 = fut3.result()
+                                if result3 is None:
                                     continue
                                 sid3 = fut3s[fut3]
                                 with _status_lock:
