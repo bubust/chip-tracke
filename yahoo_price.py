@@ -513,6 +513,9 @@ async def run_market_scan(strategy_params: dict = None):
         await loop.run_in_executor(None, _run_blocking)
         _first_pass_hits = sum(len(v) for v in all_results.values())
         print(f"[SCAN] 第一輪完成：yahoo_ok={_scan_status['yahoo_ok']}, yahoo_fail={_scan_status['yahoo_fail']}, 命中={_first_pass_hits}")
+        # 第一輪結束立即存檔，不管後續 retry/S_WARRANT_TOP 是否成功
+        _scan_status["results"] = all_results
+        _save_scan_cache(all_results)
         if _first_pass_hits == 0 and _scan_status["yahoo_ok"] > 0:
             # 抽樣 2330 診斷
             try:
@@ -524,101 +527,104 @@ async def run_market_scan(strategy_params: dict = None):
             except Exception as _dbge:
                 print(f"[SCAN DEBUG] 2330 診斷失敗: {_dbge}")
 
-        # ── 重試輔助：定義在條件外以便多輪複用 ──
-        market_type_map = dict(zip(stocks["stock_id"], stocks["type"]))
+        # ── 重試：失敗股票補抓（整塊包 try/except，不影響主要結果）──
+        try:
+            market_type_map = dict(zip(stocks["stock_id"], stocks["type"]))
 
-        def _retry_one(sid, mkt):
-            """重試版 fetch+scan，不修改 _scan_status progress，避免計數錯亂。只回傳 result dict。"""
-            try:
-                df = _fetch_for_scan(sid, mkt)
-            except Exception:
-                df = pd.DataFrame()
-            if df.empty or len(df) < 5:
-                return None
-            try:
-                result = scan_one_stock(df, sid, names.get(sid, ""),
-                                        strategy_params=_strategy_params,
-                                        min_vol_ratio=_min_vol_ratio)
-            except Exception:
-                result = {}
-            return result  # 不回傳 df
+            def _retry_one(sid, mkt):
+                """重試版 fetch+scan，只回傳 result dict。"""
+                try:
+                    df = _fetch_for_scan(sid, mkt)
+                except Exception:
+                    df = pd.DataFrame()
+                if df.empty or len(df) < 5:
+                    return None
+                try:
+                    result = scan_one_stock(df, sid, names.get(sid, ""),
+                                            strategy_params=_strategy_params,
+                                            min_vol_ratio=_min_vol_ratio)
+                except Exception:
+                    result = {}
+                return result
 
-        # ── 二次重試：對第一輪 Yahoo 失敗的股票（多為 rate-limit）再補抓一次 ──
-        if _scan_status["failed_stocks"]:
-            retry_list = [
-                (sid, market_type_map.get(sid, "twse"))
-                for sid in list(_scan_status["failed_stocks"])
-            ]
-            log.info(f"[SCAN] 第一輪失敗 {len(retry_list)} 支，開始二次重試 (batch=40, sleep=4s)...")
+            # ── 二次重試 ──
+            if _scan_status["failed_stocks"]:
+                retry_list = [
+                    (sid, market_type_map.get(sid, "twse"))
+                    for sid in list(_scan_status["failed_stocks"])
+                ]
+                print(f"[SCAN] 第一輪失敗 {len(retry_list)} 支，開始二次重試...")
 
-            def _run_retry_blocking():
-                RETRY_BATCH = 40
-                for i in range(0, len(retry_list), RETRY_BATCH):
-                    chunk = retry_list[i: i + RETRY_BATCH]
-                    time.sleep(4.0)   # 讓 Yahoo 冷卻，再打下一批
-                    with ThreadPoolExecutor(max_workers=4) as ex2:
-                        fut2s = {ex2.submit(_retry_one, sid, mkt): sid for sid, mkt in chunk}
-                        for fut2 in as_completed(fut2s):
-                            try:
-                                result2 = fut2.result()
-                                if result2 is None:
-                                    continue
-                                sid2 = fut2s[fut2]
-                                # _status_lock 同時保護 _scan_status、all_results
-                                with _status_lock:
-                                    if sid2 in _scan_status["failed_stocks"]:
-                                        _scan_status["failed_stocks"].remove(sid2)
-                                        _scan_status["yahoo_fail"] -= 1
-                                        _scan_status["yahoo_ok"] += 1
-                                    for strat, r2 in result2.items():
-                                        if r2 is not None:
-                                            all_results[strat].append(r2)
-                            except Exception as _re:
-                                log.warning(f"[SCAN] retry 異常: {_re}")
+                def _run_retry_blocking():
+                    RETRY_BATCH = 40
+                    for i in range(0, len(retry_list), RETRY_BATCH):
+                        chunk = retry_list[i: i + RETRY_BATCH]
+                        time.sleep(4.0)
+                        with ThreadPoolExecutor(max_workers=4) as ex2:
+                            fut2s = {ex2.submit(_retry_one, sid, mkt): sid for sid, mkt in chunk}
+                            for fut2 in as_completed(fut2s):
+                                try:
+                                    result2 = fut2.result()
+                                    if result2 is None:
+                                        continue
+                                    sid2 = fut2s[fut2]
+                                    with _status_lock:
+                                        if sid2 in _scan_status["failed_stocks"]:
+                                            _scan_status["failed_stocks"].remove(sid2)
+                                            _scan_status["yahoo_fail"] -= 1
+                                            _scan_status["yahoo_ok"] += 1
+                                        for strat, r2 in result2.items():
+                                            if r2 is not None:
+                                                all_results[strat].append(r2)
+                                except Exception:
+                                    pass
 
-            await loop.run_in_executor(None, _run_retry_blocking)
-            log.info(f"[SCAN] 重試完成，剩餘失敗 {_scan_status['yahoo_fail']} 支")
+                await loop.run_in_executor(None, _run_retry_blocking)
+                print(f"[SCAN] 二次重試完成，剩餘失敗 {_scan_status['yahoo_fail']} 支")
 
-        # ── 三次重試：對二次重試仍失敗的股票，更慢更穩（batch=20, sleep=10s）──
-        still_failed = list(_scan_status["failed_stocks"])
-        if still_failed:
-            retry2_list = [
-                (sid, market_type_map.get(sid, "twse"))
-                for sid in still_failed
-            ]
-            log.info(f"[SCAN] 二次重試後仍失敗 {len(retry2_list)} 支，開始三次重試 (batch=20, sleep=10s)...")
+            # ── 三次重試 ──
+            still_failed = list(_scan_status["failed_stocks"])
+            if still_failed:
+                retry2_list = [
+                    (sid, market_type_map.get(sid, "twse"))
+                    for sid in still_failed
+                ]
+                print(f"[SCAN] 三次重試 {len(retry2_list)} 支...")
 
-            def _run_retry3_blocking():
-                RETRY3_BATCH = 20
-                for i in range(0, len(retry2_list), RETRY3_BATCH):
-                    chunk = retry2_list[i: i + RETRY3_BATCH]
-                    time.sleep(10.0)   # 更長冷卻，應對嚴重 rate-limit
-                    with ThreadPoolExecutor(max_workers=2) as ex3:
-                        fut3s = {ex3.submit(_retry_one, sid, mkt): sid for sid, mkt in chunk}
-                        for fut3 in as_completed(fut3s):
-                            try:
-                                result3 = fut3.result()
-                                if result3 is None:
-                                    continue
-                                sid3 = fut3s[fut3]
-                                with _status_lock:
-                                    if sid3 in _scan_status["failed_stocks"]:
-                                        _scan_status["failed_stocks"].remove(sid3)
-                                        _scan_status["yahoo_fail"] -= 1
-                                        _scan_status["yahoo_ok"] += 1
-                                    for strat, r3 in result3.items():
-                                        if r3 is not None:
-                                            all_results[strat].append(r3)
-                            except Exception as _re3:
-                                log.warning(f"[SCAN] retry3 異常: {_re3}")
+                def _run_retry3_blocking():
+                    RETRY3_BATCH = 20
+                    for i in range(0, len(retry2_list), RETRY3_BATCH):
+                        chunk = retry2_list[i: i + RETRY3_BATCH]
+                        time.sleep(10.0)
+                        with ThreadPoolExecutor(max_workers=2) as ex3:
+                            fut3s = {ex3.submit(_retry_one, sid, mkt): sid for sid, mkt in chunk}
+                            for fut3 in as_completed(fut3s):
+                                try:
+                                    result3 = fut3.result()
+                                    if result3 is None:
+                                        continue
+                                    sid3 = fut3s[fut3]
+                                    with _status_lock:
+                                        if sid3 in _scan_status["failed_stocks"]:
+                                            _scan_status["failed_stocks"].remove(sid3)
+                                            _scan_status["yahoo_fail"] -= 1
+                                            _scan_status["yahoo_ok"] += 1
+                                        for strat, r3 in result3.items():
+                                            if r3 is not None:
+                                                all_results[strat].append(r3)
+                                except Exception:
+                                    pass
 
-            await loop.run_in_executor(None, _run_retry3_blocking)
-            log.info(f"[SCAN] 三次重試完成，剩餘失敗 {_scan_status['yahoo_fail']} 支")
+                await loop.run_in_executor(None, _run_retry3_blocking)
+                print(f"[SCAN] 三次重試完成，剩餘失敗 {_scan_status['yahoo_fail']} 支")
 
-        # 主要策略掃描完成，提早存結果（確保後續 block 失敗時主要策略仍可顯示）
+        except Exception as _retry_e:
+            print(f"[SCAN] 重試異常（主要結果不受影響）: {_retry_e}")
+
+        # 重試後更新存檔（含重試新增的命中）
         _scan_status["results"] = all_results
         _save_scan_cache(all_results)
-        print(f"[SCAN] 主要策略完成，結果已暫存")
+        print(f"[SCAN] 主要策略完成，命中={sum(len(v) for v in all_results.values())}")
 
         # S_WARRANT_TOP：認購權證前十大（按需 fetch 價格，不再依賴已移除的 all_prices）
         try:
