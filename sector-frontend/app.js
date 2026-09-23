@@ -663,12 +663,70 @@ function showToast(msg, type = "ok") {
   setTimeout(() => { t.className = "toast"; }, 3000);
 }
 
-// ── 熱力圖 ───────────────────────────────────────────────────────────────────
+// ── 樹狀熱力圖 ─────────────────────────────────────────────────────────────
+
+function heatBg(ret5d) {
+  const p = (ret5d || 0) * 100;
+  if (p >= 5)    return '#155d27';
+  if (p >= 3)    return '#1a7f37';
+  if (p >= 1.5)  return '#238c45';
+  if (p >= 0.5)  return '#2da44e';
+  if (p > 0)     return '#3db868';
+  if (p <= -5)   return '#7a1f1a';
+  if (p <= -3)   return '#943028';
+  if (p <= -1.5) return '#ad3a30';
+  if (p <= -0.5) return '#c94a3f';
+  if (p < 0)     return '#d9605a';
+  return '#3d444d';
+}
+
+// Squarified treemap 算法
+function squarifyLayout(items, x0, y0, w, h, rects) {
+  if (!items.length) return;
+  if (items.length === 1) { rects.push({...items[0], x:x0, y:y0, w, h}); return; }
+
+  const short = Math.min(w, h);
+  let bestN = 1, bestWorst = Infinity, rowArea = 0;
+
+  for (let n = 1; n <= items.length; n++) {
+    rowArea += items[n-1].area;
+    const rowLen = rowArea / short;
+    let worst = 0, acc = 0;
+    for (let k = 0; k < n; k++) {
+      const side = items[k].area / rowLen;
+      worst = Math.max(worst, Math.max(rowLen / side, side / rowLen));
+    }
+    if (worst < bestWorst) { bestWorst = worst; bestN = n; }
+    else break;
+  }
+
+  const row = items.slice(0, bestN);
+  const rest = items.slice(bestN);
+  const rowArea2 = row.reduce((s, i) => s + i.area, 0);
+  const rowLen = rowArea2 / short;
+
+  if (w >= h) {
+    let cy = y0;
+    for (const item of row) {
+      const ih = item.area / rowLen;
+      rects.push({...item, x:x0, y:cy, w:rowLen, h:ih});
+      cy += ih;
+    }
+    squarifyLayout(rest, x0 + rowLen, y0, w - rowLen, h, rects);
+  } else {
+    let cx = x0;
+    for (const item of row) {
+      const iw = item.area / rowLen;
+      rects.push({...item, x:cx, y:y0, w:iw, h:rowLen});
+      cx += iw;
+    }
+    squarifyLayout(rest, x0, y0 + rowLen, w, h - rowLen, rects);
+  }
+}
 
 async function renderBubbleChart(sectors) {
   const container = document.getElementById("bubbleSection");
 
-  // 若無資料，嘗試載入
   if (!sectors || sectors.length === 0) {
     container.innerHTML = '<div class="loading"><div class="spinner"></div> 載入中...</div>';
     try {
@@ -689,91 +747,198 @@ async function renderBubbleChart(sectors) {
   // 依 5D 排名排序（強到弱）
   const sorted = [...sectors].sort((a, b) => (a.relative_rank_5d || 99) - (b.relative_rank_5d || 99));
 
-  // 依 5D 漲跌幅決定背景色（深淺 = 強弱）
-  function heatBg(ret5d) {
-    const p = (ret5d || 0) * 100;
-    if (p >= 5)   return '#155d27';
-    if (p >= 3)   return '#1a7f37';
-    if (p >= 1.5) return '#238c45';
-    if (p >= 0.5) return '#2da44e';
-    if (p > 0)    return '#3db868';
-    if (p <= -5)  return '#7a1f1a';
-    if (p <= -3)  return '#943028';
-    if (p <= -1.5)return '#ad3a30';
-    if (p <= -0.5)return '#c94a3f';
-    if (p < 0)    return '#d9605a';
-    return '#3d444d';
-  }
+  // 計算樹狀圖佈局
+  const W = Math.max(400, container.clientWidth || 800);
+  const H = Math.max(260, Math.round(W * 0.46));
+  const GAP = 3;
+  const totalStocks = sorted.reduce((s, sec) => s + (sec.stock_count || 1), 0);
+  const items = sorted.map(s => ({...s, area: ((s.stock_count || 1) / totalStocks) * W * H}));
 
-  const cells = sorted.map(s => {
-    const r5raw  = (s.return_ew_5d  || 0) * 100;
-    const r20raw = (s.return_ew_20d || 0) * 100;
+  const rects = [];
+  squarifyLayout(items, 0, 0, W, H, rects);
+
+  const tiles = rects.map(r => {
+    const r5raw  = (r.return_ew_5d  || 0) * 100;
+    const r20raw = (r.return_ew_20d || 0) * 100;
     const sign5  = r5raw  >= 0 ? '+' : '';
     const sign20 = r20raw >= 0 ? '+' : '';
-    const r5  = r5raw.toFixed(1);
-    const r20 = r20raw.toFixed(1);
-    const bg  = heatBg(s.return_ew_5d);
-    const name = escHtml(s.sector_name || s.sector_id);
-    const sid  = escHtml(s.sector_id);
-    return `<div class="heat-cell" style="background:${bg}" onclick="onBubbleClick('${sid}','${name}')">
-      <div class="heat-name">${name}</div>
-      <div class="heat-r5">${sign5}${r5}%</div>
-      <div class="heat-r20">${sign20}${r20}% <span style="opacity:.6;font-size:.62rem">20日</span></div>
+    const bg = heatBg(r.return_ew_5d);
+    const name = escHtml(r.sector_name || r.sector_id);
+    const sid  = escHtml(r.sector_id);
+    const tw = r.w - GAP, th = r.h - GAP;
+    const fBase = Math.max(9, Math.min(13, tw / 9));
+    const showName = tw > 55 && th > 36;
+    const showR20  = tw > 70 && th > 56;
+
+    const inner = showName
+      ? `<div class="tm-name"  style="font-size:${Math.min(fBase, 11)}px">${name}</div>
+         <div class="tm-r5"   style="font-size:${Math.min(fBase*1.3,14)}px">${sign5}${r5raw.toFixed(1)}%</div>
+         ${showR20 ? `<div class="tm-r20" style="font-size:${Math.max(9,fBase*.85)}px">${sign20}${r20raw.toFixed(1)}% <span style="opacity:.55;font-size:8px">20日</span></div>` : ''}`
+      : `<div style="font-size:9px;opacity:.7">${sign5}${r5raw.toFixed(1)}%</div>`;
+
+    return `<div class="tm-cell" style="left:${r.x}px;top:${r.y}px;width:${Math.max(1,tw)}px;height:${Math.max(1,th)}px;background:${bg}"
+      onclick="onBubbleClick('${sid}','${name}')" title="${name} | 5日:${sign5}${r5raw.toFixed(1)}% 20日:${sign20}${r20raw.toFixed(1)}%">
+      ${inner}
     </div>`;
   }).join('');
 
   container.innerHTML = `
-    <div class="heatmap-layout">
-      <div class="heatmap-main">
-        <div class="heatmap-grid">${cells}</div>
-        <div class="heat-legend">
-          <span>弱</span>
-          <div class="heat-legend-grad"></div>
-          <span>強</span>
-          <span style="margin-left:8px">顏色 = 5日漲跌幅 ｜ 點擊查看詳情</span>
-        </div>
+    <div class="tm-wrap" style="height:${H}px">${tiles}</div>
+    <div class="heat-legend">
+      <span>弱</span>
+      <div class="heat-legend-grad"></div>
+      <span>強</span>
+      <span style="margin-left:8px">顏色=5日漲跌 ｜ 大小=成份股數量 ｜ 點擊查看詳情</span>
+    </div>
+    <div class="sector-detail-panel" id="sector-detail-panel" style="display:none">
+      <div class="sdp-header">
+        <span class="sdp-title" id="sdp-title">—</span>
+        <button class="btn ghost sm" onclick="document.getElementById('sector-detail-panel').style.display='none'">✕ 關閉</button>
       </div>
-      <div id="bubble-side-panel" class="bubble-side-panel">
-        <div class="bubble-side-title" id="bubble-side-title">—</div>
-        <div class="bubble-side-metrics" id="bubble-side-metrics"></div>
-        <div class="bubble-side-stocks" id="bubble-side-stocks"></div>
-      </div>
+      <div class="sdp-metrics" id="sdp-metrics"></div>
+      <div id="sdp-stocks"></div>
     </div>`;
 }
 
 async function onBubbleClick(sectorId, name) {
-  const panel = document.getElementById("bubble-side-panel");
-  const titleEl = document.getElementById("bubble-side-title");
-  const metricsEl = document.getElementById("bubble-side-metrics");
-  const stocksEl = document.getElementById("bubble-side-stocks");
+  const panel = document.getElementById("sector-detail-panel");
+  if (!panel) return;
+  panel.style.display = 'block';
+  panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
 
-  panel.classList.add("open");
-  titleEl.textContent = name;
-  metricsEl.innerHTML = '<div style="color:var(--muted);font-size:.8rem">載入中...</div>';
-  stocksEl.innerHTML = "";
+  document.getElementById("sdp-title").textContent = name;
+  document.getElementById("sdp-metrics").innerHTML =
+    '<div style="color:var(--muted);font-size:.8rem;grid-column:1/-1">載入中...</div>';
+  document.getElementById("sdp-stocks").innerHTML = '';
 
   try {
     const r = await fetch(`${BASE}/sector/api/sector/${encodeURIComponent(sectorId)}?days=60`);
     const d = await r.json();
     const s = d.latest || {};
     const metrics = [
-      { lbl: "5D%",  val: pctFmt(s.return_ew_5d)  },
-      { lbl: "20D%", val: pctFmt(s.return_ew_20d) },
-      { lbl: "60D%", val: pctFmt(s.return_ew_60d) },
-      { lbl: "趨勢",  val: s.trend_state || "—"    },
-      { lbl: "健康",  val: s.internal_health || "—"},
-      { lbl: "股票數", val: s.stock_count ?? "—"   },
+      { lbl: '5日%',   val: pctFmt(s.return_ew_5d)  },
+      { lbl: '20日%',  val: pctFmt(s.return_ew_20d) },
+      { lbl: '60日%',  val: pctFmt(s.return_ew_60d) },
+      { lbl: '趨勢',   val: s.trend_state || '—'    },
+      { lbl: '健康',   val: s.internal_health || '—'},
+      { lbl: '成份股', val: s.stock_count ?? '—'    },
     ];
-    metricsEl.innerHTML = metrics.map(m =>
-      `<div class="bubble-side-metric"><div class="lbl">${m.lbl}</div><div class="val ${retClass(typeof m.val === 'number' ? m.val : null)}">${m.val}</div></div>`
-    ).join("");
-    // 非同步載入個股明細
+    document.getElementById("sdp-metrics").innerHTML = metrics.map(m => {
+      const v = m.val;
+      const cls = typeof v === 'number' ? retClass(v) : '';
+      return `<div class="sdp-metric-card"><div class="lbl">${m.lbl}</div><div class="val ${cls}">${v}</div></div>`;
+    }).join('');
+
     const sr = await fetch(`${BASE}/sector/api/sector/${encodeURIComponent(sectorId)}/stocks`);
     const sd = await sr.json();
     const stks = sd.stocks || [];
-    stocksEl.innerHTML = `<b style="color:var(--text);font-size:.8rem">成份股（${stks.length}支）</b>` + renderStocksTable(stks);
+    document.getElementById("sdp-stocks").innerHTML =
+      `<div class="sdp-stocks-title">成份股（${stks.length}支）</div>` +
+      renderStocksTablePanel(stks);
   } catch (e) {
-    metricsEl.innerHTML = `<div style="color:var(--red)">載入失敗</div>`;
+    document.getElementById("sdp-metrics").innerHTML =
+      `<div style="color:var(--red);grid-column:1/-1">載入失敗</div>`;
+  }
+}
+
+function renderStocksTablePanel(stocks) {
+  if (!stocks || stocks.length === 0)
+    return '<div style="color:var(--muted);font-size:.8rem">無資料</div>';
+  const rows = stocks.map(s => {
+    const ret = s.return_20d;
+    const retStyle = ret == null ? '' : ret > 0 ? 'color:var(--green)' : ret < 0 ? 'color:var(--red)' : '';
+    const retStr = ret == null ? '—' : (ret > 0 ? '+' : '') + ret.toFixed(2) + '%';
+    const vol = s.volume ? (s.volume >= 10000 ? (s.volume/10000).toFixed(1)+'萬' : s.volume.toLocaleString()) : '—';
+    const sname = escHtml(s.name || '');
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:6px 8px"><a class="stock-link" onclick="openKline('${s.stock_id}','${sname}')">${s.stock_id}</a></td>
+      <td style="padding:6px 8px;color:var(--text-dim)">${sname}</td>
+      <td style="padding:6px 8px;text-align:right">${s.close != null ? s.close.toFixed(2) : '—'}</td>
+      <td style="padding:6px 8px;text-align:right;color:var(--muted)">${vol}</td>
+      <td style="padding:6px 8px;text-align:right;${retStyle};font-weight:600">${retStr}</td>
+      <td style="padding:6px 8px;text-align:right">
+        <button class="btn sm ghost" onclick="addToWatchlist('${s.stock_id}','${sname}')">+清單</button>
+      </td>
+    </tr>`;
+  }).join('');
+  return `<div style="overflow-x:auto;max-height:320px;overflow-y:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+      <thead><tr style="color:var(--muted)">
+        <th style="padding:5px 8px;text-align:left">股號</th>
+        <th style="padding:5px 8px;text-align:left">股名</th>
+        <th style="padding:5px 8px;text-align:right">股價</th>
+        <th style="padding:5px 8px;text-align:right">成交量</th>
+        <th style="padding:5px 8px;text-align:right">20日漲幅</th>
+        <th style="padding:5px 8px;text-align:right">操作</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+// ── K線 Modal ────────────────────────────────────────────────────────────────
+
+let _klineModalStock = null;
+
+async function openKline(stockId, name) {
+  _klineModalStock = {id: stockId, name};
+  const modal = document.getElementById('kline-modal');
+  document.getElementById('kline-title').textContent = `${stockId}　${name}`;
+  modal.style.display = 'flex';
+  const chartEl = document.getElementById('kline-chart');
+  chartEl.innerHTML = '<div style="color:var(--muted);padding:20px;text-align:center">K線載入中...</div>';
+
+  if (window._klineChart) { try { window._klineChart.remove(); } catch(_){} window._klineChart = null; }
+
+  try {
+    const res = await fetch(`${BASE}/api/stock/${encodeURIComponent(stockId)}/ohlcv`);
+    const d = await res.json();
+    const bars = (d.ohlcv || [])
+      .filter(b => b.date && b.close)
+      .map(b => ({time: b.date, open: +b.open, high: +b.high, low: +b.low, close: +b.close}));
+
+    chartEl.innerHTML = '';
+    const chart = LightweightCharts.createChart(chartEl, {
+      width: chartEl.clientWidth || 660,
+      height: 320,
+      layout: { background: {color:'#0d1117'}, textColor:'#c9d1d9' },
+      grid: { vertLines:{color:'#21262d'}, horzLines:{color:'#21262d'} },
+      timeScale: { borderColor:'#30363d', timeVisible:true },
+      rightPriceScale: { borderColor:'#30363d' },
+    });
+    const cs = chart.addCandlestickSeries({
+      upColor:'#f85149', downColor:'#3fb950',
+      borderUpColor:'#f85149', borderDownColor:'#3fb950',
+      wickUpColor:'#f85149', wickDownColor:'#3fb950',
+    });
+    cs.setData(bars);
+    chart.timeScale().fitContent();
+    window._klineChart = chart;
+  } catch (e) {
+    chartEl.innerHTML = `<div style="color:var(--red);padding:20px">載入失敗：${e.message}</div>`;
+  }
+}
+
+function closeKlineModal() {
+  document.getElementById('kline-modal').style.display = 'none';
+  if (window._klineChart) { try { window._klineChart.remove(); } catch(_){} window._klineChart = null; }
+}
+
+async function addToWatchlistFromModal() {
+  if (_klineModalStock) await addToWatchlist(_klineModalStock.id, _klineModalStock.name);
+}
+
+async function addToWatchlist(stockId, name) {
+  try {
+    const r = await fetch(`${BASE}/api/watchlist`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({stock_id: stockId, name: name || '', note: '産業輪動'})
+    });
+    const d = await r.json();
+    showToast(d.message || `已加入觀察清單：${stockId}`, 'ok');
+  } catch (e) {
+    showToast('加入失敗：' + e.message, 'error');
   }
 }
 

@@ -287,64 +287,87 @@
   .health-bar { height: 6px; border-radius: 3px; background: var(--border); flex: 1; max-width: 80px; overflow: hidden; }
   .health-bar-fill { height: 100%; background: var(--green); transition: width .3s; }
 
-  /* ── 熱力圖 ── */
+  /* ── 樹狀熱力圖 ── */
   #bubbleSection { padding: 12px 16px 20px; }
-  .heatmap-layout { display: flex; gap: 16px; align-items: flex-start; }
-  .heatmap-main { flex: 1; min-width: 0; }
-  .heatmap-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
-    gap: 6px;
-  }
-  .heat-cell {
-    border-radius: 8px;
-    padding: 10px 10px 8px;
+  .tm-wrap { position: relative; width: 100%; overflow: hidden; border-radius: 8px; }
+  .tm-cell {
+    position: absolute;
     cursor: pointer;
-    transition: filter .15s, transform .1s;
-    color: #fff;
-    min-height: 68px;
+    overflow: hidden;
+    border-radius: 4px;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    justify-content: flex-end;
+    padding: 5px 6px;
+    color: #fff;
     user-select: none;
+    transition: filter .12s;
+    box-sizing: border-box;
   }
-  .heat-cell:hover { filter: brightness(1.18); transform: scale(1.03); }
-  .heat-name { font-size: .7rem; font-weight: 600; line-height: 1.25; opacity: .92; margin-bottom: 5px; }
-  .heat-r5 { font-size: 1.05rem; font-weight: 700; line-height: 1; }
-  .heat-r20 { font-size: .68rem; opacity: .72; margin-top: 3px; }
+  .tm-cell:hover { filter: brightness(1.18); z-index: 2; }
+  .tm-name { font-weight: 600; line-height: 1.2; opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tm-r5  { font-weight: 700; line-height: 1.1; }
+  .tm-r20 { opacity: .7; line-height: 1.1; }
   .heat-legend {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 10px;
-    font-size: .68rem;
-    color: var(--muted);
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 8px; font-size: .68rem; color: var(--muted);
   }
   .heat-legend-grad {
-    width: 80px; height: 7px;
-    border-radius: 4px;
+    width: 80px; height: 7px; border-radius: 4px;
     background: linear-gradient(to right, #943028, #6e7681, #1a7f37);
   }
-  .bubble-side-panel {
-    width: 250px;
-    flex-shrink: 0;
+  /* ── 底部詳情面板 ── */
+  .sector-detail-panel {
+    margin-top: 16px;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 14px;
-    display: none;
+    border-radius: 10px;
+    padding: 16px 20px 20px;
   }
-  .bubble-side-panel.open { display: block; }
-  .bubble-side-title { font-size: .9rem; font-weight: 600; margin-bottom: 10px; }
-  .bubble-side-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
-  .bubble-side-metric { background: var(--surface2); border-radius: 6px; padding: 6px 8px; }
-  .bubble-side-metric .lbl { font-size: .7rem; color: var(--muted); }
-  .bubble-side-metric .val { font-size: .9rem; font-weight: 600; margin-top: 2px; }
-  .bubble-side-stocks { font-size: .75rem; color: var(--muted); line-height: 1.7; }
+  .sdp-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .sdp-title { font-size: 1.05rem; font-weight: 600; }
+  .sdp-metrics {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .sdp-metric-card {
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .sdp-metric-card .lbl { font-size: .7rem; color: var(--muted); }
+  .sdp-metric-card .val { font-size: 1.05rem; font-weight: 700; margin-top: 4px; }
+  .sdp-stocks-title { font-size: .88rem; font-weight: 600; margin-bottom: 8px; }
+  .stock-link { color: var(--accent); cursor: pointer; font-weight: 600; text-decoration: none; }
+  .stock-link:hover { text-decoration: underline; }
+  /* ── K線 Modal ── */
+  .kline-modal {
+    display: none; position: fixed; inset: 0; z-index: 1000;
+    background: rgba(0,0,0,.7);
+    align-items: center; justify-content: center;
+  }
+  .kline-modal-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    width: min(700px, 95vw);
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .kline-modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .kline-modal-title { font-size: 1rem; font-weight: 600; }
+  #kline-chart { height: 320px; border-radius: 8px; overflow: hidden; background: #0d1117; }
   @media (max-width: 700px) {
-    .heatmap-layout { flex-direction: column; }
-    .bubble-side-panel { width: 100%; }
-    .heatmap-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); }
+    .sdp-metrics { grid-template-columns: repeat(3, 1fr); }
   }
 </style>
 </head>
@@ -426,6 +449,21 @@
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
+<!-- K線 Modal -->
+<div class="kline-modal" id="kline-modal" onclick="if(event.target===this)closeKlineModal()">
+  <div class="kline-modal-box">
+    <div class="kline-modal-header">
+      <span class="kline-modal-title" id="kline-title">—</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn green sm" id="kline-watch-btn" onclick="addToWatchlistFromModal()">+ 加入觀察清單</button>
+        <button class="btn ghost sm" onclick="closeKlineModal()">✕ 關閉</button>
+      </div>
+    </div>
+    <div id="kline-chart"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <script src="/sector/static/app.js"></script>
 </body>
 </html>

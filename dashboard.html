@@ -2697,11 +2697,12 @@ async function triggerGithubScan() {
   try { await api('PUT', '/api/params/strategies/_global', { min_vol_ratio: vol2x ? 2.0 : 0.0 }); } catch(_) {}
   try {
     const res = await api('POST', '/api/screen/run');
-    if (res.ok) {
+    if (res.ok || (res.ok === false && res.message && res.message.includes('掃描中'))) {
+      // 正常啟動，或已有掃描在執行（直接追蹤進度）
       toast('⚡ ' + res.message);
       _ghScanStartedAt = Date.now();
       btn.textContent = '⚡ 掃描中...';
-      document.getElementById('screen-progress-text').textContent = '掃描啟動中，稍後顯示進度...';
+      document.getElementById('screen-progress-text').textContent = '掃描進行中，稍後顯示進度...';
       document.getElementById('screen-progress-bar-wrap').style.display = 'block';
       document.getElementById('screen-progress-bar').style.width = '0%';
       if (_ghPollTimer) clearInterval(_ghPollTimer);
