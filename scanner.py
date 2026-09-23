@@ -30,17 +30,17 @@ def _limit_up_price(prev_close: float) -> float:
 STRATEGIES = {
     "S1":       "雙MACD選股（多）",
     "S1_SHORT": "雙MACD選股（空）",
-    "S1_2":     "MACD延伸（創新高拉回）",
+
     "S2":       "二次確認買進（W底）",
     "S5":       "站上均線做多",
     "S17A":     "底部破底翻試單",
     "S17B":     "突破確認加碼（撈底）",
     "S10":      "漲停",
-    "CHIP":     "主力籌碼選股",
+
     "S_PB":     "均線拉回買點",
     "S_FBD":    "假跌破買進",
     "S_RES":    "共振起點（黃金交叉）",
-    "S_KD":     "KD超賣反彈（KD跌破20後回升）",
+
     "S_VOLX":       "量爆拉升（成交量暴增3倍且站上20週線）",
     "S_VOLX_SHORT": "量爆下殺（成交量暴增3倍且跌破20週線）",
     "S_WARRANT_TOP": "認購權證前十大（昨日）",
@@ -57,11 +57,7 @@ STRATEGY_PARAMS_SCHEMA = {
         {"key": "osc_lookback",     "label": "OSC局部頂部回溯天數",   "type": "number", "default": 12,  "min": 5,   "max": 30,   "step": 1},
         {"key": "close_lookback",   "label": "近期高點回溯天數",       "type": "number", "default": 10,  "min": 3,   "max": 20,   "step": 1},
     ],
-    "S1_2": [
-        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "new_high_window",  "label": "創新高回溯天數",        "type": "number", "default": 20,  "min": 5,   "max": 60,   "step": 1},
-        {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 0,   "min": 0,   "max": 5000, "step": 50},
-    ],
+
     "S2": [
         {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
         {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
@@ -113,13 +109,7 @@ STRATEGY_PARAMS_SCHEMA = {
         {"key": "ma10_slope_window","label": "MA10向上判斷天數",      "type": "number", "default": 5,   "min": 3,   "max": 15,   "step": 1},
         {"key": "ma60_slope_window","label": "MA60向上判斷天數",      "type": "number", "default": 10,  "min": 5,   "max": 20,   "step": 1},
     ],
-    "S_KD": [
-        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
-        {"key": "oversold_level",   "label": "超賣門檻（K值≤）",     "type": "number", "default": 20,  "min": 5,   "max": 40,   "step": 5},
-        {"key": "lookback",         "label": "超賣回溯天數",          "type": "number", "default": 5,   "min": 1,   "max": 15,   "step": 1},
-        {"key": "kd_period",        "label": "KD週期（天）",          "type": "number", "default": 9,   "min": 5,   "max": 20,   "step": 1},
-    ],
+
     "S_VOLX": [
         {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
         {"key": "vol_multiplier",   "label": "量能倍數（≥）",         "type": "number", "default": 3,   "min": 1.5, "max": 10,   "step": 0.5},
@@ -131,11 +121,7 @@ STRATEGY_PARAMS_SCHEMA = {
         {"key": "vol_multiplier",   "label": "量能倍數（≥）",         "type": "number", "default": 3,   "min": 1.5, "max": 10,   "step": 0.5},
         {"key": "ma_period",        "label": "均線週期（天）",         "type": "number", "default": 10,  "min": 5,   "max": 250,  "step": 5},
     ],
-    "CHIP": [
-        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "sector_ratio",     "label": "同族群上漲比%（≥）",    "type": "number", "default": 50,  "min": 0,   "max": 100,  "step": 5},
-        {"key": "min_consec_up",    "label": "最少連續增持週數",       "type": "number", "default": 1,   "min": 1,   "max": 4,    "step": 1},
-    ],
+
     "S_WARRANT_TOP": [
         {"key": "limit",     "label": "取前N支",  "type": "number", "default": 10, "min": 3, "max": 30, "step": 1},
         {"key": "min_price", "label": "最低股價",  "type": "number", "default": 10, "min": 1, "max": 500, "step": 1},
@@ -1129,8 +1115,8 @@ def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "",
         prev_vol  = float(_prev_v) if _pd.notna(_prev_v) else 0.0
         if prev_vol <= 0 or today_vol < prev_vol * min_vol_ratio:
             return {k: None for k in [
-                "S1", "S1_SHORT", "S1_2", "S2", "S5", "S17A", "S17B", "S10",
-                "S_PB", "S_FBD", "S_RES", "S_KD", "S_VOLX", "S_VOLX_SHORT",
+                "S1", "S1_SHORT", "S2", "S5", "S17A", "S17B", "S10",
+                "S_PB", "S_FBD", "S_RES", "S_VOLX", "S_VOLX_SHORT",
             ]}
     prices_single = {sid: df}
     names_single  = {sid: name}
@@ -1139,7 +1125,6 @@ def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "",
     for key, fn in [
         ("S1",       screen_s1),
         ("S1_SHORT", screen_s1_short),
-        ("S1_2",     screen_s1_2),
         ("S2",       screen_s2),
         ("S5",       screen_s5),
         ("S17A",     screen_s17a),
@@ -1148,7 +1133,6 @@ def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "",
         ("S_PB",     screen_spb),
         ("S_FBD",    screen_sfbd),
         ("S_RES",    screen_sres),
-        ("S_KD",          screen_skd),
         ("S_VOLX",        screen_svolx),
         ("S_VOLX_SHORT",  screen_svolx_short),
     ]:
@@ -1169,7 +1153,6 @@ def run_strategy(strategy: str, prices: dict, names: dict = None,
     fn_map = {
         "S1":       screen_s1,
         "S1_SHORT": screen_s1_short,
-        "S1_2":     screen_s1_2,
         "S2":       screen_s2,
         "S5":       screen_s5,
         "S17A":     screen_s17a,
@@ -1178,11 +1161,8 @@ def run_strategy(strategy: str, prices: dict, names: dict = None,
         "S_PB":     screen_spb,
         "S_FBD":    screen_sfbd,
         "S_RES":    screen_sres,
-        "S_KD":          screen_skd,
         "S_VOLX":        screen_svolx,
         "S_VOLX_SHORT":  screen_svolx_short,
     }
-    if s == "CHIP":
-        return screen_chip(prices, chip_data or {}, stock_info, params=p)
     fn = fn_map.get(s)
     return fn(prices, names, params=p) if fn else []

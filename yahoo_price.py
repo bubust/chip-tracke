@@ -270,8 +270,8 @@ def fetch_yahoo(stock_id: str, market: str = "twse") -> pd.DataFrame:
 
 # ── 全市場掃描 ────────────────────────────────────────────────────────────────
 
-STRATEGY_KEYS = ["S1", "S1_SHORT", "S1_2", "S2", "S5", "S17A", "S17B", "S10", "CHIP",
-                 "S_PB", "S_FBD", "S_RES", "S_KD", "S_VOLX", "S_VOLX_SHORT", "S_WARRANT_TOP"]
+STRATEGY_KEYS = ["S1", "S1_SHORT", "S2", "S5", "S17A", "S17B", "S10",
+                 "S_PB", "S_FBD", "S_RES", "S_VOLX", "S_VOLX_SHORT", "S_WARRANT_TOP"]
 
 _SCAN_WORKERS = 4    # Fly.io shared-cpu: 4 workers 避免 Yahoo 429 burst
 
