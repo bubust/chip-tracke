@@ -81,7 +81,18 @@ async def fetch_taiex_ohlcv(days: int = 400) -> list[dict]:
 
 
 async def fetch_tx_futures_ohlcv(days: int = 400) -> list[dict]:
-    """Fetch TX futures OHLCV from FinMind TaiwanFuturesDaily."""
+    """Fetch TX futures OHLCV from FinMind TaiwanFuturesDaily.
+    Falls back to Yahoo ^TWII (TAIEX spot) when FinMind fails.
+    Note: Yahoo fallback yields tx_volume=None, total_oi=None; basis metrics will be absent.
+    """
+    result = await _fetch_tx_finmind(days)
+    if result:
+        return result
+    log.warning("[relationship] FinMind TX 失敗，改用 Yahoo ^TWII 估代（basis 指標不可用）")
+    return await _fetch_tx_yahoo_fallback(days)
+
+
+async def _fetch_tx_finmind(days: int) -> list[dict]:
     if not FINMIND_TOKEN:
         log.warning("FINMIND_TOKEN not set, TX futures unavailable")
         return []
@@ -122,6 +133,44 @@ async def fetch_tx_futures_ohlcv(days: int = 400) -> list[dict]:
         except Exception as e:
             log.warning(f"TX futures FinMind: {e}")
             return []
+
+
+async def _fetch_tx_yahoo_fallback(days: int) -> list[dict]:
+    """Yahoo Finance ^TWII 作為 TX 代理（缺 basis，但趨勢方向判斷有效）"""
+    from datetime import datetime, timezone
+    range_str = f"{min(days // 250 + 1, 5)}y"
+    urls = [
+        f"https://query1.finance.yahoo.com/v8/finance/chart/%5ETWII?interval=1d&range={range_str}",
+        f"https://query2.finance.yahoo.com/v8/finance/chart/%5ETWII?interval=1d&range={range_str}",
+    ]
+    async with httpx.AsyncClient(headers={"User-Agent": _UA}, timeout=30) as client:
+        for url in urls:
+            try:
+                r = await client.get(url)
+                j = r.json()
+                results_list = (j.get("chart") or {}).get("result") or []
+                if not results_list:
+                    continue
+                result = results_list[0]
+                timestamps = result["timestamp"]
+                q = result["indicators"]["quote"][0]
+                rows = []
+                for i, ts in enumerate(timestamps):
+                    c = q["close"][i]
+                    if c is None:
+                        continue
+                    dt = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
+                    rows.append({
+                        "observation_date": dt,
+                        "tx_open": q["open"][i], "tx_high": q["high"][i],
+                        "tx_low": q["low"][i],   "tx_close": c,
+                        "tx_volume": None, "total_oi": None, "_vol": 1,
+                    })
+                if rows:
+                    return rows
+            except Exception as e:
+                log.warning(f"[relationship] Yahoo TX fallback {url}: {e}")
+    return []
 
 
 async def fetch_all(days: int = 400):

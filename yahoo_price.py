@@ -437,6 +437,7 @@ async def run_market_scan(strategy_params: dict = None):
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from scanner import scan_one_stock, screen_chip
     _strategy_params = strategy_params or {}
+    _min_vol_ratio = (_strategy_params.get("_global") or {}).get("min_vol_ratio", 0.0)
     _status_lock = threading.Lock()
 
     _scan_status["running"]       = True
@@ -478,7 +479,8 @@ async def run_market_scan(strategy_params: dict = None):
                 _scan_status["yahoo_ok"] += 1
             try:
                 result = scan_one_stock(df, sid, names.get(sid, ""),
-                                        strategy_params=_strategy_params)
+                                        strategy_params=_strategy_params,
+                                        min_vol_ratio=_min_vol_ratio)
             except Exception:
                 result = {}
             return result, df
@@ -521,7 +523,8 @@ async def run_market_scan(strategy_params: dict = None):
                     return None, None
                 try:
                     result = scan_one_stock(df, sid, names.get(sid, ""),
-                                            strategy_params=_strategy_params)
+                                            strategy_params=_strategy_params,
+                                            min_vol_ratio=_min_vol_ratio)
                 except Exception:
                     result = {}
                 return result, df

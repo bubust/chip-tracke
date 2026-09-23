@@ -26,44 +26,58 @@ def _twse_date(d: str) -> str:
     return d.replace("-", "")
 
 
+def _is_html(text: str) -> bool:
+    """偵測回應是否為 HTML（通常是被 IP 封鎖後的錯誤頁面）"""
+    t = text.strip().lower()
+    return t.startswith(("<!doctype", "<html"))
+
+
+def _parse_twse_json(data: dict, date_str: str) -> list[dict]:
+    """共用：解析 TWSE 權證成交 JSON"""
+    fields = data.get("fields", [])
+    rows = data.get("data", [])
+    if not fields or not rows:
+        log.warning(f"[flow] TWSE TWTB4U 無資料 {date_str}")
+        return []
+    result = []
+    for row in rows:
+        d = dict(zip(fields, row))
+        code    = d.get("證券代號", "").strip()
+        vol_s   = d.get("成交股數", "0").replace(",", "")
+        turn_s  = d.get("成交金額", "0").replace(",", "")
+        close_s = d.get("收盤價", "0").replace(",", "")
+        if not code:
+            continue
+        try:
+            vol   = int(vol_s) // 1000   # 股 → 張
+            turn  = float(turn_s)
+            close = float(close_s) if close_s not in ("", "--", "-") else 0.0
+            if vol > 0:
+                result.append({"code": code, "volume": vol,
+                               "turnover": turn, "close": close, "market": "TSE"})
+        except Exception:
+            continue
+    log.info(f"[flow] TWSE 取得 {len(result)} 檔有成交權證")
+    return result
+
+
 def fetch_twse_daily(date_str: str) -> list[dict]:
     """
     TWSE 上市權證每日成交行情（TWTB4U）。
-    回傳 [{warrant_code, volume, turnover, close_price}, ...]
+    Render.com 境外 IP 會被 TWSE 地理封鎖回傳 HTML；偵測後 log 並回傳 []。
+    回傳 [{code, volume, turnover, close, market}, ...]
     """
     url = "https://www.twse.com.tw/rwd/zh/warrant/TWTB4U"
     params = {"date": _twse_date(date_str), "response": "json", "selectType": "ALL"}
     try:
         r = requests.get(url, params=params, headers=HEADERS, timeout=30)
         r.raise_for_status()
-        data = r.json()
-        fields = data.get("fields", [])
-        rows = data.get("data", [])
-        if not fields or not rows:
-            log.warning(f"[flow] TWSE TWTB4U 無資料 {date_str}")
+        if _is_html(r.text):
+            log.error(f"[flow] TWSE TWTB4U 回傳 HTML — Render.com IP 被 TWSE 地理封鎖，{date_str} 無上市金流資料")
             return []
-        result = []
-        for row in rows:
-            d = dict(zip(fields, row))
-            code   = d.get("證券代號", "").strip()
-            vol_s  = d.get("成交股數", "0").replace(",", "")
-            turn_s = d.get("成交金額", "0").replace(",", "")
-            close_s = d.get("收盤價", "0").replace(",", "")
-            if not code:
-                continue
-            try:
-                vol    = int(vol_s) // 1000  # 股 → 張（1張=1000股 for warrants）
-                turn   = float(turn_s)
-                close  = float(close_s) if close_s not in ("", "--", "-") else 0.0
-                if vol > 0:
-                    result.append({"code": code, "volume": vol,
-                                   "turnover": turn, "close": close, "market": "TSE"})
-            except Exception:
-                continue
-        log.info(f"[flow] TWSE 取得 {len(result)} 檔有成交權證")
-        return result
+        return _parse_twse_json(r.json(), date_str)
     except Exception as e:
-        log.error(f"[flow] TWSE fetch 失敗: {e}")
+        log.error(f"[flow] TWSE TWTB4U fetch 失敗: {e}")
         return []
 
 
@@ -82,6 +96,9 @@ def fetch_tpex_daily(date_str: str) -> list[dict]:
     try:
         r = requests.get(url, params=params, headers=HEADERS, timeout=30)
         r.raise_for_status()
+        if _is_html(r.text):
+            log.warning(f"[flow] TPEx 回傳 HTML（可能被 IP 封鎖），{date_str} 無上櫃金流資料")
+            return []
         data = r.json()
         aaData = data.get("aaData", [])
         if not aaData:

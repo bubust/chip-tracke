@@ -197,7 +197,6 @@
   <button onclick="switchTab('warrant')">權證股期選擇器</button>
   <button onclick="switchTab('regime')">📊 總經面板</button>
   <button onclick="switchTab('sector')">🔄 產業輪動</button>
-  <button onclick="switchTab('positioning')">📍 籌碼定位</button>
   <button onclick="switchTab('relationship')">📊 市場關聯</button>
   <button onclick="switchTab('settings')">設定</button>
 </nav>
@@ -422,6 +421,13 @@
         <div id="screen-progress-bar" style="height:100%;background:var(--accent);transition:width .3s;width:0%"></div>
       </div>
     </div>
+    <!-- 量能翻倍過濾 -->
+    <div style="margin-bottom:10px">
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:.82rem;color:var(--muted);cursor:pointer;user-select:none">
+        <input type="checkbox" id="chk-vol2x" style="cursor:pointer">
+        量能翻倍（今日量 &ge; 昨日 &times;2，篩剛啟動股票）
+      </label>
+    </div>
     <!-- 策略快篩（掃描前後都顯示；掃描完後顯示各策略命中數） -->
     <div id="screen-strat-bar" style="display:flex;flex-wrap:wrap;gap:6px">
       <button class="btn ghost screen-strat-btn" data-s="S1"       onclick="viewStrategy('S1')">S1 雙MACD多 <span class="strat-cnt" id="cnt-S1"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S1','S1 雙MACD多')">⚙️</button>
@@ -509,11 +515,6 @@
 <!-- ═══════════════════════ 產業輪動 ═══════════════════════ -->
 <div id="tab-sector" class="tab">
   <iframe id="sector-iframe" src="/sector/" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
-</div>
-
-<!-- ═══════════════════════ 籌碼定位 ═══════════════════════ -->
-<div id="tab-positioning" class="tab">
-  <iframe id="positioning-iframe" src="" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
 </div>
 
 <!-- ═══════════════════════ 市場關聯研究 ═══════════════════════ -->
@@ -653,13 +654,12 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  const idx = { watchlist: 0, market: 1, screen: 2, warrant: 3, regime: 4, sector: 5, positioning: 6, relationship: 7, settings: 8 };
+  const idx = { watchlist: 0, market: 1, screen: 2, warrant: 3, regime: 4, sector: 5, relationship: 6, settings: 7 };
   const navIdx = idx[name];
   if (navIdx !== undefined) document.querySelectorAll('nav button')[navIdx].classList.add('active');
   if (name === 'settings') { loadSysStatus(); loadPushLog(); loadTGSettings(); loadParams(); loadAllStratParams(); updateLocalWlInfo(); }
   if (name === 'regime') { const rf = document.getElementById('regime-iframe'); if (rf && !rf.dataset.loaded) { rf.dataset.loaded = '1'; rf.src = '/regime/'; } }
   if (name === 'sector') { const sf = document.getElementById('sector-iframe'); if (sf && !sf.dataset.loaded) { sf.dataset.loaded = '1'; sf.src = '/sector/'; } }
-  if (name === 'positioning') { const pf = document.getElementById('positioning-iframe'); if (pf && !pf.dataset.loaded) { pf.dataset.loaded = '1'; pf.src = '/positioning/'; } }
   if (name === 'relationship') { const rf2 = document.getElementById('relationship-iframe'); if (rf2 && !rf2.dataset.loaded) { rf2.dataset.loaded = '1'; rf2.src = '/relationship/'; } }
   if (name !== 'watchlist') { _stopPriceRefreshIfActive(); }
   if (name === 'watchlist') { _autoStartPriceRefresh(); }
@@ -2669,6 +2669,9 @@ async function triggerGithubScan() {
   const btn = document.getElementById('btn-trigger-gh');
   btn.disabled = true;
   btn.textContent = '⏳ 觸發中...';
+  // 儲存量能翻倍設定（供 run_market_scan 的 _load_strategy_params 讀取）
+  const vol2x = document.getElementById('chk-vol2x')?.checked;
+  try { await api('PUT', '/api/params/strategies/_global', { min_vol_ratio: vol2x ? 2.0 : 0.0 }); } catch(_) {}
   try {
     const res = await api('POST', '/api/trigger-scan');
     if (res.ok) {

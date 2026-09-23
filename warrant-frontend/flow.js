@@ -18,7 +18,16 @@ async function initFlow() {
 /* ── 載入可用日期 ── */
 async function loadFlowDates() {
   try {
-    const dates = await fetch('/warrant/api/flow/dates').then(r => r.json());
+    const r = await fetch('/warrant/api/flow/dates');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const dates = await r.json();
+    if (!dates || dates.length === 0) {
+      const sel = document.getElementById('flowDateSel');
+      if (sel) sel.innerHTML = '<option value="">無資料</option>';
+      const tbl = document.getElementById('flowTableBody');
+      if (tbl) tbl.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:1rem;text-align:center">金流資料因伺服器 IP 受 TWSE 地理限制暫不可用</td></tr>';
+      return;
+    }
     const sel   = document.getElementById('flowDateSel');
     sel.innerHTML = '';
 

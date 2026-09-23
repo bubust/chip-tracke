@@ -165,7 +165,9 @@ def run_scanner():
                     "ask":             pd2.get("ask"),
                     "bid_lots":        bid_lots,
                     "volume":          volume,
-                    "bid_value":       int(bid * bid_lots * 1000) if bid else 0,
+                    "bid_value":       (int(bid * bid_lots * 1000) if (bid and bid_lots)
+                                        else int((price or 0) * volume * 1000) if (price and volume)
+                                        else 0),
                     "expiry_date":     w_row["last_trade_date"],
                     "strike":          w_row["strike"],
                     "issuer":          w_row["issuer"],

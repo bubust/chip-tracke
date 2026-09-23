@@ -136,11 +136,11 @@ async def _finmind_futures_inst(dt: date) -> dict:
                 for row in rows:
                     name = row.get("name", "")   # 外資及陸資 / 投信 / 自營商
                     rows_out[(name, contract_key)] = {
-                        "trade_long":  _int(str(row.get("buy_open_interest_balance", 0) or 0)),
-                        "trade_short": _int(str(row.get("sell_open_interest_balance", 0) or 0)),
-                        "trade_net":   _int(str(row.get("net_open_interest_balance", 0) or 0)),
-                        "oi_long":     _int(str(row.get("buy_open_interest_balance", 0) or 0)),
-                        "oi_short":    _int(str(row.get("sell_open_interest_balance", 0) or 0)),
+                        "trade_long":  _int(str(row.get("long_deal_volume", 0) or 0)),
+                        "trade_short": _int(str(row.get("short_deal_volume", 0) or 0)),
+                        "trade_net":   _int(str(row.get("net_deal_volume", 0) or 0)),
+                        "oi_long":     _int(str(row.get("long_open_interest_balance", 0) or 0)),
+                        "oi_short":    _int(str(row.get("short_open_interest_balance", 0) or 0)),
                         "oi_net":      _int(str(row.get("net_open_interest_balance", 0) or 0)),
                     }
         except Exception as e:

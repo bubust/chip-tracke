@@ -1066,12 +1066,27 @@ def screen_chip(prices: dict, tdcc_data: dict, stock_info: dict = None, params: 
     return results
 
 def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "",
-                   strategy_params: dict = None) -> dict:
+                   strategy_params: dict = None,
+                   min_vol_ratio: float = 0.0) -> dict:
     """
     檢查單支股票的所有策略，回傳 {strategy_key: result_dict or None}。
     供全市場掃描使用：一次抓取 → 同時跑所有策略，避免重複請求。
     strategy_params: {strategy_key: {param_key: value, ...}, ...}
+    min_vol_ratio > 0 時，今日量 < 昨日量 × min_vol_ratio 則全部回傳 None（量能翻倍過濾）。
     """
+    # 量能前置過濾
+    if min_vol_ratio > 0 and len(df) >= 2:
+        vol_col = "volume" if "volume" in df.columns else "Volume"
+        _last_v = df.iloc[-1][vol_col] if vol_col in df.columns else None
+        _prev_v = df.iloc[-2][vol_col] if vol_col in df.columns else None
+        import pandas as _pd
+        today_vol = float(_last_v) if _pd.notna(_last_v) else 0.0
+        prev_vol  = float(_prev_v) if _pd.notna(_prev_v) else 0.0
+        if prev_vol <= 0 or today_vol < prev_vol * min_vol_ratio:
+            return {k: None for k in [
+                "S1", "S1_SHORT", "S1_2", "S2", "S5", "S17A", "S17B", "S10",
+                "S_PB", "S_FBD", "S_RES", "S_KD", "S_VOLX", "S_VOLX_SHORT",
+            ]}
     prices_single = {sid: df}
     names_single  = {sid: name}
     last_date = str(df.iloc[-1].get('date', '')) if not df.empty else ''
