@@ -697,15 +697,25 @@ async function renderBubbleChart(sectors) {
     s.return_ew_5d != null && s.return_ew_20d != null
   );
 
-  // 座標範圍
+  // 座標範圍（IQR-based 抗離群值 + 確保 0 在範圍內）
   const x20 = pts.map(s => s.return_ew_20d * 100);
   const y5  = pts.map(s => s.return_ew_5d  * 100);
-  const xMin = Math.min(...x20), xMax = Math.max(...x20);
-  const yMin = Math.min(...y5),  yMax = Math.max(...y5);
-  const xPad = (xMax - xMin) * 0.15 || 2;
-  const yPad = (yMax - yMin) * 0.15 || 2;
-  const xL = xMin - xPad, xR = xMax + xPad;
-  const yB = yMin - yPad, yT = yMax + yPad;
+  function robustRange(vals) {
+    const sorted = [...vals].sort((a, b) => a - b);
+    const n = sorted.length;
+    const q1 = sorted[Math.floor(n * 0.25)] ?? sorted[0];
+    const q3 = sorted[Math.min(Math.ceil(n * 0.75), n - 1)] ?? sorted[n - 1];
+    const iqr = q3 - q1;
+    const fence = Math.max(iqr * 1.5, 1.0);
+    return { lo: q1 - fence, hi: q3 + fence };
+  }
+  const xRange = robustRange(x20);
+  const yRange = robustRange(y5);
+  const xPad = (xRange.hi - xRange.lo) * 0.12 || 1.5;
+  const yPad = (yRange.hi - yRange.lo) * 0.12 || 1.5;
+  // 確保 0 在軸範圍內，視覺上零線可見
+  const xL = Math.min(xRange.lo - xPad, -0.5), xR = Math.max(xRange.hi + xPad, 0.5);
+  const yB = Math.min(yRange.lo - yPad, -0.5), yT = Math.max(yRange.hi + yPad, 0.5);
 
   const toSvgX = v => margin.left + ((v - xL) / (xR - xL)) * pw;
   const toSvgY = v => margin.top  + ((yT - v) / (yT - yB)) * ph;

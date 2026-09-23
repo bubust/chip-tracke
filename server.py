@@ -1048,6 +1048,28 @@ async def api_indices():
         except Exception as _e:
             print(f"[indices] FinMind 備援區塊失敗: {_e}")
 
+    # ── 4. Yahoo Finance 備援：OTC 上櫃指數 ──
+    try:
+        if result["otc"]["price"] is None:
+            async with httpx.AsyncClient(timeout=8, verify=False, follow_redirects=True,
+                headers={"User-Agent": UA, "Accept": "application/json"}) as yc_otc:
+                yr_otc = await yc_otc.get(
+                    "https://query1.finance.yahoo.com/v8/finance/chart/%5ETWOII",
+                    params={"interval": "1d", "range": "5d"},
+                )
+                if yr_otc.status_code == 200:
+                    res_otc = (yr_otc.json().get("chart", {}).get("result") or [])
+                    if res_otc:
+                        closes_otc = res_otc[0]["indicators"]["quote"][0].get("close", [])
+                        closes_otc = [c for c in closes_otc if c]
+                        if len(closes_otc) >= 2:
+                            price_otc = round(float(closes_otc[-1]), 2)
+                            prev_otc  = round(float(closes_otc[-2]), 2)
+                            pct_otc   = round((price_otc - prev_otc) / prev_otc * 100, 2) if prev_otc else None
+                            result["otc"].update({"price": price_otc, "change_pct": pct_otc, "name": "上櫃指數(延遲)"})
+    except Exception:
+        pass
+
     return result
 
 

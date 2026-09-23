@@ -413,7 +413,7 @@
     <div id="cache-warmup-bar" style="display:none !important"></div>
     <div id="cache-ready-bar" style="display:none !important"></div>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
-      <button class="btn green" id="btn-trigger-gh" onclick="triggerGithubScan()" title="透過 GitHub Actions 掃描（fresh IP，不受 Yahoo 限流）">⚡ GitHub Actions 掃描</button>
+      <button class="btn green" id="btn-trigger-gh" onclick="triggerGithubScan()" title="在伺服器直接執行全市場掃描">⚡ 全市場掃描</button>
       <span id="screen-progress-text" style="color:var(--muted);font-size:.82rem"></span>
     </div>
     <div id="screen-progress-bar-wrap" style="display:none;margin-bottom:10px">
@@ -451,8 +451,8 @@
   <!-- 篩選說明 / 錯誤區 -->
   <div class="card" id="screen-placeholder" style="text-align:center;padding:36px 20px;color:var(--muted)">
     <div style="font-size:2rem;margin-bottom:12px">🔍</div>
-    <div style="font-size:.95rem;margin-bottom:6px">點擊「GitHub Actions 掃描」開始掃描所有策略</div>
-    <div style="font-size:.82rem">全市場約 2000+ 支，需 5~10 分鐘，請耐心等候</div>
+    <div style="font-size:.95rem;margin-bottom:6px">點擊「全市場掃描」開始掃描所有策略</div>
+    <div style="font-size:.82rem">全市場約 2000+ 支，需 10~15 分鐘，請耐心等候</div>
     <div id="screen-error-msg" style="display:none;margin-top:16px;color:var(--red);font-size:.88rem;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 16px"></div>
   </div>
 
@@ -2668,37 +2668,37 @@ let _ghScanStartedAt = null;
 async function triggerGithubScan() {
   const btn = document.getElementById('btn-trigger-gh');
   btn.disabled = true;
-  btn.textContent = '⏳ 觸發中...';
+  btn.textContent = '⏳ 啟動中...';
   // 儲存量能翻倍設定（供 run_market_scan 的 _load_strategy_params 讀取）
   const vol2x = document.getElementById('chk-vol2x')?.checked;
   try { await api('PUT', '/api/params/strategies/_global', { min_vol_ratio: vol2x ? 2.0 : 0.0 }); } catch(_) {}
   try {
-    const res = await api('POST', '/api/trigger-scan');
+    const res = await api('POST', '/api/screen/run');
     if (res.ok) {
       toast('⚡ ' + res.message);
       _ghScanStartedAt = Date.now();
       btn.textContent = '⚡ 掃描中...';
-      document.getElementById('screen-progress-text').textContent = '等待 GitHub Actions 啟動（約 1 分鐘後開始顯示進度）...';
+      document.getElementById('screen-progress-text').textContent = '掃描啟動中，稍後顯示進度...';
       document.getElementById('screen-progress-bar-wrap').style.display = 'block';
       document.getElementById('screen-progress-bar').style.width = '0%';
       if (_ghPollTimer) clearInterval(_ghPollTimer);
-      _ghPollTimer = setInterval(_pollGhProgress, 15000);
+      _ghPollTimer = setInterval(_pollGhProgress, 5000);
     } else {
       toast('觸發失敗：' + res.message, true);
       btn.disabled = false;
-      btn.textContent = '⚡ GitHub Actions 掃描';
+      btn.textContent = '⚡ 全市場掃描';
     }
   } catch (e) {
     toast('觸發失敗：' + e.message, true);
     btn.disabled = false;
-    btn.textContent = '⚡ GitHub Actions 掃描';
+    btn.textContent = '⚡ 全市場掃描';
   }
 }
 
 async function _pollGhProgress() {
   const btn = document.getElementById('btn-trigger-gh');
   try {
-    const s = await api('GET', '/api/scan-progress');
+    const s = await api('GET', '/api/screen/status');
     const elapsed = _ghScanStartedAt ? Math.round((Date.now() - _ghScanStartedAt) / 1000) : 0;
     const elapsedStr = elapsed >= 60 ? `${Math.floor(elapsed/60)}m${elapsed%60}s` : `${elapsed}s`;
 
@@ -2722,15 +2722,13 @@ async function _pollGhProgress() {
       if (first) viewStrategy(first);
       toast(`✅ 掃描完成！共掃 ${s.progress} 支，找到 ${newTotal} 支符合策略`);
       btn.disabled = false;
-      btn.textContent = '⚡ GitHub Actions 掃描';
+      btn.textContent = '⚡ 全市場掃描';
       document.getElementById('screen-progress-text').textContent = '';
       document.getElementById('screen-progress-bar-wrap').style.display = 'none';
-    } else if (elapsed < 90) {
-      // 剛觸發，GitHub Actions 還沒啟動，繼續等
+    } else if (elapsed < 30) {
       document.getElementById('screen-progress-text').textContent =
-        `等待 GitHub Actions 啟動... ⏱ ${elapsedStr}`;
+        `掃描啟動中... ⏱ ${elapsedStr}`;
     }
-    // 若 elapsed > 90 且仍無進度，可能是舊的 progress 資料，繼續等
   } catch(e) { /* ignore */ }
 }
 
