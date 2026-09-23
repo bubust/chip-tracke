@@ -271,7 +271,7 @@ def fetch_yahoo(stock_id: str, market: str = "twse") -> pd.DataFrame:
 # ── 全市場掃描 ────────────────────────────────────────────────────────────────
 
 STRATEGY_KEYS = ["S1", "S1_SHORT", "S1_2", "S2", "S5", "S17A", "S17B", "S10", "CHIP",
-                 "S_PB", "S_FBD", "S_RES", "S_KD", "S_VOLX", "S_VOLX_SHORT"]
+                 "S_PB", "S_FBD", "S_RES", "S_KD", "S_VOLX", "S_VOLX_SHORT", "S_WARRANT_TOP"]
 
 _SCAN_WORKERS = 4    # Fly.io shared-cpu: 4 workers 避免 Yahoo 429 burst
 
@@ -639,6 +639,28 @@ async def run_market_scan(strategy_params: dict = None):
                 print("[SCAN] CHIP 跳過（TDCC 快取為空）")
         else:
             print("[SCAN] CHIP 跳過（無 MA 預篩通過股票）")
+
+        # S_WARRANT_TOP：認購權證前十大
+        try:
+            from warrant.flow import get_available_dates as _wf_dates_fn, get_ranking as _wf_ranking
+            from scanner import screen_s_warrant_top
+            _wf_dates  = _wf_dates_fn()
+            _wf_date   = _wf_dates[0] if _wf_dates else None
+            if _wf_date:
+                _wf_params = _strategy_params.get("S_WARRANT_TOP", {})
+                _wf_limit  = int(_wf_params.get("limit", 10))
+                _wf_fetch  = min(_wf_limit * 3, 60)
+                _wf_rows   = _wf_ranking(date_str=_wf_date, sort_by="call", limit=_wf_fetch)
+                all_results["S_WARRANT_TOP"] = screen_s_warrant_top(
+                    _wf_rows, all_prices, names, params=_wf_params
+                )
+                print(f"[SCAN] S_WARRANT_TOP {_wf_date} 命中：{len(all_results['S_WARRANT_TOP'])} 支")
+            else:
+                print("[SCAN] S_WARRANT_TOP 跳過（warrant_flow 無資料）")
+        except Exception as _we:
+            import traceback; traceback.print_exc()
+            print(f"[SCAN] S_WARRANT_TOP 失敗: {_we}")
+            all_results["S_WARRANT_TOP"] = []
 
         _scan_status["results"] = all_results
         _save_scan_cache(all_results)  # 持久化，重啟後訊號不消失

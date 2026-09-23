@@ -43,6 +43,7 @@ STRATEGIES = {
     "S_KD":     "KD超賣反彈（KD跌破20後回升）",
     "S_VOLX":       "量爆拉升（成交量暴增3倍且站上20週線）",
     "S_VOLX_SHORT": "量爆下殺（成交量暴增3倍且跌破20週線）",
+    "S_WARRANT_TOP": "認購權證前十大（昨日）",
 }
 
 STRATEGY_PARAMS_SCHEMA = {
@@ -134,6 +135,10 @@ STRATEGY_PARAMS_SCHEMA = {
         {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
         {"key": "sector_ratio",     "label": "同族群上漲比%（≥）",    "type": "number", "default": 50,  "min": 0,   "max": 100,  "step": 5},
         {"key": "min_consec_up",    "label": "最少連續增持週數",       "type": "number", "default": 1,   "min": 1,   "max": 4,    "step": 1},
+    ],
+    "S_WARRANT_TOP": [
+        {"key": "limit",     "label": "取前N支",  "type": "number", "default": 10, "min": 3, "max": 30, "step": 1},
+        {"key": "min_price", "label": "最低股價",  "type": "number", "default": 10, "min": 1, "max": 500, "step": 1},
     ],
 }
 
@@ -1064,6 +1069,46 @@ def screen_chip(prices: dict, tdcc_data: dict, stock_info: dict = None, params: 
         })
     results.sort(key=lambda x: x['thousand_lot_chg'], reverse=True)
     return results
+
+
+def screen_s_warrant_top(
+    warrant_flow_rows: list,
+    prices: dict,
+    names: dict,
+    params: dict = None,
+) -> list:
+    """認購權證前十大：依 call_turnover 排序的 warrant_flow 緩衝列，過濾後取前 limit 支。"""
+    p = params or {}
+    limit     = int(p.get("limit", 10))
+    min_price = float(p.get("min_price", 10))
+    results = []
+    for row in warrant_flow_rows:
+        if len(results) >= limit:
+            break
+        sid = row.get("underlying_code", "")
+        if not sid:
+            continue
+        df = prices.get(sid)
+        if df is None or df.empty:
+            continue
+        last  = df.iloc[-1]
+        close = float(last.get("close", 0) or 0)
+        if close < min_price:
+            continue
+        results.append({
+            "stock_id":          sid,
+            "name":              names.get(sid, row.get("underlying_name", "")),
+            "close":             round(close, 2),
+            "change_pct":        _change_pct(df),
+            "volume":            int(float(last.get("volume", 0) or 0)),
+            "bb_score":          calc_bb_score(df),
+            "call_turnover_wan": round(row.get("call_turnover", 0) / 10000, 1),
+            "cp_ratio":          row.get("cp_ratio"),
+            "trade_date":        row.get("trade_date", ""),
+            "strategy":          "S_WARRANT_TOP",
+        })
+    return results
+
 
 def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "",
                    strategy_params: dict = None,

@@ -445,6 +445,7 @@
       <button class="btn ghost screen-strat-btn" data-s="S_KD"         onclick="viewStrategy('S_KD')">📉 KD超賣反彈 <span class="strat-cnt" id="cnt-S_KD"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S_KD','KD超賣反彈')">⚙️</button>
       <button class="btn ghost screen-strat-btn" data-s="S_VOLX"       onclick="viewStrategy('S_VOLX')">💥 量爆拉升 <span class="strat-cnt" id="cnt-S_VOLX"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S_VOLX','量爆拉升')">⚙️</button>
       <button class="btn ghost screen-strat-btn" data-s="S_VOLX_SHORT" onclick="viewStrategy('S_VOLX_SHORT')">💥 量爆下殺 <span class="strat-cnt" id="cnt-S_VOLX_SHORT"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S_VOLX_SHORT','量爆下殺')">⚙️</button>
+      <button class="btn ghost screen-strat-btn" data-s="S_WARRANT_TOP" onclick="viewStrategy('S_WARRANT_TOP')">📈 認購前十大 <span class="strat-cnt" id="cnt-S_WARRANT_TOP"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S_WARRANT_TOP','認購前十大')">⚙️</button>
     </div>
   </div>
 
@@ -2661,6 +2662,7 @@ const STRATEGY_LABELS = {
   S_KD:  '📉 KD超賣反彈（K值跌破20後回升，K上穿D離開超賣區）',
   S_VOLX:       '💥 量爆拉升（今日成交量 ≥ 昨日3倍、收盤上漲、站上20週均線MA100，強勢噴出）',
   S_VOLX_SHORT: '💥 量爆下殺（今日成交量 ≥ 昨日3倍、收盤下跌、跌破10日均線MA10，放空訊號）',
+  S_WARRANT_TOP: '📈 認購權證前十大（最近交易日認購成交額最高的標的股）',
 };
 
 async function runScreen() {
@@ -2960,6 +2962,7 @@ function renderScreenTable(strategy, data) {
   if (strategy === 'S10')  headRow += `${th('連續漲停','consec_limit_up')}`;
   if (strategy === 'S17B') headRow += `${th('頸線','neckline')}`;
   if (strategy === 'CHIP') headRow += `${th('千張大戶%','thousand_lot_pct')}${th('週變化','thousand_lot_chg')}`;
+  if (strategy === 'S_WARRANT_TOP') headRow += `${th('認購額(萬)','call_turnover_wan')}${th('認購/認售比','cp_ratio')}`;
   headRow += `${th('成交量(張)','volume')}${th('BB位置','bb_score')}<th>操作</th></tr>`;
   document.getElementById('screen-thead').innerHTML = headRow;
 
@@ -2984,6 +2987,9 @@ function renderScreenTable(strategy, data) {
       const chg = row.thousand_lot_chg != null ? row.thousand_lot_chg : 0;
       extraTd = `<td>${row.thousand_lot_pct != null ? row.thousand_lot_pct + '%' : '—'}</td>`
               + `<td class="${chg > 0 ? 'pos' : chg < 0 ? 'neg' : 'muted'}">${chg > 0 ? '+' : ''}${chg}%</td>`;
+    } else if (strategy === 'S_WARRANT_TOP') {
+      extraTd = `<td>${row.call_turnover_wan != null ? row.call_turnover_wan : '—'}</td>`
+              + `<td>${row.cp_ratio != null ? row.cp_ratio : '—'}</td>`;
     }
     return `<tr>
       <td class="muted">${i + 1}</td>
