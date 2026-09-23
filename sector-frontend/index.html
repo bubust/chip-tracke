@@ -295,33 +295,8 @@
     align-items: flex-start;
   }
   .bubble-left { flex: 1; min-width: 0; }
-  .tm-wrap { position: relative; width: 100%; overflow: hidden; border-radius: 8px; }
-  .tm-cell {
-    position: absolute;
-    cursor: pointer;
-    overflow: hidden;
-    border-radius: 4px;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    padding: 5px 6px;
-    color: #fff;
-    user-select: none;
-    transition: filter .12s;
-    box-sizing: border-box;
-  }
-  .tm-cell:hover { filter: brightness(1.18); z-index: 2; }
-  .tm-name { font-weight: 600; line-height: 1.2; opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .tm-r5  { font-weight: 700; line-height: 1.1; }
-  .tm-r20 { opacity: .7; line-height: 1.1; }
-  .heat-legend {
-    display: flex; align-items: center; gap: 6px;
-    margin-top: 8px; font-size: .68rem; color: var(--muted);
-  }
-  .heat-legend-grad {
-    width: 80px; height: 7px; border-radius: 4px;
-    background: linear-gradient(to right, #943028, #6e7681, #1a7f37);
-  }
+  /* bubble chart SVG 撐滿左欄 */
+  #bubble-left svg { max-width: 100%; }
   /* ── 右側詳情面板 ── */
   .sector-detail-panel {
     flex: 1;

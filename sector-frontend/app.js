@@ -745,52 +745,97 @@ async function renderBubbleChart(sectors) {
     return;
   }
 
-  // 依 5D 排名排序（強到弱）
-  const sorted = [...sectors].sort((a, b) => (a.relative_rank_5d || 99) - (b.relative_rank_5d || 99));
+  const W = Math.max(320, (leftEl ? leftEl.clientWidth : 0) || Math.round((container.clientWidth || 900) * 0.46));
+  const H = Math.max(320, Math.round(W * 0.72));
+  const PAD = { top: 36, right: 24, bottom: 44, left: 52 };
+  const iW = W - PAD.left - PAD.right;
+  const iH = H - PAD.top - PAD.bottom;
 
-  // 計算樹狀圖佈局（使用左欄寬度，面板已顯示時 clientWidth 正確）
-  const W = Math.max(280, (leftEl ? leftEl.clientWidth : 0) || Math.round((container.clientWidth || 900) * 0.46));
-  const H = Math.max(260, Math.round(W * 0.56));
-  const GAP = 3;
-  const totalStocks = sorted.reduce((s, sec) => s + (sec.stock_count || 1), 0);
-  const items = sorted.map(s => ({...s, area: ((s.stock_count || 1) / totalStocks) * W * H}));
+  // 軸範圍（以資料最大值動態調整，最小 ±3%）
+  const r5vals  = sectors.map(s => (s.return_ew_5d  || 0) * 100);
+  const r20vals = sectors.map(s => (s.return_ew_20d || 0) * 100);
+  const xMax = Math.max(3, ...r5vals.map(Math.abs)) * 1.15;
+  const yMax = Math.max(5, ...r20vals.map(Math.abs)) * 1.15;
 
-  const rects = [];
-  squarifyLayout(items, 0, 0, W, H, rects);
+  // 最大 bubble 半徑
+  const maxCount = Math.max(...sectors.map(s => s.stock_count || 1));
+  const rScale = v => Math.max(10, Math.min(36, Math.sqrt((v || 1) / maxCount) * 42));
 
-  const tiles = rects.map(r => {
-    const r5raw  = (r.return_ew_5d  || 0) * 100;
-    const r20raw = (r.return_ew_20d || 0) * 100;
-    const sign5  = r5raw  >= 0 ? '+' : '';
-    const sign20 = r20raw >= 0 ? '+' : '';
-    const bg = heatBg(r.return_ew_5d);
-    const name = escHtml(r.sector_name || r.sector_id);
-    const sid  = escHtml(r.sector_id);
-    const tw = r.w - GAP, th = r.h - GAP;
-    const fBase = Math.max(9, Math.min(13, tw / 9));
-    const showName = tw > 55 && th > 36;
-    const showR20  = tw > 70 && th > 56;
+  const toX = v => PAD.left + ((Math.max(-xMax, Math.min(xMax, v)) + xMax) / (2 * xMax)) * iW;
+  const toY = v => PAD.top  + ((yMax - Math.max(-yMax, Math.min(yMax, v))) / (2 * yMax)) * iH;
 
-    const inner = showName
-      ? `<div class="tm-name"  style="font-size:${Math.min(fBase, 11)}px">${name}</div>
-         <div class="tm-r5"   style="font-size:${Math.min(fBase*1.3,14)}px">${sign5}${r5raw.toFixed(1)}%</div>
-         ${showR20 ? `<div class="tm-r20" style="font-size:${Math.max(9,fBase*.85)}px">${sign20}${r20raw.toFixed(1)}% <span style="opacity:.55;font-size:8px">20日</span></div>` : ''}`
-      : `<div style="font-size:9px;opacity:.7">${sign5}${r5raw.toFixed(1)}%</div>`;
+  const x0 = toX(0), y0 = toY(0);
 
-    return `<div class="tm-cell" style="left:${r.x}px;top:${r.y}px;width:${Math.max(1,tw)}px;height:${Math.max(1,th)}px;background:${bg}"
-      onclick="onBubbleClick('${sid}','${name}')" title="${name} | 5日:${sign5}${r5raw.toFixed(1)}% 20日:${sign20}${r20raw.toFixed(1)}%">
-      ${inner}
-    </div>`;
-  }).join('');
+  const trendColor = t => t === 'BULL' ? '#3fb950' : t === 'BEAR' ? '#f85149' : '#d29922';
+  const fmtPct = v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
 
-  if (leftEl) leftEl.innerHTML = `
-    <div class="tm-wrap" style="height:${H}px">${tiles}</div>
-    <div class="heat-legend">
-      <span>弱</span>
-      <div class="heat-legend-grad"></div>
-      <span>強</span>
-      <span style="margin-left:8px">顏色=5日漲跌 ｜ 大小=成份股數量 ｜ 點擊左側查看詳情</span>
-    </div>`;
+  // SVG 象限標籤
+  const quadLabels = [
+    { x: PAD.left + iW * 0.75, y: PAD.top + 14, text: '強勢加速↗', fill: '#3fb950' },
+    { x: PAD.left + iW * 0.05, y: PAD.top + 14, text: '↖反彈修復', fill: '#58a6ff' },
+    { x: PAD.left + iW * 0.75, y: PAD.top + iH - 6, text: '短多長弱↘', fill: '#d29922' },
+    { x: PAD.left + iW * 0.05, y: PAD.top + iH - 6, text: '↙雙弱', fill: '#f85149' },
+  ].map(q => `<text x="${q.x}" y="${q.y}" font-size="10" fill="${q.fill}" opacity=".6">${q.text}</text>`).join('');
+
+  // 軸刻度
+  const xTicks = [-Math.round(xMax*0.6), 0, Math.round(xMax*0.6)]
+    .map(v => `<text x="${toX(v)}" y="${PAD.top+iH+14}" text-anchor="middle" font-size="9" fill="#8b949e">${v>0?'+':''}${v}%</text>
+               <line x1="${toX(v)}" y1="${PAD.top}" x2="${toX(v)}" y2="${PAD.top+iH}" stroke="#21262d" stroke-width="1"/>`).join('');
+  const yTicks = [-Math.round(yMax*0.6), 0, Math.round(yMax*0.6)]
+    .map(v => `<text x="${PAD.left-6}" y="${toY(v)+4}" text-anchor="end" font-size="9" fill="#8b949e">${v>0?'+':''}${v}%</text>
+               <line x1="${PAD.left}" y1="${toY(v)}" x2="${PAD.left+iW}" y2="${toY(v)}" stroke="#21262d" stroke-width="1"/>`).join('');
+
+  // Bubbles（後層 circle，前層 text）
+  const bubbles = sectors.map(s => {
+    const x = toX((s.return_ew_5d  || 0) * 100);
+    const y = toY((s.return_ew_20d || 0) * 100);
+    const rad = rScale(s.stock_count);
+    const col = trendColor(s.trend_state);
+    const name = escHtml(s.sector_name || s.sector_id);
+    const sid  = escHtml(s.sector_id);
+    const r5  = fmtPct((s.return_ew_5d  || 0) * 100);
+    const r20 = fmtPct((s.return_ew_20d || 0) * 100);
+    const fs  = Math.max(8, Math.min(11, rad * 0.42));
+    return { x, y, rad, col, name, sid, r5, r20, fs };
+  });
+
+  const circles = bubbles.map(b =>
+    `<circle cx="${b.x}" cy="${b.y}" r="${b.rad}" fill="${b.col}" fill-opacity=".25"
+      stroke="${b.col}" stroke-width="1.5" cursor="pointer"
+      onclick="onBubbleClick('${b.sid}','${b.name}')"
+      title="${b.name} | 5日:${b.r5} 20日:${b.r20} | 成份股:${sectors.find(s=>escHtml(s.sector_id)===b.sid)?.stock_count||'?'}支"/>`
+  ).join('');
+  const labels = bubbles.map(b =>
+    `<text x="${b.x}" y="${b.y + b.fs*0.35}" text-anchor="middle" font-size="${b.fs}"
+      fill="#e6edf3" pointer-events="none" style="text-shadow:0 0 4px #000">${b.name}</text>`
+  ).join('');
+
+  const svg = `<svg width="${W}" height="${H}" style="display:block;overflow:visible">
+    <!-- 背景 -->
+    <rect x="${PAD.left}" y="${PAD.top}" width="${iW}" height="${iH}" fill="#161b22" rx="6"/>
+    <!-- 網格 + 刻度 -->
+    ${xTicks}${yTicks}
+    <!-- 象限分隔線 -->
+    <line x1="${x0}" y1="${PAD.top}" x2="${x0}" y2="${PAD.top+iH}" stroke="#58a6ff" stroke-width="1" stroke-dasharray="4,3" opacity=".5"/>
+    <line x1="${PAD.left}" y1="${y0}" x2="${PAD.left+iW}" y2="${y0}" stroke="#58a6ff" stroke-width="1" stroke-dasharray="4,3" opacity=".5"/>
+    <!-- 象限標籤 -->
+    ${quadLabels}
+    <!-- 軸標題 -->
+    <text x="${PAD.left+iW/2}" y="${H-4}" text-anchor="middle" font-size="10" fill="#8b949e">5日報酬率 %（X）</text>
+    <text x="10" y="${PAD.top+iH/2}" text-anchor="middle" font-size="10" fill="#8b949e" transform="rotate(-90,10,${PAD.top+iH/2})">20日報酬率 %（Y）</text>
+    <!-- Bubbles -->
+    ${circles}
+    ${labels}
+  </svg>`;
+
+  const legend = `<div style="display:flex;gap:16px;margin-top:10px;font-size:.72rem;color:var(--muted);flex-wrap:wrap">
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3fb950;margin-right:4px"></span>多頭</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f85149;margin-right:4px"></span>空頭</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#d29922;margin-right:4px"></span>盤整</span>
+    <span style="margin-left:8px">大小=成份股數量 ｜ 點擊查看詳情</span>
+  </div>`;
+
+  if (leftEl) leftEl.innerHTML = svg + legend;
 }
 
 async function onBubbleClick(sectorId, name) {
@@ -889,8 +934,10 @@ async function openKline(stockId, name) {
   try {
     const res = await fetch(`${BASE}/api/stock/${encodeURIComponent(stockId)}/ohlcv`);
     const d = await res.json();
-    const rawBars = (d.ohlcv || []).filter(b => b.date && b.close);
-    const bars = rawBars.map(b => ({time: b.date, open: +b.open, high: +b.high, low: +b.low, close: +b.close}));
+    const arr = Array.isArray(d) ? d : (d.ohlcv || []);
+    const toDate = s => (s && s.length === 8) ? s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8) : s;
+    const rawBars = arr.filter(b => b.date && b.close).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+    const bars = rawBars.map(b => ({time: toDate(b.date), open: +b.open, high: +b.high, low: +b.low, close: +b.close, volume: +b.volume}));
 
     chartEl.innerHTML = '';
     const chart = LightweightCharts.createChart(chartEl, {
