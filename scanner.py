@@ -198,6 +198,17 @@ def _change_pct(df: pd.DataFrame) -> float:
         return 0.0
     return round((float(df.iloc[-1]['close']) - prev) / prev * 100, 2)
 
+def _vol_ratio(df: pd.DataFrame):
+    """今日量 / 昨日量，供前端標示量能倍數"""
+    vol_col = "volume" if "volume" in df.columns else "Volume"
+    if vol_col not in df.columns or len(df) < 2:
+        return None
+    v_today = float(df.iloc[-1].get(vol_col) or 0)
+    v_prev  = float(df.iloc[-2].get(vol_col) or 0)
+    if v_prev <= 0:
+        return None
+    return round(v_today / v_prev, 1)
+
 def classify_stage(df: pd.DataFrame) -> dict:
     """
     根據日線資料自動判斷股票所在操作階段。
@@ -1141,8 +1152,11 @@ def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "",
         p = strategy_params.get(key, {}) if strategy_params else None
         results = fn(prices_single, names_single, params=p)
         result = results[0] if results else None
-        if result and last_date:
-            result['last_date'] = last_date  # YYYYMMDD，讓 UI 顯示資料日期
+        if result:
+            if last_date:
+                result['last_date'] = last_date  # YYYYMMDD，讓 UI 顯示資料日期
+            if 'vol_ratio' not in result:
+                result['vol_ratio'] = _vol_ratio(df)
         out[key] = result
     return out
 

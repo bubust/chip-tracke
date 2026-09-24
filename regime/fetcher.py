@@ -422,9 +422,11 @@ def fetch_breadth_ad(lookback: int = 90):
             if dt < cutoff_target:
                 continue
             # 50MA: 使用到當日為止的最多50筆
+            # 至少需 40 筆才算真正的 50MA（若只有 10~20 筆，計算的是短期均線，
+            # 牛市下幾乎全部站上，會得到虛假的 100%）
             start = max(0, i - 49)
             window = prices_arr[start:i + 1]
-            if len(window) >= 10:  # 至少10筆才算
+            if len(window) >= 40:
                 ma50 = sum(window) / len(window)
                 date_above50[dt].append(1 if px > ma50 else 0)
 
@@ -572,13 +574,8 @@ def fetch_twse_market_breadth(lookback: int = 90):
 
             with db() as conn:
                 upsert_series(conn, dt_iso, "AD_LINE", ad_val, "TWSE_MI")
-                # BREADTH_50MA: 只在 price_daily 未填入時才用代理值
-                has_b = conn.execute(
-                    "SELECT 1 FROM market_daily WHERE date=? AND series='BREADTH_50MA'",
-                    (dt_iso,)
-                ).fetchone()
-                if not has_b:
-                    upsert_series(conn, dt_iso, "BREADTH_50MA", breadth_pct, "TWSE_MI_PROXY")
+                # BREADTH_50MA: 直接用 TWSE 上漲家數占比，無條件覆蓋（不再依賴 price_daily 計算）
+                upsert_series(conn, dt_iso, "BREADTH_50MA", breadth_pct, "TWSE_MI")
 
                 # MEDIAN_RET 代理：若 price_daily 無資料時補充
                 if dt_iso not in existing_median:
@@ -708,12 +705,8 @@ def _fetch_breadth_finmind(targets: list):
             breadth_pct = round(up / total * 100, 2)
             median_proxy = round((up - down) / total * 2, 4)
             upsert_series(conn, dt, "AD_LINE", ad_val, "FINMIND_MI")
-            has_b = conn.execute(
-                "SELECT 1 FROM market_daily WHERE date=? AND series='BREADTH_50MA'",
-                (dt,)
-            ).fetchone()
-            if not has_b:
-                upsert_series(conn, dt, "BREADTH_50MA", breadth_pct, "FINMIND_MI")
+            # BREADTH_50MA: 直接用 FinMind 上漲家數占比，無條件覆蓋
+            upsert_series(conn, dt, "BREADTH_50MA", breadth_pct, "FINMIND_MI")
             has_m = conn.execute(
                 "SELECT 1 FROM market_daily WHERE date=? AND series='MEDIAN_RET'",
                 (dt,)

@@ -421,14 +421,6 @@
         <div id="screen-progress-bar" style="height:100%;background:var(--accent);transition:width .3s;width:0%"></div>
       </div>
     </div>
-    <!-- 量能翻倍過濾 -->
-    <div style="margin-bottom:10px;display:flex;align-items:center;gap:10px">
-      <label style="display:inline-flex;align-items:center;gap:6px;font-size:.82rem;color:var(--muted);cursor:pointer;user-select:none">
-        <input type="checkbox" id="chk-vol2x" style="cursor:pointer">
-        量能翻倍（今日量 &ge; 昨日 &times;2，篩剛啟動股票）
-      </label>
-      <span id="vol2x-badge" style="display:none;font-size:.72rem;background:#3fb95022;color:#3fb950;border:1px solid #3fb95055;border-radius:4px;padding:1px 7px">已啟用（下次掃描生效）</span>
-    </div>
     <!-- 策略快篩（掃描前後都顯示；掃描完後顯示各策略命中數） -->
     <div id="screen-strat-bar" style="display:flex;flex-wrap:wrap;gap:6px">
       <button class="btn ghost screen-strat-btn" data-s="S1"       onclick="viewStrategy('S1')">S1 雙MACD多 <span class="strat-cnt" id="cnt-S1"></span></button><button class="btn sm ghost" style="padding:2px 6px;font-size:.75rem;margin-left:2px" onclick="openStratParams('S1','S1 雙MACD多')">⚙️</button>
@@ -619,6 +611,253 @@
 
 </main>
 <div id="toast"></div>
+
+<!-- ══════════════════ 深度分析側板 ══════════════════ -->
+<div id="deep-panel" style="
+  position:fixed;right:-420px;top:0;width:420px;height:100vh;
+  background:#161b22;border-left:1px solid #30363d;
+  z-index:1000;display:flex;flex-direction:column;
+  transition:right .3s ease;overflow:hidden;box-shadow:-4px 0 20px rgba(0,0,0,.5)
+">
+  <!-- 標題列 -->
+  <div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid #30363d;flex-shrink:0">
+    <span style="font-size:1rem;font-weight:700" id="dp-title">— 深度分析</span>
+    <span id="dp-price" style="font-size:1rem;font-weight:700;margin-left:auto"></span>
+    <span id="dp-change" style="font-size:.85rem;margin-left:6px"></span>
+    <button onclick="closeDeepPanel()" style="background:none;border:none;color:#8b949e;cursor:pointer;font-size:1.2rem;margin-left:8px">✕</button>
+  </div>
+  <!-- 操作階段 -->
+  <div id="dp-stage" style="padding:10px 16px;border-bottom:1px solid #30363d;flex-shrink:0;font-size:.85rem"></div>
+  <!-- Tab 切換 -->
+  <div style="display:flex;border-bottom:1px solid #30363d;flex-shrink:0;overflow-x:auto">
+    <button class="dp-tab active" onclick="dpTab('tech')"  id="dp-tab-tech"  style="flex:1;min-width:60px;padding:8px 4px;font-size:.75rem;border:none;background:none;color:#58a6ff;border-bottom:2px solid #58a6ff;cursor:pointer;white-space:nowrap">📊 技術</button>
+    <button class="dp-tab" onclick="dpTab('chip')"  id="dp-tab-chip"  style="flex:1;min-width:60px;padding:8px 4px;font-size:.75rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">🏦 籌碼</button>
+    <button class="dp-tab" onclick="dpTab('fund')"  id="dp-tab-fund"  style="flex:1;min-width:60px;padding:8px 4px;font-size:.75rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">📋 基本</button>
+    <button class="dp-tab" onclick="dpTab('fin')"   id="dp-tab-fin"   style="flex:1;min-width:60px;padding:8px 4px;font-size:.75rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">💰 財務</button>
+    <button class="dp-tab" onclick="dpTab('news')"  id="dp-tab-news"  style="flex:1;min-width:60px;padding:8px 4px;font-size:.75rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">📰 新聞</button>
+    <button class="dp-tab" onclick="dpTab('sec')"   id="dp-tab-sec"   style="flex:1;min-width:60px;padding:8px 4px;font-size:.75rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">🔄 產業</button>
+  </div>
+  <!-- 內容區 -->
+  <div id="dp-body" style="flex:1;overflow-y:auto;padding:14px 16px"></div>
+</div>
+<div id="deep-overlay" onclick="closeDeepPanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999"></div>
+
+<script>
+let _dpData = null;
+
+function dpTab(t) {
+  document.querySelectorAll('.dp-tab').forEach(b => {
+    b.style.color = '#8b949e'; b.style.borderBottomColor = 'transparent';
+  });
+  const act = document.getElementById(`dp-tab-${t}`);
+  act.style.color = '#58a6ff'; act.style.borderBottomColor = '#58a6ff';
+  if (!_dpData) return;
+  renderDpBody(t, _dpData);
+}
+
+function openDeepPanel(stock_id, stock_name) {
+  const panel = document.getElementById('deep-panel');
+  const overlay = document.getElementById('deep-overlay');
+  document.getElementById('dp-title').textContent = `${stock_id} ${stock_name || ''} 深度分析`;
+  document.getElementById('dp-price').textContent = '載入中...';
+  document.getElementById('dp-change').textContent = '';
+  document.getElementById('dp-stage').textContent = '';
+  document.getElementById('dp-body').innerHTML = '<div style="color:#8b949e;text-align:center;padding:40px">分析中...</div>';
+  panel.style.right = '0';
+  overlay.style.display = 'block';
+  _dpData = null;
+  dpTab('tech');
+
+  api('GET', `/api/stock/${stock_id}/deep-analysis`)
+    .then(d => {
+      _dpData = d;
+      document.getElementById('dp-title').textContent = `${d.stock_id} ${d.name} 深度分析`;
+      const tech = d.technical || {};
+      const pct = tech.change_pct;
+      document.getElementById('dp-price').textContent = tech.close;
+      document.getElementById('dp-price').style.color = pct > 0 ? '#f85149' : pct < 0 ? '#3fb950' : '#e6edf3';
+      document.getElementById('dp-change').textContent = `${pct > 0 ? '+' : ''}${pct != null ? pct : ''}%`;
+      document.getElementById('dp-change').style.color = pct > 0 ? '#f85149' : pct < 0 ? '#3fb950' : '#8b949e';
+      // 操作階段
+      const st = (tech.stage) || {};
+      const stageColors = {green:'#3fb950',gold:'#d29922',yellow:'#d29922',blue:'#58a6ff',cyan:'#22d3ee',red:'#f85149',gray:'#8b949e'};
+      const col = stageColors[st.color] || '#8b949e';
+      document.getElementById('dp-stage').innerHTML =
+        `<span style="font-weight:600;color:${col}">${st.label || '未知階段'}</span>` +
+        (st.desc ? `<span style="color:#8b949e;font-size:.78rem;margin-left:8px">${st.desc}</span>` : '');
+      renderDpBody('tech', d);
+    })
+    .catch(e => {
+      document.getElementById('dp-body').innerHTML = `<div style="color:#f85149;padding:20px">❌ ${e.message}</div>`;
+    });
+}
+
+function closeDeepPanel() {
+  document.getElementById('deep-panel').style.right = '-420px';
+  document.getElementById('deep-overlay').style.display = 'none';
+}
+
+function renderDpBody(tab, d) {
+  const body = document.getElementById('dp-body');
+  const tech = d.technical || {};
+  const _sec = (lbl, v) => `<tr><td style="color:#8b949e;padding:4px 0;font-size:.82rem">${lbl}</td><td style="text-align:right;font-size:.82rem">${v}</td></tr>`;
+
+  if (tab === 'tech') {
+    const m = tech.macd || {}, ma = tech.ma || {};
+    const macdRow = (lbl, v) => `<tr><td style="color:#8b949e;padding:4px 0">${lbl}</td><td style="text-align:right;color:${v > 0 ? '#3fb950' : v < 0 ? '#f85149' : '#8b949e'};font-weight:600">${(v||0).toFixed(4)}</td></tr>`;
+    const maRow   = (lbl, v, above) => v == null ? '' :
+      `<tr><td style="color:#8b949e;padding:4px 0">${lbl}</td>
+       <td style="text-align:right"><span style="color:${above?'#3fb950':'#f85149'};font-weight:600">${v}</span>
+       <span style="font-size:.72rem;color:#8b949e;margin-left:4px">${above?'站上 ✓':'跌破 ✗'}</span></td></tr>`;
+    const sc = tech.score || {}, overall = sc.overall || 0;
+    const barCol = overall >= 65 ? '#3fb950' : overall >= 45 ? '#d29922' : '#f85149';
+    const scoreLabel = overall >= 70 ? '偏多 ✓' : overall >= 55 ? '略偏多' : overall >= 45 ? '中性' : overall >= 30 ? '略偏空' : '偏空 ✗';
+    body.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <div style="font-size:2rem;font-weight:700;color:${barCol}">${overall}</div>
+        <div>
+          <div style="font-weight:600;font-size:.9rem;color:${barCol}">${scoreLabel}</div>
+          <div style="background:#21262d;border-radius:4px;height:6px;width:100px;margin-top:4px;overflow:hidden">
+            <div style="height:100%;border-radius:4px;background:${barCol};width:${overall}%"></div>
+          </div>
+        </div>
+        <div style="margin-left:auto;font-size:.75rem;color:#8b949e">${tech.data_days||0}天資料</div>
+      </div>
+      <div style="font-size:.75rem;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">MACD (12/26/9)</div>
+      <table style="width:100%;margin-bottom:14px">
+        ${macdRow('DIF', m.dif || 0)}${macdRow('DEA', m.dea || 0)}${macdRow('OSC', m.osc || 0)}
+        <tr><td style="color:#8b949e;padding:4px 0;font-size:.82rem">訊號</td><td style="text-align:right;font-weight:600;color:${m.signal==='多'||m.signal==='偏多'?'#3fb950':m.signal==='空'||m.signal==='偏空'?'#f85149':'#d29922'}">${m.signal||'—'}</td></tr>
+      </table>
+      ${tech.macd_big ? `<div style="font-size:.75rem;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">大 MACD (108/216/18)</div>
+      <table style="width:100%;margin-bottom:14px">
+        ${macdRow('DIF', tech.macd_big.dif)}${macdRow('DEA', tech.macd_big.dea)}${macdRow('OSC', tech.macd_big.osc)}
+      </table>` : ''}
+      <div style="font-size:.75rem;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">均線</div>
+      <table style="width:100%;margin-bottom:14px">
+        ${maRow('MA10', ma.ma10, ma.above_ma10)}${maRow('MA20', ma.ma20, tech.close >= (ma.ma20||0))}${maRow('MA60', ma.ma60, ma.above_ma60)}
+        ${ma.golden_cross_days != null ? `<tr><td colspan="2" style="color:#d29922;padding:4px 0;font-size:.78rem">🟡 ${ma.golden_cross_days} 天前黃金交叉</td></tr>` : ''}
+      </table>
+      <div style="font-size:.75rem;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">量能 & 位置</div>
+      <table style="width:100%;margin-bottom:14px">
+        ${_sec('BB 位置', `<span style="color:${(tech.bb_score||0)>0?'#3fb950':(tech.bb_score||0)<0?'#f85149':'#8b949e'};font-weight:600">${tech.bb_score!=null?((tech.bb_score>0?'+':'')+tech.bb_score):'—'}</span>`)}
+        ${_sec('量 vs 昨日', `<span style="color:${(tech.vol_ratio||0)>=2?'#3fb950':'#e6edf3'};font-weight:600">${tech.vol_ratio!=null?'×'+tech.vol_ratio:'—'}</span>`)}
+        ${_sec('量 vs 5日均', tech.vol_vs_5d!=null?'×'+tech.vol_vs_5d:'—')}
+      </table>
+      <div style="font-size:.75rem;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">觸發訊號</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px">
+        ${(sc.signals||[]).map(s=>`<span style="font-size:.73rem;padding:2px 7px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:#e6edf3">${s}</span>`).join('')||'<span style="color:#8b949e;font-size:.82rem">無</span>'}
+      </div>`;
+
+  } else if (tab === 'chip') {
+    const c = d.chip;
+    if (!c) { body.innerHTML = '<div style="color:#8b949e;padding:20px">籌碼資料載入失敗（FinMind 暫不可用）</div>'; return; }
+    const netCol = n => n > 0 ? '#3fb950' : n < 0 ? '#f85149' : '#8b949e';
+    const chipRow = (lbl, obj) =>
+      `<tr style="border-bottom:1px solid #21262d">
+        <td style="color:#8b949e;padding:6px 0;font-size:.82rem">${lbl}</td>
+        <td style="text-align:right;padding:6px 0;font-weight:600;color:${netCol(obj.net_10d)}">${obj.net_10d>0?'+':''}${obj.net_10d.toLocaleString()} 張</td>
+        <td style="text-align:right;padding:6px 0;font-size:.76rem;color:#8b949e">${obj.days_buy}買/${obj.days_sell}賣</td>
+       </tr>`;
+    const sigCol = c.signal==='三大法人強力買超'||c.signal==='外資連買'?'#3fb950':c.signal==='三大法人賣超'?'#f85149':'#8b949e';
+    body.innerHTML = `
+      <div style="font-size:.75rem;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">三大法人近10日</div>
+      <table style="width:100%;margin-bottom:14px">
+        ${chipRow('外資', c.foreign)}${chipRow('投信', c.trust)}${chipRow('自營商', c.dealer)}
+        <tr><td style="color:#8b949e;padding:6px 0;font-size:.82rem">合計</td>
+            <td colspan="2" style="text-align:right;padding:6px 0;font-weight:700;color:${netCol(c.total_net_10d)}">${c.total_net_10d>0?'+':''}${c.total_net_10d.toLocaleString()} 張</td></tr>
+      </table>
+      <div style="padding:8px 12px;background:${sigCol}22;border:1px solid ${sigCol}55;border-radius:6px;color:${sigCol};font-weight:600;font-size:.85rem">${c.signal}</div>`;
+
+  } else if (tab === 'fund') {
+    const f = d.fundamental;
+    if (!f) { body.innerHTML = '<div style="color:#8b949e;padding:20px">基本面資料載入失敗（FinMind 暫不可用）</div>'; return; }
+    const valOrDash = v => v != null ? v : '—';
+    const sigCol = f.signal==='低估'?'#3fb950':f.signal==='合理'?'#58a6ff':f.signal==='偏高'?'#d29922':'#f85149';
+    body.innerHTML = `
+      <div style="font-size:.75rem;color:#8b949e;margin-bottom:4px">資料日期：${f.date||'—'}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:14px 0">
+        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">本益比(PE)</div>
+          <div style="font-size:1.2rem;font-weight:700;color:#e6edf3">${valOrDash(f.per)}</div>
+        </div>
+        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">股價淨值比</div>
+          <div style="font-size:1.2rem;font-weight:700;color:#e6edf3">${valOrDash(f.pbr)}</div>
+        </div>
+        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">殖利率%</div>
+          <div style="font-size:1.2rem;font-weight:700;color:#3fb950">${valOrDash(f.dividend_yield)}${f.dividend_yield!=null?'%':''}</div>
+        </div>
+      </div>
+      <div style="padding:8px 12px;background:${sigCol}22;border:1px solid ${sigCol}55;border-radius:6px;color:${sigCol};font-weight:600;font-size:.85rem">估值：${f.signal}</div>`;
+
+  } else if (tab === 'fin') {
+    const f = d.financial;
+    if (!f) { body.innerHTML = '<div style="color:#8b949e;padding:20px">財務資料載入失敗（FinMind 暫不可用）</div>'; return; }
+    const lt = f.latest || {};
+    const growthHtml = (val, lbl) => {
+      if (val == null) return `<div style="font-size:.78rem;color:#8b949e">${lbl}: —</div>`;
+      const col = val > 0 ? '#3fb950' : '#f85149';
+      const arrow = val > 0 ? '▲' : '▼';
+      return `<div style="font-size:.82rem;color:#e6edf3">${lbl}: <span style="color:${col};font-weight:600">${arrow} ${Math.abs(val)}%</span></div>`;
+    };
+    const sigCol = f.signal==='高成長'?'#3fb950':f.signal==='成長'?'#58a6ff':f.signal==='衰退'?'#f85149':'#8b949e';
+    body.innerHTML = `
+      <div style="font-size:.75rem;color:#8b949e;margin-bottom:10px">最新季度：${lt.date||'—'}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">EPS</div>
+          <div style="font-size:1.2rem;font-weight:700;color:${(lt.eps||0)>0?'#3fb950':'#f85149'}">${lt.eps!=null?lt.eps:'—'}</div>
+        </div>
+        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">毛利率</div>
+          <div style="font-size:1.2rem;font-weight:700;color:#e6edf3">${lt.gross_margin!=null?lt.gross_margin+'%':'—'}</div>
+        </div>
+        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">營收(千)</div>
+          <div style="font-size:1rem;font-weight:700;color:#e6edf3">${lt.revenue!=null?(lt.revenue/1000).toFixed(0):'—'}</div>
+        </div>
+      </div>
+      <div style="margin-bottom:12px">
+        ${growthHtml(f.eps_growth_yoy, 'EPS YoY')}
+        ${growthHtml(f.revenue_growth_yoy, '營收 YoY')}
+      </div>
+      <div style="padding:8px 12px;background:${sigCol}22;border:1px solid ${sigCol}55;border-radius:6px;color:${sigCol};font-weight:600;font-size:.85rem">財務：${f.signal}</div>`;
+
+  } else if (tab === 'news') {
+    const news = d.news || {};
+    const items = news.items || [];
+    if (!items.length) { body.innerHTML = '<div style="color:#8b949e;padding:20px">暫無新聞資料</div>'; return; }
+    body.innerHTML = items.map(n =>
+      `<div style="border-bottom:1px solid #21262d;padding:10px 0">
+        <a href="${n.link||'#'}" target="_blank" rel="noopener" style="color:#e6edf3;text-decoration:none;font-size:.85rem;font-weight:500;line-height:1.4">${n.title||'—'}</a>
+        <div style="font-size:.72rem;color:#8b949e;margin-top:4px">${n.publisher||''} · ${n.date||''}</div>
+      </div>`
+    ).join('');
+
+  } else if (tab === 'sec') {
+    const s = d.sector;
+    if (!s) { body.innerHTML = '<div style="color:#8b949e;padding:20px">無族群資料（需先初始化產業輪動）</div>'; return; }
+    const sigCol = s.signal==='族群強勢（前5）'?'#3fb950':s.signal==='中等偏強'?'#58a6ff':'#f85149';
+    body.innerHTML = `
+      <div style="margin-bottom:14px">
+        <div style="font-size:.75rem;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">所屬族群</div>
+        <div style="font-size:1rem;font-weight:600;color:#58a6ff">${s.sector_name}</div>
+        <div style="font-size:.78rem;color:#8b949e;margin-top:2px">ID: ${s.sector_id}</div>
+      </div>
+      <table style="width:100%;margin-bottom:14px">
+        <tr style="border-bottom:1px solid #21262d">
+          ${_sec('5日排名', `<span style="font-weight:600;color:${s.rank5d!=null&&s.rank5d<=5?'#3fb950':s.rank5d!=null&&s.rank5d>15?'#f85149':'#e6edf3'}">${s.rank5d!=null?`第 ${s.rank5d} 名 / ${s.total}`:'—'}</span>`)}
+        </tr>
+        <tr>
+          ${_sec('20日排名', `<span style="font-weight:600;color:${s.rank20d!=null&&s.rank20d<=5?'#3fb950':s.rank20d!=null&&s.rank20d>15?'#f85149':'#e6edf3'}">${s.rank20d!=null?`第 ${s.rank20d} 名 / ${s.total}`:'—'}</span>`)}
+        </tr>
+      </table>
+      <div style="padding:8px 12px;background:${sigCol}22;border:1px solid ${sigCol}55;border-radius:6px;color:${sigCol};font-weight:600;font-size:.85rem;margin-bottom:14px">${s.signal||'—'}</div>
+      <a href="/sector/" target="_blank" style="color:#58a6ff;font-size:.82rem;text-decoration:none">→ 查看族群詳情</a>`;
+  }
+}
+</script>
 
 <script>
 // ───── Toast ─────
@@ -904,6 +1143,7 @@ function renderWatchlist() {
           <button class="btn sm ghost" style="padding:2px 6px" onclick="moveWlItem('${s.stock_id}',-1)" title="上移">▲</button>
           <button class="btn sm ghost" style="padding:2px 6px;margin-left:2px" onclick="moveWlItem('${s.stock_id}',1)" title="下移">▼</button>
           <button class="btn sm ghost" style="margin-left:4px" onclick="openDetail('${s.stock_id}')">查詢</button>
+          <button class="btn sm ghost" style="margin-left:4px;border-color:#a78bfa;color:#a78bfa" onclick="openDeepPanel('${s.stock_id}','${(s.name||s.stock_id).replace(/'/g,'')}')">🔬 分析</button>
           <button class="btn sm ghost" style="margin-left:4px;border-color:var(--yellow);color:var(--yellow)" onclick="openWarrant('${s.stock_id}','${(s.name||s.stock_id).replace(/'/g,'')}')">權證/股期</button>
           <button class="btn sm danger" style="margin-left:4px" onclick="delStock('${s.stock_id}')">刪除</button>
         </td>
@@ -986,6 +1226,7 @@ function renderWatchlist() {
         <button class="btn sm ghost" style="padding:2px 6px" onclick="moveWlItem('${s.stock_id}',-1)" title="上移">▲</button>
         <button class="btn sm ghost" style="padding:2px 6px;margin-left:2px" onclick="moveWlItem('${s.stock_id}',1)" title="下移">▼</button>
         <button class="btn sm ghost" style="margin-left:4px" onclick="openDetail('${s.stock_id}')">詳細</button>
+        <button class="btn sm ghost" style="margin-left:4px;border-color:#a78bfa;color:#a78bfa" onclick="openDeepPanel('${s.stock_id}','${(s.name||s.stock_id).replace(/'/g,'')}')">🔬 分析</button>
         <button class="btn sm ghost" style="margin-left:4px;border-color:var(--yellow);color:var(--yellow)" onclick="openWarrant('${s.stock_id}','${(s.name||s.stock_id).replace(/'/g,'')}')">權證/股期</button>
         <button class="btn sm danger" style="margin-left:4px" onclick="delStock('${s.stock_id}')">刪除</button>
       </td>
@@ -2693,12 +2934,7 @@ async function triggerGithubScan() {
   const btn = document.getElementById('btn-trigger-gh');
   btn.disabled = true;
   btn.textContent = '⏳ 啟動中...';
-  // 儲存量能翻倍設定（供 run_market_scan 的 _load_strategy_params 讀取）
-  const vol2x = document.getElementById('chk-vol2x')?.checked;
-  try { await api('PUT', '/api/params/strategies/_global', { min_vol_ratio: vol2x ? 2.0 : 0.0 }); } catch(_) {}
-  // 更新 badge 顯示掃描狀態
-  const _vol2xBadge = document.getElementById('vol2x-badge');
-  if (vol2x && _vol2xBadge) { _vol2xBadge.textContent = '✅ 本次掃描已套用'; _vol2xBadge.style.display = ''; }
+  try { await api('PUT', '/api/params/strategies/_global', { min_vol_ratio: 0.0 }); } catch(_) {}
   try {
     const res = await api('POST', '/api/screen/run');
     if (res.ok || (res.ok === false && res.message && res.message.includes('掃描中'))) {
@@ -2770,9 +3006,6 @@ async function _pollGhProgress() {
       btn.textContent = '⚡ 全市場掃描';
       document.getElementById('screen-progress-text').textContent = '';
       document.getElementById('screen-progress-bar-wrap').style.display = 'none';
-      // 恢復量能翻倍 badge 為「下次掃描」提示
-      const _b = document.getElementById('vol2x-badge');
-      if (_b && _b.style.display !== 'none') { _b.textContent = '已啟用（下次掃描生效）'; }
     } else if (elapsed < 30) {
       document.getElementById('screen-progress-text').textContent =
         `掃描啟動中... ⏱ ${elapsedStr}`;
@@ -3009,7 +3242,7 @@ function renderScreenTable(strategy, data) {
     return `<tr>
       <td class="muted">${i + 1}</td>
       <td><b class="link" onclick="openScreenChart('${row.stock_id}')" style="cursor:pointer;color:var(--accent)">${row.stock_id}</b></td>
-      <td style="max-width:80px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openScreenChart('${row.stock_id}')">${row.name || '—'}</td>
+      <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openScreenChart('${row.stock_id}')">${row.name || '—'}${row.vol_ratio != null && row.vol_ratio >= 2 ? `<span style="margin-left:4px;font-size:.68rem;background:#3fb95022;color:#3fb950;border:1px solid #3fb95055;border-radius:3px;padding:0 4px">量×${row.vol_ratio}</span>` : ''}</td>
       <td>${(() => {
         if (row.close == null) return '—';
         const d = row.last_date || '';
@@ -3023,7 +3256,8 @@ function renderScreenTable(strategy, data) {
       <td class="muted">${(() => { if (!row.volume) return '—'; const lots = Math.round(row.volume / 1000); return lots >= 10000 ? (lots/10000).toFixed(1)+'萬' : lots.toLocaleString('zh-TW'); })()}</td>
       <td class="muted">${(() => { if (!row.close || !row.volume) return '—'; const amt = row.close * row.volume; if (amt >= 1e8) return (amt/1e8).toFixed(2)+'億'; if (amt >= 1e4) return Math.round(amt/1e4)+'萬'; return '—'; })()}</td>
       <td class="${(row.bb_score??0)>0?'pos':(row.bb_score??0)<0?'neg':'muted'}" title="上軌=+10 中軌=0 下軌=-10">${row.bb_score!=null ? ((row.bb_score>0?'+':'')+row.bb_score) : '—'}</td>
-      <td><button class="btn sm ghost" onclick="addFromMarket('${row.stock_id}','${(STRATEGY_LABELS[strategy]||strategy).replace(/[（(][^）)]{10,}[）)]/g,'').trim()}')">+ 加入清單</button></td>
+      <td style="white-space:nowrap"><button class="btn sm ghost" onclick="addFromMarket('${row.stock_id}','${(STRATEGY_LABELS[strategy]||strategy).replace(/[（(][^）)]{10,}[）)]/g,'').trim()}')">+ 加入清單</button>
+      <button class="btn sm ghost" style="margin-left:4px;border-color:#a78bfa;color:#a78bfa" onclick="openDeepPanel('${row.stock_id}','${(row.name||row.stock_id).replace(/'/g,'')}')">🔬</button></td>
     </tr>`;
   }).join('');
 }
@@ -3091,20 +3325,6 @@ async function warmupServer() {
     renderMarket();
   }
 
-  // 恢復量能翻倍設定（localStorage 持久化）
-  (function() {
-    const _chk = document.getElementById('chk-vol2x');
-    const _badge = document.getElementById('vol2x-badge');
-    if (!_chk) return;
-    if (localStorage.getItem('vol2x') === '1') {
-      _chk.checked = true;
-      if (_badge) _badge.style.display = '';
-    }
-    _chk.addEventListener('change', e => {
-      localStorage.setItem('vol2x', e.target.checked ? '1' : '0');
-      if (_badge) _badge.style.display = e.target.checked ? '' : 'none';
-    });
-  })();
 
   await loadWatchlist();
   await loadPill();

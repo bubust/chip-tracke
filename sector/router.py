@@ -551,3 +551,124 @@ def api_sector_correlation(
         "top_positive": top_positive,
         "top_negative": top_negative,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/correlation-scan  — 全產業關聯掃描（每個族群的最強關聯股票對）
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/api/correlation-scan")
+def api_correlation_scan(
+    days: int = Query(60, ge=20, le=120),
+    threshold: float = Query(0.7, ge=0.0, le=1.0),
+    top_n: int = Query(5, ge=1, le=20),
+):
+    """
+    掃描所有產業，回傳每個族群內關聯係數最強的股票對清單。
+    """
+    from chip_tracker_v2 import DB_PATH
+
+    # 1. 取出所有產業
+    with db() as sconn:
+        sector_rows = sconn.execute(
+            "SELECT sector_id, sector_name FROM sector_master ORDER BY sector_name"
+        ).fetchall()
+        # 取出全部 stock_sector_map
+        all_maps = sconn.execute(
+            "SELECT sector_id, stock_id FROM stock_sector_map"
+        ).fetchall()
+
+    if not sector_rows:
+        return {"days": days, "threshold": threshold, "sectors": []}
+
+    # 建立 sector -> [stock_ids] 對照
+    from collections import defaultdict
+    sector_stocks: dict = defaultdict(list)
+    for row in all_maps:
+        sector_stocks[row["sector_id"]].append(row["stock_id"])
+
+    all_stock_ids = list({r["stock_id"] for r in all_maps})
+    if not all_stock_ids:
+        return {"days": days, "threshold": threshold, "sectors": []}
+
+    # 2. 一次性讀取所有股票的價格（避免多次 DB 查詢）
+    try:
+        cache_conn = sqlite3.connect(str(DB_PATH))
+        placeholders = ",".join("?" * len(all_stock_ids))
+        df_all = pd.read_sql_query(
+            f"SELECT date, stock_id, close, name FROM price_daily WHERE stock_id IN ({placeholders}) ORDER BY date DESC",
+            cache_conn,
+            params=all_stock_ids,
+        )
+        cache_conn.close()
+    except Exception as e:
+        log.error(f"[sector] correlation-scan DB read failed: {e}")
+        raise HTTPException(status_code=500, detail=f"無法讀取價格資料：{e}")
+
+    if df_all.empty:
+        return {"days": days, "threshold": threshold, "sectors": []}
+
+    # 取最近 days 個交易日
+    all_dates = sorted(df_all["date"].unique(), reverse=True)
+    use_dates = set(all_dates[:days])
+    df_all = df_all[df_all["date"].isin(use_dates)]
+
+    name_map_global = df_all.groupby("stock_id")["name"].last().to_dict()
+
+    # 3. 對每個產業計算相關係數
+    results = []
+    for sec_row in sector_rows:
+        sector_id = sec_row["sector_id"]
+        sector_name = sec_row["sector_name"]
+        stock_ids = sector_stocks.get(sector_id, [])
+        if len(stock_ids) < 2:
+            continue
+
+        df_sec = df_all[df_all["stock_id"].isin(stock_ids)]
+        if df_sec.empty:
+            continue
+
+        pivot = df_sec.pivot_table(index="date", columns="stock_id", values="close", aggfunc="last").sort_index()
+        returns = pivot.pct_change().dropna(how="all")
+        valid = [c for c in returns.columns if returns[c].notna().sum() >= max(10, days // 2)]
+        if len(valid) < 2:
+            continue
+
+        corr_matrix = returns[valid].corr(method="pearson")
+
+        # 找出超過 threshold 的股票對
+        pairs = []
+        for i in range(len(valid)):
+            for j in range(i + 1, len(valid)):
+                a, b = valid[i], valid[j]
+                v = corr_matrix.loc[a, b]
+                if pd.isna(v) or abs(v) < threshold:
+                    continue
+                pairs.append({
+                    "stock1_id":   a,
+                    "stock1_name": name_map_global.get(a, a),
+                    "stock2_id":   b,
+                    "stock2_name": name_map_global.get(b, b),
+                    "corr":        round(float(v), 3),
+                })
+
+        if not pairs:
+            continue
+
+        pairs.sort(key=lambda x: x["corr"], reverse=True)
+        results.append({
+            "sector_id":   sector_id,
+            "sector_name": sector_name,
+            "stock_count": len(stock_ids),
+            "pair_count":  len(pairs),
+            "pairs":       pairs[:top_n],
+        })
+
+    # 依 pair_count 由多到少排序（關聯最密集的產業優先）
+    results.sort(key=lambda x: x["pair_count"], reverse=True)
+
+    return {
+        "days":      days,
+        "threshold": threshold,
+        "sectors":   results,
+    }

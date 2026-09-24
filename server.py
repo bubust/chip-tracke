@@ -1048,18 +1048,23 @@ async def api_indices():
         except Exception as _e:
             print(f"[indices] FinMind 備援區塊失敗: {_e}")
 
-    # ── 4. Yahoo Finance 備援：OTC 上櫃指數 ──
+    # ── 4. Yahoo Finance 備援：OTC 上櫃指數（多 ticker 輪試）──
+    _OTC_TICKERS = ["%5ETWII", "%5ETWOII", "%5ETWOTC", "%5ETWO"]
     try:
         if result["otc"]["price"] is None:
-            async with httpx.AsyncClient(timeout=8, verify=False, follow_redirects=True,
+            async with httpx.AsyncClient(timeout=10, verify=False, follow_redirects=True,
                 headers={"User-Agent": UA, "Accept": "application/json"}) as yc_otc:
-                yr_otc = await yc_otc.get(
-                    "https://query1.finance.yahoo.com/v8/finance/chart/%5ETWOTC",
-                    params={"interval": "1d", "range": "5d"},
-                )
-                if yr_otc.status_code == 200:
-                    res_otc = (yr_otc.json().get("chart", {}).get("result") or [])
-                    if res_otc:
+                for _ticker in _OTC_TICKERS:
+                    try:
+                        yr_otc = await yc_otc.get(
+                            f"https://query1.finance.yahoo.com/v8/finance/chart/{_ticker}",
+                            params={"interval": "1d", "range": "5d"},
+                        )
+                        if yr_otc.status_code != 200:
+                            continue
+                        res_otc = (yr_otc.json().get("chart", {}).get("result") or [])
+                        if not res_otc:
+                            continue
                         closes_otc = res_otc[0]["indicators"]["quote"][0].get("close", [])
                         closes_otc = [c for c in closes_otc if c]
                         if len(closes_otc) >= 2:
@@ -1067,6 +1072,9 @@ async def api_indices():
                             prev_otc  = round(float(closes_otc[-2]), 2)
                             pct_otc   = round((price_otc - prev_otc) / prev_otc * 100, 2) if prev_otc else None
                             result["otc"].update({"price": price_otc, "change_pct": pct_otc, "name": "上櫃指數(延遲)"})
+                            break  # 成功拿到，停止輪試
+                    except Exception:
+                        continue
     except Exception:
         pass
 
@@ -1114,6 +1122,469 @@ async def api_watchlist_prices():
             fm_fallback = await _fetch_finmind_prices(still_missing)
             yahoo_result.update(fm_fallback)
         return yahoo_result
+
+async def _deep_chip(stock_id: str) -> dict | None:
+    """籌碼：FinMind TaiwanStockInstitutionalInvestorsBuySell 近10日三大法人買賣超"""
+    from datetime import date, timedelta
+    start = (date.today() - timedelta(days=20)).strftime("%Y-%m-%d")
+    url = "https://api.finmindtrade.com/api/v4/data"
+    params = {
+        "dataset": "TaiwanStockInstitutionalInvestorsBuySell",
+        "data_id": stock_id,
+        "start_date": start,
+        "token": _FINMIND_TOKEN,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=12) as c:
+            r = await c.get(url, params=params)
+            data = r.json().get("data", [])
+        if not data:
+            return None
+        # 每日每機構一筆：name in [外資及陸資, 投信, 自營商]
+        from collections import defaultdict
+        buckets: dict[str, list] = defaultdict(list)
+        for row in data[-60:]:  # 最多取近 60 筆（約 20 天 × 3 機構）
+            net = int(str(row.get("buy", 0)).replace(",", "") or 0) - \
+                  int(str(row.get("sell", 0)).replace(",", "") or 0)
+            name = row.get("name", "")
+            if "外資" in name:
+                buckets["foreign"].append(net)
+            elif "投信" in name:
+                buckets["trust"].append(net)
+            elif "自營" in name:
+                buckets["dealer"].append(net)
+
+        def _agg(lst: list) -> dict:
+            net10 = sum(lst[-10:]) if lst else 0
+            days_buy = sum(1 for x in lst[-10:] if x > 0)
+            days_sell = sum(1 for x in lst[-10:] if x < 0)
+            return {"net_10d": net10, "days_buy": days_buy, "days_sell": days_sell}
+
+        foreign = _agg(buckets["foreign"])
+        trust   = _agg(buckets["trust"])
+        dealer  = _agg(buckets["dealer"])
+        total   = foreign["net_10d"] + trust["net_10d"] + dealer["net_10d"]
+
+        if total > 3000:
+            sig = "三大法人強力買超"
+        elif foreign["net_10d"] > 2000:
+            sig = "外資連買"
+        elif total < -3000:
+            sig = "三大法人賣超"
+        else:
+            sig = "中性"
+
+        return {"foreign": foreign, "trust": trust, "dealer": dealer,
+                "total_net_10d": total, "signal": sig}
+    except Exception as e:
+        log.warning(f"[deep_chip] {stock_id}: {e}")
+        return None
+
+
+async def _deep_fundamental(stock_id: str) -> dict | None:
+    """基本面：FinMind TaiwanStockPER — PE/PB/殖利率"""
+    from datetime import date, timedelta
+    start = (date.today() - timedelta(days=30)).strftime("%Y-%m-%d")
+    url = "https://api.finmindtrade.com/api/v4/data"
+    params = {
+        "dataset": "TaiwanStockPER",
+        "data_id": stock_id,
+        "start_date": start,
+        "token": _FINMIND_TOKEN,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=12) as c:
+            r = await c.get(url, params=params)
+            data = r.json().get("data", [])
+        if not data:
+            return None
+        row = data[-1]
+        per = row.get("PER") or row.get("per")
+        pbr = row.get("PBR") or row.get("pbr")
+        dy  = row.get("DividendYield") or row.get("dividend_yield")
+        try:
+            per = float(per) if per not in (None, "", "—") else None
+            pbr = float(pbr) if pbr not in (None, "", "—") else None
+            dy  = float(dy)  if dy  not in (None, "", "—") else None
+        except Exception:
+            per = pbr = dy = None
+
+        if per is None:
+            sig = "無資料"
+        elif per < 10:
+            sig = "低估"
+        elif per < 20:
+            sig = "合理"
+        elif per < 30:
+            sig = "偏高"
+        else:
+            sig = "高估"
+
+        return {
+            "date": row.get("date", ""),
+            "per": round(per, 2) if per is not None else None,
+            "pbr": round(pbr, 2) if pbr is not None else None,
+            "dividend_yield": round(dy, 2) if dy is not None else None,
+            "signal": sig,
+        }
+    except Exception as e:
+        log.warning(f"[deep_fund] {stock_id}: {e}")
+        return None
+
+
+async def _deep_financial(stock_id: str) -> dict | None:
+    """財務：FinMind TaiwanFinancialStatements — EPS/營收/毛利率"""
+    from datetime import date, timedelta
+    start = (date.today() - timedelta(days=500)).strftime("%Y-%m-%d")
+    url = "https://api.finmindtrade.com/api/v4/data"
+    params = {
+        "dataset": "TaiwanFinancialStatements",
+        "data_id": stock_id,
+        "start_date": start,
+        "token": _FINMIND_TOKEN,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15) as c:
+            r = await c.get(url, params=params)
+            data = r.json().get("data", [])
+        if not data:
+            return None
+
+        # 按 (date, type) 樞紐：取 EPS, Revenue, GrossProfit
+        from collections import defaultdict
+        pivot: dict[str, dict] = defaultdict(dict)
+        for row in data:
+            dt = row.get("date", "")[:7]  # YYYY-MM
+            tp = row.get("type", "")
+            try:
+                val = float(str(row.get("value", 0)).replace(",", "") or 0)
+            except Exception:
+                val = 0.0
+            if "EPS" in tp:
+                pivot[dt]["eps"] = val
+            elif "Revenue" in tp or "營業收入" in tp:
+                pivot[dt]["revenue"] = val
+            elif "GrossProfit" in tp or "毛利" in tp:
+                pivot[dt]["gross_profit"] = val
+
+        quarters = sorted(pivot.keys())
+        if not quarters:
+            return None
+
+        latest_q = quarters[-1]
+        latest   = pivot[latest_q]
+        eps_latest = latest.get("eps")
+        rev_latest = latest.get("revenue")
+        gp_latest  = latest.get("gross_profit")
+
+        # YoY：比 4 季前
+        yoy_q = quarters[-5] if len(quarters) >= 5 else None
+        eps_yoy = rev_yoy = None
+        if yoy_q:
+            eps_prev = pivot[yoy_q].get("eps")
+            rev_prev = pivot[yoy_q].get("revenue")
+            if eps_prev and eps_prev != 0:
+                eps_yoy = round((eps_latest - eps_prev) / abs(eps_prev) * 100, 1)
+            if rev_prev and rev_prev != 0:
+                rev_yoy = round((rev_latest - rev_prev) / abs(rev_prev) * 100, 1) if rev_latest else None
+
+        gross_margin = None
+        if gp_latest and rev_latest and rev_latest != 0:
+            gross_margin = round(gp_latest / rev_latest * 100, 1)
+
+        if eps_yoy is None:
+            sig = "無資料"
+        elif eps_yoy > 20:
+            sig = "高成長"
+        elif eps_yoy > 0:
+            sig = "成長"
+        else:
+            sig = "衰退"
+
+        return {
+            "latest": {
+                "date": latest_q,
+                "eps": eps_latest,
+                "revenue": int(rev_latest) if rev_latest else None,
+                "gross_margin": gross_margin,
+            },
+            "eps_growth_yoy": eps_yoy,
+            "revenue_growth_yoy": rev_yoy,
+            "signal": sig,
+        }
+    except Exception as e:
+        log.warning(f"[deep_fin] {stock_id}: {e}")
+        return None
+
+
+async def _deep_news(stock_id: str) -> dict:
+    """新聞：Yahoo Finance search API"""
+    try:
+        url = "https://query1.finance.yahoo.com/v1/finance/search"
+        params = {"q": f"{stock_id}.TW", "newsCount": "5", "enableFuzzyQuery": "false"}
+        async with httpx.AsyncClient(timeout=10, headers={"User-Agent": "Mozilla/5.0"}) as c:
+            r = await c.get(url, params=params)
+            items_raw = r.json().get("news", [])
+        items = []
+        for n in items_raw[:5]:
+            ts = n.get("providerPublishTime")
+            from datetime import datetime, timezone
+            dt_str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d") if ts else ""
+            items.append({
+                "title": n.get("title", ""),
+                "publisher": n.get("publisher", ""),
+                "link": n.get("link", ""),
+                "date": dt_str,
+            })
+        return {"items": items}
+    except Exception as e:
+        log.warning(f"[deep_news] {stock_id}: {e}")
+        return {"items": []}
+
+
+@app.get("/api/stock/{stock_id}/deep-analysis")
+async def api_stock_deep_analysis(stock_id: str):
+    """
+    股票深度分析：技術 + 籌碼 + 基本面 + 財務 + 新聞 + 產業
+    資料來源：price_daily / FinMind / Yahoo Finance
+    """
+    import pandas as pd
+    from scanner import (
+        calc_macd, calc_ma, calc_bb_score, classify_stage, _change_pct
+    )
+    from chip_tracker_v2 import DB_PATH
+    from yahoo_price import get_stock_list
+
+    # ── 1. 取股票名稱 ──
+    try:
+        stocks_df = get_stock_list()
+        name_map = dict(zip(stocks_df["stock_id"], stocks_df["stock_name"]))
+        mkt_map  = dict(zip(stocks_df["stock_id"], stocks_df["type"]))
+    except Exception:
+        name_map = {}
+        mkt_map  = {}
+
+    stock_name = name_map.get(stock_id, stock_id)
+
+    # ── 2. 讀取 price_daily（至少 150 天供 50MA + 大MACD 計算）──
+    df = None
+    try:
+        cache_conn = sqlite3.connect(str(DB_PATH))
+        df = pd.read_sql_query(
+            "SELECT date, open, high, low, close, volume FROM price_daily WHERE stock_id=? ORDER BY date",
+            cache_conn, params=(stock_id,)
+        )
+        cache_conn.close()
+    except Exception:
+        pass
+
+    # 不足 100 天 → 補抓 Yahoo
+    if df is None or len(df) < 100:
+        try:
+            from yahoo_price import _fetch_yahoo_async
+            import asyncio
+            mkt = mkt_map.get(stock_id, "twse")
+            new_df = await _fetch_yahoo_async(stock_id, mkt)
+            if new_df is not None and len(new_df) > (len(df) if df is not None else 0):
+                df = new_df
+        except Exception:
+            pass
+
+    if df is None or len(df) < 20:
+        raise HTTPException(status_code=404, detail=f"找不到 {stock_id} 的足夠價格資料")
+
+    # 確保欄位名稱一致（小寫）
+    df.columns = [c.lower() for c in df.columns]
+    df = df.reset_index(drop=True)
+
+    closes  = df['close'].astype(float)
+    volumes = df['volume'].astype(float)
+    today   = df.iloc[-1]
+
+    # ── 3. 技術指標 ──
+    # MACD
+    dif1, dea1, osc1 = calc_macd(closes, 12, 26, 9)
+    dif_v, dea_v, osc_v = float(dif1.iloc[-1]), float(dea1.iloc[-1]), float(osc1.iloc[-1])
+    dif2, dea2, osc2 = (None, None, None)
+    macd_big = None
+    if len(df) >= 235:
+        dif2, dea2, osc2 = calc_macd(closes, 108, 216, 18)
+        macd_big = {
+            "dif": round(float(dif2.iloc[-1]), 4),
+            "dea": round(float(dea2.iloc[-1]), 4),
+            "osc": round(float(osc2.iloc[-1]), 4),
+        }
+
+    # MACD 訊號判讀
+    macd_signal = "多" if dif_v > 0 and dea_v > 0 and osc_v > 0 else \
+                  "偏多" if dif_v > 0 and dea_v > 0 else \
+                  "空" if dif_v < 0 and dea_v < 0 and osc_v < 0 else \
+                  "偏空" if dif_v < 0 and dea_v < 0 else "震盪"
+
+    # MA
+    ma10 = float(closes.rolling(10, min_periods=10).mean().iloc[-1]) if len(df) >= 10 else None
+    ma20 = float(closes.rolling(20, min_periods=20).mean().iloc[-1]) if len(df) >= 20 else None
+    ma60 = float(closes.rolling(60, min_periods=60).mean().iloc[-1]) if len(df) >= 60 else None
+    tc   = float(today['close'])
+
+    # 均線黃金交叉（MA10 近10天由下穿 MA60）
+    golden_cross_days = None
+    if ma10 and ma60 and len(df) >= 70:
+        ma10_s = closes.rolling(10, min_periods=10).mean()
+        ma60_s = closes.rolling(60, min_periods=60).mean()
+        for lag in range(1, 11):
+            i = -(lag + 1)
+            if abs(i) <= len(df) and not pd.isna(ma10_s.iloc[i]) and not pd.isna(ma60_s.iloc[i]):
+                if float(ma10_s.iloc[i]) < float(ma60_s.iloc[i]):
+                    golden_cross_days = lag
+                    break
+
+    # BB 位置
+    bb_score = calc_bb_score(df)
+
+    # 量能
+    vol_today  = float(volumes.iloc[-1]) if len(volumes) > 0 else 0
+    vol_prev   = float(volumes.iloc[-2]) if len(volumes) > 1 else 0
+    vol_5d_avg = float(volumes.iloc[-5:].mean()) if len(volumes) >= 5 else vol_today
+    vol_ratio  = round(vol_today / vol_prev, 2) if vol_prev > 0 else None
+    vol_vs_avg = round(vol_today / vol_5d_avg, 2) if vol_5d_avg > 0 else None
+
+    # 漲跌幅
+    change_pct = _change_pct(df)
+
+    # ── 4. 操作階段 ──
+    stage = classify_stage(df)
+
+    # ── 5. 族群資訊（sector DB）──
+    sector_info = None
+    try:
+        from sector.db import db as sector_db
+        with sector_db() as sconn:
+            map_row = sconn.execute(
+                "SELECT sector_id FROM stock_sector_map WHERE stock_id=? LIMIT 1",
+                (stock_id,)
+            ).fetchone()
+            if map_row:
+                sid = map_row["sector_id"]
+                s_row = sconn.execute(
+                    "SELECT sector_name FROM sector_master WHERE sector_id=?", (sid,)
+                ).fetchone()
+                latest_date = sconn.execute(
+                    "SELECT MAX(observation_date) AS d FROM sector_daily"
+                ).fetchone()
+                ld = latest_date["d"] if latest_date else None
+                rank_row = sconn.execute(
+                    "SELECT relative_rank_5d, relative_rank_20d FROM sector_daily WHERE sector_id=? AND observation_date=?",
+                    (sid, ld)
+                ).fetchone() if ld else None
+                total_sectors = sconn.execute("SELECT COUNT(*) AS n FROM sector_master").fetchone()["n"]
+                sector_info = {
+                    "sector_id":   sid,
+                    "sector_name": s_row["sector_name"] if s_row else sid,
+                    "rank5d":      rank_row["relative_rank_5d"]  if rank_row else None,
+                    "rank20d":     rank_row["relative_rank_20d"] if rank_row else None,
+                    "total":       total_sectors,
+                }
+    except Exception:
+        pass
+
+    # ── 6. 綜合評分（0~100）──
+    signals = []
+    tech_score = 50  # 基礎分
+
+    # MACD 加減分
+    if dif_v > 0 and dea_v > 0:
+        tech_score += 10; signals.append("MACD 多頭")
+    elif dif_v < 0 and dea_v < 0:
+        tech_score -= 10; signals.append("MACD 空頭")
+
+    if osc_v > 0:
+        tech_score += 5; signals.append("OSC 翻正")
+    elif osc_v < 0 and osc_v > float(osc1.iloc[-2]) if len(osc1) > 1 else False:
+        tech_score += 3; signals.append("OSC 縮短")
+
+    # 均線加減分
+    if ma10 and tc > ma10:
+        tech_score += 5; signals.append(f"站上MA10({ma10:.0f})")
+    if ma60 and tc > ma60:
+        tech_score += 10; signals.append(f"站上MA60({ma60:.0f})")
+    elif ma60 and tc < ma60:
+        tech_score -= 10; signals.append(f"跌破MA60({ma60:.0f})")
+
+    if golden_cross_days is not None:
+        tech_score += 8; signals.append(f"{golden_cross_days}天前黃金交叉")
+
+    # BB 加減分
+    if bb_score is not None:
+        if bb_score >= 5:
+            tech_score += 5; signals.append("BB 上軌區")
+        elif bb_score <= -5:
+            tech_score -= 5; signals.append("BB 下軌區")
+
+    # 量能加分
+    if vol_ratio is not None and vol_ratio >= 2:
+        tech_score += 5; signals.append(f"量能翻倍 ×{vol_ratio}")
+
+    # Stage 加減分
+    stage_bonus = {"pullback": 8, "fbd": 10, "golden": 5, "consol": 0, "attack": -5, "bull": 3, "bearish": -15}
+    tech_score += stage_bonus.get(stage.get("code", ""), 0)
+
+    overall = max(0, min(100, tech_score))
+
+    # ── 7. 並發抓取：籌碼 / 基本面 / 財務 / 新聞 ──
+    chip_data, fund_data, fin_data, news_data = await asyncio.gather(
+        _deep_chip(stock_id),
+        _deep_fundamental(stock_id),
+        _deep_financial(stock_id),
+        _deep_news(stock_id),
+        return_exceptions=False,
+    )
+
+    # ── 8. 產業信號補充 ──
+    if sector_info:
+        r5 = sector_info.get("rank5d")
+        if r5 is not None:
+            if r5 <= 5:
+                sector_info["signal"] = "族群強勢（前5）"
+            elif r5 <= 15:
+                sector_info["signal"] = "中等偏強"
+            else:
+                sector_info["signal"] = "偏弱"
+
+    return {
+        "stock_id": stock_id,
+        "name":     stock_name,
+        "technical": {
+            "close":      round(tc, 2),
+            "change_pct": change_pct,
+            "volume":     int(vol_today),
+            "vol_ratio":  vol_ratio,
+            "vol_vs_5d":  vol_vs_avg,
+            "bb_score":   bb_score,
+            "stage":      stage,
+            "macd": {
+                "dif": round(dif_v, 4), "dea": round(dea_v, 4), "osc": round(osc_v, 4),
+                "signal": macd_signal,
+            },
+            "macd_big": macd_big,
+            "ma": {
+                "ma10": round(ma10, 2) if ma10 else None,
+                "ma20": round(ma20, 2) if ma20 else None,
+                "ma60": round(ma60, 2) if ma60 else None,
+                "above_ma10":        ma10 is not None and tc > ma10,
+                "above_ma60":        ma60 is not None and tc > ma60,
+                "golden_cross_days": golden_cross_days,
+            },
+            "score": {"overall": overall, "signals": signals},
+            "data_days": len(df),
+        },
+        "chip":        chip_data,
+        "fundamental": fund_data,
+        "financial":   fin_data,
+        "news":        news_data,
+        "sector":      sector_info,
+    }
+
 
 @app.get("/api/watchlist/summary")
 async def api_watchlist_summary():

@@ -44,9 +44,9 @@
   .oh-card .bar { height: 100%; border-radius: 4px; transition: width .5s; }
   .oh-card .threshold { font-size: .7rem; color: #484f58; }
   /* 數據列表 */
-  .series-list { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
-  .series-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #21262d; font-size: .85rem; }
-  .series-row:last-child { border-bottom: none; }
+  .series-list { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; overflow-x: auto; }
+  .series-list tr:last-child td { border-bottom: none !important; }
+  .series-list tr:hover td { background: #1c2128; }
   /* 歷史圖表 */
   .chart-box { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
   .chart-legend { display: flex; gap: 16px; margin-bottom: 10px; font-size: .75rem; }
@@ -121,7 +121,7 @@
 <!-- 廣度進度條 -->
 <div style="background:#161b22;border:1px solid #21262d;border-radius:10px;padding:14px 16px;margin-bottom:16px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-    <span style="font-size:.8rem;color:#8b949e">廣度 — 站上50日均線比例</span>
+    <span style="font-size:.8rem;color:#8b949e">廣度 — 上漲家數占比（TWSE 官方）</span>
     <span id="breadth-pct" style="font-size:1rem;font-weight:700;color:#e6edf3">—</span>
   </div>
   <div style="background:#0d1117;border-radius:4px;height:10px;overflow:hidden">
@@ -188,7 +188,7 @@ const SERIES_LABELS = {
   SOX: 'SOX 半導體', VIX: 'VIX 恐慌', US10Y: '美債10Y(%)',
   USDTWD: 'USD/TWD', TSM_ADR: 'TSM ADR', NASDAQ: 'Nasdaq',
   MARGIN_BALANCE: '融資餘額(股)', FOREIGN_NET_LOT: '外資現貨(張)',
-  BREADTH_50MA: '站上50MA比例(%)', AD_LINE: '漲跌家數差',
+  BREADTH_50MA: '上漲家數占比(%)', AD_LINE: '漲跌家數差',
   MEDIAN_RET: '全市場中位數漲跌(%)', FOREIGN_FUTURES_NET: '外資期貨淨部位(張)',
   OVERHEATING_INDEX: '過熱指數 (成交/委買)',
   PANIC_INDEX: '恐慌指數 (成交/委賣)',
@@ -359,7 +359,7 @@ function renderToday(data) {
     { name: 'Trend 趨勢',        key: 'trend',        dir: true,
       desc: '均線排列與 MACD 方向。正值多頭、負值空頭' },
     { name: 'Breadth 廣度',      key: 'breadth',      dir: true,
-      desc: '全市場站上50日均線比例。&lt;−50 代表賣壓擴散，選股難度高' },
+      desc: 'TWSE 上漲家數占比（官方資料）。&lt;−50 代表賣壓擴散，選股難度高' },
     { name: 'Positioning 籌碼',  key: 'positioning',  dir: true,
       desc: '外資現貨+期貨+融資的綜合方向。正值外資買進、負值賣超' },
     { name: 'Macro 總經',        key: 'macro_factor', dir: true,
@@ -557,6 +557,64 @@ async function loadBreadth() {
   } catch(e) {}
 }
 
+// ── 指標判讀邏輯 ──────────────────────────────────────────────────────
+function interpretSignal(k, val, diff) {
+  // 回傳 { dot: '🟢'|'🟡'|'🔴', hint: '...' }
+  switch (k) {
+    case 'VIX':
+      if (val < 15)  return { dot: '🟢', hint: 'VIX 低 — 市場樂觀' };
+      if (val < 25)  return { dot: '🟡', hint: 'VIX 中 — 正常波動' };
+      return                { dot: '🔴', hint: 'VIX 高 — 市場恐慌' };
+    case 'US10Y':
+      if (val < 4)   return { dot: '🟢', hint: '殖利率低 — 流動性寬鬆' };
+      if (val < 4.8) return { dot: '🟡', hint: '殖利率中性' };
+      return                { dot: '🔴', hint: '殖利率高 — 緊縮壓力大' };
+    case 'USDTWD':
+      if (val < 31)  return { dot: '🟢', hint: '台幣強 — 外資流入' };
+      if (val < 32)  return { dot: '🟡', hint: '台幣中性' };
+      return                { dot: '🔴', hint: '台幣弱 — 外資撤出' };
+    case 'FOREIGN_NET_LOT':
+      if (val > 0)   return { dot: '🟢', hint: `外資買超 ${Math.abs(val).toLocaleString()} 張` };
+      if (val > -5000) return { dot: '🟡', hint: '外資小量賣超' };
+      return                { dot: '🔴', hint: `外資大賣 ${Math.abs(val).toLocaleString()} 張` };
+    case 'FOREIGN_FUTURES_NET':
+      if (val > 5000)  return { dot: '🟢', hint: '外資期貨多單 — 偏多' };
+      if (val > -5000) return { dot: '🟡', hint: '外資期貨中性' };
+      return                 { dot: '🔴', hint: '外資期貨空單 — 偏空' };
+    case 'MARGIN_BALANCE':
+      if (diff != null && diff > 50000) return { dot: '🔴', hint: '融資急增 — 散戶過熱' };
+      if (diff != null && diff < -30000) return { dot: '🟡', hint: '融資減少 — 籌碼乾淨' };
+      return { dot: '🟡', hint: '融資平穩' };
+    case 'BREADTH_50MA':
+      if (val > 70)  return { dot: '🟢', hint: '多頭廣度佳' };
+      if (val > 50)  return { dot: '🟡', hint: '廣度中性' };
+      if (val > 30)  return { dot: '🟡', hint: '廣度偏弱' };
+      return                { dot: '🔴', hint: '廣度極弱 — 空頭市場' };
+    case 'AD_LINE':
+      if (val > 200)   return { dot: '🟢', hint: `漲家多跌家 ${val.toLocaleString()}` };
+      if (val > -200)  return { dot: '🟡', hint: '漲跌相當' };
+      return                  { dot: '🔴', hint: `跌家多漲家 ${Math.abs(val).toLocaleString()}` };
+    case 'MEDIAN_RET':
+      if (val > 0.5)  return { dot: '🟢', hint: '全市場普漲' };
+      if (val > -0.5) return { dot: '🟡', hint: '漲跌互見' };
+      return                 { dot: '🔴', hint: '全市場普跌' };
+    case 'OVERHEATING_INDEX':
+      if (val < 0.4)  return { dot: '🟢', hint: '量能正常' };
+      if (val < 0.5)  return { dot: '🟡', hint: '量能偏熱' };
+      return                 { dot: '🔴', hint: '成交/委買高 — 過熱' };
+    case 'PANIC_INDEX':
+      if (val < 0.6)  return { dot: '🟢', hint: '委賣正常' };
+      if (val < 0.75) return { dot: '🟡', hint: '委賣偏高' };
+      return                 { dot: '🔴', hint: '成交/委賣高 — 恐慌' };
+    case 'TAIEX': case 'OTC': case 'SP500': case 'SOX': case 'TSM_ADR': case 'NASDAQ':
+      if (diff != null && diff > 0)  return { dot: '🟢', hint: '上漲' };
+      if (diff != null && diff < 0)  return { dot: '🔴', hint: '下跌' };
+      return { dot: '🟡', hint: '持平' };
+    default:
+      return { dot: '🟡', hint: '' };
+  }
+}
+
 async function loadSeries() {
   const KEYS = ['TAIEX','OTC','SP500','SOX','VIX','US10Y','USDTWD','TSM_ADR',
                 'FOREIGN_NET_LOT','FOREIGN_FUTURES_NET','MARGIN_BALANCE',
@@ -568,51 +626,65 @@ async function loadSeries() {
   const PCT_RATIO_KEYS = new Set(['OVERHEATING_INDEX', 'PANIC_INDEX']); // 0~1 的比率，顯示為 %
   const THRESHOLDS = { OVERHEATING_INDEX: 0.5, PANIC_INDEX: 0.75 };
 
-  el.innerHTML = KEYS.map((k, i) => {
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse">
+    <thead><tr style="font-size:.7rem;color:#8b949e;border-bottom:1px solid #30363d">
+      <th style="text-align:left;padding:4px 8px;font-weight:500">指標</th>
+      <th style="text-align:right;padding:4px 8px;font-weight:500">數值</th>
+      <th style="text-align:right;padding:4px 8px;font-weight:500">變化</th>
+      <th style="text-align:center;padding:4px 8px;font-weight:500;width:28px">判讀</th>
+    </tr></thead>
+    <tbody>` +
+  KEYS.map((k, i) => {
     const data = rows[i];
-    if (!data || !data.length) return `<div class="series-row"><span>${SERIES_LABELS[k]||k}</span><span class="yellow">—</span></div>`;
+    if (!data || !data.length)
+      return `<tr style="border-bottom:1px solid #21262d"><td colspan="4" style="padding:5px 8px;font-size:.82rem">${SERIES_LABELS[k]||k} <span style="color:#8b949e">—</span></td></tr>`;
     const latest = data[data.length - 1];
     const prev   = data.length > 1 ? data[data.length - 2] : null;
-    let valStr, chgStr = '', col = '', badge = '';
+    let valStr, chgStr = '', col = '', badge = '', rawDiff = null;
 
     if (PCT_RATIO_KEYS.has(k)) {
-      // 比率型：顯示百分比，根據閾值著色
       const pct = latest.value * 100;
       const threshold = THRESHOLDS[k] * 100;
       const isAlert = pct >= threshold;
-      col = isAlert ? 'red' : 'green';
+      col = isAlert ? '#f85149' : '#3fb950';
       valStr = pct.toFixed(1) + '%';
       badge = isAlert
-        ? `<span style="font-size:.65rem;padding:1px 5px;background:#f8514922;color:#f85149;border:1px solid #f8514966;border-radius:3px;margin-left:4px">${k === 'OVERHEATING_INDEX' ? '過熱' : '恐慌'}</span>`
-        : `<span style="font-size:.65rem;padding:1px 5px;background:#3fb95022;color:#3fb950;border:1px solid #3fb95066;border-radius:3px;margin-left:4px">正常</span>`;
+        ? `<span style="font-size:.62rem;padding:0 4px;background:#f8514922;color:#f85149;border:1px solid #f8514966;border-radius:3px;margin-left:4px">${k === 'OVERHEATING_INDEX' ? '過熱' : '恐慌'}</span>`
+        : `<span style="font-size:.62rem;padding:0 4px;background:#3fb95022;color:#3fb950;border:1px solid #3fb95066;border-radius:3px;margin-left:4px">正常</span>`;
       if (prev) {
-        const diff = (latest.value - prev.value) * 100;
-        chgStr = (diff >= 0 ? '+' : '') + diff.toFixed(1) + '%';
-        col = isAlert ? 'red' : 'green';
+        rawDiff = (latest.value - prev.value) * 100;
+        chgStr = (rawDiff >= 0 ? '+' : '') + rawDiff.toFixed(1) + '%';
       }
+      rawDiff = latest.value;  // pass raw ratio for interpret
     } else if (ABS_KEYS.has(k)) {
       const diff = prev ? latest.value - prev.value : null;
+      rawDiff = diff;
       valStr = k === 'BREADTH_50MA' ? latest.value.toFixed(1) + '%'
              : k === 'MEDIAN_RET'   ? (latest.value >= 0 ? '+' : '') + latest.value.toFixed(3) + '%'
              : Number(latest.value).toLocaleString();
       if (diff != null) {
-        col = diff >= 0 ? 'green' : 'red';
+        col = diff >= 0 ? '#3fb950' : '#f85149';
         chgStr = (diff >= 0 ? '+' : '') + (k === 'BREADTH_50MA' || k === 'MEDIAN_RET'
           ? diff.toFixed(1) : Math.round(diff).toLocaleString());
       }
     } else {
       const chg = prev ? ((latest.value - prev.value) / Math.max(Math.abs(prev.value), 0.01) * 100) : null;
+      rawDiff = chg;
       valStr = Number(latest.value).toLocaleString();
       if (chg != null) {
-        col = chg >= 0 ? 'green' : 'red';
+        col = chg >= 0 ? '#3fb950' : '#f85149';
         chgStr = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
       }
     }
-    return `<div class="series-row">
-      <span>${SERIES_LABELS[k]||k}${badge}</span>
-      <span class="${col}">${valStr} <span style="font-size:.8rem;opacity:.7">${chgStr}</span></span>
-    </div>`;
-  }).join('');
+    const sig = interpretSignal(k, PCT_RATIO_KEYS.has(k) ? latest.value : latest.value, rawDiff);
+    return `<tr style="border-bottom:1px solid #21262d" title="${sig.hint}">
+      <td style="padding:5px 8px;font-size:.82rem">${SERIES_LABELS[k]||k}${badge}</td>
+      <td style="padding:5px 8px;font-size:.85rem;text-align:right;font-weight:600;color:${col||'#e6edf3'}">${valStr}</td>
+      <td style="padding:5px 8px;font-size:.78rem;text-align:right;color:${col||'#8b949e'};opacity:.85">${chgStr}</td>
+      <td style="padding:5px 8px;text-align:center;font-size:.9rem" title="${sig.hint}">${sig.dot}</td>
+    </tr>`;
+  }).join('') +
+  `</tbody></table>`;
 }
 
 // ── 歷史資料載入 Sprint 3 ─────────────────────────────────────────────

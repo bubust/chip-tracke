@@ -160,7 +160,7 @@ html, body { min-height: 100vh; background: var(--bg); color: var(--text);
 
 /* ── Tab Bar ── */
 .tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border);
-           background: var(--bg); position: sticky; top: 0; z-index: 99; }
+           background: var(--bg); position: sticky; top: var(--header-h, 90px); z-index: 99; }
 .tab-btn { flex: 1; padding: 11px 0; font-size: 15px; font-weight: 600;
            border: none; background: none; color: var(--muted); cursor: pointer;
            border-bottom: 3px solid transparent; transition: color .2s, border-color .2s; }

@@ -689,9 +689,9 @@ async def run_market_scan(strategy_params: dict = None):
         print(f"[SCAN] 完成：{total_hits} 支符合，共掃 {_scan_status['total']} 支")
         # 掃描後自動更新廣度指標 + regime 因子（供 Divergence 背離計算）
         try:
-            from regime.fetcher import fetch_breadth_ad
+            from regime.fetcher import fetch_twse_market_breadth
             from regime.factor import calculate_factors
-            fetch_breadth_ad(lookback=10)   # 利用剛掃描的 price_daily 更新 BREADTH_50MA
+            fetch_twse_market_breadth(lookback=10)  # 廣度：直接用 TWSE 上漲家數占比
             calculate_factors()
             print("[SCAN] regime breadth + factors 已更新")
         except Exception as _re:

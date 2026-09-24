@@ -137,8 +137,7 @@ def regime_refresh():
             fetch_all(days=90)
             fetch_twse_margin()
             fetch_twse_foreign_spot()
-            fetch_twse_market_breadth(lookback=90)  # Sprint 3: 直接從 TWSE 抓漲跌家數
-            fetch_breadth_ad(lookback=90)           # price_daily 有資料時覆蓋為精確值
+            fetch_twse_market_breadth(lookback=90)  # 廣度：直接用 TWSE 上漲家數占比（外部資料）
             fetch_taifex_foreign_futures()
             fetch_mi5mins()                         # Sprint 4: 過熱/恐慌指數
             calculate_factors()
