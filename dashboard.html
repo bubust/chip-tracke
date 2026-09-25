@@ -3009,6 +3009,16 @@ async function _pollGhProgress() {
     } else if (elapsed < 30) {
       document.getElementById('screen-progress-text').textContent =
         `掃描啟動中... ⏱ ${elapsedStr}`;
+    } else {
+      // running=false + finished_at=null + elapsed>=30 → 伺服器重啟或異常終止
+      // （此 else 只有在 s.running=false 時才可能到達，正常掃描 running=true 不會進來）
+      clearInterval(_ghPollTimer);
+      _ghPollTimer = null;
+      btn.disabled = false;
+      btn.textContent = '⚡ 全市場掃描';
+      document.getElementById('screen-progress-text').textContent = '';
+      document.getElementById('screen-progress-bar-wrap').style.display = 'none';
+      toast('掃描異常中斷，請重新執行', true);
     }
   } catch(e) { /* ignore */ }
 }

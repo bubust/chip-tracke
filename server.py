@@ -1348,6 +1348,7 @@ async def api_stock_deep_analysis(stock_id: str):
     股票深度分析：技術 + 籌碼 + 基本面 + 財務 + 新聞 + 產業
     資料來源：price_daily / FinMind / Yahoo Finance
     """
+    import math
     import pandas as pd
     from scanner import (
         calc_macd, calc_ma, calc_bb_score, classify_stage, _change_pct
@@ -1443,7 +1444,10 @@ async def api_stock_deep_analysis(stock_id: str):
     bb_score = calc_bb_score(df)
 
     # 量能
-    vol_today  = float(volumes.iloc[-1]) if len(volumes) > 0 else 0
+    try:
+        vol_today = float(volumes.iloc[-1]) if len(volumes) > 0 else 0.0
+    except (TypeError, ValueError):
+        vol_today = 0.0
     vol_prev   = float(volumes.iloc[-2]) if len(volumes) > 1 else 0
     vol_5d_avg = float(volumes.iloc[-5:].mean()) if len(volumes) >= 5 else vol_today
     vol_ratio  = round(vol_today / vol_prev, 2) if vol_prev > 0 else None
@@ -1532,13 +1536,17 @@ async def api_stock_deep_analysis(stock_id: str):
     overall = max(0, min(100, tech_score))
 
     # ── 7. 並發抓取：籌碼 / 基本面 / 財務 / 新聞 ──
-    chip_data, fund_data, fin_data, news_data = await asyncio.gather(
+    _gather_results = await asyncio.gather(
         _deep_chip(stock_id),
         _deep_fundamental(stock_id),
         _deep_financial(stock_id),
         _deep_news(stock_id),
-        return_exceptions=False,
+        return_exceptions=True,
     )
+    chip_data  = None if isinstance(_gather_results[0], Exception) else _gather_results[0]
+    fund_data  = None if isinstance(_gather_results[1], Exception) else _gather_results[1]
+    fin_data   = None if isinstance(_gather_results[2], Exception) else _gather_results[2]
+    news_data  = {"items": []} if isinstance(_gather_results[3], Exception) else _gather_results[3]
 
     # ── 8. 產業信號補充 ──
     if sector_info:
@@ -1557,7 +1565,7 @@ async def api_stock_deep_analysis(stock_id: str):
         "technical": {
             "close":      round(tc, 2),
             "change_pct": change_pct,
-            "volume":     int(vol_today),
+            "volume":     int(vol_today) if math.isfinite(vol_today) else 0,
             "vol_ratio":  vol_ratio,
             "vol_vs_5d":  vol_vs_avg,
             "bb_score":   bb_score,
