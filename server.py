@@ -1163,7 +1163,7 @@ async def api_watchlist_prices():
 async def _deep_chip(stock_id: str) -> dict | None:
     """籌碼：FinMind TaiwanStockInstitutionalInvestorsBuySell 近10日三大法人買賣超"""
     from datetime import date, timedelta
-    start = (date.today() - timedelta(days=20)).strftime("%Y-%m-%d")
+    start = (date.today() - timedelta(days=30)).strftime("%Y-%m-%d")  # 30天（原20天）
     url = "https://api.finmindtrade.com/api/v4/data"
     params = {
         "dataset": "TaiwanStockInstitutionalInvestorsBuySell",
@@ -1180,9 +1180,14 @@ async def _deep_chip(stock_id: str) -> dict | None:
         # 每日每機構一筆：name in [外資及陸資, 投信, 自營商]
         from collections import defaultdict
         buckets: dict[str, list] = defaultdict(list)
-        for row in data[-60:]:  # 最多取近 60 筆（約 20 天 × 3 機構）
-            net = int(str(row.get("buy", 0)).replace(",", "") or 0) - \
-                  int(str(row.get("sell", 0)).replace(",", "") or 0)
+        for row in data[-90:]:  # 最多取近 90 筆（約 30 天 × 3 機構）
+            try:
+                buy_raw  = int(str(row.get("buy",  0) or 0).replace(",", ""))
+                sell_raw = int(str(row.get("sell", 0) or 0).replace(",", ""))
+            except (ValueError, TypeError):
+                continue
+            # FinMind 回傳「股數」（shares），1張=1000股 → 轉為張
+            net = round((buy_raw - sell_raw) / 1000)
             name = row.get("name", "")
             if "外資" in name:
                 buckets["foreign"].append(net)
@@ -1193,16 +1198,23 @@ async def _deep_chip(stock_id: str) -> dict | None:
 
         def _agg(lst: list) -> dict:
             net10 = sum(lst[-10:]) if lst else 0
-            days_buy = sum(1 for x in lst[-10:] if x > 0)
+            days_buy  = sum(1 for x in lst[-10:] if x > 0)
             days_sell = sum(1 for x in lst[-10:] if x < 0)
-            return {"net_10d": net10, "days_buy": days_buy, "days_sell": days_sell}
+            return {"net_10d": int(net10), "days_buy": days_buy, "days_sell": days_sell}
 
         foreign = _agg(buckets["foreign"])
         trust   = _agg(buckets["trust"])
         dealer  = _agg(buckets["dealer"])
         total   = foreign["net_10d"] + trust["net_10d"] + dealer["net_10d"]
 
-        if total > 3000:
+        # 零值偵測：有資料列但全部為 0 → API 速率限制導致
+        all_zero = (total == 0 and
+                    not any(buckets["foreign"]) and
+                    not any(buckets["trust"]) and
+                    not any(buckets["dealer"]))
+        if all_zero and len(data) > 0:
+            sig = "⚠️ 法人資料暫時無法取得"
+        elif total > 3000:
             sig = "三大法人強力買超"
         elif foreign["net_10d"] > 2000:
             sig = "外資連買"
@@ -1272,7 +1284,7 @@ async def _deep_fundamental(stock_id: str) -> dict | None:
 async def _deep_financial(stock_id: str) -> dict | None:
     """財務：FinMind TaiwanFinancialStatements — EPS/營收/毛利率"""
     from datetime import date, timedelta
-    start = (date.today() - timedelta(days=500)).strftime("%Y-%m-%d")
+    start = (date.today() - timedelta(days=1000)).strftime("%Y-%m-%d")  # 1000天（原500天）
     url = "https://api.finmindtrade.com/api/v4/data"
     params = {
         "dataset": "TaiwanFinancialStatements",
@@ -1355,28 +1367,47 @@ async def _deep_financial(stock_id: str) -> dict | None:
 
 
 async def _deep_news(stock_id: str) -> dict:
-    """新聞：Yahoo Finance search API"""
-    try:
-        url = "https://query1.finance.yahoo.com/v1/finance/search"
-        params = {"q": f"{stock_id}.TW", "newsCount": "5", "enableFuzzyQuery": "false"}
-        async with httpx.AsyncClient(timeout=10, headers={"User-Agent": "Mozilla/5.0"}) as c:
-            r = await c.get(url, params=params)
-            items_raw = r.json().get("news", [])
+    """新聞：Yahoo Finance search API（多 host/query fallback）"""
+    from datetime import datetime, timezone
+
+    def _parse_news(items_raw: list) -> list:
         items = []
         for n in items_raw[:5]:
             ts = n.get("providerPublishTime")
-            from datetime import datetime, timezone
             dt_str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d") if ts else ""
+            title = n.get("title", "")
+            if not title:
+                continue
             items.append({
-                "title": n.get("title", ""),
+                "title": title,
                 "publisher": n.get("publisher", ""),
                 "link": n.get("link", ""),
                 "date": dt_str,
             })
-        return {"items": items}
-    except Exception as e:
-        log.warning(f"[deep_news] {stock_id}: {e}")
-        return {"items": []}
+        return items
+
+    _hdrs = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15"}
+    # 三種 fallback 策略：(host, query)
+    strategies = [
+        ("query1", f"{stock_id}.TW"),
+        ("query2", f"{stock_id}.TW"),
+        ("query1", stock_id),
+    ]
+    async with httpx.AsyncClient(timeout=12, headers=_hdrs, follow_redirects=True) as c:
+        for host, q in strategies:
+            try:
+                url = f"https://{host}.finance.yahoo.com/v1/finance/search"
+                params = {"q": q, "newsCount": "5", "enableFuzzyQuery": "false"}
+                r = await c.get(url, params=params)
+                if not r.is_success:
+                    continue
+                items_raw = r.json().get("news", [])
+                items = _parse_news(items_raw)
+                if items:
+                    return {"items": items}
+            except Exception:
+                continue
+    return {"items": []}
 
 
 @app.get("/api/stock/{stock_id}/deep-analysis")

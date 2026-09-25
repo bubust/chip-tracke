@@ -532,11 +532,30 @@ async def run_market_scan(strategy_params: dict = None):
             market_type_map = dict(zip(stocks["stock_id"], stocks["type"]))
 
             def _retry_one(sid, mkt):
-                """重試版 fetch+scan，只回傳 result dict。"""
-                try:
-                    df = _fetch_for_scan(sid, mkt)
-                except Exception:
-                    df = pd.DataFrame()
+                """重試版 fetch+scan：輕量短 timeout，快速放棄 429。"""
+                import requests as _req
+                suffixes = [".TW"] if mkt == "twse" else [".TWO", ".TW"]
+                now2  = int(time.time())
+                p1    = now2 - 365 * 86400
+                params2 = {"interval": "1d", "period1": p1, "period2": now2}
+                df = pd.DataFrame()
+                for sfx in suffixes:
+                    for host2 in ["query1", "query2"]:
+                        try:
+                            url2 = f"https://{host2}.finance.yahoo.com/v8/finance/chart/{sid}{sfx}"
+                            r2 = _req.get(url2, params=params2,
+                                          headers={"User-Agent": _rand_ua(), **_SCAN_HEADERS},
+                                          timeout=5)        # 短 timeout：快速放棄
+                            if r2.status_code == 429:
+                                break                       # 被限流直接放棄，不重試
+                            if r2.ok:
+                                df = _parse_yahoo_json(r2.json())
+                                if not df.empty and len(df) >= 5:
+                                    break
+                        except Exception:
+                            pass
+                    if not df.empty:
+                        break
                 if df.empty or len(df) < 5:
                     return None
                 try:
@@ -547,20 +566,21 @@ async def run_market_scan(strategy_params: dict = None):
                     result = {}
                 return result
 
-            # ── 二次重試（失敗股票補抓一輪；兩次都失敗的非活躍股不再第三輪）──
+            # ── 二次重試（全部失敗股一批，workers=6，每批 0.5s 間隔）──
             if _scan_status["failed_stocks"]:
                 retry_list = [
                     (sid, market_type_map.get(sid, "twse"))
                     for sid in list(_scan_status["failed_stocks"])
                 ]
-                print(f"[SCAN] 第一輪失敗 {len(retry_list)} 支，開始二次重試...")
+                print(f"[SCAN] 第一輪失敗 {len(retry_list)} 支，開始二次重試（workers=6, timeout=5s）...")
 
                 def _run_retry_blocking():
-                    RETRY_BATCH = 40
+                    RETRY_BATCH = 60          # 每批 60 支（原 40）
+                    RETRY_WORKERS = 6         # 6 workers（原 4）
                     for i in range(0, len(retry_list), RETRY_BATCH):
                         chunk = retry_list[i: i + RETRY_BATCH]
-                        time.sleep(2.0)  # 從 4s 縮短到 2s
-                        with ThreadPoolExecutor(max_workers=4) as ex2:
+                        time.sleep(0.5)       # 批次間短暫停（原 2s）
+                        with ThreadPoolExecutor(max_workers=RETRY_WORKERS) as ex2:
                             fut2s = {ex2.submit(_retry_one, sid, mkt): sid for sid, mkt in chunk}
                             for fut2 in as_completed(fut2s):
                                 try:

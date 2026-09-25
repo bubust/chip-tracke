@@ -142,6 +142,33 @@
     nav button { flex-shrink: 0; padding: 10px 12px; font-size: .8rem; }
     main { padding: 10px 8px; }
   }
+  /* ── 手機版 (≤480px) ─────────────────────────────────── */
+  .hide-mobile { display: table-cell; }
+  @media (max-width: 480px) {
+    /* 全域觸控目標 */
+    .btn { min-height: 44px; font-size: .85rem !important; }
+    nav button { min-height: 44px; padding: 8px 10px; font-size: .78rem; }
+    /* 市場指數列 */
+    .idx-bar { flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .idx-item { min-width: 88px; padding: 4px 10px; }
+    /* 策略 tab 列 */
+    #screen-strat-bar { flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+    #screen-strat-bar .btn { flex-shrink: 0; white-space: nowrap; min-height: 38px; }
+    /* 掃描結果表格 */
+    .hide-mobile { display: none !important; }
+    /* 設定頁 cards */
+    .card { padding: 14px 12px; }
+    /* 深度分析側板：全螢幕 */
+    #deep-panel { width: 100vw !important; }
+    #deep-panel.dp-open { right: 0 !important; }
+    #deep-panel:not(.dp-open) { right: -100vw !important; }
+    /* 觀察清單表格 */
+    #watchlist-table td:nth-child(n+5), #watchlist-table th:nth-child(n+5) { display: none; }
+    /* 掃描 header 堆疊 */
+    .scan-hdr { flex-direction: column; align-items: flex-start; gap: 8px; }
+    /* 股票 row 操作欄位縮小 */
+    .result-action { white-space: nowrap; }
+  }
   .log-row { display: flex; gap: 12px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: .83rem; }
   .log-row:last-child { border-bottom: none; }
   code { font-family: monospace; font-size: .8rem; }
@@ -712,7 +739,7 @@ function openDeepPanel(stock_id, stock_name) {
   document.getElementById('dp-change').textContent = '';
   document.getElementById('dp-stage').textContent = '';
   document.getElementById('dp-body').innerHTML = '<div style="color:#8b949e;text-align:center;padding:40px">分析中...</div>';
-  panel.style.right = '0';
+  panel.classList.add('dp-open');
   overlay.style.display = 'block';
   _dpData = null;
   dpTab('tech');
@@ -742,7 +769,7 @@ function openDeepPanel(stock_id, stock_name) {
 }
 
 function closeDeepPanel() {
-  document.getElementById('deep-panel').style.right = '-420px';
+  document.getElementById('deep-panel').classList.remove('dp-open');
   document.getElementById('deep-overlay').style.display = 'none';
 }
 
@@ -3027,8 +3054,8 @@ async function _pollGhProgress() {
       const pct = s.total > 0 ? Math.round(s.progress / s.total * 100) : 0;
       document.getElementById('screen-progress-bar').style.width = pct + '%';
       if (pct >= 100) {
-        // 整理重試超時（>10分鐘）→ 強制解鎖
-        if (elapsed > 600) {
+        // 整理重試超時（>3分鐘）→ 強制解鎖
+        if (elapsed > 180) {
           clearInterval(_ghPollTimer); _ghPollTimer = null;
           btn.disabled = false; btn.textContent = '⚡ 全市場掃描';
           document.getElementById('screen-progress-text').textContent = '';
@@ -3290,7 +3317,7 @@ function renderScreenTable(strategy, data) {
   if (strategy === 'S10')  headRow += `${th('連續漲停','consec_limit_up')}`;
   if (strategy === 'S17B') headRow += `${th('頸線','neckline')}`;
   if (strategy === 'S_WARRANT_TOP') headRow += `${th('認購額(萬)','call_turnover_wan')}${th('認購/認售比','cp_ratio')}`;
-  headRow += `${th('成交量(張)','volume')}${th('成交金額','turnover')}${th('BB位置','bb_score')}<th>操作</th></tr>`;
+  headRow += `${th('成交量(張)','volume')}<th class="hide-mobile" onclick="sortBy('turnover')" style="cursor:pointer">成交金額</th><th class="hide-mobile" onclick="sortBy('bb_score')" style="cursor:pointer">BB位置</th><th>操作</th></tr>`;
   document.getElementById('screen-thead').innerHTML = headRow;
 
   const tbody = document.getElementById('screen-tbody');
@@ -3329,8 +3356,8 @@ function renderScreenTable(strategy, data) {
       ${pctTd}
       ${extraTd}
       <td class="muted">${(() => { if (!row.volume) return '—'; const lots = Math.round(row.volume / 1000); return lots >= 10000 ? (lots/10000).toFixed(1)+'萬' : lots.toLocaleString('zh-TW'); })()}</td>
-      <td class="muted">${(() => { if (!row.close || !row.volume) return '—'; const amt = row.close * row.volume; if (amt >= 1e8) return (amt/1e8).toFixed(2)+'億'; if (amt >= 1e4) return Math.round(amt/1e4)+'萬'; return '—'; })()}</td>
-      <td class="${(row.bb_score??0)>0?'pos':(row.bb_score??0)<0?'neg':'muted'}" title="上軌=+10 中軌=0 下軌=-10">${row.bb_score!=null ? ((row.bb_score>0?'+':'')+row.bb_score) : '—'}</td>
+      <td class="muted hide-mobile">${(() => { if (!row.close || !row.volume) return '—'; const amt = row.close * row.volume; if (amt >= 1e8) return (amt/1e8).toFixed(2)+'億'; if (amt >= 1e4) return Math.round(amt/1e4)+'萬'; return '—'; })()}</td>
+      <td class="${(row.bb_score??0)>0?'pos':(row.bb_score??0)<0?'neg':'muted'} hide-mobile" title="上軌=+10 中軌=0 下軌=-10">${row.bb_score!=null ? ((row.bb_score>0?'+':'')+row.bb_score) : '—'}</td>
       <td style="white-space:nowrap"><button class="btn sm ghost" onclick="addFromMarket('${row.stock_id}','${(STRATEGY_LABELS[strategy]||strategy).replace(/[（(][^）)]{10,}[）)]/g,'').trim()}')">+ 加入清單</button>
       <button class="btn sm ghost" style="margin-left:4px;border-color:#a78bfa;color:#a78bfa" onclick="openDeepPanel('${row.stock_id}','${(row.name||row.stock_id).replace(/'/g,'')}')">🔬</button></td>
     </tr>`;

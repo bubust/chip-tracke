@@ -68,6 +68,19 @@
   .score-card .desc { font-size: .82rem; color: #8b949e; line-height: 1.6; margin-top: 8px; text-align: left; }
   .factor-row .desc { font-size: .8rem; color: #8b949e; line-height: 1.6; margin-top: 6px; }
   .oh-card .desc { font-size: .8rem; color: #8b949e; line-height: 1.6; margin-top: 6px; }
+  /* ── 手機版 (≤480px) ── */
+  @media (max-width: 480px) {
+    body { padding: 10px 8px; }
+    .grid3 { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .score-card .value { font-size: 1.7rem; }
+    .factors-grid { grid-template-columns: 1fr; gap: 8px; }
+    .oh-grid { grid-template-columns: 1fr; gap: 8px; }
+    .header { flex-wrap: wrap; gap: 8px; }
+    .btn { min-height: 44px; }
+    canvas { height: 140px; }
+    .history-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .series-list { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  }
 </style>
 </head>
 <body>

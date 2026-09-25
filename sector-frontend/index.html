@@ -388,6 +388,20 @@
   @media (max-width: 700px) {
     .sdp-metrics { grid-template-columns: repeat(3, 1fr); }
   }
+  /* ── 手機版 (≤480px) ── */
+  @media (max-width: 480px) {
+    body { padding: 10px 8px; }
+    .header { flex-wrap: wrap; gap: 8px; }
+    .header h1 { font-size: 1rem; }
+    #bubbleSection { flex-direction: column; }
+    .sector-detail-panel { max-width: 100%; min-width: 0; }
+    .sdp-metrics { grid-template-columns: repeat(2, 1fr); }
+    #bubble-left svg { width: 100%; }
+    .btn { min-height: 44px; }
+    .kline-modal-box { flex-direction: column; max-height: 95vh; overflow-y: auto; }
+    .kline-right { max-width: 100%; flex-direction: row; flex-wrap: wrap; gap: 6px; overflow-y: visible; }
+    .kline-info-grid { grid-template-columns: repeat(2, 1fr); }
+  }
 </style>
 </head>
 <body>
