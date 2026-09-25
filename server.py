@@ -62,15 +62,31 @@ def _safe_num(v):
 
 
 def _sanitize_for_json(obj):
-    """遞迴將所有 NaN/Inf float 轉 None，防止 JSON 序列化失敗。"""
+    """遞迴清除所有不可 JSON 序列化的值，確保 JSONResponse 不會拋出。"""
     import math as _m
+    if obj is None or isinstance(obj, bool):
+        return obj
     if isinstance(obj, float):
         return None if not _m.isfinite(obj) else obj
+    if isinstance(obj, int):
+        return obj
+    if isinstance(obj, str):
+        return obj
     if isinstance(obj, dict):
-        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+        return {str(k): _sanitize_for_json(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [_sanitize_for_json(v) for v in obj]
-    return obj
+    # numpy scalars、BaseException 等非標準型別：嘗試數值轉換，否則轉 None
+    try:
+        f = float(obj)
+        return None if not _m.isfinite(f) else f
+    except Exception:
+        pass
+    try:
+        return int(obj)
+    except Exception:
+        pass
+    return None  # 無法序列化 → 丟棄
 
 async def _fetch_finmind_prices(stock_ids: list) -> dict:
     """FinMind TaiwanStockPrice 最終兜底，每次只查一支但並發。"""
@@ -1376,8 +1392,8 @@ async def api_stock_deep_analysis(stock_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        log.exception(f"[deep-analysis] {stock_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        log.exception(f"[deep-analysis] {stock_id}: {repr(e)}")
+        raise HTTPException(status_code=500, detail=repr(e))
 
 
 async def _api_stock_deep_analysis_impl(stock_id: str):
@@ -1416,10 +1432,15 @@ async def _api_stock_deep_analysis_impl(stock_id: str):
     if df is None or len(df) < 100:
         try:
             from yahoo_price import _fetch_yahoo_async
-            import asyncio
+            import httpx as _httpx
             mkt = mkt_map.get(stock_id, "twse")
-            new_df = await _fetch_yahoo_async(stock_id, mkt)
-            if new_df is not None and len(new_df) > (len(df) if df is not None else 0):
+            _sem = asyncio.Semaphore(1)
+            async with _httpx.AsyncClient(
+                timeout=_httpx.Timeout(12.0), verify=False, follow_redirects=True
+            ) as _cli:
+                new_df = await _fetch_yahoo_async(_cli, _sem, stock_id, mkt)
+            if new_df is not None and not new_df.empty and \
+               len(new_df) > (len(df) if df is not None else 0):
                 df = new_df
         except Exception:
             pass
@@ -1576,10 +1597,10 @@ async def _api_stock_deep_analysis_impl(stock_id: str):
         _deep_news(stock_id),
         return_exceptions=True,
     )
-    chip_data  = None if isinstance(_gather_results[0], Exception) else _gather_results[0]
-    fund_data  = None if isinstance(_gather_results[1], Exception) else _gather_results[1]
-    fin_data   = None if isinstance(_gather_results[2], Exception) else _gather_results[2]
-    news_data  = {"items": []} if isinstance(_gather_results[3], Exception) else _gather_results[3]
+    chip_data  = None if isinstance(_gather_results[0], BaseException) else _gather_results[0]
+    fund_data  = None if isinstance(_gather_results[1], BaseException) else _gather_results[1]
+    fin_data   = None if isinstance(_gather_results[2], BaseException) else _gather_results[2]
+    news_data  = {"items": []} if isinstance(_gather_results[3], BaseException) else _gather_results[3]
 
     # ── 8. 產業信號補充 ──
     if sector_info:
