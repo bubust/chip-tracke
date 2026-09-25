@@ -1207,12 +1207,14 @@ async def _deep_chip(stock_id: str) -> dict | None:
         dealer  = _agg(buckets["dealer"])
         total   = foreign["net_10d"] + trust["net_10d"] + dealer["net_10d"]
 
-        # 零值偵測：有資料列但全部為 0 → API 速率限制導致
-        all_zero = (total == 0 and
-                    not any(buckets["foreign"]) and
-                    not any(buckets["trust"]) and
-                    not any(buckets["dealer"]))
-        if all_zero and len(data) > 0:
+        # 零值偵測：有資料列但 30 天所有 net 值皆為 0 → API 速率限制導致
+        def _all_zero_bucket(lst: list) -> bool:
+            return not lst or all(v == 0 for v in lst)
+        all_zero = (len(data) > 0 and
+                    _all_zero_bucket(buckets["foreign"]) and
+                    _all_zero_bucket(buckets["trust"]) and
+                    _all_zero_bucket(buckets["dealer"]))
+        if all_zero:
             sig = "⚠️ 法人資料暫時無法取得"
         elif total > 3000:
             sig = "三大法人強力買超"
@@ -1401,7 +1403,13 @@ async def _deep_news(stock_id: str) -> dict:
                 r = await c.get(url, params=params)
                 if not r.is_success:
                     continue
-                items_raw = r.json().get("news", [])
+                try:
+                    body = r.json()
+                except Exception:
+                    continue
+                items_raw = body.get("news", [])
+                if not isinstance(items_raw, list):
+                    continue
                 items = _parse_news(items_raw)
                 if items:
                     return {"items": items}
