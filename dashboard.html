@@ -3027,6 +3027,15 @@ async function _pollGhProgress() {
       const pct = s.total > 0 ? Math.round(s.progress / s.total * 100) : 0;
       document.getElementById('screen-progress-bar').style.width = pct + '%';
       if (pct >= 100) {
+        // 整理重試超時（>10分鐘）→ 強制解鎖
+        if (elapsed > 600) {
+          clearInterval(_ghPollTimer); _ghPollTimer = null;
+          btn.disabled = false; btn.textContent = '⚡ 全市場掃描';
+          document.getElementById('screen-progress-text').textContent = '';
+          document.getElementById('screen-progress-bar-wrap').style.display = 'none';
+          toast('重試逾時，請重新掃描', true);
+          return;
+        }
         // 第一輪完成，進入 retry / S_WARRANT_TOP 階段，預先顯示結果
         document.getElementById('screen-progress-text').textContent =
           `已掃 ${s.progress} / ${s.total} 支 | 成功 ${s.yahoo_ok} 失敗 ${s.yahoo_fail} | 整理重試中... ⏱ ${elapsedStr}`;
@@ -4099,7 +4108,7 @@ async function openChart(stockId, savedRange = null) {
     function updateMLeg(idx) {
       const i = Math.min(Math.max(idx, 0), n - 1);
       const oc = hist1[i] >= 0 ? '#ef5350' : '#26a69a';
-      mLeg.innerHTML = `小MACD(12,26,9)　` +
+      mLeg.innerHTML = `小MACD　` +
         `<span style="color:#2196f3">DIF:${_fmtN(dif1[i])}</span>　` +
         `<span style="color:#ff9800">DEA:${_fmtN(dea1[i])}</span>　` +
         `<span style="color:${oc}">OSC:${_fmtN(hist1[i])}</span>`;
@@ -4128,7 +4137,7 @@ async function openChart(stockId, savedRange = null) {
     function updateM2Leg(idx) {
       const i = Math.min(Math.max(idx, 0), n - 1);
       const oc = hist2[i] >= 0 ? '#ef5350' : '#26a69a';
-      m2Leg.innerHTML = `大MACD(108,216,18)　` +
+      m2Leg.innerHTML = `大MACD　` +
         `<span style="color:#2196f3">DIF:${_fmtN(dif2[i])}</span>　` +
         `<span style="color:#ff9800">DEA:${_fmtN(dea2[i])}</span>　` +
         `<span style="color:${oc}">OSC:${_fmtN(hist2[i])}</span>`;

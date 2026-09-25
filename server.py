@@ -60,6 +60,18 @@ def _safe_num(v):
     except Exception:
         return None
 
+
+def _sanitize_for_json(obj):
+    """遞迴將所有 NaN/Inf float 轉 None，防止 JSON 序列化失敗。"""
+    import math as _m
+    if isinstance(obj, float):
+        return None if not _m.isfinite(obj) else obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize_for_json(v) for v in obj]
+    return obj
+
 async def _fetch_finmind_prices(stock_ids: list) -> dict:
     """FinMind TaiwanStockPrice 最終兜底，每次只查一支但並發。"""
     from datetime import date, timedelta
@@ -1058,7 +1070,7 @@ async def api_indices():
             print(f"[indices] FinMind 備援區塊失敗: {_e}")
 
     # ── 4. Yahoo Finance 備援：OTC 上櫃指數（多 ticker 輪試）──
-    _OTC_TICKERS = ["%5ETWII", "%5ETWOII", "%5ETWOTC", "%5ETWO"]
+    _OTC_TICKERS = ["%5ETWOII", "%5ETWOTC"]  # ^TWOII = 上柜 TPEx；^TWOTC 備援
     try:
         if result["otc"]["price"] is None:
             async with httpx.AsyncClient(timeout=10, verify=False, follow_redirects=True,
@@ -1358,7 +1370,9 @@ async def api_stock_deep_analysis(stock_id: str):
     資料來源：price_daily / FinMind / Yahoo Finance
     """
     try:
-        return await _api_stock_deep_analysis_impl(stock_id)
+        data = await _api_stock_deep_analysis_impl(stock_id)
+        # JSONResponse 明確序列化，先 sanitize 確保無 NaN/Inf（FastAPI 序列化失敗不在 try 範圍內）
+        return JSONResponse(content=_sanitize_for_json(data))
     except HTTPException:
         raise
     except Exception as e:
