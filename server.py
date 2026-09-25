@@ -51,6 +51,15 @@ import time as _time
 
 _FINMIND_TOKEN = os.getenv("FINMIND_TOKEN", "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0.LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA")
 
+def _safe_num(v):
+    """將 NaN/Inf 轉 None，確保 JSON 序列化安全。"""
+    try:
+        import math as _m
+        f = float(v)
+        return None if (not _m.isfinite(f)) else round(f, 6)
+    except Exception:
+        return None
+
 async def _fetch_finmind_prices(stock_ids: list) -> dict:
     """FinMind TaiwanStockPrice 最終兜底，每次只查一支但並發。"""
     from datetime import date, timedelta
@@ -1348,6 +1357,16 @@ async def api_stock_deep_analysis(stock_id: str):
     股票深度分析：技術 + 籌碼 + 基本面 + 財務 + 新聞 + 產業
     資料來源：price_daily / FinMind / Yahoo Finance
     """
+    try:
+        return await _api_stock_deep_analysis_impl(stock_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception(f"[deep-analysis] {stock_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _api_stock_deep_analysis_impl(stock_id: str):
     import math
     import pandas as pd
     from scanner import (
@@ -1559,28 +1578,32 @@ async def api_stock_deep_analysis(stock_id: str):
             else:
                 sector_info["signal"] = "偏弱"
 
+    # macd_big: sanitize NaN/Inf
+    if macd_big:
+        macd_big = {k: _safe_num(v) for k, v in macd_big.items()}
+
     return {
         "stock_id": stock_id,
         "name":     stock_name,
         "technical": {
-            "close":      round(tc, 2),
-            "change_pct": change_pct,
+            "close":      _safe_num(tc),
+            "change_pct": _safe_num(change_pct),
             "volume":     int(vol_today) if math.isfinite(vol_today) else 0,
-            "vol_ratio":  vol_ratio,
-            "vol_vs_5d":  vol_vs_avg,
-            "bb_score":   bb_score,
+            "vol_ratio":  _safe_num(vol_ratio),
+            "vol_vs_5d":  _safe_num(vol_vs_avg),
+            "bb_score":   _safe_num(bb_score),
             "stage":      stage,
             "macd": {
-                "dif": round(dif_v, 4), "dea": round(dea_v, 4), "osc": round(osc_v, 4),
+                "dif": _safe_num(dif_v), "dea": _safe_num(dea_v), "osc": _safe_num(osc_v),
                 "signal": macd_signal,
             },
             "macd_big": macd_big,
             "ma": {
-                "ma10": round(ma10, 2) if ma10 else None,
-                "ma20": round(ma20, 2) if ma20 else None,
-                "ma60": round(ma60, 2) if ma60 else None,
-                "above_ma10":        ma10 is not None and tc > ma10,
-                "above_ma60":        ma60 is not None and tc > ma60,
+                "ma10": _safe_num(ma10),
+                "ma20": _safe_num(ma20),
+                "ma60": _safe_num(ma60),
+                "above_ma10":        ma10 is not None and math.isfinite(ma10) and tc > ma10,
+                "above_ma60":        ma60 is not None and math.isfinite(ma60) and tc > ma60,
                 "golden_cross_days": golden_cross_days,
             },
             "score": {"overall": overall, "signals": signals},
