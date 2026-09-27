@@ -516,12 +516,30 @@ async def lifespan(app: FastAPI):
         def _scan_daily_sync():
             import asyncio as _aio, logging as _lg
             from yahoo_price import get_scan_status, run_market_scan
-            if get_scan_status()["running"]:
-                _lg.getLogger(__name__).info("[scan_scheduler] 掃描進行中，跳過 18:00 排程")
-                return
-            params = _load_strategy_params()
-            _lg.getLogger(__name__).info("[scan_scheduler] 18:00 自動全市場掃描啟動")
-            _aio.run(run_market_scan(strategy_params=params))
+            lg = _lg.getLogger(__name__)
+
+            # Step 1: 全市場策略掃描（等待完成後再進行 Step 2）
+            try:
+                if not get_scan_status()["running"]:
+                    params = _load_strategy_params()
+                    lg.info("[scan_scheduler] 18:00 Step 1: 全市場策略掃描啟動")
+                    _aio.run(run_market_scan(strategy_params=params))
+                    lg.info("[scan_scheduler] Step 1 完成")
+                else:
+                    lg.info("[scan_scheduler] 掃描進行中，跳過 Step 1")
+            except Exception as _e1:
+                lg.error(f"[scan_scheduler] Step 1 例外（繼續執行 Step 2）: {_e1}")
+
+            # Step 2: 全系統更新（watchlist/regime/tdcc/positioning/sector/warrant）
+            try:
+                if not _refresh_all_status["running"]:
+                    lg.info("[scan_scheduler] 18:00 Step 2: 全系統更新啟動")
+                    _do_system_refresh()
+                    lg.info("[scan_scheduler] Step 2 完成")
+                else:
+                    lg.info("[scan_scheduler] 全系統更新進行中，跳過 Step 2")
+            except Exception as _e2:
+                lg.error(f"[scan_scheduler] Step 2 例外: {_e2}")
         _scan_sched.add_job(
             _scan_daily_sync, "cron",
             day_of_week="mon-fri", hour=18, minute=0,
@@ -2094,25 +2112,21 @@ def _set_step(step: str, status: str):
 def api_refresh_all_status():
     return _refresh_all_status
 
-@app.post("/api/refresh_all")
-async def api_refresh_all():
-    """一鍵觸發所有引擎更新（背景執行），包含千張大戶、Regime、Positioning、Sector、權證"""
-    import threading, asyncio as _asyncio
+def _do_system_refresh():
+    """執行全系統更新（同步，可在任意 thread 直接呼叫）。
+    包含：watchlist → regime → tdcc → positioning → sector → warrant
+    同時更新 _refresh_all_status dict，供 /api/refresh_all/status 查詢。
+    """
+    import logging as _log, asyncio as _asyncio
     from datetime import datetime as _dt
+    lg = _log.getLogger(__name__)
 
-    if _refresh_all_status["running"]:
-        return {"ok": False, "message": "更新已在執行中，請稍候"}
-
-    # 重置狀態
     _refresh_all_status["running"] = True
     _refresh_all_status["started_at"] = _dt.now().isoformat()
     for k in _refresh_all_status["steps"]:
         _refresh_all_status["steps"][k]["status"] = "pending"
 
-    def _run_all():
-        import logging as _log
-        lg = _log.getLogger(__name__)
-
+    try:
         # 0. 觀察清單股票（優先更新，供後續引擎使用）
         try:
             _set_step("watchlist", "running")
@@ -2154,7 +2168,7 @@ async def api_refresh_all():
         try:
             _set_step("tdcc", "running")
             from tdcc_chip import refresh_for_stocks
-            _asyncio.run(refresh_for_stocks())   # async 函數必須用 asyncio.run()
+            _asyncio.run(refresh_for_stocks())
             _set_step("tdcc", "done")
         except Exception as e:
             lg.error(f"[refresh_all] tdcc: {e}")
@@ -2174,7 +2188,6 @@ async def api_refresh_all():
             _set_step("sector", "running")
             from sector.prices import fetch_and_store_today, backfill
             from sector.engine import run_sector_engine
-            # 先確保 DB 有足夠歷史（首次補抓 120 天，之後只抓今日）
             from sector.db import db as _sdb, init_db as _sector_init_db
             _sector_init_db()
             with _sdb() as _sc:
@@ -2200,9 +2213,17 @@ async def api_refresh_all():
             lg.error(f"[refresh_all] warrant: {e}")
             _set_step("warrant", "error")
 
+    finally:
         _refresh_all_status["running"] = False
 
-    threading.Thread(target=_run_all, daemon=True).start()
+
+@app.post("/api/refresh_all")
+async def api_refresh_all():
+    """一鍵觸發所有引擎更新（背景執行），包含千張大戶、Regime、Positioning、Sector、權證"""
+    import threading
+    if _refresh_all_status["running"]:
+        return {"ok": False, "message": "更新已在執行中，請稍候"}
+    threading.Thread(target=_do_system_refresh, daemon=True).start()
     return {"ok": True, "message": "全系統更新已啟動（背景執行）"}
 
 
