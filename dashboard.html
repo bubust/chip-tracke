@@ -3117,27 +3117,43 @@ async function _pollGhProgress() {
       const pct = s.total > 0 ? Math.round(s.progress / s.total * 100) : 0;
       document.getElementById('screen-progress-bar').style.width = pct + '%';
       if (pct >= 100) {
-        // 整理重試超時（>3分鐘）→ 強制解鎖
-        if (elapsed > 180) {
+        // 整理重試超時（>10分鐘）→ 強制解鎖（兜底）
+        if (elapsed > 600) {
           clearInterval(_ghPollTimer); _ghPollTimer = null;
           btn.disabled = false; btn.textContent = '⚡ 全市場掃描';
           document.getElementById('screen-progress-text').textContent = '';
           document.getElementById('screen-progress-bar-wrap').style.display = 'none';
-          toast('重試逾時，請重新掃描', true);
+          toast('掃描逾時，請重新執行', true);
           return;
         }
-        // 第一輪完成，進入 retry / S_WARRANT_TOP 階段，預先顯示結果
+        // 第一輪完成，進入 retry / S_WARRANT_TOP 階段，預先顯示結果並立即解鎖
         document.getElementById('screen-progress-text').textContent =
           `已掃 ${s.progress} / ${s.total} 支 | 成功 ${s.yahoo_ok} 失敗 ${s.yahoo_fail} | 整理重試中... ⏱ ${elapsedStr}`;
         btn.textContent = `⚡ 整理中...`;
         if (!window._ghResultsPreloaded) {
           window._ghResultsPreloaded = true;
+          const _unlockGhBtn = (msg, isErr) => {
+            clearInterval(_ghPollTimer); _ghPollTimer = null;
+            btn.disabled = false; btn.textContent = '⚡ 全市場掃描';
+            document.getElementById('screen-progress-text').textContent = '';
+            document.getElementById('screen-progress-bar-wrap').style.display = 'none';
+            toast(msg, isErr || false);
+          };
           api('GET', '/api/screen/results').then(r => {
-            if (!r || !r.results) return;
-            _screenAllResults = r.results;
-            const tot = Object.values(_screenAllResults).reduce((a,b)=>a+b.length,0);
-            if (tot > 0) { lsSaveScreen(_screenAllResults); renderStratBar(); const first = Object.keys(STRATEGY_LABELS).find(k=>(_screenAllResults[k]||[]).length>0); if(first) viewStrategy(first); }
-          }).catch(()=>{});
+            let tot = 0;
+            if (r && r.results) {
+              _screenAllResults = r.results;
+              tot = Object.values(_screenAllResults).reduce((a,b)=>a+b.length,0);
+              if (tot > 0) {
+                lsSaveScreen(_screenAllResults); renderStratBar();
+                const first = Object.keys(STRATEGY_LABELS).find(k=>(_screenAllResults[k]||[]).length>0);
+                if(first) viewStrategy(first);
+              }
+            }
+            _unlockGhBtn(tot > 0 ? `✅ 掃描完成！找到 ${tot} 支符合策略` : '掃描完成（無符合策略）');
+          }).catch(()=>{
+            _unlockGhBtn('掃描完成（載入結果失敗，請重新整理）', true);
+          });
         }
       } else {
         document.getElementById('screen-progress-text').textContent =
