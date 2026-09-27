@@ -507,6 +507,29 @@ async def lifespan(app: FastAPI):
         _price_sched.start()
     except Exception as _pce:
         import logging; logging.getLogger(__name__).warning(f"[price_cache_scheduler] {_pce}")
+    # ── 全市場掃描排程：每個交易日 18:00 自動執行（備援：GitHub Actions）──
+    _scan_sched = None
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler as _ScanSched
+        import pytz as _spytz
+        _scan_sched = _ScanSched(timezone=_spytz.timezone("Asia/Taipei"))
+        def _scan_daily_sync():
+            import asyncio as _aio, logging as _lg
+            from yahoo_price import get_scan_status, run_market_scan
+            if get_scan_status()["running"]:
+                _lg.getLogger(__name__).info("[scan_scheduler] 掃描進行中，跳過 18:00 排程")
+                return
+            params = _load_strategy_params()
+            _lg.getLogger(__name__).info("[scan_scheduler] 18:00 自動全市場掃描啟動")
+            _aio.run(run_market_scan(strategy_params=params))
+        _scan_sched.add_job(
+            _scan_daily_sync, "cron",
+            day_of_week="mon-fri", hour=18, minute=0,
+            id="scan_daily_1800", replace_existing=True,
+        )
+        _scan_sched.start()
+    except Exception as _sse:
+        import logging; logging.getLogger(__name__).warning(f"[scan_scheduler] {_sse}")
     # 啟動時初始化 price_daily 表，抓今日 TWSE 全市場收盤（輕量，~1MB，無 OOM 風險）
     try:
         from price_cache import init_price_db
@@ -623,6 +646,11 @@ async def lifespan(app: FastAPI):
         import logging; logging.getLogger(__name__).warning(f"[price_cache_backfill] {_bfe}")
     yield
     stop_warrant_scheduler()
+    if _scan_sched:
+        try:
+            _scan_sched.shutdown(wait=False)
+        except Exception:
+            pass
 
 app = FastAPI(title="籌碼追蹤系統", lifespan=lifespan)
 
@@ -1176,7 +1204,7 @@ async def _deep_chip(stock_id: str) -> dict | None:
             r = await c.get(url, params=params)
             data = r.json().get("data", [])
         if not data:
-            return None
+            return {"error": "FinMind 無法人買賣資料（可能非交易日或API限速）"}
         # 每日每機構一筆：name in [外資及陸資, 投信, 自營商]
         from collections import defaultdict
         buckets: dict[str, list] = defaultdict(list)
@@ -1229,7 +1257,7 @@ async def _deep_chip(stock_id: str) -> dict | None:
                 "total_net_10d": total, "signal": sig}
     except Exception as e:
         log.warning(f"[deep_chip] {stock_id}: {e}")
-        return None
+        return {"error": f"法人資料暫時不可用：{type(e).__name__}"}
 
 
 async def _deep_fundamental(stock_id: str) -> dict | None:
@@ -1435,6 +1463,108 @@ async def api_stock_deep_analysis(stock_id: str):
         raise HTTPException(status_code=500, detail=repr(e))
 
 
+def _compute_composite_score(
+    tech_score_100: int,
+    chip_data: dict | None,
+    fund_data: dict | None,
+    sector_info: dict | None,
+) -> dict:
+    """
+    綜合評分（0~100）：籌碼(50) + 技術(35) + 其他(15)
+    chip_data / fund_data 可能為 None 或含 {"error": "..."} 欄位。
+    """
+    breakdown = []
+
+    # ── 技術分（0~35）──
+    tech_35 = round((tech_score_100 or 0) * 35 / 100)
+
+    # ── 籌碼分（0~50）：無資料→預設 25（中性）──
+    chip_raw = 0
+    if chip_data and not chip_data.get("error"):
+        total_net  = chip_data.get("total_net_10d", 0) or 0
+        foreign    = chip_data.get("foreign") or {}
+        trust      = chip_data.get("trust") or {}
+        dealer     = chip_data.get("dealer") or {}
+        fn10 = foreign.get("net_10d", 0) or 0
+        dn10 = dealer.get("net_10d", 0) or 0
+        tb   = trust.get("days_buy", 0) or 0
+        # 三大法人合計 ±20 分
+        chip_raw += max(-20, min(20, int(total_net / 200)))
+        # 外資主力 ±15 分
+        chip_raw += max(-15, min(15, int(fn10 / 300)))
+        # 投信連買天數 +0~10 分
+        chip_raw += min(10, int(tb * 1.5))
+        # 自營商買超 +0~5 分
+        chip_raw += min(5, max(0, int(dn10 / 200)))
+        chip_50 = max(0, min(50, chip_raw + 25))
+        # 訊號說明
+        if total_net > 1000:
+            breakdown.append(f"法人10日買超 +{total_net:,}張")
+        elif total_net < -1000:
+            breakdown.append(f"法人10日賣超 {total_net:,}張")
+        if fn10 > 500:
+            breakdown.append(f"外資 +{fn10:,}張")
+    else:
+        chip_50 = 25   # 資料不足→中性
+
+    # ── 其他分（0~15）──
+    other = 0
+    if sector_info and not sector_info.get("error"):
+        r5 = sector_info.get("rank5d")
+        if r5 is not None:
+            if r5 <= 5:
+                other += 5; breakdown.append("族群強勢（前5）")
+            elif r5 <= 10:
+                other += 3; breakdown.append("族群偏強（前10）")
+    if fund_data and not fund_data.get("error"):
+        per = fund_data.get("per")
+        pbr = fund_data.get("pbr")
+        dy  = fund_data.get("dividend_yield")
+        try:
+            if per is not None and pbr is not None and 0 < float(per) < 20 and float(pbr) < 1.5:
+                other += 5; breakdown.append(f"估值合理 PE={per}")
+        except (TypeError, ValueError):
+            pass
+        try:
+            if dy is not None and float(dy) > 3:
+                other += 5; breakdown.append(f"殖利率 {dy}%")
+        except (TypeError, ValueError):
+            pass
+    other = max(0, min(15, other))
+
+    total = chip_50 + tech_35 + other
+
+    # tech signal
+    tech_score_100 = tech_score_100 or 0   # guard: None → 0
+    if tech_score_100 >= 70:
+        breakdown.insert(0, "技術面偏多")
+    elif tech_score_100 < 40:
+        breakdown.insert(0, "技術面偏空")
+
+    # 等級
+    if total >= 80:
+        grade, icon, color = "強烈看多", "⚡", "#22c55e"
+    elif total >= 65:
+        grade, icon, color = "偏多", "📈", "#84cc16"
+    elif total >= 45:
+        grade, icon, color = "中性", "➡️", "#94a3b8"
+    elif total >= 30:
+        grade, icon, color = "偏空", "📉", "#f97316"
+    else:
+        grade, icon, color = "強烈看空", "⚠️", "#ef4444"
+
+    return {
+        "total": total,
+        "chip": chip_50,
+        "tech": tech_35,
+        "other": other,
+        "grade": grade,
+        "grade_icon": icon,
+        "color": color,
+        "breakdown": breakdown[:4],   # 最多4條
+    }
+
+
 async def _api_stock_deep_analysis_impl(stock_id: str):
     import math
     import pandas as pd
@@ -1484,8 +1614,11 @@ async def _api_stock_deep_analysis_impl(stock_id: str):
         except Exception:
             pass
 
-    if df is None or len(df) < 20:
-        raise HTTPException(status_code=404, detail=f"找不到 {stock_id} 的足夠價格資料")
+    if df is None or len(df) < 10:
+        return JSONResponse(content={
+            "error": "price_unavailable",
+            "detail": f"{stock_id} 價格資料不足（建議先執行「全系統更新」補齊歷史資料）",
+        })
 
     # 確保欄位名稱一致（小寫）
     df.columns = [c.lower() for c in df.columns]
@@ -1688,6 +1821,7 @@ async def _api_stock_deep_analysis_impl(stock_id: str):
         "financial":   fin_data,
         "news":        news_data,
         "sector":      sector_info,
+        "composite_score": _compute_composite_score(overall, chip_data, fund_data, sector_info),
     }
 
 
@@ -3289,6 +3423,19 @@ async def api_trigger_scan():
         return {"ok": False, "message": f"GitHub API 回應 {r.status_code}: {r.text[:200]}"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/scheduler/status")
+def api_scheduler_status():
+    """查看定時排程狀態（18:00 全市場掃描）"""
+    try:
+        jobs = [
+            {"id": j.id, "next_run": str(j.next_run_time)}
+            for j in _scan_sched.get_jobs()
+        ]
+        return {"running": _scan_sched.running, "jobs": jobs}
+    except Exception as e:
+        return {"running": False, "jobs": [], "error": str(e)}
 
 
 @app.get("/api/scan-progress")

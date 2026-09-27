@@ -704,6 +704,26 @@ function _doSwitchSettings() {
   </div>
   <!-- 操作階段 -->
   <div id="dp-stage" style="padding:10px 16px;border-bottom:1px solid #30363d;flex-shrink:0;font-size:.85rem"></div>
+  <!-- 綜合評分卡片 -->
+  <div id="dp-score-card" style="display:none;flex-shrink:0;padding:10px 16px;border-bottom:1px solid #30363d;background:#161b22">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div id="dp-score-num" style="font-size:2.4rem;font-weight:900;line-height:1;min-width:52px;text-align:center">—</div>
+      <div style="flex:1;min-width:0">
+        <div id="dp-score-grade" style="font-size:.9rem;font-weight:700;margin-bottom:4px">—</div>
+        <div id="dp-score-bars" style="display:flex;gap:3px;height:6px;border-radius:3px;overflow:hidden;margin-bottom:4px">
+          <div id="dp-bar-chip" style="background:#58a6ff;border-radius:3px" title="籌碼分"></div>
+          <div id="dp-bar-tech" style="background:#3fb950;border-radius:3px" title="技術分"></div>
+          <div id="dp-bar-other" style="background:#d29922;border-radius:3px" title="其他分"></div>
+        </div>
+        <div id="dp-score-breakdown" style="font-size:.72rem;color:#8b949e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
+      </div>
+      <div style="font-size:.7rem;color:#8b949e;text-align:right;line-height:1.4">
+        <div id="dp-score-chip-lbl" style="color:#58a6ff"></div>
+        <div id="dp-score-tech-lbl" style="color:#3fb950"></div>
+        <div id="dp-score-other-lbl" style="color:#d29922"></div>
+      </div>
+    </div>
+  </div>
   <!-- Tab 切換 -->
   <div style="display:flex;border-bottom:1px solid #30363d;flex-shrink:0;overflow-x:auto">
     <button class="dp-tab active" onclick="dpTab('tech')"  id="dp-tab-tech"  style="flex:1;min-width:60px;padding:8px 4px;font-size:.75rem;border:none;background:none;color:#58a6ff;border-bottom:2px solid #58a6ff;cursor:pointer;white-space:nowrap">📊 技術</button>
@@ -747,6 +767,21 @@ function openDeepPanel(stock_id, stock_name) {
   api('GET', `/api/stock/${stock_id}/deep-analysis`)
     .then(d => {
       _dpData = d;
+      // 價格資料不足的友善提示（HTTP 200 + error 欄位）
+      if (d.error) {
+        document.getElementById('dp-title').textContent = `${stock_id} 深度分析`;
+        document.getElementById('dp-price').textContent = '';
+        document.getElementById('dp-change').textContent = '';
+        document.getElementById('dp-stage').textContent = '';
+        document.getElementById('dp-score-card').style.display = 'none';
+        document.getElementById('dp-body').innerHTML =
+          `<div style="padding:24px;text-align:center">
+            <div style="font-size:2rem;margin-bottom:8px">📭</div>
+            <div style="color:#f85149;font-weight:600;margin-bottom:6px">資料不足</div>
+            <div style="color:#8b949e;font-size:.85rem">${d.detail || d.error}</div>
+           </div>`;
+        return;
+      }
       document.getElementById('dp-title').textContent = `${d.stock_id} ${d.name} 深度分析`;
       const tech = d.technical || {};
       const pct = tech.change_pct;
@@ -761,6 +796,27 @@ function openDeepPanel(stock_id, stock_name) {
       document.getElementById('dp-stage').innerHTML =
         `<span style="font-weight:600;color:${col}">${st.label || '未知階段'}</span>` +
         (st.desc ? `<span style="color:#8b949e;font-size:.78rem;margin-left:8px">${st.desc}</span>` : '');
+      // 綜合評分卡片
+      const cs = d.composite_score;
+      if (cs) {
+        const card = document.getElementById('dp-score-card');
+        card.style.display = 'block';
+        document.getElementById('dp-score-num').textContent = cs.total;
+        document.getElementById('dp-score-num').style.color = cs.color;
+        document.getElementById('dp-score-grade').textContent = `${cs.grade} ${cs.grade_icon}`;
+        document.getElementById('dp-score-grade').style.color = cs.color;
+        // 三分項橫條（總寬 = 100%，各佔比例）
+        const barBase = cs.chip + cs.tech + cs.other || 1;
+        document.getElementById('dp-bar-chip').style.width  = `${(cs.chip  / barBase * 100).toFixed(1)}%`;
+        document.getElementById('dp-bar-tech').style.width  = `${(cs.tech  / barBase * 100).toFixed(1)}%`;
+        document.getElementById('dp-bar-other').style.width = `${(cs.other / barBase * 100).toFixed(1)}%`;
+        document.getElementById('dp-score-chip-lbl').textContent  = `籌碼 ${cs.chip}/50`;
+        document.getElementById('dp-score-tech-lbl').textContent  = `技術 ${cs.tech}/35`;
+        document.getElementById('dp-score-other-lbl').textContent = `其他 ${cs.other}/15`;
+        document.getElementById('dp-score-breakdown').textContent = (cs.breakdown || []).join(' · ') || '—';
+      } else {
+        document.getElementById('dp-score-card').style.display = 'none';
+      }
       renderDpBody('tech', d);
     })
     .catch(e => {
@@ -826,7 +882,14 @@ function renderDpBody(tab, d) {
 
   } else if (tab === 'chip') {
     const c = d.chip;
-    if (!c) { body.innerHTML = '<div style="color:#8b949e;padding:20px">籌碼資料載入失敗（FinMind 暫不可用）</div>'; return; }
+    if (!c || c.error) {
+      body.innerHTML = `<div style="padding:20px;text-align:center">
+        <div style="font-size:1.6rem;margin-bottom:6px">🏦</div>
+        <div style="color:#8b949e;font-size:.85rem">${c?.error || '籌碼資料暫時無法取得（FinMind API 限速或非交易日）'}</div>
+        <div style="color:#8b949e;font-size:.75rem;margin-top:6px">技術面評分仍有效，籌碼分以中性 25 計入綜合評分</div>
+      </div>`;
+      return;
+    }
     const netCol = n => n > 0 ? '#3fb950' : n < 0 ? '#f85149' : '#8b949e';
     const chipRow = (lbl, obj) =>
       `<tr style="border-bottom:1px solid #21262d">
