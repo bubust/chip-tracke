@@ -36,6 +36,7 @@ _SCAN_HEADERS = {
 
 _host_cycle = cycle(["query1", "query2"])
 _host_lock  = threading.Lock()
+_results_lock = threading.Lock()   # 保護 _scan_status["results"] 讀寫，防止 JSON 序列化競態
 
 
 def _next_host() -> str:
@@ -425,7 +426,12 @@ def get_scan_status() -> dict:
 
 
 def get_scan_results() -> dict:
-    return _scan_status["results"]
+    with _results_lock:
+        raw = _scan_status["results"]
+        if not raw:
+            return {}
+        # list(v) 複製各策略 list，避免 JSON 序列化時被 retry thread 同步 append 造成 RuntimeError
+        return {k: list(v) for k, v in raw.items()}
 
 
 async def run_market_scan(strategy_params: dict = None):
@@ -441,7 +447,8 @@ async def run_market_scan(strategy_params: dict = None):
     from scanner import scan_one_stock
     _strategy_params = strategy_params or {}
     _min_vol_ratio = (_strategy_params.get("_global") or {}).get("min_vol_ratio", 0.0)
-    _status_lock = threading.Lock()
+    # 使用模組級 _results_lock（與 get_scan_results() 共用同一把鎖）
+    # _status_lock = threading.Lock()  ← 已移除，改用 _results_lock
 
     _scan_status["running"]       = True
     _scan_status["progress"]      = 0
@@ -472,7 +479,7 @@ async def run_market_scan(strategy_params: dict = None):
                 df = _fetch_for_scan(sid, mkt)
             except Exception:
                 df = pd.DataFrame()
-            with _status_lock:
+            with _results_lock:
                 _scan_status["progress"] += 1
                 if df.empty or len(df) < 5:
                     _scan_status["yahoo_fail"] += 1
@@ -484,7 +491,7 @@ async def run_market_scan(strategy_params: dict = None):
                                         strategy_params=_strategy_params,
                                         min_vol_ratio=_min_vol_ratio)
             except Exception as _scan_e:
-                with _status_lock:
+                with _results_lock:
                     _ec = _scan_status.get("_scan_err_count", 0)
                     if _ec < 3:
                         import traceback as _tb
@@ -588,7 +595,7 @@ async def run_market_scan(strategy_params: dict = None):
                                     if result2 is None:
                                         continue
                                     sid2 = fut2s[fut2]
-                                    with _status_lock:
+                                    with _results_lock:
                                         if sid2 in _scan_status["failed_stocks"]:
                                             _scan_status["failed_stocks"].remove(sid2)
                                             _scan_status["yahoo_fail"] -= 1

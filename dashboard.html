@@ -821,7 +821,14 @@ function openDeepPanel(stock_id, stock_name) {
       renderDpBody('tech', d);
     })
     .catch(e => {
-      document.getElementById('dp-body').innerHTML = `<div style="color:#f85149;padding:20px">❌ ${e.message}</div>`;
+      document.getElementById('dp-body').innerHTML =
+        `<div style="padding:24px;text-align:center">
+          <div style="font-size:2rem;margin-bottom:8px">⚠️</div>
+          <div style="color:#f85149;font-weight:600;margin-bottom:6px">分析載入失敗</div>
+          <div style="color:#8b949e;font-size:.82rem;margin-bottom:14px">${e.message || '伺服器忙碌中，請稍後再試'}</div>
+          <button class="btn sm" onclick="openDeepPanel('${stock_id}','${(stock_name||'').replace(/'/g,'')}')"
+            style="background:#30363d;color:#e6edf3;border:1px solid #444">🔄 重試</button>
+        </div>`;
     });
 }
 
@@ -3182,8 +3189,19 @@ async function _pollGhProgress() {
               _unlockGhBtn('掃描完成（無符合策略）', false, '⚠️ 無符合策略');
             }
           }).catch(()=>{
-            _unlockGhBtn('掃描完成（載入結果失敗，請重新整理）', true,
-              '❌ 載入結果失敗', false);
+            // 降級：若快取有結果，繼續顯示（避免誤報「載入失敗」）
+            const _cachedTot = Object.values(_screenAllResults || {})
+              .filter(Array.isArray).reduce((a,b)=>a+b.length,0);
+            if (_cachedTot > 0) {
+              renderStratBar();
+              const _cf = Object.keys(STRATEGY_LABELS).find(k=>(_screenAllResults[k]||[]).length>0);
+              if (_cf) viewStrategy(_cf);
+              _unlockGhBtn(`掃描完成（使用快取結果）`, false,
+                `⚠️ 使用快取（${_cachedTot} 支）`, undefined);
+            } else {
+              _unlockGhBtn('掃描完成（載入結果失敗，請重新整理）', true,
+                '❌ 載入結果失敗', false);
+            }
           });
         }
       } else {
