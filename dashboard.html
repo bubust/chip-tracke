@@ -443,6 +443,7 @@
       <button class="btn green" id="btn-trigger-gh" onclick="triggerGithubScan()" title="在伺服器直接執行全市場掃描">⚡ 全市場掃描</button>
       <span id="screen-progress-text" style="color:var(--muted);font-size:.82rem"></span>
     </div>
+    <div id="gh-scan-last-badge" style="font-size:.78rem;min-height:1.2em;margin-bottom:4px"></div>
     <div id="screen-progress-bar-wrap" style="display:none;margin-bottom:10px">
       <div style="background:var(--border);border-radius:4px;height:6px;overflow:hidden">
         <div id="screen-progress-bar" style="height:100%;background:var(--accent);transition:width .3s;width:0%"></div>
@@ -3076,6 +3077,19 @@ async function runScreen() {
 let _ghPollTimer = null;
 let _ghScanStartedAt = null;
 
+// 持久狀態標誌（存 localStorage，頁面重整後仍顯示）
+// isOk: true=成功(綠), false=失敗(紅), undefined=進行中(灰) — transient 狀態不存 localStorage
+function _ghBadgeSet(text, isOk, persist) {
+  const el = document.getElementById('gh-scan-last-badge');
+  if (el) {
+    el.textContent = text;
+    el.style.color = isOk === false ? '#f85149' : isOk === true ? '#3fb950' : 'var(--muted)';
+  }
+  if (persist !== false) {
+    try { localStorage.setItem('chip_scan_badge', JSON.stringify({text, isOk})); } catch(e) {}
+  }
+}
+
 async function triggerGithubScan() {
   const btn = document.getElementById('btn-trigger-gh');
   btn.disabled = true;
@@ -3123,6 +3137,8 @@ async function _pollGhProgress() {
           btn.disabled = false; btn.textContent = '⚡ 全市場掃描';
           document.getElementById('screen-progress-text').textContent = '';
           document.getElementById('screen-progress-bar-wrap').style.display = 'none';
+          const _tsNow = new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'});
+          _ghBadgeSet(`❌ ${_tsNow} 掃描逾時，請重新執行`, false);
           toast('掃描逾時，請重新執行', true);
           return;
         }
@@ -3132,13 +3148,22 @@ async function _pollGhProgress() {
         btn.textContent = `⚡ 整理中...`;
         if (!window._ghResultsPreloaded) {
           window._ghResultsPreloaded = true;
-          const _unlockGhBtn = (msg, isErr) => {
+          // _preloadDone 是 let（block 作用域），不會跨次掃描污染
+          let _preloadDone = false;
+          const _unlockGhBtn = (msg, isErr, badgeMsg, badgeOk) => {
+            if (_preloadDone) return;   // 防止 timeout + fetch 雙重呼叫
+            _preloadDone = true;
             clearInterval(_ghPollTimer); _ghPollTimer = null;
             btn.disabled = false; btn.textContent = '⚡ 全市場掃描';
             document.getElementById('screen-progress-text').textContent = '';
             document.getElementById('screen-progress-bar-wrap').style.display = 'none';
+            const _ts = new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'});
+            _ghBadgeSet(`${_ts} ${badgeMsg || msg}`, badgeOk !== undefined ? badgeOk : !isErr);
             toast(msg, isErr || false);
           };
+          // 30 秒 fallback（即使 fetch 掛住也能解鎖）
+          setTimeout(() => _unlockGhBtn('掃描完成（載入逾時，請重新整理）', true,
+            '❌ 載入逾時，請重新整理', false), 30000);
           api('GET', '/api/screen/results').then(r => {
             let tot = 0;
             if (r && r.results) {
@@ -3150,9 +3175,15 @@ async function _pollGhProgress() {
                 if(first) viewStrategy(first);
               }
             }
-            _unlockGhBtn(tot > 0 ? `✅ 掃描完成！找到 ${tot} 支符合策略` : '掃描完成（無符合策略）');
+            if (tot > 0) {
+              _unlockGhBtn(`✅ 掃描完成！找到 ${tot} 支符合策略`, false,
+                `✅ 找到 ${tot} 支`, true);
+            } else {
+              _unlockGhBtn('掃描完成（無符合策略）', false, '⚠️ 無符合策略');
+            }
           }).catch(()=>{
-            _unlockGhBtn('掃描完成（載入結果失敗，請重新整理）', true);
+            _unlockGhBtn('掃描完成（載入結果失敗，請重新整理）', true,
+              '❌ 載入結果失敗', false);
           });
         }
       } else {
@@ -3161,7 +3192,7 @@ async function _pollGhProgress() {
         btn.textContent = `⚡ 掃描中 ${pct}%`;
       }
     } else if (s.finished_at) {
-      // 掃描完成，載入結果
+      // 掃描完成（正常 running=false 路徑），載入結果
       clearInterval(_ghPollTimer);
       _ghPollTimer = null;
       document.getElementById('screen-progress-bar').style.width = '100%';
@@ -3172,6 +3203,8 @@ async function _pollGhProgress() {
       renderStratBar();
       const first = Object.keys(STRATEGY_LABELS).find(k => (_screenAllResults[k] || []).length > 0);
       if (first) viewStrategy(first);
+      const _ts2 = new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'});
+      _ghBadgeSet(`${_ts2} ✅ 找到 ${newTotal} 支（共掃 ${s.progress} 支）`, true);
       toast(`✅ 掃描完成！共掃 ${s.progress} 支，找到 ${newTotal} 支符合策略`);
       btn.disabled = false;
       btn.textContent = '⚡ 全市場掃描';
@@ -3182,16 +3215,17 @@ async function _pollGhProgress() {
         `掃描啟動中... ⏱ ${elapsedStr}`;
     } else {
       // running=false + finished_at=null + elapsed>=30 → 伺服器重啟或異常終止
-      // （此 else 只有在 s.running=false 時才可能到達，正常掃描 running=true 不會進來）
       clearInterval(_ghPollTimer);
       _ghPollTimer = null;
       btn.disabled = false;
       btn.textContent = '⚡ 全市場掃描';
       document.getElementById('screen-progress-text').textContent = '';
       document.getElementById('screen-progress-bar-wrap').style.display = 'none';
+      const _ts3 = new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'});
+      _ghBadgeSet(`${_ts3} ❌ 掃描異常中斷`, false);
       toast('掃描異常中斷，請重新執行', true);
     }
-  } catch(e) { /* ignore */ }
+  } catch(e) { console.warn('[_pollGhProgress] poll error:', e); }
 }
 
 async function pollScreenStatus() {
@@ -3472,6 +3506,29 @@ async function warmupServer() {
 (async function init() {
   await warmupServer();
   startCacheWarmupPolling();
+
+  // 恢復上次掃描狀態標誌（只有最終結果才存 localStorage，重整後仍顯示）
+  try {
+    const _b = JSON.parse(localStorage.getItem('chip_scan_badge') || 'null');
+    if (_b) _ghBadgeSet(_b.text, _b.isOk, false);  // persist=false 避免重寫
+  } catch(e) {}
+
+  // 偵測掃描正在執行 → 自動重連進度追蹤（不需要使用者再按一次）
+  try {
+    const _initStatus = await api('GET', '/api/screen/status');
+    if (_initStatus.running) {
+      const _ghBtn = document.getElementById('btn-trigger-gh');
+      _ghBtn.disabled = true; _ghBtn.textContent = '⚡ 掃描中...';
+      document.getElementById('screen-progress-bar-wrap').style.display = 'block';
+      _ghScanStartedAt = Date.now();  // 以重連時間為基準（顯示重連後 elapsed）
+      window._ghResultsPreloaded = false;
+      if (_ghPollTimer) clearInterval(_ghPollTimer);
+      _ghPollTimer = setInterval(_pollGhProgress, 5000);
+      _pollGhProgress();  // 立即執行一次，不等 5 秒
+      const _badgeEl = document.getElementById('gh-scan-last-badge');
+      if (_badgeEl) { _badgeEl.textContent = '⏳ 掃描進行中，自動追蹤中...'; _badgeEl.style.color='var(--muted)'; }
+    }
+  } catch(e) { /* 無法取得狀態，略過重連 */ }
 
   // 從 localStorage 恢復策略掃描結果（重整後不消失）
   const _savedScreen = lsLoadScreen();
