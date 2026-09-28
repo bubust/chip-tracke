@@ -419,7 +419,7 @@ def screen_s1_2(prices: dict, names: dict = None, params: dict = None) -> list:
         if float(today['close']) <= min_price:
             continue
         vol = float(today.get('volume', 0) or 0)
-        if min_vol_lots > 0 and vol < min_vol_lots * 1000:
+        if min_vol_lots > 0 and vol < min_vol_lots:
             continue
         if dif1.iloc[-1] <= 0 or dea1.iloc[-1] <= 0:
             continue
@@ -458,7 +458,7 @@ def screen_s2(prices: dict, names: dict = None, params: dict = None) -> list:
         if float(today['close']) <= min_price:
             continue
         vol = today.get('volume', 0) or 0
-        if float(vol) < min_vol_lots * 1000:
+        if float(vol) < min_vol_lots:
             continue
         ma10  = calc_ma(closes, 10)
         ma60  = calc_ma(closes, 60)
@@ -502,7 +502,7 @@ def screen_s5(prices: dict, names: dict = None, params: dict = None) -> list:
         if float(today['close']) <= min_price:
             continue
         vol = float(today.get('volume', 0) or 0)
-        if min_vol_lots > 0 and vol < min_vol_lots * 1000:
+        if min_vol_lots > 0 and vol < min_vol_lots:
             continue
         ma5   = calc_ma(closes, 5)
         ma10  = calc_ma(closes, 10)
@@ -687,7 +687,7 @@ def screen_spb(prices: dict, names: dict = None, params: dict = None) -> list:
         if tc <= min_price:
             continue
         vol = float(today.get('volume', 0) or 0)
-        if vol < min_vol_lots * 1000:
+        if vol < min_vol_lots:
             continue
         ma10 = calc_ma(closes, 10)
         ma60 = calc_ma(closes, 60)
@@ -747,7 +747,7 @@ def screen_sfbd(prices: dict, names: dict = None, params: dict = None) -> list:
         if tc <= min_price:
             continue
         vol = float(today.get('volume', 0) or 0)
-        if vol < min_vol_lots * 1000:
+        if vol < min_vol_lots:
             continue
         ma10 = calc_ma(closes, 10)
         ma60 = calc_ma(closes, 60)
@@ -824,7 +824,7 @@ def screen_sres(prices: dict, names: dict = None, params: dict = None) -> list:
         if tc <= min_price:
             continue
         vol = float(today.get('volume', 0) or 0)
-        if vol < min_vol_lots * 1000:
+        if vol < min_vol_lots:
             continue
         ma10 = calc_ma(closes, 10)
         ma60 = calc_ma(closes, 60)
@@ -907,7 +907,7 @@ def screen_skd(prices: dict, names: dict = None, params: dict = None) -> list:
         if tc <= min_price:
             continue
         vol = float(today.get('volume', 0) or 0)
-        if vol < min_vol_lots * 1000:
+        if vol < min_vol_lots:
             continue
         k_ser, d_ser = calc_kd(df, n=kd_period)
         k_now = k_ser.iloc[-1]
@@ -1099,7 +1099,7 @@ def screen_s_warrant_top(
             "change_pct":        _change_pct(df),
             "volume":            int(float(last.get("volume", 0) or 0)),
             "bb_score":          calc_bb_score(df),
-            "call_turnover_wan": round(row.get("call_turnover", 0) / 10000, 1),
+            "call_turnover_wan": round(row.get("call_turnover", 0), 1),
             "cp_ratio":          row.get("cp_ratio"),
             "trade_date":        row.get("trade_date", ""),
             "strategy":          "S_WARRANT_TOP",

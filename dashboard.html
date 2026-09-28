@@ -984,12 +984,27 @@ function renderDpBody(tab, d) {
       const arrow = val > 0 ? '▲' : '▼';
       return `<div style="font-size:.82rem;color:#e6edf3">${lbl}: <span style="color:${col};font-weight:600">${arrow} ${Math.abs(val)}%</span></div>`;
     };
+    const fmtRev = (v, unit) => {
+      if (v == null) return '—';
+      const base = (unit === '千元') ? v * 1000 : v;  // 統一換算成實際元
+      if (base >= 1e9) return (base/1e8).toFixed(1) + '億';
+      if (base >= 1e6) return (base/1e6).toFixed(1) + '百萬';
+      return (base/1e3).toFixed(0) + '千';
+    };
     const sigCol = f.signal==='高成長'?'#3fb950':f.signal==='成長'?'#58a6ff':f.signal==='衰退'?'#f85149':'#8b949e';
+    const hlHtml = (f.highlights||[]).map(h => {
+      const col = h.type==='good'?'#3fb950':h.type==='warn'?'#f85149':'#8b949e';
+      const ico = h.type==='good'?'✅':h.type==='warn'?'⚠️':'ℹ️';
+      return `<div style="font-size:.8rem;color:${col};padding:3px 0;border-bottom:1px solid #21262d">${ico} ${h.text}</div>`;
+    }).join('') || '<div style="font-size:.8rem;color:#8b949e">無額外亮點或警示</div>';
     body.innerHTML = `
-      <div style="font-size:.75rem;color:#8b949e;margin-bottom:10px">最新季度：${lt.date||'—'}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:.75rem;color:#8b949e">最新季度：${lt.date||'—'}</span>
+        ${f.source ? `<span style="font-size:.68rem;color:#484f58;background:#21262d;padding:2px 6px;border-radius:4px">來源：${f.source}</span>` : ''}
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
         <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">EPS</div>
+          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">EPS（元）</div>
           <div style="font-size:1.2rem;font-weight:700;color:${(lt.eps||0)>0?'#3fb950':'#f85149'}">${lt.eps!=null?lt.eps:'—'}</div>
         </div>
         <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
@@ -997,15 +1012,17 @@ function renderDpBody(tab, d) {
           <div style="font-size:1.2rem;font-weight:700;color:#e6edf3">${lt.gross_margin!=null?lt.gross_margin+'%':'—'}</div>
         </div>
         <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">營收(千)</div>
-          <div style="font-size:1rem;font-weight:700;color:#e6edf3">${lt.revenue!=null?(lt.revenue/1000).toFixed(0):'—'}</div>
+          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">營收</div>
+          <div style="font-size:1rem;font-weight:700;color:#e6edf3">${fmtRev(lt.revenue, lt.revenue_unit)}</div>
         </div>
       </div>
       <div style="margin-bottom:12px">
         ${growthHtml(f.eps_growth_yoy, 'EPS YoY')}
         ${growthHtml(f.revenue_growth_yoy, '營收 YoY')}
       </div>
-      <div style="padding:8px 12px;background:${sigCol}22;border:1px solid ${sigCol}55;border-radius:6px;color:${sigCol};font-weight:600;font-size:.85rem">財務：${f.signal}</div>`;
+      <div style="padding:8px 12px;background:${sigCol}22;border:1px solid ${sigCol}55;border-radius:6px;color:${sigCol};font-weight:600;font-size:.85rem;margin-bottom:12px">財務訊號：${f.signal}</div>
+      <div style="font-size:.75rem;color:#8b949e;margin-bottom:6px;font-weight:600">亮點 / 警示</div>
+      <div style="background:#0d1117;border-radius:6px;padding:8px 10px">${hlHtml}</div>`;
 
   } else if (tab === 'news') {
     const news = d.news || {};
@@ -3538,8 +3555,8 @@ function renderScreenTable(strategy, data) {
       })()}</td>
       ${pctTd}
       ${extraTd}
-      <td class="muted">${(() => { if (!row.volume) return '—'; const lots = Math.round(row.volume / 1000); return lots >= 10000 ? (lots/10000).toFixed(1)+'萬' : lots.toLocaleString('zh-TW'); })()}</td>
-      <td class="muted hide-mobile">${(() => { if (!row.close || !row.volume) return '—'; const amt = row.close * row.volume; if (amt >= 1e8) return (amt/1e8).toFixed(2)+'億'; if (amt >= 1e4) return Math.round(amt/1e4)+'萬'; return '—'; })()}</td>
+      <td class="muted">${(() => { if (!row.volume) return '—'; const lots = Math.round(row.volume); return lots >= 10000 ? (lots/10000).toFixed(1)+'萬' : lots.toLocaleString('zh-TW'); })()}</td>
+      <td class="muted hide-mobile">${(() => { if (!row.close || !row.volume) return '—'; const amt = row.close * row.volume * 1000; if (amt >= 1e8) return (amt/1e8).toFixed(2)+'億'; if (amt >= 1e4) return Math.round(amt/1e4)+'萬'; return '—'; })()}</td>
       <td class="${(row.bb_score??0)>0?'pos':(row.bb_score??0)<0?'neg':'muted'} hide-mobile" title="上軌=+10 中軌=0 下軌=-10">${row.bb_score!=null ? ((row.bb_score>0?'+':'')+row.bb_score) : '—'}</td>
       <td style="white-space:nowrap"><button class="btn sm ghost" onclick="addFromMarket('${row.stock_id}','${(STRATEGY_LABELS[strategy]||strategy).replace(/[（(][^）)]{10,}[）)]/g,'').trim()}')">+ 加入清單</button>
       <button class="btn sm ghost" style="margin-left:4px;border-color:#a78bfa;color:#a78bfa" onclick="openDeepPanel('${row.stock_id}','${(row.name||row.stock_id).replace(/'/g,'')}')">🔬</button></td>
@@ -4308,14 +4325,14 @@ async function openChart(stockId, savedRange = null) {
       priceLineVisible: false, lastValueVisible: false,
     });
     vSeries.setData(ohlcv.map(r => ({
-      time: r.ts != null ? r.ts : _toDate(r.date), value: r.volume / 1000,
+      time: r.ts != null ? r.ts : _toDate(r.date), value: r.volume,
       color: r.close >= r.open ? 'rgba(239,83,80,0.7)' : 'rgba(38,166,154,0.7)'
     })));
 
     const vLeg = _mkLegend(vEl);
     function updateVLeg(idx) {
       const i = Math.min(Math.max(idx, 0), n - 1);
-      vLeg.innerHTML = `<span style="color:#9598a1">成交量：${_fmtVol(ohlcv[i].volume / 1000)}</span>`;
+      vLeg.innerHTML = `<span style="color:#9598a1">成交量：${_fmtVol(ohlcv[i].volume)}</span>`;
     }
     updateVLeg(n - 1);
 
@@ -4386,7 +4403,7 @@ async function openChart(stockId, savedRange = null) {
     ohlcv.forEach((r, i) => {
       _tMap[_toDate(r.date)] = {
         close: r.close,
-        vol:   r.volume / 1000,
+        vol:   r.volume,
         macd:  hist1[i],
         macd2: hist2[i],
       };

@@ -85,6 +85,8 @@ def _parse_yahoo_json(data: dict) -> pd.DataFrame:
     df = df[df["close"] > 0]
     df["date"] = df.index.strftime("%Y%m%d")
     df = df.reset_index(drop=True)[["date", "open", "high", "low", "close", "volume"]]
+    # Yahoo 成交量為「股數（股）」，台股 1 張 = 1000 股，統一轉為張，與 price_cache 一致
+    df["volume"] = (df["volume"].fillna(0) / 1000).round().astype(int)
 
     # 午夜換日補丁：Yahoo 換日時最後一行 close 會暫時變 None，
     # 用 meta.regularMarketPrice + regularMarketTime 補回最新收盤。
@@ -103,7 +105,7 @@ def _parse_yahoo_json(data: dict) -> pd.DataFrame:
             # 只有在 df 裡沒有這天資料時才補（日期統一台灣時間，比對才準）
             elif df.empty or df.iloc[-1]["date"] != last_date:
                 try:
-                    vol = int(rmv)
+                    vol = int(rmv) // 1000  # 股 → 張
                 except Exception:
                     vol = 0
                 # 用 meta 的真實 open/high/low，避免 open==close 造成策略誤判

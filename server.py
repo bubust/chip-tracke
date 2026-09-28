@@ -1400,6 +1400,42 @@ async def _deep_fundamental(stock_id: str) -> dict | None:
         return None
 
 
+def _fin_highlights(eps, gross_margin, eps_yoy, rev_yoy) -> list[dict]:
+    """生成財務亮點 / 警示清單。type: good=亮點 warn=警示 info=中性"""
+    items = []
+    if eps is not None:
+        if eps < 0:
+            items.append({"type": "warn", "text": f"EPS 虧損（{eps} 元），獲利能力待觀察"})
+        elif eps >= 8:
+            items.append({"type": "good", "text": f"EPS {eps} 元，高獲利優質股"})
+        elif eps >= 3:
+            items.append({"type": "good", "text": f"EPS {eps} 元，獲利穩健"})
+    if gross_margin is not None:
+        if gross_margin >= 50:
+            items.append({"type": "good", "text": f"毛利率 {gross_margin}%，高競爭壁壘"})
+        elif gross_margin >= 30:
+            items.append({"type": "good", "text": f"毛利率 {gross_margin}%，獲利空間充足"})
+        elif gross_margin < 10:
+            items.append({"type": "warn", "text": f"毛利率僅 {gross_margin}%，競爭激烈或成本壓力"})
+    if eps_yoy is not None:
+        if eps_yoy >= 50:
+            items.append({"type": "good", "text": f"EPS 年增 +{eps_yoy}%，爆發性成長"})
+        elif eps_yoy >= 20:
+            items.append({"type": "good", "text": f"EPS 年增 +{eps_yoy}%，成長動能強勁"})
+        elif eps_yoy <= -50:
+            items.append({"type": "warn", "text": f"EPS 年減 {eps_yoy}%，獲利大幅衰退"})
+        elif eps_yoy <= -20:
+            items.append({"type": "warn", "text": f"EPS 年減 {eps_yoy}%，獲利趨弱"})
+    if rev_yoy is not None:
+        if rev_yoy >= 30:
+            items.append({"type": "good", "text": f"營收年增 +{rev_yoy}%，業務高速擴張"})
+        elif rev_yoy >= 10:
+            items.append({"type": "info", "text": f"營收年增 +{rev_yoy}%，成長趨勢"})
+        elif rev_yoy <= -20:
+            items.append({"type": "warn", "text": f"營收年減 {rev_yoy}%，需留意訂單能見度"})
+    return items
+
+
 async def _deep_financial(stock_id: str) -> dict | None:
     """財務：FinMind TaiwanFinancialStatements — EPS/營收/毛利率"""
     from datetime import date, timedelta
@@ -1475,10 +1511,13 @@ async def _deep_financial(stock_id: str) -> dict | None:
                 "eps": eps_latest,
                 "revenue": int(rev_latest) if rev_latest else None,
                 "gross_margin": gross_margin,
+                "revenue_unit": "千元",  # FinMind 單位
             },
             "eps_growth_yoy": eps_yoy,
             "revenue_growth_yoy": rev_yoy,
             "signal": sig,
+            "highlights": _fin_highlights(eps_latest, gross_margin, eps_yoy, rev_yoy),
+            "source": "FinMind",
         }
     except Exception as e:
         log.warning(f"[deep_fin] FinMind {stock_id}: {e}")
@@ -1513,16 +1552,20 @@ async def _deep_financial(stock_id: str) -> dict | None:
                     else: sig = "衰退"
                 if not any(v is not None for v in [total_rev, gross_margin, eps, eps_yoy]):
                     return None  # 完全無資料才返回 None
+                _eps_r = round(eps, 2) if eps else None
                 return {
                     "latest": {
                         "date": "",
-                        "eps": round(eps, 2) if eps else None,
+                        "eps": _eps_r,
                         "revenue": int(total_rev) if total_rev else None,
                         "gross_margin": gross_margin,
+                        "revenue_unit": "元",  # Yahoo 單位為實際 TWD
                     },
                     "eps_growth_yoy": eps_yoy,
                     "revenue_growth_yoy": rev_yoy,
                     "signal": sig,
+                    "highlights": _fin_highlights(_eps_r, gross_margin, eps_yoy, rev_yoy),
+                    "source": "Yahoo Finance",
                 }
         except Exception as e2:
             log.warning(f"[deep_fin_yf] {stock_id}: {e2}")
@@ -3323,7 +3366,7 @@ def api_stock_ohlcv(stock_id: str, interval: str = "1d"):
                             "high":   highs[i] if i < len(highs) else c,
                             "low":    lows[i]  if i < len(lows)  else c,
                             "close":  c,
-                            "volume": int(vols[i] or 0) if i < len(vols) else 0,
+                            "volume": int(vols[i] or 0) // 1000 if i < len(vols) else 0,  # 股 → 張
                         })
                     if records:
                         return records[-2000:]
@@ -3365,7 +3408,8 @@ def api_stock_ohlcv(stock_id: str, interval: str = "1d"):
                 df_fm = df_fm[["date", "open", "high", "low", "close", "volume"]]
                 df_fm = df_fm.dropna(subset=["close"]).astype(
                     {"open": float, "high": float, "low": float,
-                     "close": float, "volume": int})
+                     "close": float, "volume": float})
+                df_fm["volume"] = (df_fm["volume"] / 1000).round().astype(int)  # 股 → 張
                 if interval == "1wk":
                     df_fm["_dt"] = pd.to_datetime(df_fm["date"], format="%Y%m%d")
                     df_fm = df_fm.set_index("_dt").resample("W").agg(

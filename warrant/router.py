@@ -118,51 +118,25 @@ def run_scanner():
         errors  = 0
         BATCH   = 50
 
-        # ── 盤外模式：優先使用 TWSE/TPEx 官方日成交（不依賴 MIS）──
+        # ── 盤外模式：重用 flow.py 已驗證的 TWSE/TPEx 官方日成交取得函式 ──
         twse_vol: dict[str, dict] = {}
         if not market_open:
             try:
-                import httpx as _hx
-                _today = datetime.now().strftime("%Y%m%d")
-                _hdrs = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.twse.com.tw/"}
-                with _hx.Client(timeout=15, headers=_hdrs) as _hc:
-                    # 上市權證 (TWTB4U)
-                    _r = _hc.get("https://www.twse.com.tw/rwd/zh/option/TWTB4U",
-                                 params={"response": "json", "date": _today})
-                    if _r.is_success:
-                        _jd = _r.json()
-                        _flds = _jd.get("fields", [])
-                        for _row in _jd.get("data", []):
-                            _d = dict(zip(_flds, _row))
-                            _code = _d.get("證券代號", "").strip()
-                            if not _code:
-                                continue
-                            try:
-                                _vol   = int(str(_d.get("成交股數", "0")).replace(",", "")) // 1000
-                                _turn  = float(str(_d.get("成交金額", "0")).replace(",", ""))
-                                _price = float(str(_d.get("收盤價", "0")).replace(",", "") or 0)
-                                twse_vol[_code] = {"volume": _vol, "turnover": _turn, "price": _price, "market": "TSE"}
-                            except Exception:
-                                pass
-                    # 上櫃權證 (TWTB4U OTC 端點)
-                    _ro = _hc.get("https://www.tpex.org.tw/web/stock/warrants/b4u/b4u_result.php",
-                                  params={"l": "zh-tw", "d": _today[:4]+"/"+_today[4:6]+"/"+_today[6:]})
-                    if _ro.is_success:
-                        _jo = _ro.json()
-                        for _r2 in _jo.get("aaData", []):
-                            if len(_r2) < 5:
-                                continue
-                            _code = str(_r2[0]).strip()
-                            try:
-                                _vol2  = int(str(_r2[2]).replace(",", ""))
-                                _turn2 = float(str(_r2[3]).replace(",", ""))
-                                _price2 = float(str(_r2[4]).replace(",", "") or 0)
-                                twse_vol[_code] = {"volume": _vol2, "turnover": _turn2, "price": _price2, "market": "OTC"}
-                            except Exception:
-                                pass
+                _today_str = datetime.now().strftime("%Y-%m-%d")
+                _twse_rows = _flow.fetch_twse_daily(_today_str)
+                _tpex_rows = _flow.fetch_tpex_daily(_today_str)
+                for _row in _twse_rows + _tpex_rows:
+                    _code = _row.get("code", "").strip()
+                    if _code:
+                        twse_vol[_code] = {
+                            "volume":   _row.get("volume", 0),
+                            "turnover": _row.get("turnover", 0),
+                            "price":    _row.get("close", 0),
+                            "market":   _row.get("market", "TSE"),
+                        }
                 log.info(f"[scanner] TWSE/TPEx 盤後取得 {len(twse_vol)} 檔權證成交量")
             except Exception as _tw_e:
-                log.warning(f"[scanner] TWSE盤後資料失敗，降級用MIS: {_tw_e}")
+                log.warning(f"[scanner] TWSE盤後資料失敗: {_tw_e}")
 
         for i in range(0, len(candidates), BATCH):
             batch = candidates[i:i + BATCH]
@@ -277,7 +251,13 @@ def init_warrant():
         def _bg_init():
             try:
                 ingester.ingest_contracts()
-                log.info("[warrant] 初始合約檔完成，自動觸發掃描...")
+                log.info("[warrant] 初始合約檔完成，計算金流日報...")
+                try:
+                    _flow.calc_and_save()
+                    log.info("[warrant] 金流日報計算完成")
+                except Exception as _fe:
+                    log.warning(f"[warrant] 金流日報計算失敗（非致命）: {_fe}")
+                log.info("[warrant] 自動觸發掃描...")
                 run_scanner()
             except Exception as e:
                 log.error(f"[warrant] 初始合約檔失敗: {e}")
@@ -291,6 +271,20 @@ def init_warrant():
             except Exception as e:
                 log.error(f"[warrant] rebuild_underlyings 失敗: {e}")
         threading.Thread(target=_bg_rebuild, daemon=True).start()
+
+    # 若 warrant_flow 無資料但合約已存在，背景計算今日金流（供 S_WARRANT_TOP 使用）
+    if w_cnt > 0:
+        with _db.db() as conn:
+            flow_cnt = conn.execute("SELECT COUNT(*) FROM warrant_flow").fetchone()[0]
+        if flow_cnt == 0:
+            log.info("[warrant] warrant_flow 為空，背景計算今日金流...")
+            def _bg_flow_init():
+                try:
+                    _flow.calc_and_save()
+                    log.info("[warrant] 金流日報初始化完成")
+                except Exception as e:
+                    log.error(f"[warrant] 金流日報初始化失敗: {e}")
+            threading.Thread(target=_bg_flow_init, daemon=True).start()
 
 def start_warrant_scheduler():
     scheduler.add_job(lambda: ingester.ingest_contracts(), "cron", hour=8, minute=0, id="w_contracts", replace_existing=True)
