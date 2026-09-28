@@ -200,7 +200,8 @@ const SERIES_LABELS = {
   TAIEX: '台股加權', OTC: '上櫃指數', SP500: 'S&P 500',
   SOX: 'SOX 半導體', VIX: 'VIX 恐慌', US10Y: '美債10Y(%)',
   USDTWD: 'USD/TWD', TSM_ADR: 'TSM ADR', NASDAQ: 'Nasdaq',
-  MARGIN_BALANCE: '融資餘額(股)', FOREIGN_NET_LOT: '外資現貨(張)',
+  MARGIN_BALANCE: '融資餘額(股)', SHORT_BALANCE: '融券餘額(股)', SHORT_MARGIN_RATIO: '券資比(%)',
+  FOREIGN_NET_LOT: '外資現貨(張)',
   BREADTH_50MA: '上漲家數占比(%)', AD_LINE: '漲跌家數差',
   MEDIAN_RET: '全市場中位數漲跌(%)', FOREIGN_FUTURES_NET: '外資期貨淨部位(張)',
   OVERHEATING_INDEX: '過熱指數 (成交/委買)',
@@ -598,6 +599,14 @@ function interpretSignal(k, val, diff) {
       if (diff != null && diff > 50000) return { dot: '🔴', hint: '融資急增 — 散戶過熱' };
       if (diff != null && diff < -30000) return { dot: '🟡', hint: '融資減少 — 籌碼乾淨' };
       return { dot: '🟡', hint: '融資平穩' };
+    case 'SHORT_BALANCE':
+      if (diff != null && diff > 20000) return { dot: '🔴', hint: '融券急增 — 空方壓力升' };
+      if (diff != null && diff < -10000) return { dot: '🟢', hint: '融券減少 — 空方回補' };
+      return { dot: '🟡', hint: '融券平穩' };
+    case 'SHORT_MARGIN_RATIO':
+      if (val > 20) return { dot: '🔴', hint: `券資比 ${val.toFixed(1)}% — 空方壓力大` };
+      if (val > 12) return { dot: '🟡', hint: `券資比 ${val.toFixed(1)}% — 偏高` };
+      return { dot: '🟢', hint: `券資比 ${val.toFixed(1)}%` };
     case 'BREADTH_50MA':
       if (val > 70)  return { dot: '🟢', hint: '多頭廣度佳' };
       if (val > 50)  return { dot: '🟡', hint: '廣度中性' };
@@ -630,12 +639,12 @@ function interpretSignal(k, val, diff) {
 
 async function loadSeries() {
   const KEYS = ['TAIEX','OTC','SP500','SOX','VIX','US10Y','USDTWD','TSM_ADR',
-                'FOREIGN_NET_LOT','FOREIGN_FUTURES_NET','MARGIN_BALANCE',
+                'FOREIGN_NET_LOT','FOREIGN_FUTURES_NET','MARGIN_BALANCE','SHORT_BALANCE','SHORT_MARGIN_RATIO',
                 'BREADTH_50MA','AD_LINE','MEDIAN_RET',
                 'OVERHEATING_INDEX','PANIC_INDEX'];
   const rows = await Promise.all(KEYS.map(k => api(`/api/regime/series/${k}?days=2`)));
   const el = document.getElementById('series-list');
-  const ABS_KEYS = new Set(['BREADTH_50MA', 'AD_LINE', 'MEDIAN_RET', 'MARGIN_BALANCE', 'FOREIGN_NET_LOT', 'FOREIGN_FUTURES_NET']);
+  const ABS_KEYS = new Set(['BREADTH_50MA', 'AD_LINE', 'MEDIAN_RET', 'MARGIN_BALANCE', 'SHORT_BALANCE', 'SHORT_MARGIN_RATIO', 'FOREIGN_NET_LOT', 'FOREIGN_FUTURES_NET']);
   const PCT_RATIO_KEYS = new Set(['OVERHEATING_INDEX', 'PANIC_INDEX']); // 0~1 的比率，顯示為 %
   const THRESHOLDS = { OVERHEATING_INDEX: 0.5, PANIC_INDEX: 0.75 };
 
@@ -672,8 +681,9 @@ async function loadSeries() {
     } else if (ABS_KEYS.has(k)) {
       const diff = prev ? latest.value - prev.value : null;
       rawDiff = diff;
-      valStr = k === 'BREADTH_50MA' ? latest.value.toFixed(1) + '%'
-             : k === 'MEDIAN_RET'   ? (latest.value >= 0 ? '+' : '') + latest.value.toFixed(3) + '%'
+      valStr = k === 'BREADTH_50MA'      ? latest.value.toFixed(1) + '%'
+             : k === 'MEDIAN_RET'        ? (latest.value >= 0 ? '+' : '') + latest.value.toFixed(3) + '%'
+             : k === 'SHORT_MARGIN_RATIO'? latest.value.toFixed(1) + '%'
              : Number(latest.value).toLocaleString();
       if (diff != null) {
         col = diff >= 0 ? '#3fb950' : '#f85149';

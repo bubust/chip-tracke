@@ -163,6 +163,24 @@ def fetch_twse_margin(days: int = 5):
                         if val is None:
                             continue
                         upsert_series(conn, dt, "MARGIN_BALANCE", val, "TWSE_OPENAPI")
+                        # 嘗試提取融券餘額（openapi 格式）
+                        short_val_oa = None
+                        for sfield in ["ShortSaleTodayBalance", "ShortSaleBalance",
+                                       "融券(今日餘額)", "融券今日餘額", "融券餘額"]:
+                            raw_s = str(row.get(sfield, "")).replace(",", "").strip()
+                            if raw_s and raw_s not in ("", "-", "--", "0"):
+                                try:
+                                    sv = float(raw_s)
+                                    if sv > 0:
+                                        short_val_oa = sv
+                                        break
+                                except Exception:
+                                    pass
+                        if short_val_oa is not None:
+                            upsert_series(conn, dt, "SHORT_BALANCE", short_val_oa, "TWSE_OPENAPI")
+                            if val > 0:
+                                ratio = round(short_val_oa / val * 100, 2)
+                                upsert_series(conn, dt, "SHORT_MARGIN_RATIO", ratio, "TWSE_OPENAPI")
                         inserted += 1
                 log.info(f"[fetcher] MARGIN_BALANCE (openapi): {inserted} 筆")
                 if inserted > 0:
@@ -191,19 +209,41 @@ def fetch_twse_margin(days: int = 5):
                             if "今日餘額" in str(f) or "今日" in str(f):
                                 today_idx = i
                                 break
+                        margin_val = None
+                        short_val  = None
                         for row in data_rows:
                             if not row:
                                 continue
                             label = str(row[0]).strip()
-                            # 找「融資(交易單位)」列
+                            # 融資(交易單位) 列
                             if "融資" in label and ("交易" in label or "單位" in label):
-                                val_raw = str(row[today_idx]).replace(",", "").strip()
-                                val = float(val_raw)
-                                if val > 0:
-                                    with db() as conn:
-                                        upsert_series(conn, dt, "MARGIN_BALANCE", val, "TWSE_RWD")
-                                    log.info(f"[fetcher] MARGIN_BALANCE (rwd): {val:,.0f} 張 ({dt})")
-                                    return
+                                try:
+                                    v = float(str(row[today_idx]).replace(",", "").strip())
+                                    if v > 0:
+                                        margin_val = v
+                                except Exception:
+                                    pass
+                            # 融券(交易單位) 列
+                            elif "融券" in label and ("交易" in label or "單位" in label):
+                                try:
+                                    v = float(str(row[today_idx]).replace(",", "").strip())
+                                    if v > 0:
+                                        short_val = v
+                                except Exception:
+                                    pass
+                        if margin_val is not None or short_val is not None:
+                            with db() as conn:
+                                if margin_val is not None:
+                                    upsert_series(conn, dt, "MARGIN_BALANCE", margin_val, "TWSE_RWD")
+                                    log.info(f"[fetcher] MARGIN_BALANCE (rwd): {margin_val:,.0f} 張 ({dt})")
+                                if short_val is not None:
+                                    upsert_series(conn, dt, "SHORT_BALANCE", short_val, "TWSE_RWD")
+                                    log.info(f"[fetcher] SHORT_BALANCE (rwd): {short_val:,.0f} 張 ({dt})")
+                                if margin_val and short_val:
+                                    ratio = round(short_val / margin_val * 100, 2)
+                                    upsert_series(conn, dt, "SHORT_MARGIN_RATIO", ratio, "TWSE_RWD")
+                                    log.info(f"[fetcher] SHORT_MARGIN_RATIO (rwd): {ratio}% ({dt})")
+                            return
                     except Exception as e:
                         log.warning(f"[fetcher] MI_MARGN rwd parse: {e}")
                     continue
@@ -214,10 +254,13 @@ def fetch_twse_margin(days: int = 5):
                 if not data_rows:
                     continue
                 margin_idx = None
+                short_idx  = None
                 for i, f in enumerate(fields):
-                    if "融資" in str(f) and ("餘額" in str(f) or "買進" in str(f)):
+                    fs = str(f)
+                    if "融資" in fs and ("餘額" in fs or "買進" in fs):
                         margin_idx = i
-                        break
+                    if "融券" in fs and ("餘額" in fs or "賣出" in fs):
+                        short_idx = i
                 if margin_idx is None and len(fields) >= 3:
                     margin_idx = 2
                 inserted = 0
@@ -233,10 +276,24 @@ def fetch_twse_margin(days: int = 5):
                                 dt = f"{date_raw[:4]}-{date_raw[4:6]}-{date_raw[6:]}"
                             else:
                                 continue
+                            mval = None
+                            sval = None
                             if margin_idx is not None:
-                                val_raw = str(row[margin_idx]).replace(",", "").strip()
-                                val = float(val_raw)
-                                upsert_series(conn, dt, "MARGIN_BALANCE", val, "TWSE_JSON")
+                                try:
+                                    mval = float(str(row[margin_idx]).replace(",", "").strip())
+                                    upsert_series(conn, dt, "MARGIN_BALANCE", mval, "TWSE_JSON")
+                                except Exception:
+                                    pass
+                            if short_idx is not None:
+                                try:
+                                    sval = float(str(row[short_idx]).replace(",", "").strip())
+                                    upsert_series(conn, dt, "SHORT_BALANCE", sval, "TWSE_JSON")
+                                except Exception:
+                                    pass
+                            if mval and sval:
+                                ratio = round(sval / mval * 100, 2)
+                                upsert_series(conn, dt, "SHORT_MARGIN_RATIO", ratio, "TWSE_JSON")
+                            if mval is not None:
                                 inserted += 1
                         except Exception:
                             continue

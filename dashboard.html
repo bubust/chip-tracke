@@ -3253,7 +3253,7 @@ async function _pollGhProgress() {
             }
             if (tot > 0) {
               _unlockGhBtn(`✅ 掃描完成！找到 ${tot} 支符合策略`, false,
-                `✅ 找到 ${tot} 支 · 成功${s.yahoo_ok}/失敗${s.yahoo_fail}`, true);
+                `✅ 找到 ${tot} 支 · 成功${s.yahoo_ok}/失敗${s.yahoo_fail}/跳過${s.skipped_stale||0}`, true);
             } else {
               _unlockGhBtn('掃描完成（無符合策略）', false, '⚠️ 無符合策略');
             }
@@ -3291,7 +3291,7 @@ async function _pollGhProgress() {
       const first = Object.keys(STRATEGY_LABELS).find(k => (_screenAllResults[k] || []).length > 0);
       if (first) viewStrategy(first);
       const _ts2 = new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'});
-      _ghBadgeSet(`${_ts2} ✅ 找到 ${newTotal} 支（掃${s.progress} 成${s.yahoo_ok}/失${s.yahoo_fail}）`, true);
+      _ghBadgeSet(`${_ts2} ✅ 找到 ${newTotal} 支（掃${s.progress} 成${s.yahoo_ok}/失${s.yahoo_fail}/跳${s.skipped_stale||0}）`, true);
       toast(`✅ 掃描完成！共掃 ${s.progress} 支，找到 ${newTotal} 支符合策略`);
       btn.disabled = false;
       btn.textContent = '⚡ 全市場掃描';
@@ -3366,7 +3366,7 @@ async function pollScreenStatus() {
         if (first) viewStrategy(first);
         const total = Object.values(_screenAllResults).reduce((s, a) => s + a.length, 0);
         const diagMsg = (s.yahoo_ok !== undefined)
-          ? `（Yahoo成功 ${s.yahoo_ok}／失敗 ${s.yahoo_fail} 支）` : '';
+          ? `（Yahoo成功 ${s.yahoo_ok}／失敗 ${s.yahoo_fail}／跳過 ${s.skipped_stale||0} 支）` : '';
         // 找第一個有 last_date 的結果，顯示資料日期
         let dataDate = '';
         for (const arr of Object.values(_screenAllResults)) {

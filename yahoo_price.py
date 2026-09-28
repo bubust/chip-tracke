@@ -355,7 +355,8 @@ _scan_status: dict = {
     "yahoo_fail":   0,   # Yahoo 回傳空/失敗的股票數
     "failed_stocks": [],  # 失敗的股票代號清單
     "phase":        "",  # 目前階段："yahoo" | "tdcc" | "done"
-    "tdcc_total":   0,   # TDCC 需爬股票數
+    "tdcc_total":    0,   # TDCC 需爬股票數
+    "skipped_stale": 0,   # 久未更新的殭屍股，掃描前跳過不計入失敗
     "results":      {},
     "finished_at":  None,
     "error":        None,
@@ -431,11 +432,12 @@ def get_scan_status() -> dict:
         "yahoo_ok":      _scan_status["yahoo_ok"],
         "yahoo_fail":    _scan_status["yahoo_fail"],
         "failed_stocks": _scan_status["failed_stocks"],
-        "phase":         _scan_status.get("phase", ""),
-        "tdcc_total":    _scan_status.get("tdcc_total", 0),
-        "counts":        counts,
-        "finished_at":   _scan_status["finished_at"],
-        "error":         _scan_status["error"],
+        "phase":          _scan_status.get("phase", ""),
+        "tdcc_total":     _scan_status.get("tdcc_total", 0),
+        "skipped_stale":  _scan_status.get("skipped_stale", 0),
+        "counts":         counts,
+        "finished_at":    _scan_status["finished_at"],
+        "error":          _scan_status["error"],
     }
 
 
@@ -464,21 +466,34 @@ async def run_market_scan(strategy_params: dict = None):
     # 使用模組級 _results_lock（與 get_scan_results() 共用同一把鎖）
     # _status_lock = threading.Lock()  ← 已移除，改用 _results_lock
 
-    _scan_status["running"]       = True
-    _scan_status["progress"]      = 0
-    _scan_status["phase"]         = "yahoo"
-    _scan_status["tdcc_total"]    = 0
-    _scan_status["yahoo_ok"]      = 0
-    _scan_status["yahoo_fail"]    = 0
-    _scan_status["failed_stocks"] = []
-    _scan_status["results"]       = {}
-    _scan_status["error"]         = None
-    _scan_status["finished_at"]   = None
+    _scan_status["running"]        = True
+    _scan_status["progress"]       = 0
+    _scan_status["phase"]          = "yahoo"
+    _scan_status["tdcc_total"]     = 0
+    _scan_status["yahoo_ok"]       = 0
+    _scan_status["yahoo_fail"]     = 0
+    _scan_status["skipped_stale"]  = 0
+    _scan_status["failed_stocks"]  = []
+    _scan_status["results"]        = {}
+    _scan_status["error"]          = None
+    _scan_status["finished_at"]    = None
 
     try:
         stocks = get_stock_list()
         names  = dict(zip(stocks["stock_id"], stocks["stock_name"]))
         tasks  = list(stocks[["stock_id", "type"]].itertuples(index=False, name=None))
+
+        # ── 預過濾殭屍股（> 60 天無更新）──
+        try:
+            from price_cache import get_stale_stocks
+            stale_set = get_stale_stocks(days_threshold=60)
+            if stale_set:
+                before = len(tasks)
+                tasks = [(sid, mkt) for sid, mkt in tasks if sid not in stale_set]
+                _scan_status["skipped_stale"] = before - len(tasks)
+                print(f"[SCAN] 跳過殭屍股 {_scan_status['skipped_stale']} 支（> 60 天無更新）")
+        except Exception as _stale_e:
+            print(f"[SCAN] 殭屍過濾失敗（非致命）: {_stale_e}")
 
         print(f"[SCAN] 全市場掃描：共 {len(tasks)} 支，{_SCAN_WORKERS} workers")
         _scan_status["total"] = len(tasks)

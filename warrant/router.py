@@ -230,6 +230,63 @@ def run_scanner():
                 "mode":          mode,
             })
         log.info(f"[scanner] 完成（{mode}）：{len(results)} 檔，掃 {len(candidates)} 檔")
+
+        # ── A1: 盤外掃描後直接聚合 warrant_flow（不依賴 geo-blocked TWSE API）──
+        if not market_open and results:
+            try:
+                _today_str2 = datetime.now().strftime("%Y-%m-%d")
+                flow_agg: dict = {}
+                for r in results:
+                    ul = r.get("underlying_code")
+                    if not ul:
+                        continue
+                    if ul not in flow_agg:
+                        flow_agg[ul] = {
+                            "underlying_name": r.get("underlying_name", ""),
+                            "call_volume": 0, "call_turnover": 0.0, "call_count": 0,
+                            "put_volume":  0, "put_turnover":  0.0, "put_count":  0,
+                        }
+                    vol = r.get("volume", 0) or 0
+                    turn = r.get("turnover", 0) or 0
+                    if r["kind"] == "CALL":
+                        flow_agg[ul]["call_volume"]   += vol
+                        flow_agg[ul]["call_turnover"] += turn
+                        flow_agg[ul]["call_count"]    += 1
+                    else:
+                        flow_agg[ul]["put_volume"]    += vol
+                        flow_agg[ul]["put_turnover"]  += turn
+                        flow_agg[ul]["put_count"]     += 1
+
+                now_s2 = datetime.now().isoformat(timespec="seconds")
+                flow_rows = []
+                for ul, d in flow_agg.items():
+                    total = d["call_turnover"] + d["put_turnover"]
+                    if total <= 0:
+                        continue
+                    net = d["call_turnover"] - d["put_turnover"]
+                    cp  = round(d["call_turnover"] / d["put_turnover"], 3) if d["put_turnover"] > 0 else None
+                    flow_rows.append((
+                        _today_str2, ul, d["underlying_name"],
+                        d["call_volume"], round(d["call_turnover"]),
+                        d["call_count"],
+                        d["put_volume"],  round(d["put_turnover"]),
+                        d["put_count"],
+                        round(net), round(total), cp, now_s2
+                    ))
+                if flow_rows:
+                    with _db.db() as conn:
+                        conn.executemany("""
+                            INSERT OR REPLACE INTO warrant_flow
+                            (trade_date, underlying_code, underlying_name,
+                             call_volume, call_turnover, call_count,
+                             put_volume, put_turnover, put_count,
+                             net_turnover, total_turnover, cp_ratio, updated_at)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        """, flow_rows)
+                    log.info(f"[scanner] A1: warrant_flow {_today_str2} 寫入 {len(flow_rows)} 筆（來自掃描）")
+            except Exception as _flow_e:
+                log.warning(f"[scanner] A1: warrant_flow 聚合失敗（非致命）: {_flow_e}")
+
     except Exception as e:
         log.error(f"[scanner] 失敗: {e}")
         with _scanner_lock:
@@ -1025,6 +1082,18 @@ def flow_run(date: str = Query(None, description="YYYY-MM-DD，空=今天")):
 @router.get("/api/flow/status")
 def flow_status():
     return _flow_status
+
+
+@router.post("/api/flow/refresh")
+def flow_refresh():
+    """A2: 手動同步觸發 calc_and_save()，回傳寫入筆數。
+    適合在掃描後補救 warrant_flow 資料（TWSE 被封鎖時 scanner 已從 MIS 聚合，此端點嘗試重新抓 TWSE/TPEx）。
+    """
+    try:
+        saved = _flow.calc_and_save()
+        return {"ok": True, "saved": saved}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "saved": 0}
 
 
 _flow_status: dict = {

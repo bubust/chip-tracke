@@ -533,6 +533,27 @@ def get_stocks_with_history(min_days: int = 100) -> int:
     conn.close()
     return result
 
+def get_stale_stocks(days_threshold: int = 60) -> set:
+    """回傳最後成交日距今超過 days_threshold 天的股票 ID 集合（殭屍股）。
+    利用 idx_price_stock 索引高效掃描；price_daily.date 格式為 YYYY-MM-DD。
+    """
+    from datetime import date, timedelta
+    threshold = (date.today() - timedelta(days=days_threshold)).strftime("%Y-%m-%d")
+    init_price_db()
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        rows = conn.execute(
+            "SELECT stock_id FROM price_daily GROUP BY stock_id HAVING MAX(date) < ?",
+            (threshold,)
+        ).fetchall()
+        return {r[0] for r in rows}
+    except Exception as e:
+        print(f"[PRICE] get_stale_stocks: {e}")
+        return set()
+    finally:
+        conn.close()
+
+
 def get_price_cache_status() -> dict:
     init_price_db()
     conn = sqlite3.connect(str(DB_PATH))
