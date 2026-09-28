@@ -1261,6 +1261,45 @@ async def _deep_chip(stock_id: str) -> dict | None:
                     _all_zero_bucket(buckets["trust"]) and
                     _all_zero_bucket(buckets["dealer"]))
         if all_zero:
+            # ── Fallback：TWSE T86 今日三大法人買賣超（免費，無需 token）──
+            try:
+                from datetime import date as _date_cls
+                _today = _date_cls.today().strftime("%Y%m%d")
+                async with httpx.AsyncClient(timeout=10) as _tc:
+                    _tr = await _tc.get(
+                        "https://www.twse.com.tw/fund/T86",
+                        params={"response": "json", "date": _today, "selectType": "ALLBUT0999"},
+                        headers={"Referer": "https://www.twse.com.tw/"},
+                    )
+                if _tr.is_success:
+                    _tj = _tr.json()
+                    _fields = _tj.get("fields", [])
+                    for _row in _tj.get("data", []):
+                        if _row and str(_row[0]).strip() == stock_id:
+                            def _parse_num(v):
+                                try: return int(str(v).replace(",", "")) // 1000
+                                except: return 0
+                            # fields: 代號,名稱,外資買,外資賣,外資超,...
+                            fi = _fields.index("外陸資買賣超股數(不含外資自營商)") if "外陸資買賣超股數(不含外資自營商)" in _fields else 4
+                            ti = _fields.index("投信買賣超股數") if "投信買賣超股數" in _fields else 10
+                            di = _fields.index("自營商買賣超股數") if "自營商買賣超股數" in _fields else 13
+                            fn = _parse_num(_row[fi]) if len(_row) > fi else 0
+                            tn = _parse_num(_row[ti]) if len(_row) > ti else 0
+                            dn = _parse_num(_row[di]) if len(_row) > di else 0
+                            total = fn + tn + dn
+                            buckets["foreign"] = [fn]
+                            buckets["trust"]   = [tn]
+                            buckets["dealer"]  = [dn]
+                            foreign = {"net_10d": fn, "days_buy": 1 if fn > 0 else 0, "days_sell": 1 if fn < 0 else 0}
+                            trust   = {"net_10d": tn, "days_buy": 1 if tn > 0 else 0, "days_sell": 1 if tn < 0 else 0}
+                            dealer  = {"net_10d": dn, "days_buy": 1 if dn > 0 else 0, "days_sell": 1 if dn < 0 else 0}
+                            sig = ("三大法人強力買超" if total > 3000 else
+                                   "外資買超" if fn > 2000 else
+                                   "三大法人賣超" if total < -3000 else "中性")
+                            return {"foreign": foreign, "trust": trust, "dealer": dealer,
+                                    "total_net_10d": total, "signal": sig, "source": "TWSE今日"}
+            except Exception as _te:
+                log.warning(f"[deep_chip] TWSE fallback {stock_id}: {_te}")
             sig = "⚠️ 法人資料暫時無法取得"
         elif total > 3000:
             sig = "三大法人強力買超"
@@ -1317,13 +1356,42 @@ async def _deep_fundamental(stock_id: str) -> dict | None:
         else:
             sig = "高估"
 
-        return {
+        result = {
             "date": row.get("date", ""),
             "per": round(per, 2) if per is not None else None,
             "pbr": round(pbr, 2) if pbr is not None else None,
             "dividend_yield": round(dy, 2) if dy is not None else None,
             "signal": sig,
         }
+        # ── 補充：Yahoo Finance summaryDetail（市值/52週高低/Beta）──
+        try:
+            async with httpx.AsyncClient(timeout=8, headers={"User-Agent": "Mozilla/5.0"}) as yc:
+                yr = await yc.get(
+                    f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{stock_id}.TW",
+                    params={"modules": "summaryDetail,defaultKeyStatistics"},
+                )
+                if yr.is_success:
+                    ydata = yr.json().get("quoteSummary", {}).get("result", [{}])[0]
+                    sd = ydata.get("summaryDetail", {})
+                    ks = ydata.get("defaultKeyStatistics", {})
+                    mktcap = (sd.get("marketCap") or {}).get("raw")
+                    w52h   = (sd.get("fiftyTwoWeekHigh") or {}).get("raw")
+                    w52l   = (sd.get("fiftyTwoWeekLow") or {}).get("raw")
+                    beta   = (sd.get("beta") or {}).get("raw")
+                    shares = (ks.get("sharesOutstanding") or {}).get("raw")
+                    if mktcap:
+                        result["market_cap"] = round(mktcap / 1e8, 1)   # 億元
+                    if w52h:
+                        result["week52_high"] = round(w52h, 2)
+                    if w52l:
+                        result["week52_low"] = round(w52l, 2)
+                    if beta:
+                        result["beta"] = round(beta, 2)
+                    if shares:
+                        result["shares_outstanding"] = round(shares / 1e8, 2)  # 億股
+        except Exception:
+            pass
+        return result
     except Exception as e:
         log.warning(f"[deep_fund] {stock_id}: {e}")
         return None
@@ -1366,7 +1434,7 @@ async def _deep_financial(stock_id: str) -> dict | None:
 
         quarters = sorted(pivot.keys())
         if not quarters:
-            return None
+            raise ValueError("no_quarters")
 
         latest_q = quarters[-1]
         latest   = pivot[latest_q]
@@ -1410,57 +1478,147 @@ async def _deep_financial(stock_id: str) -> dict | None:
             "signal": sig,
         }
     except Exception as e:
-        log.warning(f"[deep_fin] {stock_id}: {e}")
+        log.warning(f"[deep_fin] FinMind {stock_id}: {e}")
+        # ── Fallback：Yahoo Finance incomeStatementHistory ──
+        try:
+            async with httpx.AsyncClient(timeout=10, headers={"User-Agent": "Mozilla/5.0"}) as yc:
+                yr = await yc.get(
+                    f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{stock_id}.TW",
+                    params={"modules": "incomeStatementHistory,defaultKeyStatistics"},
+                )
+                if not yr.is_success:
+                    return None
+                ydata = yr.json().get("quoteSummary", {}).get("result", [{}])[0]
+                stmts = ydata.get("incomeStatementHistory", {}).get("incomeStatementHistory", [])
+                if not stmts:
+                    return None
+                lt = stmts[0]
+                total_rev = (lt.get("totalRevenue") or {}).get("raw")
+                gross     = (lt.get("grossProfit") or {}).get("raw")
+                net_inc   = (lt.get("netIncome") or {}).get("raw")
+                stats     = ydata.get("defaultKeyStatistics", {})
+                eps       = (stats.get("trailingEps") or {}).get("raw")
+                eps_yoy = rev_yoy = None
+                if len(stmts) >= 2:
+                    prev = stmts[1]
+                    prev_rev = (prev.get("totalRevenue") or {}).get("raw")
+                    prev_ni  = (prev.get("netIncome") or {}).get("raw")
+                    if total_rev and prev_rev and prev_rev != 0:
+                        rev_yoy = round((total_rev - prev_rev) / abs(prev_rev) * 100, 1)
+                    if net_inc and prev_ni and prev_ni != 0:
+                        eps_yoy = round((net_inc - prev_ni) / abs(prev_ni) * 100, 1)
+                gross_margin = round(gross / total_rev * 100, 1) if gross and total_rev else None
+                sig = "無資料"
+                if eps_yoy is not None:
+                    if eps_yoy > 20: sig = "高成長"
+                    elif eps_yoy > 0: sig = "成長"
+                    else: sig = "衰退"
+                return {
+                    "latest": {
+                        "date": (lt.get("endDate") or {}).get("fmt", ""),
+                        "eps": round(eps, 2) if eps else None,
+                        "revenue": int(total_rev) if total_rev else None,
+                        "gross_margin": gross_margin,
+                    },
+                    "eps_growth_yoy": eps_yoy,
+                    "revenue_growth_yoy": rev_yoy,
+                    "signal": sig,
+                }
+        except Exception as e2:
+            log.warning(f"[deep_fin_yf] {stock_id}: {e2}")
         return None
 
 
 async def _deep_news(stock_id: str) -> dict:
-    """新聞：Yahoo Finance search API（多 host/query fallback）"""
+    """新聞：Google News RSS → cnyes → Yahoo Finance 多重 fallback"""
+    import xml.etree.ElementTree as ET
     from datetime import datetime, timezone
+    from email.utils import parsedate_to_datetime
 
-    def _parse_news(items_raw: list) -> list:
-        items = []
-        for n in items_raw[:5]:
-            ts = n.get("providerPublishTime")
-            dt_str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d") if ts else ""
-            title = n.get("title", "")
-            if not title:
-                continue
-            items.append({
-                "title": title,
-                "publisher": n.get("publisher", ""),
-                "link": n.get("link", ""),
-                "date": dt_str,
-            })
-        return items
+    _hdrs = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 
-    _hdrs = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15"}
-    # 三種 fallback 策略：(host, query)
-    strategies = [
-        ("query1", f"{stock_id}.TW"),
-        ("query2", f"{stock_id}.TW"),
-        ("query1", stock_id),
-    ]
     async with httpx.AsyncClient(timeout=12, headers=_hdrs, follow_redirects=True) as c:
-        for host, q in strategies:
+        # ── Strategy 1: Google News RSS（最豐富，不需 API key）──
+        try:
+            r = await c.get(
+                "https://news.google.com/rss/search",
+                params={"q": stock_id, "hl": "zh-TW", "gl": "TW", "ceid": "TW:zh-Hant"},
+            )
+            if r.is_success and r.text.strip().startswith("<"):
+                root = ET.fromstring(r.text)
+                items = []
+                for item in root.findall(".//item")[:8]:
+                    title = (item.findtext("title") or "").strip()
+                    if not title or title.lower() == stock_id:
+                        continue
+                    link  = (item.findtext("link") or "").strip()
+                    pub   = item.findtext("pubDate") or ""
+                    src   = item.findtext("source") or "Google News"
+                    date_str = ""
+                    if pub:
+                        try:
+                            date_str = parsedate_to_datetime(pub).strftime("%Y-%m-%d")
+                        except Exception:
+                            pass
+                    items.append({"title": title, "publisher": src, "link": link, "date": date_str})
+                if items:
+                    return {"items": items[:6]}
+        except Exception as _e:
+            log.warning(f"[deep_news] Google RSS {stock_id}: {_e}")
+
+        # ── Strategy 2: 鉅亨網 cnyes API ──
+        try:
+            r = await c.get(
+                "https://api.cnyes.com/media/api/v1/newslist/search",
+                params={"term": stock_id, "limit": "6"},
+            )
+            if r.is_success:
+                body = r.json()
+                news_data = body.get("items", {}).get("data", [])
+                items = []
+                for n in news_data[:6]:
+                    title = n.get("title", "")
+                    if not title:
+                        continue
+                    ts = n.get("publishAt", 0)
+                    date_str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d") if ts else ""
+                    nid = n.get("newsId", "")
+                    items.append({
+                        "title": title,
+                        "publisher": "鉅亨網",
+                        "link": f"https://news.cnyes.com/news/id/{nid}" if nid else "",
+                        "date": date_str,
+                    })
+                if items:
+                    return {"items": items}
+        except Exception as _e:
+            log.warning(f"[deep_news] cnyes {stock_id}: {_e}")
+
+        # ── Strategy 3: Yahoo Finance v1 search（原有，最後兜底）──
+        for host, q in [("query1", f"{stock_id}.TW"), ("query2", f"{stock_id}.TW")]:
             try:
-                url = f"https://{host}.finance.yahoo.com/v1/finance/search"
-                params = {"q": q, "newsCount": "5", "enableFuzzyQuery": "false"}
-                r = await c.get(url, params=params)
+                r = await c.get(
+                    f"https://{host}.finance.yahoo.com/v1/finance/search",
+                    params={"q": q, "newsCount": "5", "quotesCount": "0"},
+                )
                 if not r.is_success:
                     continue
-                try:
-                    body = r.json()
-                except Exception:
-                    continue
-                items_raw = body.get("news", [])
+                items_raw = r.json().get("news", [])
                 if not isinstance(items_raw, list):
                     continue
-                items = _parse_news(items_raw)
+                items = []
+                for n in items_raw[:5]:
+                    title = n.get("title", "")
+                    if not title:
+                        continue
+                    ts = n.get("providerPublishTime")
+                    date_str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d") if ts else ""
+                    items.append({"title": title, "publisher": n.get("publisher", ""), "link": n.get("link", ""), "date": date_str})
                 if items:
                     return {"items": items}
             except Exception:
                 continue
+
     return {"items": []}
 
 
@@ -3413,11 +3571,11 @@ def api_screen_results():
     from yahoo_price import get_scan_results
     from scanner import STRATEGIES
     raw = get_scan_results()   # {strategy_key: [result_dict, ...]}
-    return {
+    return JSONResponse(content=_sanitize_for_json({
         "finished_at": _scan_status_ts(),
         "strategies":  STRATEGIES,
         "results":     raw,
-    }
+    }))
 
 def _scan_status_ts():
     from yahoo_price import get_scan_status

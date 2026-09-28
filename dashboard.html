@@ -169,6 +169,8 @@
     /* 股票 row 操作欄位縮小 */
     .result-action { white-space: nowrap; }
   }
+  /* 深度分析側板：桌面版開關（必須在 media query 外才能在桌機生效） */
+  #deep-panel.dp-open { right: 0 !important; }
   .log-row { display: flex; gap: 12px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: .83rem; }
   .log-row:last-child { border-bottom: none; }
   code { font-family: monospace; font-size: .8rem; }
@@ -639,6 +641,7 @@
 
 </main>
 <div id="toast"></div>
+<div id="_js-err-banner" style="display:none;position:fixed;bottom:8px;left:50%;transform:translateX(-50%);background:#b91c1c;color:#fff;padding:8px 16px 8px 12px;border-radius:8px;font-size:.78rem;z-index:99999;max-width:92vw;word-break:break-all;box-shadow:0 2px 12px rgba(0,0,0,.5);cursor:pointer" onclick="this.style.display='none'" title="點擊關閉"></div>
 
 <!-- ══════════════════ 設定頁密碼 Modal ══════════════════ -->
 <div id="settings-auth-modal" style="display:none;position:fixed;inset:0;
@@ -753,17 +756,27 @@ function dpTab(t) {
 }
 
 function openDeepPanel(stock_id, stock_name) {
-  const panel = document.getElementById('deep-panel');
-  const overlay = document.getElementById('deep-overlay');
-  document.getElementById('dp-title').textContent = `${stock_id} ${stock_name || ''} 深度分析`;
-  document.getElementById('dp-price').textContent = '載入中...';
-  document.getElementById('dp-change').textContent = '';
-  document.getElementById('dp-stage').textContent = '';
-  document.getElementById('dp-body').innerHTML = '<div style="color:#8b949e;text-align:center;padding:40px">分析中...</div>';
-  panel.classList.add('dp-open');
-  overlay.style.display = 'block';
-  _dpData = null;
-  dpTab('tech');
+  // 面板初始化（DOM 操作）—— 加 try-catch，讓錯誤顯示在頁面而非靜默失敗
+  let panel, overlay;
+  try {
+    panel = document.getElementById('deep-panel');
+    overlay = document.getElementById('deep-overlay');
+    if (!panel) throw new Error('找不到 #deep-panel，請重新整理頁面');
+    document.getElementById('dp-title').textContent = `${stock_id} ${stock_name || ''} 深度分析`;
+    document.getElementById('dp-price').textContent = '載入中...';
+    document.getElementById('dp-change').textContent = '';
+    document.getElementById('dp-stage').textContent = '';
+    document.getElementById('dp-body').innerHTML = '<div style="color:#8b949e;text-align:center;padding:40px">分析中...</div>';
+    panel.classList.add('dp-open');
+    if (overlay) overlay.style.display = 'block';
+    _dpData = null;
+    dpTab('tech');
+  } catch(err) {
+    const b = document.getElementById('_js-err-banner');
+    if (b) { b.textContent = `⚠️ 分析面板初始化失敗: ${err.message}　（點擊關閉）`; b.style.display = 'block'; }
+    console.error('[openDeepPanel]', err);
+    return;
+  }
 
   api('GET', `/api/stock/${stock_id}/deep-analysis`)
     .then(d => {
@@ -917,12 +930,17 @@ function renderDpBody(tab, d) {
 
   } else if (tab === 'fund') {
     const f = d.fundamental;
-    if (!f) { body.innerHTML = '<div style="color:#8b949e;padding:20px">基本面資料載入失敗（FinMind 暫不可用）</div>'; return; }
+    if (!f) { body.innerHTML = '<div style="color:#8b949e;padding:20px">基本面資料暫時無法取得</div>'; return; }
     const valOrDash = v => v != null ? v : '—';
     const sigCol = f.signal==='低估'?'#3fb950':f.signal==='合理'?'#58a6ff':f.signal==='偏高'?'#d29922':'#f85149';
+    const mktcapStr = f.market_cap != null ? `${f.market_cap}億` : '—';
+    const w52Str = (f.week52_high != null && f.week52_low != null)
+      ? `${f.week52_low} ~ ${f.week52_high}` : '—';
+    const betaStr = f.beta != null ? f.beta : '—';
+    const sharesStr = f.shares_outstanding != null ? `${f.shares_outstanding}億股` : '—';
     body.innerHTML = `
       <div style="font-size:.75rem;color:#8b949e;margin-bottom:4px">資料日期：${f.date||'—'}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:14px 0">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:10px 0">
         <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
           <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">本益比(PE)</div>
           <div style="font-size:1.2rem;font-weight:700;color:#e6edf3">${valOrDash(f.per)}</div>
@@ -936,11 +954,29 @@ function renderDpBody(tab, d) {
           <div style="font-size:1.2rem;font-weight:700;color:#3fb950">${valOrDash(f.dividend_yield)}${f.dividend_yield!=null?'%':''}</div>
         </div>
       </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">市值</div>
+          <div style="font-size:1rem;font-weight:700;color:#e6edf3">${mktcapStr}</div>
+        </div>
+        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">52週區間</div>
+          <div style="font-size:.85rem;font-weight:600;color:#e6edf3">${w52Str}</div>
+        </div>
+        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">Beta</div>
+          <div style="font-size:1rem;font-weight:700;color:#e6edf3">${betaStr}</div>
+        </div>
+        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">在外流通股</div>
+          <div style="font-size:1rem;font-weight:700;color:#e6edf3">${sharesStr}</div>
+        </div>
+      </div>
       <div style="padding:8px 12px;background:${sigCol}22;border:1px solid ${sigCol}55;border-radius:6px;color:${sigCol};font-weight:600;font-size:.85rem">估值：${f.signal}</div>`;
 
   } else if (tab === 'fin') {
     const f = d.financial;
-    if (!f) { body.innerHTML = '<div style="color:#8b949e;padding:20px">財務資料載入失敗（FinMind 暫不可用）</div>'; return; }
+    if (!f) { body.innerHTML = '<div style="color:#8b949e;padding:20px">財務資料暫時無法取得（可能為興櫃股或尚未公布季報）</div>'; return; }
     const lt = f.latest || {};
     const growthHtml = (val, lbl) => {
       if (val == null) return `<div style="font-size:.78rem;color:#8b949e">${lbl}: —</div>`;
@@ -1007,6 +1043,22 @@ function renderDpBody(tab, d) {
 </script>
 
 <script>
+// ───── 全域 JS 錯誤捕捉（顯示在頁面，便於回報問題）─────
+(function() {
+  function _showErrBanner(text) {
+    const b = document.getElementById('_js-err-banner');
+    if (b) { b.textContent = '⚠️ ' + text + '　（點擊關閉）'; b.style.display = 'block'; }
+    console.error('[GLOBAL ERR]', text);
+  }
+  window.onerror = function(msg, src, line, col, err) {
+    _showErrBanner(`JS錯誤: ${msg}  (${(src||'').split('/').pop()}:${line})`);
+    return false;
+  };
+  window.addEventListener('unhandledrejection', function(e) {
+    _showErrBanner(`未處理的 Promise 錯誤: ${e.reason?.message || String(e.reason)}`);
+  });
+})();
+
 // ───── Toast ─────
 let _tt;
 function toast(msg, err = false) {

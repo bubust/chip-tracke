@@ -367,16 +367,21 @@ _SCAN_CACHE_FILE = _Path(__file__).parent / "chip_data" / "scan_results_cache.js
 
 def _save_scan_cache(results: dict):
     """將掃描結果存到磁碟，重啟後可還原訊號"""
+    import datetime as _dt
     try:
         _SCAN_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(_SCAN_CACHE_FILE, "w", encoding="utf-8") as f:
             _json.dump(results, f, ensure_ascii=False)
+        # 同時存時間戳，讓重啟後 finished_at 可正確還原
+        _ts_file = _SCAN_CACHE_FILE.parent / "scan_timestamp.txt"
+        _ts_file.write_text(_dt.datetime.now().isoformat())
     except Exception as e:
         print(f"[SCAN] 儲存快取失敗: {e}")
 
 
-def _load_scan_cache() -> dict:
+def _load_scan_cache() -> tuple:
     """啟動時載入上次掃描結果（讓訊號重啟後不消失）
+    回傳 (results_dict, scanned_at_str)
     優先讀本地快取；若不存在（Render 重啟後），fallback 到 scan_data/latest.json
     （GitHub Actions 掃描後提交到 repo，Render deploy 時一同佈署）。
     """
@@ -386,7 +391,10 @@ def _load_scan_cache() -> dict:
             with open(_SCAN_CACHE_FILE, "r", encoding="utf-8") as f:
                 data = _json.load(f)
                 if data:
-                    return data
+                    # 讀時間戳
+                    _ts_file = _SCAN_CACHE_FILE.parent / "scan_timestamp.txt"
+                    _ts = _ts_file.read_text().strip() if _ts_file.exists() else None
+                    return data, _ts
     except Exception as e:
         print(f"[SCAN] 載入快取失敗: {e}")
     # 2. Fallback：讀 scan_data/latest.json（跟著 git deploy 到 Render）
@@ -397,15 +405,19 @@ def _load_scan_cache() -> dict:
                 d = _json.load(f)
                 results = d.get("results", {})
                 if results:
-                    print(f"[SCAN] 從 latest.json 載入結果 (掃描時間: {d.get('scanned_at', '')})")
-                    return results
+                    scanned_at = d.get("scanned_at", "")
+                    print(f"[SCAN] 從 latest.json 載入結果 (掃描時間: {scanned_at})")
+                    return results, scanned_at
     except Exception as e:
         print(f"[SCAN] 載入 latest.json 失敗: {e}")
-    return {}
+    return {}, None
 
 
 # 啟動時自動載入快取
-_scan_status["results"] = _load_scan_cache()
+_cached_results, _cached_ts = _load_scan_cache()
+_scan_status["results"] = _cached_results
+if _cached_results and _cached_ts:
+    _scan_status["finished_at"] = _cached_ts   # 讓前端 finished_at 路徑正常走
 
 
 def get_scan_status() -> dict:
