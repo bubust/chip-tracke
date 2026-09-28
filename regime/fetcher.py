@@ -60,15 +60,84 @@ def _yahoo_close(ticker: str, days: int = 30) -> list[tuple[str, float]]:
 def fetch_all(days: int = 60):
     """抓取所有 Yahoo Finance 系列並寫入 DB"""
     inserted = 0
+    otc_count = 0
     with db() as conn:
         for series, ticker in YAHOO_TICKERS.items():
             rows = _yahoo_close(ticker, days)
             for dt, val in rows:
                 upsert_series(conn, dt, series, val, "YAHOO")
                 inserted += 1
+                if series == "OTC":
+                    otc_count += 1
             log.info(f"[fetcher] {series}({ticker}): {len(rows)} 筆")
     log.info(f"[fetcher] 共寫入 {inserted} 筆")
+    # OTC 無資料時嘗試 TPEx API 補充
+    if otc_count == 0:
+        log.info("[fetcher] Yahoo ^TWOII 無資料，嘗試 TPEx API 補充 OTC 指數")
+        fetch_tpex_otc_index(days=days)
     return inserted
+
+
+def fetch_tpex_otc_index(days: int = 30):
+    """
+    TPEx 上櫃加權指數備用資料源（補 Yahoo ^TWOII 失效時）。
+    API: https://www.tpex.org.tw/openapi/v1/TPEX_Indexes
+    日期為民國年格式（如 "113/09/28"），需轉 YYYY-MM-DD。
+    """
+    url = "https://www.tpex.org.tw/openapi/v1/TPEX_Indexes"
+    try:
+        with httpx.Client(timeout=20, headers={"User-Agent": _UA}) as c:
+            r = c.get(url)
+            r.raise_for_status()
+            rows = r.json()
+        if not isinstance(rows, list) or not rows:
+            log.warning("[fetcher] TPEx Indexes: 無資料")
+            return
+
+        # 找最近 days 筆有上櫃加權指數的記錄
+        inserted = 0
+        with db() as conn:
+            for row in rows[-days:]:
+                # 日期欄位：民國年 "113/09/28" → 2024-09-28
+                date_raw = str(row.get("Date", row.get("date", ""))).strip()
+                if not date_raw or "/" not in date_raw:
+                    continue
+                parts = date_raw.split("/")
+                if len(parts) != 3:
+                    continue
+                try:
+                    yr = int(parts[0]) + 1911
+                    dt = f"{yr}-{parts[1].zfill(2)}-{parts[2].zfill(2)}"
+                except Exception:
+                    continue
+
+                # 嘗試多個欄位名稱取上櫃加權指數收盤
+                val = None
+                for key in ["CloseIndex", "WeightedIndex", "上市(OTC)加權指數",
+                            "OtcWeightedIndex", "Index", "Close"]:
+                    raw_v = str(row.get(key, "")).replace(",", "").strip()
+                    if raw_v and raw_v not in ("", "-", "--"):
+                        try:
+                            v = float(raw_v)
+                            if v > 0:
+                                val = v
+                                break
+                        except Exception:
+                            pass
+                if val is None:
+                    continue
+
+                # 只在 OTC series 今日無 Yahoo 資料時才補充
+                existing = conn.execute(
+                    "SELECT 1 FROM market_daily WHERE series='OTC' AND date=?", (dt,)
+                ).fetchone()
+                if not existing:
+                    upsert_series(conn, dt, "OTC", val, "TPEX_API")
+                    inserted += 1
+
+        log.info(f"[fetcher] TPEx OTC index: 補充 {inserted} 筆")
+    except Exception as e:
+        log.warning(f"[fetcher] TPEx OTC index 失敗（非致命）: {e}")
 
 
 def fetch_twse_margin(days: int = 5):
@@ -605,9 +674,14 @@ def fetch_twse_market_breadth(lookback: int = 90):
                 "SELECT date FROM market_daily WHERE series='AD_LINE'"
             ).fetchall()
         )
+        # 清除錯誤資料：只刪「精確等於 100.0 或 0.0」的解析失敗值
+        # 不用 >= 99.5 避免誤刪極端行情日
+        conn.execute(
+            "DELETE FROM market_daily WHERE series='BREADTH_50MA' AND (value = 100.0 OR value = 0.0)"
+        )
         wrong_breadth = set(
             r[0] for r in conn.execute(
-                "SELECT date FROM market_daily WHERE series='BREADTH_50MA' AND value >= 99.9"
+                "SELECT date FROM market_daily WHERE series='BREADTH_50MA' AND (value >= 99.9 OR value <= 0.1)"
             ).fetchall()
         )
         # 有 AD_LINE 且 BREADTH 看起來正確 → 跳過
@@ -653,14 +727,15 @@ def fetch_twse_market_breadth(lookback: int = 90):
                 log.debug(f"[fetcher] MI_INDEX {dt_param}: 解析失敗")
                 continue
 
-            ad_val      = up - down
-            total       = max(up + down + flat, 1)
-            breadth_pct = round(up / total * 100, 2)
+            ad_val = up - down
+            total  = max(up + down + (flat or 0), 1)
+            # 淨廣度 Net Breadth = (上漲-下跌)/總家數×100，範圍 -100~+100
+            # 避免舊公式在 down=0 時輸出 100%
+            net_breadth = round((up - down) / total * 100, 2)
 
             with db() as conn:
                 upsert_series(conn, dt_iso, "AD_LINE", ad_val, "TWSE_MI")
-                # BREADTH_50MA: 直接用 TWSE 上漲家數占比，無條件覆蓋（不再依賴 price_daily 計算）
-                upsert_series(conn, dt_iso, "BREADTH_50MA", breadth_pct, "TWSE_MI")
+                upsert_series(conn, dt_iso, "BREADTH_50MA", net_breadth, "TWSE_MI")
 
                 # MEDIAN_RET 代理：若 price_daily 無資料時補充
                 if dt_iso not in existing_median:
@@ -675,7 +750,7 @@ def fetch_twse_market_breadth(lookback: int = 90):
 
             inserted += 1
             log.debug(f"[fetcher] {dt_iso} 上漲:{up} 下跌:{down} 持平:{flat} "
-                      f"→ AD:{ad_val} breadth:{breadth_pct}%")
+                      f"→ AD:{ad_val} net_breadth:{net_breadth}%")
 
         except Exception as e:
             log.warning(f"[fetcher] MI_INDEX {dt_param}: {e}")

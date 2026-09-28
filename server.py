@@ -1267,7 +1267,7 @@ async def _deep_chip(stock_id: str) -> dict | None:
                 _today = _date_cls.today().strftime("%Y%m%d")
                 async with httpx.AsyncClient(timeout=10) as _tc:
                     _tr = await _tc.get(
-                        "https://www.twse.com.tw/fund/T86",
+                        "https://www.twse.com.tw/rwd/zh/fund/T86",
                         params={"response": "json", "date": _today, "selectType": "ALLBUT0999"},
                         headers={"Referer": "https://www.twse.com.tw/"},
                     )
@@ -1452,7 +1452,7 @@ async def _deep_financial(stock_id: str) -> dict | None:
             r = await c.get(url, params=params)
             data = r.json().get("data", [])
         if not data:
-            return None
+            raise ValueError("finmind_no_data")  # 觸發下方 Yahoo Finance fallback
 
         # 按 (date, type) 樞紐：取 EPS, Revenue, GrossProfit
         from collections import defaultdict
@@ -1605,6 +1605,7 @@ async def _deep_news(stock_id: str) -> dict:
                             pass
                     items.append({"title": title, "publisher": src, "link": link, "date": date_str})
                 if items:
+                    items.sort(key=lambda x: x.get("date") or "", reverse=True)
                     return {"items": items[:6]}
         except Exception as _e:
             log.warning(f"[deep_news] Google RSS {stock_id}: {_e}")
@@ -1633,6 +1634,7 @@ async def _deep_news(stock_id: str) -> dict:
                         "date": date_str,
                     })
                 if items:
+                    items.sort(key=lambda x: x.get("date") or "", reverse=True)
                     return {"items": items}
         except Exception as _e:
             log.warning(f"[deep_news] cnyes {stock_id}: {_e}")
@@ -1658,6 +1660,7 @@ async def _deep_news(stock_id: str) -> dict:
                     date_str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d") if ts else ""
                     items.append({"title": title, "publisher": n.get("publisher", ""), "link": n.get("link", ""), "date": date_str})
                 if items:
+                    items.sort(key=lambda x: x.get("date") or "", reverse=True)
                     return {"items": items}
             except Exception:
                 continue

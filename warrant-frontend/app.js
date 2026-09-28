@@ -670,6 +670,18 @@ function renderScanner(data) {
     return;
   }
 
+  // ── 加總統計 ──
+  const ulSet = new Set(rows.map(r => r.underlying_code).filter(Boolean));
+  const totalVol  = rows.reduce((s, r) => s + (r.volume || 0), 0);
+  const totalTurn = rows.reduce((s, r) => s + (r.turnover || r.bid_value || 0), 0);
+  const fmtSum    = v => v >= 100000000 ? (v/100000000).toFixed(1)+'億' : v >= 10000 ? (v/10000).toFixed(1)+'萬' : v.toLocaleString();
+  const summaryBar = `<div style="font-size:.82rem;color:#8b949e;padding:6px 4px 2px;display:flex;gap:16px;flex-wrap:wrap">
+    <span>📊 <b style="color:#e6edf3">${ulSet.size}</b> 個標的</span>
+    <span>總成交量 <b style="color:#58a6ff">${totalVol.toLocaleString()} 張</b></span>
+    <span>總金額 <b style="color:#58a6ff">${fmtSum(totalTurn)}</b></span>
+    <span style="color:#484f58">${rows.length} 檔權證</span>
+  </div>`;
+
   // 排序
   if (_scanSortCol) {
     rows.sort((a, b) => {
@@ -691,7 +703,7 @@ function renderScanner(data) {
   const keySortCol   = isOpen ? 'bid_lots' : 'volume';
   const sortArrow    = col => _scanSortCol === col ? (_scanSortAsc ? ' ↑' : ' ↓') : '';
 
-  tbl.innerHTML = `
+  tbl.innerHTML = summaryBar + `
     <table class="scan-table">
       <thead>
         <tr>
@@ -748,10 +760,21 @@ async function renderScannerUnderlying() {
     const volLabel = isOpen ? '委買量' : '成交量';
     const maxVol   = rows[0]?.total_vol || 1;
 
+    // ── 標的彙總加總 ──
+    const sumCall = rows.reduce((s, r) => s + (r.call_vol || 0), 0);
+    const sumPut  = rows.reduce((s, r) => s + (r.put_vol  || 0), 0);
+    const sumTotal = rows.reduce((s, r) => s + (r.total_vol || 0), 0);
+    const ulSummary = `<div style="font-size:.82rem;color:#8b949e;padding:6px 4px 2px;display:flex;gap:16px;flex-wrap:wrap">
+      <span>📊 <b style="color:#e6edf3">${rows.length}</b> 個標的</span>
+      <span>認購 <b style="color:#3fb950">${sumCall.toLocaleString()} 張</b></span>
+      <span>認售 <b style="color:#f85149">${sumPut.toLocaleString()} 張</b></span>
+      <span>合計 <b style="color:#58a6ff">${sumTotal.toLocaleString()} 張</b></span>
+    </div>`;
+
     const barPct = v => Math.max(2, Math.round(v / maxVol * 100));
     const fmtK   = v => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(v);
 
-    tbl.innerHTML = `
+    tbl.innerHTML = ulSummary + `
       <table class="scan-table">
         <thead>
           <tr>

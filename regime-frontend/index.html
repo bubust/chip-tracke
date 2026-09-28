@@ -134,14 +134,14 @@
 <!-- 廣度進度條 -->
 <div style="background:#161b22;border:1px solid #21262d;border-radius:10px;padding:14px 16px;margin-bottom:16px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-    <span style="font-size:.8rem;color:#8b949e">廣度 — 上漲家數占比（TWSE 官方）</span>
+    <span style="font-size:.8rem;color:#8b949e">廣度 — 淨廣度 = (上漲-下跌)/總家數×100（TWSE 官方）</span>
     <span id="breadth-pct" style="font-size:1rem;font-weight:700;color:#e6edf3">—</span>
   </div>
   <div style="background:#0d1117;border-radius:4px;height:10px;overflow:hidden">
     <div id="breadth-bar" style="height:100%;border-radius:4px;transition:width .5s;width:0%"></div>
   </div>
   <div style="display:flex;justify-content:space-between;font-size:.7rem;color:#484f58;margin-top:4px">
-    <span>0%（全市場下跌）</span><span>50%（中性）</span><span>100%（全市場上漲）</span>
+    <span>-100%（全跌）</span><span>0%（持平）</span><span>+100%（全漲）</span>
   </div>
 </div>
 
@@ -202,7 +202,7 @@ const SERIES_LABELS = {
   USDTWD: 'USD/TWD', TSM_ADR: 'TSM ADR', NASDAQ: 'Nasdaq',
   MARGIN_BALANCE: '融資餘額(股)', SHORT_BALANCE: '融券餘額(股)', SHORT_MARGIN_RATIO: '券資比(%)',
   FOREIGN_NET_LOT: '外資現貨(張)',
-  BREADTH_50MA: '上漲家數占比(%)', AD_LINE: '漲跌家數差',
+  BREADTH_50MA: '淨廣度%', AD_LINE: '漲跌家數差',
   MEDIAN_RET: '全市場中位數漲跌(%)', FOREIGN_FUTURES_NET: '外資期貨淨部位(張)',
   OVERHEATING_INDEX: '過熱指數 (成交/委買)',
   PANIC_INDEX: '恐慌指數 (成交/委賣)',
@@ -563,9 +563,12 @@ async function loadBreadth() {
     const data = await api('/api/regime/series/BREADTH_50MA?days=2');
     if (!data || !data.length) return;
     const val = data[data.length - 1].value;
-    document.getElementById('breadth-pct').textContent = val.toFixed(1) + '%';
-    const col = val > 70 ? '#3fb950' : val > 50 ? '#d29922' : val > 30 ? '#f0883e' : '#f85149';
-    document.getElementById('breadth-bar').style.width = val + '%';
+    // 淨廣度：-100~+100，轉為進度條 0~100%（50% = 中性）
+    const sign = val >= 0 ? '+' : '';
+    document.getElementById('breadth-pct').textContent = sign + val.toFixed(1) + '%';
+    const col = val > 30 ? '#3fb950' : val > -30 ? '#d29922' : '#f85149';
+    const barPct = Math.min(100, Math.max(0, (val + 100) / 2));  // -100→0%, 0→50%, +100→100%
+    document.getElementById('breadth-bar').style.width = barPct + '%';
     document.getElementById('breadth-bar').style.background = col;
     document.getElementById('breadth-pct').style.color = col;
   } catch(e) {}
@@ -608,10 +611,10 @@ function interpretSignal(k, val, diff) {
       if (val > 12) return { dot: '🟡', hint: `券資比 ${val.toFixed(1)}% — 偏高` };
       return { dot: '🟢', hint: `券資比 ${val.toFixed(1)}%` };
     case 'BREADTH_50MA':
-      if (val > 70)  return { dot: '🟢', hint: '多頭廣度佳' };
-      if (val > 50)  return { dot: '🟡', hint: '廣度中性' };
-      if (val > 30)  return { dot: '🟡', hint: '廣度偏弱' };
-      return                { dot: '🔴', hint: '廣度極弱 — 空頭市場' };
+      // 新定義：淨廣度 = (上漲-下跌)/總家數×100，範圍 -100~+100
+      if (val > 30)  return { dot: '🟢', hint: `淨廣度 +${val.toFixed(1)}% — 多頭廣度佳` };
+      if (val > -30) return { dot: '🟡', hint: `淨廣度 ${val.toFixed(1)}% — 多空拉鋸` };
+      return                { dot: '🔴', hint: `淨廣度 ${val.toFixed(1)}% — 空方主導` };
     case 'AD_LINE':
       if (val > 200)   return { dot: '🟢', hint: `漲家多跌家 ${val.toLocaleString()}` };
       if (val > -200)  return { dot: '🟡', hint: '漲跌相當' };
@@ -681,7 +684,7 @@ async function loadSeries() {
     } else if (ABS_KEYS.has(k)) {
       const diff = prev ? latest.value - prev.value : null;
       rawDiff = diff;
-      valStr = k === 'BREADTH_50MA'      ? latest.value.toFixed(1) + '%'
+      valStr = k === 'BREADTH_50MA'      ? (latest.value >= 0 ? '+' : '') + latest.value.toFixed(1) + '%'
              : k === 'MEDIAN_RET'        ? (latest.value >= 0 ? '+' : '') + latest.value.toFixed(3) + '%'
              : k === 'SHORT_MARGIN_RATIO'? latest.value.toFixed(1) + '%'
              : Number(latest.value).toLocaleString();
