@@ -465,44 +465,64 @@ def fetch_breadth_ad(lookback: int = 90):
 
 def _parse_mi_index_ad(data: dict):
     """
-    解析 TWSE MI_INDEX response 中的漲跌家數 (table[7])
-    回傳 (上漲+上櫃合計, 下跌+上櫃合計, 持平合計) 或 (None, None, None)
+    解析 TWSE MI_INDEX 漲跌家數。
+    支援兩種格式：
+      - type=MS 格式：data["data"] 直接含行資料（全體市場欄）
+      - 舊格式：data["tables"] 是巢狀表格陣列
+    回傳 (上漲全體市場, 下跌全體市場, 持平全體市場) 或 (None, None, None)
     """
-    for table in data.get("tables", []):
-        rows = table.get("data", [])
-        if not rows:
-            continue
-        up, down, flat = None, None, None
+
+    def _parse(s):
+        """'6,805(58)' → 6805"""
+        s = str(s).split("(")[0].replace(",", "").strip()
+        try:
+            return int(s)
+        except Exception:
+            return None
+
+    def _scan_rows(rows):
+        up = down = flat = None
         for row in rows:
             if len(row) < 2:
                 continue
             label = str(row[0]).strip()
+            v1 = _parse(row[1]) if len(row) > 1 else None
+            # 不加第二欄（type=MS 下 row[1]=全體市場, row[2]=股票），只取全體市場
+            if "上漲" in label and "停" not in label and up is None and v1 is not None:
+                up = v1
+            elif "下跌" in label and "停" not in label and down is None and v1 is not None:
+                down = v1
+            elif ("持平" in label or "平盤" in label) and flat is None and v1 is not None:
+                flat = v1
+        return up, down, flat
 
-            def _parse(s):
-                # '6,805(58)' → 6805; '607(12)' → 607
-                s = str(s).split("(")[0].replace(",", "").strip()
-                try:
-                    return int(s)
-                except Exception:
-                    return None
-
-            if "\u4e0a\u6f32" in label:      # 上漲
-                v1 = _parse(row[1]) if len(row) > 1 else None
-                v2 = _parse(row[2]) if len(row) > 2 else 0
-                if v1 is not None:
-                    up = v1 + (v2 or 0)
-            elif "\u4e0b\u8dcc" in label:    # 下跌
-                v1 = _parse(row[1]) if len(row) > 1 else None
-                v2 = _parse(row[2]) if len(row) > 2 else 0
-                if v1 is not None:
-                    down = v1 + (v2 or 0)
-            elif "\u6301\u5e73" in label or "\u5e73\u76e4" in label:  # 持平 / 平盤
-                v1 = _parse(row[1]) if len(row) > 1 else None
-                v2 = _parse(row[2]) if len(row) > 2 else 0
-                if v1 is not None:
-                    flat = v1 + (v2 or 0)
-
+    # ── type=MS 格式：直接有 fields + data ──
+    if "data" in data and "fields" in data:
+        up, down, flat = _scan_rows(data.get("data", []))
         if up is not None and down is not None:
+            return up, down, flat or 0
+
+    # ── 舊格式：tables 巢狀陣列 ──
+    for table in data.get("tables", []):
+        rows = table.get("data", [])
+        if not rows:
+            continue
+        up, down, flat = _scan_rows(rows)
+        if up is not None and down is not None:
+            # 舊格式可能有 TSE + OTC 兩欄，嘗試加總
+            up2 = down2 = flat2 = None
+            for row in rows:
+                label = str(row[0]).strip()
+                v1 = _parse(row[1]) if len(row) > 1 else None
+                v2 = _parse(row[2]) if len(row) > 2 else 0
+                if "上漲" in label and "停" not in label and up2 is None and v1 is not None:
+                    up2 = v1 + (v2 or 0)
+                elif "下跌" in label and "停" not in label and down2 is None and v1 is not None:
+                    down2 = v1 + (v2 or 0)
+                elif ("持平" in label or "平盤" in label) and flat2 is None and v1 is not None:
+                    flat2 = v1 + (v2 or 0)
+            if up2 is not None and down2 is not None:
+                return up2, down2, flat2 or 0
             return up, down, flat or 0
 
     return None, None, None
@@ -520,13 +540,21 @@ def fetch_twse_market_breadth(lookback: int = 90):
 
     today = date.today()
 
-    # 找出哪些日期已有 AD_LINE（跳過）
+    # 找出哪些日期已有正確的 AD_LINE（跳過）
+    # BREADTH_50MA = 100 視為解析錯誤，強制重算
     with db() as conn:
-        existing_ad = set(
+        all_ad = set(
             r[0] for r in conn.execute(
                 "SELECT date FROM market_daily WHERE series='AD_LINE'"
             ).fetchall()
         )
+        wrong_breadth = set(
+            r[0] for r in conn.execute(
+                "SELECT date FROM market_daily WHERE series='BREADTH_50MA' AND value >= 99.9"
+            ).fetchall()
+        )
+        # 有 AD_LINE 且 BREADTH 看起來正確 → 跳過
+        existing_ad = all_ad - wrong_breadth
         existing_median = set(
             r[0] for r in conn.execute(
                 "SELECT date FROM market_daily WHERE series='MEDIAN_RET'"
@@ -557,7 +585,7 @@ def fetch_twse_market_breadth(lookback: int = 90):
             with httpx.Client(timeout=12, headers={
                 "User-Agent": _UA, "Referer": "https://www.twse.com.tw/"
             }) as c:
-                r = c.get(_MI_URL, params={"date": dt_param, "response": "json"})
+                r = c.get(_MI_URL, params={"date": dt_param, "response": "json", "type": "MS"})
                 data = r.json()
 
             if data.get("stat") != "OK":
@@ -650,21 +678,21 @@ def _fetch_breadth_finmind(targets: list):
         if not dt:
             continue
         # FinMind 漲跌家數欄位
-        for up_key in ("漲", "up_count", "漲家數", "上漲家數"):
+        for up_key in ("漲", "up_count", "漲家數", "上漲家數", "rise_count", "up"):
             if up_key in row:
                 try:
                     day_up[dt] += int(str(row[up_key]).replace(",", "") or 0)
                 except Exception:
                     pass
                 break
-        for dn_key in ("跌", "down_count", "跌家數", "下跌家數"):
+        for dn_key in ("跌", "down_count", "跌家數", "下跌家數", "fall_count", "down"):
             if dn_key in row:
                 try:
                     day_down[dt] += int(str(row[dn_key]).replace(",", "") or 0)
                 except Exception:
                     pass
                 break
-        for fl_key in ("平", "flat_count", "持平家數", "未變家數"):
+        for fl_key in ("平", "flat_count", "持平家數", "未變家數", "unchanged", "flat"):
             if fl_key in row:
                 try:
                     day_flat[dt] += int(str(row[fl_key]).replace(",", "") or 0)

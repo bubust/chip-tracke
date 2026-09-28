@@ -118,8 +118,86 @@ def run_scanner():
         errors  = 0
         BATCH   = 50
 
+        # ── 盤外模式：優先使用 TWSE/TPEx 官方日成交（不依賴 MIS）──
+        twse_vol: dict[str, dict] = {}
+        if not market_open:
+            try:
+                import httpx as _hx
+                _today = datetime.now().strftime("%Y%m%d")
+                _hdrs = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.twse.com.tw/"}
+                with _hx.Client(timeout=15, headers=_hdrs) as _hc:
+                    # 上市權證 (TWTB4U)
+                    _r = _hc.get("https://www.twse.com.tw/rwd/zh/option/TWTB4U",
+                                 params={"response": "json", "date": _today})
+                    if _r.is_success:
+                        _jd = _r.json()
+                        _flds = _jd.get("fields", [])
+                        for _row in _jd.get("data", []):
+                            _d = dict(zip(_flds, _row))
+                            _code = _d.get("證券代號", "").strip()
+                            if not _code:
+                                continue
+                            try:
+                                _vol   = int(str(_d.get("成交股數", "0")).replace(",", "")) // 1000
+                                _turn  = float(str(_d.get("成交金額", "0")).replace(",", ""))
+                                _price = float(str(_d.get("收盤價", "0")).replace(",", "") or 0)
+                                twse_vol[_code] = {"volume": _vol, "turnover": _turn, "price": _price, "market": "TSE"}
+                            except Exception:
+                                pass
+                    # 上櫃權證 (TWTB4U OTC 端點)
+                    _ro = _hc.get("https://www.tpex.org.tw/web/stock/warrants/b4u/b4u_result.php",
+                                  params={"l": "zh-tw", "d": _today[:4]+"/"+_today[4:6]+"/"+_today[6:]})
+                    if _ro.is_success:
+                        _jo = _ro.json()
+                        for _r2 in _jo.get("aaData", []):
+                            if len(_r2) < 5:
+                                continue
+                            _code = str(_r2[0]).strip()
+                            try:
+                                _vol2  = int(str(_r2[2]).replace(",", ""))
+                                _turn2 = float(str(_r2[3]).replace(",", ""))
+                                _price2 = float(str(_r2[4]).replace(",", "") or 0)
+                                twse_vol[_code] = {"volume": _vol2, "turnover": _turn2, "price": _price2, "market": "OTC"}
+                            except Exception:
+                                pass
+                log.info(f"[scanner] TWSE/TPEx 盤後取得 {len(twse_vol)} 檔權證成交量")
+            except Exception as _tw_e:
+                log.warning(f"[scanner] TWSE盤後資料失敗，降級用MIS: {_tw_e}")
+
         for i in range(0, len(candidates), BATCH):
             batch = candidates[i:i + BATCH]
+
+            if not market_open:
+                # ── 盤外：直接用 TWSE 官方成交量 ──
+                for w_row in batch:
+                    code = w_row["code"]
+                    td = twse_vol.get(code)
+                    if not td:
+                        continue
+                    volume = td["volume"]
+                    if volume < 100:
+                        continue
+                    results.append({
+                        "code":            code,
+                        "name":            w_row["name"],
+                        "underlying_code": w_row["underlying_code"],
+                        "underlying_name": w_row["underlying_name"] or "",
+                        "kind":            w_row["kind"],
+                        "price":           td["price"],
+                        "bid":             None,
+                        "ask":             None,
+                        "bid_lots":        0,
+                        "volume":          volume,
+                        "turnover":        int(td["turnover"]),
+                        "bid_value":       0,
+                        "expiry_date":     w_row["last_trade_date"],
+                        "strike":          w_row["strike"],
+                        "issuer":          w_row["issuer"],
+                        "_sort":           volume,
+                    })
+                continue  # 跳過 MIS 這批
+
+            # ── 盤中：使用 MIS 委買量 ──
             codes = [
                 f"otc_{r['code']}" if r["market"] == "OTC" else r["code"]
                 for r in batch
@@ -143,16 +221,8 @@ def run_scanner():
                 volume   = pd2.get("volume", 0)
                 price    = pd2.get("price") or bid or pd2.get("prev_close")
 
-                if market_open:
-                    # 盤中：委買量達門檻
-                    if not bid or bid <= 0 or bid_lots < SCAN_PRE_FILTER:
-                        continue
-                    sort_key = bid_lots
-                else:
-                    # 盤外：成交量達門檻（100張以上才列入）
-                    if volume < 100:
-                        continue
-                    sort_key = volume
+                if not bid or bid <= 0 or bid_lots < SCAN_PRE_FILTER:
+                    continue
 
                 results.append({
                     "code":            code,
@@ -165,13 +235,11 @@ def run_scanner():
                     "ask":             pd2.get("ask"),
                     "bid_lots":        bid_lots,
                     "volume":          volume,
-                    "bid_value":       (int(bid * bid_lots * 1000) if (bid and bid_lots)
-                                        else int((price or 0) * volume * 1000) if (price and volume)
-                                        else 0),
+                    "bid_value":       int(bid * bid_lots * 1000) if (bid and bid_lots) else 0,
                     "expiry_date":     w_row["last_trade_date"],
                     "strike":          w_row["strike"],
                     "issuer":          w_row["issuer"],
-                    "_sort":           sort_key,
+                    "_sort":           bid_lots,
                 })
 
         results.sort(key=lambda x: x["_sort"], reverse=True)

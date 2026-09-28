@@ -1371,7 +1371,10 @@ async def _deep_fundamental(stock_id: str) -> dict | None:
                     params={"modules": "summaryDetail,defaultKeyStatistics"},
                 )
                 if yr.is_success:
-                    ydata = yr.json().get("quoteSummary", {}).get("result", [{}])[0]
+                    _yresult = yr.json().get("quoteSummary", {}).get("result") or []
+                    if not _yresult:
+                        raise ValueError("no_result")
+                    ydata = _yresult[0]
                     sd = ydata.get("summaryDetail", {})
                     ks = ydata.get("defaultKeyStatistics", {})
                     mktcap = (sd.get("marketCap") or {}).get("raw")
@@ -1479,43 +1482,40 @@ async def _deep_financial(stock_id: str) -> dict | None:
         }
     except Exception as e:
         log.warning(f"[deep_fin] FinMind {stock_id}: {e}")
-        # ── Fallback：Yahoo Finance incomeStatementHistory ──
+        # ── Fallback：Yahoo Finance financialData（比 incomeStatementHistory 更可靠）──
         try:
             async with httpx.AsyncClient(timeout=10, headers={"User-Agent": "Mozilla/5.0"}) as yc:
                 yr = await yc.get(
                     f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{stock_id}.TW",
-                    params={"modules": "incomeStatementHistory,defaultKeyStatistics"},
+                    params={"modules": "financialData,defaultKeyStatistics"},
                 )
                 if not yr.is_success:
                     return None
-                ydata = yr.json().get("quoteSummary", {}).get("result", [{}])[0]
-                stmts = ydata.get("incomeStatementHistory", {}).get("incomeStatementHistory", [])
-                if not stmts:
+                _yres = yr.json().get("quoteSummary", {}).get("result") or []
+                if not _yres:
                     return None
-                lt = stmts[0]
-                total_rev = (lt.get("totalRevenue") or {}).get("raw")
-                gross     = (lt.get("grossProfit") or {}).get("raw")
-                net_inc   = (lt.get("netIncome") or {}).get("raw")
-                stats     = ydata.get("defaultKeyStatistics", {})
-                eps       = (stats.get("trailingEps") or {}).get("raw")
-                eps_yoy = rev_yoy = None
-                if len(stmts) >= 2:
-                    prev = stmts[1]
-                    prev_rev = (prev.get("totalRevenue") or {}).get("raw")
-                    prev_ni  = (prev.get("netIncome") or {}).get("raw")
-                    if total_rev and prev_rev and prev_rev != 0:
-                        rev_yoy = round((total_rev - prev_rev) / abs(prev_rev) * 100, 1)
-                    if net_inc and prev_ni and prev_ni != 0:
-                        eps_yoy = round((net_inc - prev_ni) / abs(prev_ni) * 100, 1)
-                gross_margin = round(gross / total_rev * 100, 1) if gross and total_rev else None
+                ydata = _yres[0]
+                fd  = ydata.get("financialData", {})
+                ks  = ydata.get("defaultKeyStatistics", {})
+                # financialData 欄位
+                total_rev = (fd.get("totalRevenue") or {}).get("raw")
+                gross_m_r = (fd.get("grossMargins") or {}).get("raw")
+                gross_margin = round(gross_m_r * 100, 1) if gross_m_r is not None else None
+                eps       = (ks.get("trailingEps") or {}).get("raw")
+                eg_raw    = (fd.get("earningsGrowth") or {}).get("raw")
+                rg_raw    = (fd.get("revenueGrowth") or {}).get("raw")
+                eps_yoy   = round(eg_raw * 100, 1) if eg_raw is not None else None
+                rev_yoy   = round(rg_raw * 100, 1) if rg_raw is not None else None
                 sig = "無資料"
                 if eps_yoy is not None:
                     if eps_yoy > 20: sig = "高成長"
                     elif eps_yoy > 0: sig = "成長"
                     else: sig = "衰退"
+                if not any(v is not None for v in [total_rev, gross_margin, eps, eps_yoy]):
+                    return None  # 完全無資料才返回 None
                 return {
                     "latest": {
-                        "date": (lt.get("endDate") or {}).get("fmt", ""),
+                        "date": "",
                         "eps": round(eps, 2) if eps else None,
                         "revenue": int(total_rev) if total_rev else None,
                         "gross_margin": gross_margin,
