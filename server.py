@@ -1131,8 +1131,37 @@ async def api_indices():
         except Exception as _e:
             print(f"[indices] FinMind 備援區塊失敗: {_e}")
 
-    # ── 4. Yahoo Finance 備援：OTC 上櫃指數（多 ticker 輪試）──
-    _OTC_TICKERS = ["%5ETWOII", "%5ETWOTC"]  # ^TWOII = 上柜 TPEx；^TWOTC 備援
+    # ── 4. TPEX OpenAPI 備援：上櫃加權指數（官方，盤後更新）──
+    try:
+        if result["otc"]["price"] is None:
+            async with httpx.AsyncClient(timeout=10, verify=False, follow_redirects=True,
+                headers={"User-Agent": UA}) as tpex_c:
+                _tpex_r = await tpex_c.get(
+                    "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes",
+                    timeout=8,
+                )
+                if _tpex_r.status_code == 200:
+                    _tpex_rows = _tpex_r.json() or []
+                    # 找最近 2 個交易日的指數行（CodeNo = "IX0044" = 上櫃加權指數）
+                    _ix_rows = [r for r in _tpex_rows if r.get("CodeNo") == "IX0044"]
+                    _ix_rows.sort(key=lambda r: r.get("Date", ""), reverse=True)
+                    if len(_ix_rows) >= 1:
+                        _cur = _ix_rows[0]
+                        _price_str = (_cur.get("ClosePrice") or "").replace(",", "")
+                        _price_otc = float(_price_str) if _price_str else None
+                        _pct_otc = None
+                        if len(_ix_rows) >= 2 and _price_otc:
+                            _prev_str = (_ix_rows[1].get("ClosePrice") or "").replace(",", "")
+                            _prev_otc = float(_prev_str) if _prev_str else None
+                            if _prev_otc and _prev_otc > 0:
+                                _pct_otc = round((_price_otc - _prev_otc) / _prev_otc * 100, 2)
+                        if _price_otc:
+                            result["otc"].update({"price": round(_price_otc, 2), "change_pct": _pct_otc, "name": "上櫃指數(收盤)"})
+    except Exception as _tpex_e:
+        print(f"[indices] TPEX openapi 失敗: {_tpex_e}")
+
+    # ── 5. Yahoo Finance 備援：OTC 上櫃指數（多 ticker 輪試，注意不要預編碼 ^ 符號）──
+    _OTC_TICKERS = ["^TWOII", "^TWOTC", "^TWO"]  # 不預編碼，httpx 自動處理
     try:
         if result["otc"]["price"] is None:
             async with httpx.AsyncClient(timeout=10, verify=False, follow_redirects=True,
@@ -1140,7 +1169,7 @@ async def api_indices():
                 for _ticker in _OTC_TICKERS:
                     try:
                         yr_otc = await yc_otc.get(
-                            f"https://query1.finance.yahoo.com/v8/finance/chart/{_ticker}",
+                            "https://query1.finance.yahoo.com/v8/finance/chart/" + _ticker.replace("^", "%5E"),
                             params={"interval": "1d", "range": "5d"},
                         )
                         if yr_otc.status_code != 200:
@@ -1366,11 +1395,17 @@ async def _deep_fundamental(stock_id: str) -> dict | None:
         # ── 補充：Yahoo Finance summaryDetail（市值/52週高低/Beta）──
         try:
             async with httpx.AsyncClient(timeout=8, headers={"User-Agent": "Mozilla/5.0"}) as yc:
-                yr = await yc.get(
-                    f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{stock_id}.TW",
-                    params={"modules": "summaryDetail,defaultKeyStatistics"},
-                )
-                if yr.is_success:
+                _yf_suffixes = [".TW", ".TWO"]  # 先試上市(.TW)，再試上櫃(.TWO)
+                yr = None
+                for _sfx in _yf_suffixes:
+                    _r = await yc.get(
+                        f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{stock_id}{_sfx}",
+                        params={"modules": "summaryDetail,defaultKeyStatistics"},
+                    )
+                    if _r.is_success and (_r.json().get("quoteSummary", {}).get("result") or []):
+                        yr = _r
+                        break
+                if yr and yr.is_success:
                     _yresult = yr.json().get("quoteSummary", {}).get("result") or []
                     if not _yresult:
                         raise ValueError("no_result")
@@ -1521,14 +1556,19 @@ async def _deep_financial(stock_id: str) -> dict | None:
         }
     except Exception as e:
         log.warning(f"[deep_fin] FinMind {stock_id}: {e}")
-        # ── Fallback：Yahoo Finance financialData（比 incomeStatementHistory 更可靠）──
+        # ── Fallback：Yahoo Finance financialData（先試.TW，再試.TWO）──
         try:
             async with httpx.AsyncClient(timeout=10, headers={"User-Agent": "Mozilla/5.0"}) as yc:
-                yr = await yc.get(
-                    f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{stock_id}.TW",
-                    params={"modules": "financialData,defaultKeyStatistics"},
-                )
-                if not yr.is_success:
+                yr = None
+                for _sfx in [".TW", ".TWO"]:
+                    _r = await yc.get(
+                        f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{stock_id}{_sfx}",
+                        params={"modules": "financialData,defaultKeyStatistics"},
+                    )
+                    if _r.is_success and (_r.json().get("quoteSummary", {}).get("result") or []):
+                        yr = _r
+                        break
+                if not yr or not yr.is_success:
                     return None
                 _yres = yr.json().get("quoteSummary", {}).get("result") or []
                 if not _yres:

@@ -9,14 +9,16 @@ function switchTab(tab) {
   document.getElementById('tabWarrant').classList.toggle('active', tab === 'warrant');
   document.getElementById('tabFutures').classList.toggle('active', tab === 'futures');
   document.getElementById('tabScanner').classList.toggle('active', tab === 'scanner');
-  document.getElementById('tabFlow').classList.toggle('active', tab === 'flow');
+  const _tabFlow = document.getElementById('tabFlow');
+  const _flowSection = document.getElementById('flowSection');
+  if (_tabFlow) _tabFlow.classList.toggle('active', tab === 'flow');
   document.getElementById('warrantSection').classList.toggle('hidden', tab !== 'warrant');
   document.getElementById('futuresSection').classList.toggle('hidden', tab !== 'futures');
   document.getElementById('scannerSection').classList.toggle('hidden', tab !== 'scanner');
-  document.getElementById('flowSection').classList.toggle('hidden', tab !== 'flow');
+  if (_flowSection) _flowSection.classList.toggle('hidden', tab !== 'flow');
   if (tab === 'futures' && _futStockId) loadFutures(_futStockId);
   if (tab === 'scanner') loadScanner();
-  if (tab === 'flow') initFlow();
+  if (tab === 'flow' && typeof initFlow === 'function') initFlow();
 }
 
 /* ── 方向切換 ── */

@@ -134,14 +134,14 @@
 <!-- 廣度進度條 -->
 <div style="background:#161b22;border:1px solid #21262d;border-radius:10px;padding:14px 16px;margin-bottom:16px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-    <span style="font-size:.8rem;color:#8b949e">廣度 — 淨廣度 = (上漲-下跌)/總家數×100（TWSE 官方）</span>
+    <span style="font-size:.8rem;color:#8b949e">廣度分數 — (站上50MA% − 50) × 2，與四大因子一致（-100~+100）</span>
     <span id="breadth-pct" style="font-size:1rem;font-weight:700;color:#e6edf3">—</span>
   </div>
   <div style="background:#0d1117;border-radius:4px;height:10px;overflow:hidden">
     <div id="breadth-bar" style="height:100%;border-radius:4px;transition:width .5s;width:0%"></div>
   </div>
   <div style="display:flex;justify-content:space-between;font-size:.7rem;color:#484f58;margin-top:4px">
-    <span>-100%（全跌）</span><span>0%（持平）</span><span>+100%（全漲）</span>
+    <span>-100（空頭廣度）</span><span>0（中性）</span><span>+100（多頭廣度）</span>
   </div>
 </div>
 
@@ -563,11 +563,13 @@ async function loadBreadth() {
     const data = await api('/api/regime/series/BREADTH_50MA?days=2');
     if (!data || !data.length) return;
     const val = data[data.length - 1].value;
-    // 淨廣度：-100~+100，轉為進度條 0~100%（50% = 中性）
-    const sign = val >= 0 ? '+' : '';
-    document.getElementById('breadth-pct').textContent = sign + val.toFixed(1) + '%';
-    const col = val > 30 ? '#3fb950' : val > -30 ? '#d29922' : '#f85149';
-    const barPct = Math.min(100, Math.max(0, (val + 100) / 2));  // -100→0%, 0→50%, +100→100%
+    // BREADTH_50MA = % 股票站上50MA（0~100），轉為方向分數與「四大因子」一致
+    // score = (val - 50) * 2，範圍 -100~+100
+    const score = Math.round((val - 50) * 200) / 100;
+    const sign = score >= 0 ? '+' : '';
+    document.getElementById('breadth-pct').textContent = sign + score.toFixed(1);
+    const col = score > 30 ? '#3fb950' : score > -30 ? '#d29922' : '#f85149';
+    const barPct = Math.min(100, Math.max(0, (score + 100) / 2));  // -100→0%, 0→50%, +100→100%
     document.getElementById('breadth-bar').style.width = barPct + '%';
     document.getElementById('breadth-bar').style.background = col;
     document.getElementById('breadth-pct').style.color = col;

@@ -3620,27 +3620,47 @@ async function warmupServer() {
   // 從 localStorage 恢復策略掃描結果（重整後不消失）
   const _savedScreen = lsLoadScreen();
   const _savedScreenTotal = Object.values(_savedScreen).reduce((s, a) => s + a.length, 0);
-  if (_savedScreenTotal > 0) {
+  // 先從伺服器取得 finished_at（判斷資料新鮮度）
+  let _serverFinishedAt = null;
+  try {
+    const _sr = await api('GET', '/api/screen/results');
+    _serverFinishedAt = _sr.finished_at || null;
+    const _srResults = _sr.results || {};
+    const _srTotal = Object.values(_srResults).reduce((s,a)=>s+a.length,0);
+    if (_srTotal > 0 && _savedScreenTotal === 0) {
+      // localStorage 空白時，從伺服器補回
+      _screenAllResults = _srResults;
+      lsSaveScreen(_screenAllResults);
+      document.getElementById('screen-placeholder').style.display = 'none';
+      renderStratBar();
+      const _first2 = Object.keys(STRATEGY_LABELS).find(k => (_screenAllResults[k]||[]).length > 0);
+      if (_first2) viewStrategy(_first2);
+    }
+  } catch(e) { /* 伺服器無結果 */ }
+
+  if (_savedScreenTotal > 0 && !_screenAllResults.S1) {
     _screenAllResults = _savedScreen;
     document.getElementById('screen-placeholder').style.display = 'none';
     renderStratBar();
     const _first = Object.keys(STRATEGY_LABELS).find(k => (_screenAllResults[k] || []).length > 0);
     if (_first) viewStrategy(_first);
-  } else {
-    // localStorage 沒有資料時，嘗試從伺服器補回上次掃描結果
-    try {
-      const _sr = await api('GET', '/api/screen/results');
-      const _srResults = _sr.results || {};
-      const _srTotal = Object.values(_srResults).reduce((s,a)=>s+a.length,0);
-      if (_srTotal > 0) {
-        _screenAllResults = _srResults;
-        lsSaveScreen(_screenAllResults);
-        document.getElementById('screen-placeholder').style.display = 'none';
-        renderStratBar();
-        const _first2 = Object.keys(STRATEGY_LABELS).find(k => (_screenAllResults[k]||[]).length > 0);
-        if (_first2) viewStrategy(_first2);
+  }
+
+  // 顯示掃描日期 + 過期警告
+  if (_serverFinishedAt) {
+    const _scanDt = new Date(_serverFinishedAt);
+    const _diffH = (Date.now() - _scanDt.getTime()) / 3600000;
+    const _scanDateStr = _scanDt.toLocaleString('zh-TW', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+    const _badgeEl = document.getElementById('gh-scan-last-badge');
+    if (_badgeEl && !_badgeEl.textContent) {
+      if (_diffH > 36) {
+        _badgeEl.textContent = `⚠️ 掃描資料已過期（${_scanDateStr}），請重新掃描`;
+        _badgeEl.style.color = '#f47e7a';
+      } else {
+        _badgeEl.textContent = `上次掃描：${_scanDateStr}`;
+        _badgeEl.style.color = 'var(--muted)';
       }
-    } catch(e) { /* 伺服器無結果，維持空白等使用者掃描 */ }
+    }
   }
 
   // 從 localStorage 恢復全市場排行結果
