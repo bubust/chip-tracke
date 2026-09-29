@@ -4044,12 +4044,26 @@ function _startChartAutoRefresh() {
 
 async function _loadLWC() {
   if (window.LightweightCharts) return;
-  await new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = 'https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js';
-    s.onload = resolve; s.onerror = reject;
-    document.head.appendChild(s);
-  });
+  const _lwcUrls = [
+    'https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js',
+    'https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js',
+  ];
+  for (const _url of _lwcUrls) {
+    try {
+      await new Promise((resolve, reject) => {
+        const _t = setTimeout(() => reject(new Error('timeout')), 8000);
+        const s = document.createElement('script');
+        s.src = _url;
+        s.onload = () => { clearTimeout(_t); resolve(); };
+        s.onerror = () => { clearTimeout(_t); reject(new Error('load error')); };
+        document.head.appendChild(s);
+      });
+      if (window.LightweightCharts) return; // 成功
+    } catch(_e) {
+      console.warn('[LWC] CDN 失敗，嘗試備援:', _url, _e.message);
+    }
+  }
+  throw new Error('LightweightCharts 無法載入（所有 CDN 皆失敗）');
 }
 
 function _calcEMA(arr, period) {

@@ -3389,6 +3389,46 @@ def api_stock_ohlcv(stock_id: str, interval: str = "1d"):
     market = str(row.iloc[0]["type"]) if not row.empty else "twse"
     suffixes = [".TW"] if market == "twse" else [".TWO", ".TW"]
 
+    # ── 優先：本地 price_daily 快取（日線/週線/月線，速度最快）──
+    if interval in ("1d", "3d", "1wk", "1mo"):
+        try:
+            import datetime as _dt_ohlcv
+            from price_cache import get_stock_ohlcv as _pc_ohlcv
+            _cached = _pc_ohlcv(stock_id, days=730)
+            if not _cached.empty and len(_cached) >= 20:
+                _today_m4 = (_dt_ohlcv.date.today() - _dt_ohlcv.timedelta(days=4)).strftime("%Y%m%d")
+                _last_date = str(_cached.iloc[-1]["date"])
+                if _last_date >= _today_m4:
+                    # 快取夠新，直接用
+                    if interval == "3d":
+                        _cached["_dt"] = pd.to_datetime(_cached["date"], format="%Y%m%d")
+                        _c3 = _cached.set_index("_dt").resample("3D").agg(
+                            open=("open","first"), high=("high","max"),
+                            low=("low","min"), close=("close","last"), volume=("volume","sum")
+                        ).dropna(subset=["close"]).reset_index()
+                        _c3["date"] = _c3["_dt"].dt.strftime("%Y%m%d")
+                        return _c3.drop(columns=["_dt"]).tail(500).fillna(0).to_dict(orient="records")
+                    elif interval == "1wk":
+                        _cached["_dt"] = pd.to_datetime(_cached["date"], format="%Y%m%d")
+                        _cw = _cached.set_index("_dt").resample("W").agg(
+                            open=("open","first"), high=("high","max"),
+                            low=("low","min"), close=("close","last"), volume=("volume","sum")
+                        ).dropna(subset=["close"]).reset_index()
+                        _cw["date"] = _cw["_dt"].dt.strftime("%Y%m%d")
+                        return _cw.drop(columns=["_dt"]).tail(500).fillna(0).to_dict(orient="records")
+                    elif interval == "1mo":
+                        _cached["_dt"] = pd.to_datetime(_cached["date"], format="%Y%m%d")
+                        _cm = _cached.set_index("_dt").resample("ME").agg(
+                            open=("open","first"), high=("high","max"),
+                            low=("low","min"), close=("close","last"), volume=("volume","sum")
+                        ).dropna(subset=["close"]).reset_index()
+                        _cm["date"] = _cm["_dt"].dt.strftime("%Y%m%d")
+                        return _cm.drop(columns=["_dt"]).tail(500).fillna(0).to_dict(orient="records")
+                    else:  # 1d
+                        return _cached.tail(500).fillna(0).to_dict(orient="records")
+        except Exception:
+            pass  # 快取失敗靜默，繼續 Yahoo Finance
+
     # 映射 interval → (yf_interval, days_back, is_intraday)
     _ICFG = {
         "3m":  ("3m",  5,    True),

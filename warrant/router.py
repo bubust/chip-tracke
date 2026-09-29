@@ -105,6 +105,7 @@ def run_scanner():
             candidates = conn.execute("""
                 SELECT w.code, w.name, w.market, w.kind, w.strike,
                        w.last_trade_date, w.issuer, w.underlying_code,
+                       w.issued_lots,
                        u.name AS underlying_name
                 FROM warrants w
                 LEFT JOIN underlyings u ON u.code = w.underlying_code
@@ -143,31 +144,46 @@ def run_scanner():
 
             if not market_open:
                 # ── 盤外：直接用 TWSE 官方成交量 ──
+                # 若 twse_vol 空（TWSE geo-blocked），改用 DB issued_lots 作為 fallback
+                _vol_available = bool(twse_vol)
                 for w_row in batch:
                     code = w_row["code"]
-                    td = twse_vol.get(code)
-                    if not td:
-                        continue
-                    volume = td["volume"]
-                    if volume < 100:
-                        continue
+                    if _vol_available:
+                        td = twse_vol.get(code)
+                        if not td:
+                            continue
+                        volume   = td["volume"]
+                        price    = td["price"]
+                        turnover = int(td["turnover"])
+                        if volume < 100:
+                            continue
+                        sort_key = volume
+                    else:
+                        # Fallback：TWSE geo-blocked，用 issued_lots 作為流動性代理
+                        issued = w_row["issued_lots"] or 0
+                        if issued < 1000:
+                            continue
+                        volume   = 0
+                        price    = 0
+                        turnover = 0
+                        sort_key = issued
                     results.append({
                         "code":            code,
                         "name":            w_row["name"],
                         "underlying_code": w_row["underlying_code"],
                         "underlying_name": w_row["underlying_name"] or "",
                         "kind":            w_row["kind"],
-                        "price":           td["price"],
+                        "price":           price,
                         "bid":             None,
                         "ask":             None,
                         "bid_lots":        0,
                         "volume":          volume,
-                        "turnover":        int(td["turnover"]),
+                        "turnover":        turnover,
                         "bid_value":       0,
                         "expiry_date":     w_row["last_trade_date"],
                         "strike":          w_row["strike"],
                         "issuer":          w_row["issuer"],
-                        "_sort":           volume,
+                        "_sort":           sort_key,
                     })
                 continue  # 跳過 MIS 這批
 

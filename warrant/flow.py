@@ -64,16 +64,54 @@ def _parse_twse_json(data: dict, date_str: str) -> list[dict]:
 def fetch_twse_daily(date_str: str) -> list[dict]:
     """
     TWSE 上市權證每日成交行情（TWTB4U）。
-    Render.com 境外 IP 會被 TWSE 地理封鎖回傳 HTML；偵測後 log 並回傳 []。
+    先試 openapi.twse.com.tw（境外 IP 可用），再試 www.twse.com.tw（境內限定）。
     回傳 [{code, volume, turnover, close, market}, ...]
     """
+    # 嘗試 1: TWSE OpenAPI（境外 IP 較不被封鎖）
+    _openapi_url = "https://openapi.twse.com.tw/v1/exchangeReport/TWTB4U"
+    _params_oa = {"date": _twse_date(date_str), "selectType": "ALL"}
+    try:
+        r = requests.get(_openapi_url, params=_params_oa, headers=HEADERS, timeout=20)
+        if r.status_code == 200 and not _is_html(r.text):
+            _data = r.json()
+            if isinstance(_data, list) and _data:
+                # openapi 回傳 JSON array，每筆是 dict
+                result = []
+                for item in _data:
+                    code    = str(item.get("SecuritiesCompanyCode") or item.get("Code") or "").strip()
+                    vol_s   = str(item.get("TradeVolume") or item.get("成交股數") or "0").replace(",", "")
+                    turn_s  = str(item.get("TradeValue")  or item.get("成交金額") or "0").replace(",", "")
+                    close_s = str(item.get("ClosingPrice") or item.get("收盤價") or "0").replace(",", "")
+                    if not code:
+                        continue
+                    try:
+                        vol   = int(vol_s) // 1000
+                        turn  = float(turn_s)
+                        close = float(close_s) if close_s not in ("", "--", "-") else 0.0
+                        if vol > 0:
+                            result.append({"code": code, "volume": vol,
+                                           "turnover": turn, "close": close, "market": "TSE"})
+                    except Exception:
+                        continue
+                if result:
+                    log.info(f"[flow] TWSE OpenAPI 取得 {len(result)} 檔有成交權證")
+                    return result
+            elif isinstance(_data, dict):
+                # 可能是原本的 fields/data 格式
+                parsed = _parse_twse_json(_data, date_str)
+                if parsed:
+                    return parsed
+    except Exception as _e1:
+        log.warning(f"[flow] TWSE OpenAPI TWTB4U 失敗: {_e1}")
+
+    # 嘗試 2: 原始 www.twse.com.tw（境內 IP 才能用）
     url = "https://www.twse.com.tw/rwd/zh/warrant/TWTB4U"
     params = {"date": _twse_date(date_str), "response": "json", "selectType": "ALL"}
     try:
         r = requests.get(url, params=params, headers=HEADERS, timeout=30)
         r.raise_for_status()
         if _is_html(r.text):
-            log.error(f"[flow] TWSE TWTB4U 回傳 HTML — Render.com IP 被 TWSE 地理封鎖，{date_str} 無上市金流資料")
+            log.error(f"[flow] TWSE TWTB4U 回傳 HTML — IP 被地理封鎖，{date_str} 無上市金流資料")
             return []
         return _parse_twse_json(r.json(), date_str)
     except Exception as e:

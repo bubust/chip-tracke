@@ -29,6 +29,7 @@ def _limit_up_price(prev_close: float) -> float:
 
 STRATEGIES = {
     "S1":       "雙MACD選股（多）",
+    "S_FBD":    "假跌破買進",           # 移至第 2 — 用戶常在 K 線看到此標記
     "S1_SHORT": "雙MACD選股（空）",
 
     "S2":       "二次確認買進（W底）",
@@ -38,7 +39,6 @@ STRATEGIES = {
     "S10":      "漲停",
 
     "S_PB":     "均線拉回買點",
-    "S_FBD":    "假跌破買進",
     "S_RES":    "共振起點（黃金交叉）",
 
     "S_VOLX":       "量爆拉升（成交量暴增3倍且站上20週線）",
