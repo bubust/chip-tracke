@@ -305,9 +305,9 @@ def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
         from price_cache import get_stock_ohlcv, save_stock_ohlcv as _save
         cached = get_stock_ohlcv(sid, days=520)
         if not cached.empty and len(cached) >= 100:
-            # 14 天容忍：FinMind/backfill 資料可能落後 1-2 天，不需強制最新
-            today_m14 = (_dt.date.today() - _dt.timedelta(days=14)).strftime("%Y%m%d")
-            if str(cached.iloc[-1]["date"]) >= today_m14:
+            # 4 天容忍：涵蓋週末+假日，超過則重新抓 Yahoo 最新報價
+            today_m4 = (_dt.date.today() - _dt.timedelta(days=4)).strftime("%Y%m%d")
+            if str(cached.iloc[-1]["date"]) >= today_m4:
                 return cached
     except Exception:
         pass

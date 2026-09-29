@@ -1131,28 +1131,36 @@ async def api_indices():
         except Exception as _e:
             print(f"[indices] FinMind 備援區塊失敗: {_e}")
 
-    # ── 4. TPEX OpenAPI 備援：上櫃加權指數（官方，盤後更新）──
+    # ── 4. TPEX OpenAPI 備援：上櫃加權指數（TPEX_Indexes，盤後更新）──
     try:
         if result["otc"]["price"] is None:
             async with httpx.AsyncClient(timeout=10, verify=False, follow_redirects=True,
                 headers={"User-Agent": UA}) as tpex_c:
                 _tpex_r = await tpex_c.get(
-                    "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes",
+                    "https://www.tpex.org.tw/openapi/v1/TPEX_Indexes",
                     timeout=8,
                 )
                 if _tpex_r.status_code == 200:
                     _tpex_rows = _tpex_r.json() or []
-                    # 找最近 2 個交易日的指數行（CodeNo = "IX0044" = 上櫃加權指數）
-                    _ix_rows = [r for r in _tpex_rows if r.get("CodeNo") == "IX0044"]
-                    _ix_rows.sort(key=lambda r: r.get("Date", ""), reverse=True)
-                    if len(_ix_rows) >= 1:
-                        _cur = _ix_rows[0]
-                        _price_str = (_cur.get("ClosePrice") or "").replace(",", "")
-                        _price_otc = float(_price_str) if _price_str else None
-                        _pct_otc = None
-                        if len(_ix_rows) >= 2 and _price_otc:
-                            _prev_str = (_ix_rows[1].get("ClosePrice") or "").replace(",", "")
-                            _prev_otc = float(_prev_str) if _prev_str else None
+                    # 取最近 2 筆（rows 已按日期排序，取最後 2 筆）
+                    _recent = _tpex_rows[-2:] if len(_tpex_rows) >= 2 else _tpex_rows
+                    def _parse_tpex_idx_val(row):
+                        for _k in ["CloseIndex", "WeightedIndex", "上市(OTC)加權指數",
+                                   "OtcWeightedIndex", "Index", "Close"]:
+                            _raw = str(row.get(_k, "")).replace(",", "").strip()
+                            if _raw and _raw not in ("", "-", "--"):
+                                try:
+                                    _v = float(_raw)
+                                    if _v > 0:
+                                        return _v
+                                except Exception:
+                                    pass
+                        return None
+                    if _recent:
+                        _price_otc = _parse_tpex_idx_val(_recent[-1])
+                        _pct_otc   = None
+                        if len(_recent) >= 2 and _price_otc:
+                            _prev_otc = _parse_tpex_idx_val(_recent[-2])
                             if _prev_otc and _prev_otc > 0:
                                 _pct_otc = round((_price_otc - _prev_otc) / _prev_otc * 100, 2)
                         if _price_otc:
@@ -1394,41 +1402,62 @@ async def _deep_fundamental(stock_id: str) -> dict | None:
         }
         # ── 補充：Yahoo Finance summaryDetail（市值/52週高低/Beta）──
         try:
-            async with httpx.AsyncClient(timeout=8, headers={"User-Agent": "Mozilla/5.0"}) as yc:
+            _YF_HDRS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        "Accept": "application/json", "Accept-Language": "zh-TW,zh;q=0.9"}
+            async with httpx.AsyncClient(timeout=10, headers=_YF_HDRS, follow_redirects=True) as yc:
                 _yf_suffixes = [".TW", ".TWO"]  # 先試上市(.TW)，再試上櫃(.TWO)
                 yr = None
-                for _sfx in _yf_suffixes:
-                    _r = await yc.get(
-                        f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{stock_id}{_sfx}",
-                        params={"modules": "summaryDetail,defaultKeyStatistics"},
-                    )
-                    if _r.is_success and (_r.json().get("quoteSummary", {}).get("result") or []):
-                        yr = _r
+                # 嘗試 v10 和 v11（v10 有時需要 crumb，v11 較寬鬆）
+                for _ver in ["v11", "v10"]:
+                    for _sfx in _yf_suffixes:
+                        try:
+                            _r = await yc.get(
+                                f"https://query1.finance.yahoo.com/{_ver}/finance/quoteSummary/{stock_id}{_sfx}",
+                                params={"modules": "summaryDetail,defaultKeyStatistics"},
+                            )
+                            if _r.is_success and (_r.json().get("quoteSummary", {}).get("result") or []):
+                                yr = _r
+                                break
+                        except Exception:
+                            continue
+                    if yr:
                         break
                 if yr and yr.is_success:
                     _yresult = yr.json().get("quoteSummary", {}).get("result") or []
-                    if not _yresult:
-                        raise ValueError("no_result")
-                    ydata = _yresult[0]
-                    sd = ydata.get("summaryDetail", {})
-                    ks = ydata.get("defaultKeyStatistics", {})
-                    mktcap = (sd.get("marketCap") or {}).get("raw")
-                    w52h   = (sd.get("fiftyTwoWeekHigh") or {}).get("raw")
-                    w52l   = (sd.get("fiftyTwoWeekLow") or {}).get("raw")
-                    beta   = (sd.get("beta") or {}).get("raw")
-                    shares = (ks.get("sharesOutstanding") or {}).get("raw")
-                    if mktcap:
-                        result["market_cap"] = round(mktcap / 1e8, 1)   # 億元
-                    if w52h:
-                        result["week52_high"] = round(w52h, 2)
-                    if w52l:
-                        result["week52_low"] = round(w52l, 2)
-                    if beta:
-                        result["beta"] = round(beta, 2)
-                    if shares:
-                        result["shares_outstanding"] = round(shares / 1e8, 2)  # 億股
+                    if _yresult:
+                        ydata = _yresult[0]
+                        sd = ydata.get("summaryDetail", {})
+                        ks = ydata.get("defaultKeyStatistics", {})
+                        mktcap = (sd.get("marketCap") or {}).get("raw")
+                        w52h   = (sd.get("fiftyTwoWeekHigh") or {}).get("raw")
+                        w52l   = (sd.get("fiftyTwoWeekLow") or {}).get("raw")
+                        beta   = (sd.get("beta") or {}).get("raw")
+                        shares = (ks.get("sharesOutstanding") or {}).get("raw")
+                        if mktcap:
+                            result["market_cap"] = round(mktcap / 1e8, 1)   # 億元
+                        if w52h:
+                            result["week52_high"] = round(w52h, 2)
+                        if w52l:
+                            result["week52_low"] = round(w52l, 2)
+                        if beta:
+                            result["beta"] = round(beta, 2)
+                        if shares:
+                            result["shares_outstanding"] = round(shares / 1e8, 2)  # 億股
         except Exception:
             pass
+        # ── 本地 price_daily 備援：52 週高低（Yahoo 失敗時）──
+        if result.get("week52_high") is None or result.get("week52_low") is None:
+            try:
+                from price_cache import get_stock_ohlcv as _get_ohlcv
+                _df52 = _get_ohlcv(stock_id, days=260)
+                if not _df52.empty and "high" in _df52.columns and "low" in _df52.columns:
+                    _h = float(_df52["high"].max())
+                    _l = float(_df52["low"].min())
+                    if _h > 0:
+                        result["week52_high"] = round(_h, 2)
+                        result["week52_low"]  = round(_l, 2)
+            except Exception:
+                pass
         return result
     except Exception as e:
         log.warning(f"[deep_fund] {stock_id}: {e}")
@@ -1556,17 +1585,25 @@ async def _deep_financial(stock_id: str) -> dict | None:
         }
     except Exception as e:
         log.warning(f"[deep_fin] FinMind {stock_id}: {e}")
-        # ── Fallback：Yahoo Finance financialData（先試.TW，再試.TWO）──
+        # ── Fallback：Yahoo Finance financialData（v11/v10 × .TW/.TWO）──
         try:
-            async with httpx.AsyncClient(timeout=10, headers={"User-Agent": "Mozilla/5.0"}) as yc:
+            _YF_HDRS2 = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                         "Accept": "application/json"}
+            async with httpx.AsyncClient(timeout=10, headers=_YF_HDRS2, follow_redirects=True) as yc:
                 yr = None
-                for _sfx in [".TW", ".TWO"]:
-                    _r = await yc.get(
-                        f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{stock_id}{_sfx}",
-                        params={"modules": "financialData,defaultKeyStatistics"},
-                    )
-                    if _r.is_success and (_r.json().get("quoteSummary", {}).get("result") or []):
-                        yr = _r
+                for _ver in ["v11", "v10"]:
+                    for _sfx in [".TW", ".TWO"]:
+                        try:
+                            _r = await yc.get(
+                                f"https://query1.finance.yahoo.com/{_ver}/finance/quoteSummary/{stock_id}{_sfx}",
+                                params={"modules": "financialData,defaultKeyStatistics"},
+                            )
+                            if _r.is_success and (_r.json().get("quoteSummary", {}).get("result") or []):
+                                yr = _r
+                                break
+                        except Exception:
+                            continue
+                    if yr:
                         break
                 if not yr or not yr.is_success:
                     return None
@@ -3645,8 +3682,20 @@ async def api_screen_run(background_tasks: BackgroundTasks):
     if status["running"]:
         return {"ok": False, "message": "掃描中，請稍候"}
     strategy_params = _load_strategy_params()
-    background_tasks.add_task(run_market_scan, strategy_params=strategy_params)
-    return {"ok": True, "message": "全市場掃描已啟動（所有策略）..."}
+
+    async def _scan_with_price_update(params):
+        """先更新今日收盤價快取，再啟動掃描，確保拿到最新資料"""
+        try:
+            from price_cache import update_price_cache, init_price_db
+            init_price_db()
+            await update_price_cache(local_mode=False)
+        except Exception as _pu_e:
+            import logging as _log
+            _log.getLogger(__name__).warning(f"[scan] price update 失敗（繼續掃描）: {_pu_e}")
+        await run_market_scan(strategy_params=params)
+
+    background_tasks.add_task(_scan_with_price_update, strategy_params)
+    return {"ok": True, "message": "全市場掃描已啟動（含今日報價更新）..."}
 
 @app.get("/api/screen/status")
 def api_screen_status():

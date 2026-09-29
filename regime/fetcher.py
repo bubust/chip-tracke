@@ -57,10 +57,68 @@ def _yahoo_close(ticker: str, days: int = 30) -> list[tuple[str, float]]:
         return []
 
 
+def fetch_taiex_twse(days: int = 60):
+    """
+    TWSE OpenAPI 備援：加權指數收盤（補 Yahoo ^TWII 失效時）。
+    API: https://openapi.twse.com.tw/v1/exchangeReport/MI_INDEX
+    回傳每日的「發行量加權股價指數」。
+    """
+    url = "https://openapi.twse.com.tw/v1/exchangeReport/MI_INDEX"
+    try:
+        with httpx.Client(timeout=20, headers={"User-Agent": _UA}) as c:
+            r = c.get(url)
+            r.raise_for_status()
+            rows = r.json()
+        if not isinstance(rows, list) or not rows:
+            log.warning("[fetcher] TWSE MI_INDEX: 無資料")
+            return
+        inserted = 0
+        with db() as conn:
+            for row in rows[-days:]:
+                date_raw = str(row.get("Date", "")).strip()
+                if not date_raw or len(date_raw) < 7:
+                    continue
+                # 日期格式：民國年 "1131010" 或 "113/10/10"
+                try:
+                    if "/" in date_raw:
+                        parts = date_raw.split("/")
+                        yr = int(parts[0]) + 1911
+                        dt = f"{yr}-{parts[1].zfill(2)}-{parts[2].zfill(2)}"
+                    else:
+                        yr = int(date_raw[:3]) + 1911
+                        dt = f"{yr}-{date_raw[3:5]}-{date_raw[5:7]}"
+                except Exception:
+                    continue
+                # 找加權指數欄位
+                val = None
+                for key in ["Index", "發行量加權股價指數", "ClosingIndex", "CloseIndex"]:
+                    raw_v = str(row.get(key, "")).replace(",", "").strip()
+                    if raw_v and raw_v not in ("", "-", "--"):
+                        try:
+                            v = float(raw_v)
+                            if v > 0:
+                                val = v
+                                break
+                        except Exception:
+                            pass
+                if val is None:
+                    continue
+                existing = conn.execute(
+                    "SELECT 1 FROM market_daily WHERE series='TAIEX' AND date=?", (dt,)
+                ).fetchone()
+                if not existing:
+                    upsert_series(conn, dt, "TAIEX", val, "TWSE_API")
+                    inserted += 1
+        log.info(f"[fetcher] TWSE TAIEX index: 補充 {inserted} 筆")
+    except Exception as e:
+        log.warning(f"[fetcher] TWSE TAIEX index 失敗（非致命）: {e}")
+
+
 def fetch_all(days: int = 60):
     """抓取所有 Yahoo Finance 系列並寫入 DB"""
     inserted = 0
     otc_count = 0
+    taiex_count = 0
     with db() as conn:
         for series, ticker in YAHOO_TICKERS.items():
             rows = _yahoo_close(ticker, days)
@@ -69,12 +127,18 @@ def fetch_all(days: int = 60):
                 inserted += 1
                 if series == "OTC":
                     otc_count += 1
+                if series == "TAIEX":
+                    taiex_count += 1
             log.info(f"[fetcher] {series}({ticker}): {len(rows)} 筆")
     log.info(f"[fetcher] 共寫入 {inserted} 筆")
     # OTC 無資料時嘗試 TPEx API 補充
     if otc_count == 0:
         log.info("[fetcher] Yahoo ^TWOII 無資料，嘗試 TPEx API 補充 OTC 指數")
         fetch_tpex_otc_index(days=days)
+    # TAIEX 無資料時嘗試 TWSE OpenAPI 補充（divergence 計算需要）
+    if taiex_count == 0:
+        log.info("[fetcher] Yahoo ^TWII 無資料，嘗試 TWSE OpenAPI 補充 TAIEX 指數")
+        fetch_taiex_twse(days=days)
     return inserted
 
 
