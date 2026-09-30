@@ -278,6 +278,15 @@ STRATEGY_KEYS = ["S1", "S1_SHORT", "S2", "S5", "S17A", "S17B", "S10",
 
 _SCAN_WORKERS = 4    # Fly.io shared-cpu: 4 workers 避免 Yahoo 429 burst
 
+# update_price_cache() 成功取得的最新日期（由 server.py 在掃描前設定）
+# 讓 _fetch_for_scan() 以實際快取日期為基準（非 date.today()），正確處理盤前/盤後場景
+_scan_cache_target_date: str = ""  # e.g. "20261001"
+
+def _set_scan_target_date(date_str: str):
+    """掃描前由 server.py 呼叫，設定 price_cache 最新日期。"""
+    global _scan_cache_target_date
+    _scan_cache_target_date = date_str or ""
+
 # 各 worker thread 維護自己的 requests.Session，避免 race condition
 _scan_thread_local = threading.local()
 
@@ -296,23 +305,26 @@ def _get_scan_session():
 def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
     """
     同步版 fetch（供 ThreadPoolExecutor worker 呼叫）：
-    1. 已有今日資料 → 直接用 cache，跳過 Yahoo
-    2. Cache 非今日 → 先嘗試 Yahoo 取最新資料（含今日收盤）
+    1. Cache 已達目標日期 → 直接用，跳過 Yahoo（快速路徑）
+       目標日期 = update_price_cache() 成功取得的日期（可能是昨日收盤，非 date.today()）
+    2. Cache 落後目標日期 → 先嘗試 Yahoo 取最新資料
     3. Yahoo 失敗 → 降級用 4 天內的 cache 備援（週末/假日場景）
     """
     import datetime as _dt
     today_str = _dt.date.today().strftime("%Y%m%d")
+    # 以 update_price_cache() 實際取得的日期為基準；若未設定則退回今日
+    target_date = _scan_cache_target_date if _scan_cache_target_date else today_str
     _cached_fallback = pd.DataFrame()  # Yahoo 失敗時的備援
-    # ── 1. price_cache 快速路徑（已有今日資料）──────────────────────────────
+    # ── 1. price_cache 快速路徑（cache 已達目標日期）────────────────────────
     try:
         from price_cache import get_stock_ohlcv, save_stock_ohlcv as _save
         cached = get_stock_ohlcv(sid, days=520)
         if not cached.empty and len(cached) >= 100:
             last_date = str(cached.iloc[-1]["date"])
-            if last_date >= today_str:
-                # 已有今日資料，直接用，跳過 Yahoo
+            if last_date >= target_date:
+                # Cache 已達目標日期，直接用，跳過 Yahoo
                 return cached
-            # cache 非今日 → 嘗試 Yahoo 取今日；4 天內的 cache 保留備援
+            # Cache 落後目標 → 嘗試 Yahoo；4 天內的 cache 保留備援
             today_m4 = (_dt.date.today() - _dt.timedelta(days=4)).strftime("%Y%m%d")
             if last_date >= today_m4:
                 _cached_fallback = cached  # Yahoo 失敗時（週末/假日）可用

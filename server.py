@@ -3755,13 +3755,22 @@ async def api_screen_run(background_tasks: BackgroundTasks):
 
     async def _scan_with_price_update(params):
         """先更新今日收盤價快取，再啟動掃描，確保拿到最新資料"""
+        _latest_date = ""
         try:
             from price_cache import update_price_cache, init_price_db
             init_price_db()
-            await update_price_cache(local_mode=False)
+            _result = await update_price_cache(local_mode=False)
+            _latest_date = _result.get("latest", "")
         except Exception as _pu_e:
             import logging as _log
             _log.getLogger(__name__).warning(f"[scan] price update 失敗（繼續掃描）: {_pu_e}")
+        # 設定目標日期：讓 _fetch_for_scan 以實際 cache 日期為基準（非 date.today()）
+        # 盤前掃描時 _latest_date 可能是昨日收盤，cache 直接命中，不需打 Yahoo
+        try:
+            from yahoo_price import _set_scan_target_date
+            _set_scan_target_date(_latest_date)
+        except Exception:
+            pass
         await run_market_scan(strategy_params=params)
 
     background_tasks.add_task(_scan_with_price_update, strategy_params)
