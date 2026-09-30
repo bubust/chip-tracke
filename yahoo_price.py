@@ -296,26 +296,26 @@ def _get_scan_session():
 def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
     """
     同步版 fetch（供 ThreadPoolExecutor worker 呼叫）：
-    1. 優先讀 price_cache（5 天內的快取直接用，不打 Yahoo）
-    2. Cache 缺/舊 → requests.get Yahoo，成功後存入 cache
+    1. 已有今日資料 → 直接用 cache，跳過 Yahoo
+    2. Cache 非今日 → 先嘗試 Yahoo 取最新資料（含今日收盤）
+    3. Yahoo 失敗 → 降級用 4 天內的 cache 備援（週末/假日場景）
     """
     import datetime as _dt
     today_str = _dt.date.today().strftime("%Y%m%d")
-    # ── 1. price_cache ────────────────────────────────────────────────────────
+    _cached_fallback = pd.DataFrame()  # Yahoo 失敗時的備援
+    # ── 1. price_cache 快速路徑（已有今日資料）──────────────────────────────
     try:
         from price_cache import get_stock_ohlcv, save_stock_ohlcv as _save
         cached = get_stock_ohlcv(sid, days=520)
         if not cached.empty and len(cached) >= 100:
             last_date = str(cached.iloc[-1]["date"])
             if last_date >= today_str:
-                # 已有今日資料，直接用
+                # 已有今日資料，直接用，跳過 Yahoo
                 return cached
-            # 4 天容忍：涵蓋週末+假日；但若 price_cache 有更新的資料則不用 Yahoo
+            # cache 非今日 → 嘗試 Yahoo 取今日；4 天內的 cache 保留備援
             today_m4 = (_dt.date.today() - _dt.timedelta(days=4)).strftime("%Y%m%d")
             if last_date >= today_m4:
-                # cache 在容忍範圍但不是今天 → 嘗試從 Yahoo meta 補今日價格
-                # （update_price_cache 已寫入 SQLite，若最新仍非今日才走 Yahoo）
-                return cached
+                _cached_fallback = cached  # Yahoo 失敗時（週末/假日）可用
     except Exception:
         pass
     # ── 2. Yahoo Finance ──────────────────────────────────────────────────────
@@ -325,6 +325,8 @@ def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
     try:
         sess = _get_scan_session()
     except Exception:
+        if not _cached_fallback.empty:
+            return _cached_fallback
         return pd.DataFrame()
     for suffix in suffixes:
         for host in ["query1", "query2"]:
@@ -352,6 +354,9 @@ def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
                     return df
             except Exception:
                 pass
+    # ── 3. Fallback：Yahoo 全失敗時用 cache 備援（週末/假日）──────────────────
+    if not _cached_fallback.empty:
+        return _cached_fallback
     return pd.DataFrame()
 
 _scan_status: dict = {
