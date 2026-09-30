@@ -300,14 +300,21 @@ def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
     2. Cache 缺/舊 → requests.get Yahoo，成功後存入 cache
     """
     import datetime as _dt
+    today_str = _dt.date.today().strftime("%Y%m%d")
     # ── 1. price_cache ────────────────────────────────────────────────────────
     try:
         from price_cache import get_stock_ohlcv, save_stock_ohlcv as _save
         cached = get_stock_ohlcv(sid, days=520)
         if not cached.empty and len(cached) >= 100:
-            # 4 天容忍：涵蓋週末+假日，超過則重新抓 Yahoo 最新報價
+            last_date = str(cached.iloc[-1]["date"])
+            if last_date >= today_str:
+                # 已有今日資料，直接用
+                return cached
+            # 4 天容忍：涵蓋週末+假日；但若 price_cache 有更新的資料則不用 Yahoo
             today_m4 = (_dt.date.today() - _dt.timedelta(days=4)).strftime("%Y%m%d")
-            if str(cached.iloc[-1]["date"]) >= today_m4:
+            if last_date >= today_m4:
+                # cache 在容忍範圍但不是今天 → 嘗試從 Yahoo meta 補今日價格
+                # （update_price_cache 已寫入 SQLite，若最新仍非今日才走 Yahoo）
                 return cached
     except Exception:
         pass

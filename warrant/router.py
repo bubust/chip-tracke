@@ -244,6 +244,7 @@ def run_scanner():
                 "errors":        errors,
                 "is_scanning":   False,
                 "mode":          mode,
+                "vol_available": bool(twse_vol) if not market_open else True,
             })
         log.info(f"[scanner] 完成（{mode}）：{len(results)} 檔，掃 {len(candidates)} 檔")
 
@@ -823,10 +824,15 @@ def trigger_ingest():
 def get_scanner(min_bid_lots: int = Query(500, ge=100, le=50000),
                 min_volume:   int = Query(100, ge=0)):
     mode = _scanner_cache.get("mode", "盤外")
+    vol_available = _scanner_cache.get("vol_available", True)
     if mode == "盤中":
         filtered = [r for r in _scanner_cache["results"] if r["bid_lots"] >= min_bid_lots]
-    else:
+    elif vol_available:
+        # 盤外且有 TWSE 實際成交量資料 → 依成交量過濾
         filtered = [r for r in _scanner_cache["results"] if r["volume"] >= min_volume]
+    else:
+        # 盤外但 TWSE/TPEx 資料尚未發佈（14:00前或資料延遲）→ 依 issued_lots 排序，全部回傳
+        filtered = _scanner_cache["results"]
     with _db.db() as conn:
         db_warrants = conn.execute("SELECT COUNT(*) FROM warrants WHERE is_active=1").fetchone()[0]
     return {
@@ -836,6 +842,7 @@ def get_scanner(min_bid_lots: int = Query(500, ge=100, le=50000),
         "total_scanned": _scanner_cache["total_scanned"],
         "db_warrants":   db_warrants,
         "mode":          mode,
+        "vol_available": vol_available,
         "min_bid_lots":  min_bid_lots,
         "min_volume":    min_volume,
     }

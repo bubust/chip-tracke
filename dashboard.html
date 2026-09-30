@@ -3184,6 +3184,19 @@ const STRATEGY_LABELS = {
   S_VOLX_SHORT: '💥 量爆下殺（今日成交量 ≥ 昨日3倍、收盤下跌、跌破10日均線MA10，放空訊號）',
   S_WARRANT_TOP: '📈 認購權證前十大（最近交易日認購成交額最高的標的股）',
 };
+// 策略短名稱（用於「也在策略」欄位badge）
+const STRATEGY_SHORT = {
+  S1: 'S1 雙MACD多', S1_SHORT: 'S1空 雙MACD空',
+  S2: 'S2 W底',
+  S5: 'S5 站上均線', S17A: 'S17a 破底翻',
+  S17B: 'S17b 撈底加碼', S10: 'S10 漲停',
+  S_PB:  '🎯 拉回買點',
+  S_FBD: '🪤 假跌破',
+  S_RES: '🟡 共振起點',
+  S_VOLX:       '💥 量爆拉升',
+  S_VOLX_SHORT: '💥 量爆下殺',
+  S_WARRANT_TOP: '📈 認購前十大',
+};
 
 async function runScreen() {
   const btn = document.getElementById('btn-screen');
@@ -3628,7 +3641,7 @@ function renderScreenTable(strategy, data) {
       <td class="muted">${(() => { if (!row.volume) return '—'; const lots = Math.round(row.volume); return lots >= 10000 ? (lots/10000).toFixed(1)+'萬' : lots.toLocaleString('zh-TW'); })()}</td>
       <td class="muted hide-mobile">${(() => { if (!row.close || !row.volume) return '—'; const amt = row.close * row.volume * 1000; if (amt >= 1e8) return (amt/1e8).toFixed(2)+'億'; if (amt >= 1e4) return Math.round(amt/1e4)+'萬'; return '—'; })()}</td>
       <td class="${(row.bb_score??0)>0?'pos':(row.bb_score??0)<0?'neg':'muted'} hide-mobile" title="上軌=+10 中軌=0 下軌=-10">${row.bb_score!=null ? ((row.bb_score>0?'+':'')+row.bb_score) : '—'}</td>
-      <td class="hide-mobile" style="max-width:140px">${(_otherStratMap[row.stock_id]||[]).map(k=>`<span style="display:inline-block;font-size:.68rem;background:rgba(79,142,247,.13);color:var(--accent);border:1px solid rgba(79,142,247,.3);border-radius:3px;padding:1px 5px;margin:1px;white-space:nowrap" title="${STRATEGY_LABELS[k]||k}">${k}</span>`).join('') || '<span class="muted" style="font-size:.72rem">—</span>'}</td>
+      <td class="hide-mobile" style="max-width:160px">${(_otherStratMap[row.stock_id]||[]).map(k=>`<span style="display:inline-block;font-size:.68rem;background:rgba(79,142,247,.13);color:var(--accent);border:1px solid rgba(79,142,247,.3);border-radius:3px;padding:1px 5px;margin:1px;white-space:nowrap" title="${STRATEGY_LABELS[k]||k}">${STRATEGY_SHORT[k]||k}</span>`).join('') || '<span class="muted" style="font-size:.72rem">—</span>'}</td>
       <td style="white-space:nowrap"><button class="btn sm ghost" onclick="addFromMarket('${row.stock_id}','${(STRATEGY_LABELS[strategy]||strategy).replace(/[（(][^）)]{10,}[）)]/g,'').trim()}')">+ 加入清單</button>
       <button class="btn sm ghost" style="margin-left:4px;border-color:#a78bfa;color:#a78bfa" onclick="openDeepPanel('${row.stock_id}','${(row.name||row.stock_id).replace(/'/g,'')}')">🔬</button></td>
     </tr>`;

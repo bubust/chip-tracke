@@ -620,12 +620,15 @@ function updateScanStatus(data) {
   const note = data.total_scanned === 0 && db > 0
     ? '　<span style="color:var(--yellow)">⚠ 尚未掃描，請點「立刻掃描」</span>'
     : '';
+  const volNote = (mode === '盤外' && data.vol_available === false)
+    ? '　<span style="color:#8b949e;font-size:.78rem">（TWSE 成交量資料尚未發佈，依發行量排序）</span>'
+    : '';
   const modeTag = mode === '盤中'
     ? '<span style="color:var(--green);font-weight:700">盤中 委買量模式</span>'
     : '<span style="color:var(--yellow);font-weight:700">盤外 成交量模式</span>';
   $('scannerStatus').innerHTML =
     `${modeTag}　DB：<b>${db}</b> 檔　上次掃描：<b>${t}</b>　` +
-    `共掃 <b>${data.total_scanned || 0}</b> 檔　找到 <b>${cnt}</b> 檔${note}`;
+    `共掃 <b>${data.total_scanned || 0}</b> 檔　找到 <b>${cnt}</b> 檔${note}${volNote}`;
 }
 
 function sortScanner(col) {
