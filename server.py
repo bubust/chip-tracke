@@ -996,6 +996,36 @@ async def api_indices():
     except Exception as e:
         print(f"[indices] TWSE MIS 失敗: {e}")
 
+    # ── 1.5. TPEX MIS 上櫃指數（TWSE MIS 雲端 IP 常被擋時備援）──
+    if result["otc"]["price"] is None:
+        try:
+            async with httpx.AsyncClient(
+                timeout=8, follow_redirects=True, verify=False,
+                headers={"User-Agent": UA},
+            ) as tpex_mis:
+                try:
+                    await tpex_mis.get("https://mis.tpex.org.tw/", timeout=5)
+                except Exception:
+                    pass
+                r_tpex = await tpex_mis.get(
+                    "https://mis.tpex.org.tw/api/getStockInfo.php",
+                    params={
+                        "ex_ch": "otc_o00.tw",
+                        "json": "1", "delay": "0",
+                        "_": str(int(_time.time() * 1000)),
+                    },
+                    headers={"Referer": "https://mis.tpex.org.tw/"},
+                )
+                for item in r_tpex.json().get("msgArray", []):
+                    z = _sf_price(item.get("z"))
+                    y = _sf_price(item.get("y"))
+                    if y and y > 0:
+                        price = z if z else y
+                        pct = round((z - y) / y * 100, 2) if z else None
+                        result["otc"].update({"price": round(price, 2), "change_pct": pct})
+        except Exception as _tpex_mis_e:
+            print(f"[indices] TPEX MIS 失敗: {_tpex_mis_e}")
+
     # ── 2. TAIFEX MIS 台指近 / 金融近 / 電子近 ──
     try:
         async with httpx.AsyncClient(

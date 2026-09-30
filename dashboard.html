@@ -445,7 +445,7 @@
       <button class="btn green" id="btn-trigger-gh" onclick="triggerGithubScan()" title="在伺服器直接執行全市場掃描">⚡ 全市場掃描</button>
       <span id="screen-progress-text" style="color:var(--muted);font-size:.82rem"></span>
     </div>
-    <div id="gh-scan-last-badge" style="font-size:.78rem;min-height:1.2em;margin-bottom:4px"></div>
+    <div id="gh-scan-last-badge" style="font-size:.78rem;min-height:1.2em;margin-bottom:4px" title="找到N支＝全市場掃描後，符合任一策略的股票總數（去重）&#10;成功＝成功抓到 Yahoo 資料的股票數&#10;失敗＝Yahoo 無法抓取資料&#10;跳過＝超過60天無更新的殭屍股"></div>
     <div id="screen-progress-bar-wrap" style="display:none;margin-bottom:10px">
       <div style="background:var(--border);border-radius:4px;height:6px;overflow:hidden">
         <div id="screen-progress-bar" style="height:100%;background:var(--accent);transition:width .3s;width:0%"></div>
@@ -1431,13 +1431,15 @@ function renderWatchlist() {
         onkeydown="if(event.key==='Enter')this.blur()"
         onclick="event.stopPropagation()" />
     </td>`;
-    return `<tr class="clickable" onclick="openDetail('${s.stock_id}')">
+    return `<tr class="clickable wl-row" draggable="true" data-sid="${s.stock_id}"
+        ondragstart="wlDragStart(event)" ondragover="wlDragOver(event)" ondragleave="wlDragLeave(event)" ondrop="wlDrop(event)"
+        onclick="openDetail('${s.stock_id}')">
       <td onclick="event.stopPropagation();openWlChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
       <td>${nameCell(s)}</td>
       ${noteCell(s)}
       ${memoCell}
       ${priceCell}
-      <td><span class="sig-badge sig-${level}">${s.signal_emoji} ${s.signal_title}</span></td>
+      <td><span class="sig-badge sig-${level}" title="${_sigDesc(s.signal_title)}">${s.signal_emoji} ${s.signal_title}</span></td>
       <td class="${w  >= 0 ? 'pos' : 'neg'}">${fmtNum(w)}</td>
       <td class="${c7 >= 0 ? 'pos' : 'neg'}">${fmtNum(c7)}</td>
       ${consecCell}
@@ -1451,7 +1453,7 @@ function renderWatchlist() {
         <button class="btn sm ghost" style="margin-left:4px" onclick="openDetail('${s.stock_id}')">詳細</button>
         <button class="btn sm ghost" style="margin-left:4px;border-color:#a78bfa;color:#a78bfa" onclick="openDeepPanel('${s.stock_id}','${(s.name||s.stock_id).replace(/'/g,'')}')">🔬 分析</button>
         <button class="btn sm ghost" style="margin-left:4px;border-color:var(--yellow);color:var(--yellow)" onclick="openWarrant('${s.stock_id}','${(s.name||s.stock_id).replace(/'/g,'')}')">權證/股期</button>
-        <button class="btn sm danger" style="margin-left:4px" onclick="delStock('${s.stock_id}')">刪除</button>
+        <span id="del-wrap-${s.stock_id}"><button class="btn sm danger" style="margin-left:4px" onclick="showDelConfirm('${s.stock_id}')">刪除</button></span>
       </td>
     </tr>`;
   }).join('');
@@ -1482,6 +1484,65 @@ function moveWlItem(sid, dir) {
   [_wlData[idx], _wlData[ni]] = [_wlData[ni], _wlData[idx]];
   _saveWlOrder(_wlData.map(x => x.stock_id));
   renderWatchlist();
+}
+
+// ── 拖拉排序 ────────────────────────────────────────────────────────────────
+let _wlDragSid = null;
+function wlDragStart(e) {
+  _wlDragSid = e.currentTarget.dataset.sid;
+  e.currentTarget.style.opacity = '0.5';
+  e.dataTransfer.effectAllowed = 'move';
+}
+function wlDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.style.boxShadow = 'inset 0 2px 0 0 var(--accent)';
+}
+function wlDragLeave(e) {
+  e.currentTarget.style.boxShadow = '';
+}
+function wlDrop(e) {
+  e.preventDefault();
+  e.currentTarget.style.boxShadow = '';
+  const targetSid = e.currentTarget.dataset.sid;
+  if (!_wlDragSid || _wlDragSid === targetSid) { _wlDragSid = null; return; }
+  const fromIdx = _wlData.findIndex(x => x.stock_id === _wlDragSid);
+  const toIdx   = _wlData.findIndex(x => x.stock_id === targetSid);
+  if (fromIdx < 0 || toIdx < 0) { _wlDragSid = null; return; }
+  const [item] = _wlData.splice(fromIdx, 1);
+  _wlData.splice(toIdx, 0, item);
+  _saveWlOrder(_wlData.map(x => x.stock_id));
+  _wlDragSid = null;
+  renderWatchlist();
+}
+
+// ── 刪除確認 inline ───────────────────────────────────────────────────────────
+function showDelConfirm(sid) {
+  const wrap = document.getElementById(`del-wrap-${sid}`);
+  if (!wrap) return;
+  wrap.innerHTML = `<span style="color:#f85149;font-size:.78rem;margin-left:4px">確認刪除?</span>
+    <button class="btn sm danger" style="margin-left:4px;padding:2px 8px" onclick="delStock('${sid}')">確定</button>
+    <button class="btn sm ghost" style="margin-left:4px;padding:2px 8px" onclick="renderWatchlist()">取消</button>`;
+}
+
+// ── 訊號說明對照表 ──────────────────────────────────────────────────────────
+function _sigDesc(title) {
+  const m = {
+    '散戶接盤警示': '⚠️ 大戶7日賣超 + 散戶7日買超：主力出貨，散戶接盤，風險訊號',
+    '法人出貨': '大戶7日大量賣超，主力撤退訊號',
+    '法人溫和賣出': '大戶7日小量賣超，主力偏空觀望',
+    '盤整觀望': '大戶買賣力道均衡，方向不明確',
+    '法人溫和買進': '大戶7日小量買超，主力謹慎布局',
+    '法人買散戶跟進': '大戶7日買超，散戶同步跟進',
+    '法人建倉散戶退': '大戶7日大量買超 + 散戶同步減碼，典型主力建倉型態',
+    '外資投信同步買': '外資與投信7日均買超，法人協同進場',
+    '外資投信同步建倉': '外資投信連續≥4天同步買超，機構持續建倉，最強多頭訊號',
+    '拉回買點': '多空均衡後回測支撐，籌碼轉買訊號',
+    '強勢攻擊': '法人積極加碼中，強勢攻擊狀態',
+    '假跌破': '跌破支撐後快速收復，為洗盤走勢，偏多訊號',
+    '多頭延伸': '多頭趨勢持續延伸，法人持續買超',
+  };
+  return m[title] || (title ? `籌碼訊號：${title}` : '');
 }
 
 // ── 現價自動刷新 ──
@@ -2071,7 +2132,6 @@ function openWarrant(code, name) {
 }
 
 async function delStock(sid) {
-  if (!confirm(`確定要刪除 ${sid}？`)) return;
   // 樂觀更新：立刻移除 UI，不等 API
   const prev = [..._wlData];
   _wlData = _wlData.filter(x => x.stock_id !== sid);
@@ -3508,6 +3568,16 @@ function renderScreenTable(strategy, data) {
     });
   }
 
+  // 計算跨策略：每支股票還符合哪些其他策略
+  const _otherStratMap = {};
+  for (const [sk, sv] of Object.entries(_screenAllResults || {})) {
+    if (sk === strategy) continue;
+    for (const sr of (sv || [])) {
+      if (!_otherStratMap[sr.stock_id]) _otherStratMap[sr.stock_id] = [];
+      _otherStratMap[sr.stock_id].push(sk);
+    }
+  }
+
   // 表頭（可點擊排序）
   function th(label, col) {
     const arrow = _screenSort.col === col ? (_screenSort.dir === 1 ? ' ▲' : ' ▼') : '';
@@ -3517,7 +3587,7 @@ function renderScreenTable(strategy, data) {
   if (strategy === 'S10')  headRow += `${th('連續漲停','consec_limit_up')}`;
   if (strategy === 'S17B') headRow += `${th('頸線','neckline')}`;
   if (strategy === 'S_WARRANT_TOP') headRow += `${th('認購額(萬)','call_turnover_wan')}${th('認購/認售比','cp_ratio')}`;
-  headRow += `${th('成交量(張)','volume')}<th class="hide-mobile" onclick="sortBy('turnover')" style="cursor:pointer">成交金額</th><th class="hide-mobile" onclick="sortBy('bb_score')" style="cursor:pointer">BB位置</th><th>操作</th></tr>`;
+  headRow += `${th('成交量(張)','volume')}<th class="hide-mobile" onclick="sortBy('turnover')" style="cursor:pointer">成交金額</th><th class="hide-mobile" onclick="sortBy('bb_score')" style="cursor:pointer">BB位置</th><th class="hide-mobile" title="此股票同時符合的其他策略">也在策略</th><th>操作</th></tr>`;
   document.getElementById('screen-thead').innerHTML = headRow;
 
   const tbody = document.getElementById('screen-tbody');
@@ -3558,6 +3628,7 @@ function renderScreenTable(strategy, data) {
       <td class="muted">${(() => { if (!row.volume) return '—'; const lots = Math.round(row.volume); return lots >= 10000 ? (lots/10000).toFixed(1)+'萬' : lots.toLocaleString('zh-TW'); })()}</td>
       <td class="muted hide-mobile">${(() => { if (!row.close || !row.volume) return '—'; const amt = row.close * row.volume * 1000; if (amt >= 1e8) return (amt/1e8).toFixed(2)+'億'; if (amt >= 1e4) return Math.round(amt/1e4)+'萬'; return '—'; })()}</td>
       <td class="${(row.bb_score??0)>0?'pos':(row.bb_score??0)<0?'neg':'muted'} hide-mobile" title="上軌=+10 中軌=0 下軌=-10">${row.bb_score!=null ? ((row.bb_score>0?'+':'')+row.bb_score) : '—'}</td>
+      <td class="hide-mobile" style="max-width:140px">${(_otherStratMap[row.stock_id]||[]).map(k=>`<span style="display:inline-block;font-size:.68rem;background:rgba(79,142,247,.13);color:var(--accent);border:1px solid rgba(79,142,247,.3);border-radius:3px;padding:1px 5px;margin:1px;white-space:nowrap" title="${STRATEGY_LABELS[k]||k}">${k}</span>`).join('') || '<span class="muted" style="font-size:.72rem">—</span>'}</td>
       <td style="white-space:nowrap"><button class="btn sm ghost" onclick="addFromMarket('${row.stock_id}','${(STRATEGY_LABELS[strategy]||strategy).replace(/[（(][^）)]{10,}[）)]/g,'').trim()}')">+ 加入清單</button>
       <button class="btn sm ghost" style="margin-left:4px;border-color:#a78bfa;color:#a78bfa" onclick="openDeepPanel('${row.stock_id}','${(row.name||row.stock_id).replace(/'/g,'')}')">🔬</button></td>
     </tr>`;
@@ -4773,20 +4844,20 @@ async function saveAllStratParams() {
       </span>
     </div>
     <!-- 圖例說明列 -->
-    <div style="display:flex;align-items:center;padding:3px 16px;background:#0a0f1a;flex-shrink:0;flex-wrap:wrap;gap:10px;border-bottom:1px solid #1a1f2e">
-      <span style="font-size:.65rem;color:#484f58;white-space:nowrap">圖例：</span>
-      <span style="font-size:.65rem;color:#fbbf24;white-space:nowrap" title="跌破 MAx 次日收復，看多訊號">▲黃 假跌破（MAx）</span>
-      <span style="font-size:.65rem;color:#ef5350;white-space:nowrap" title="突破 MAx 次日跌回，看空訊號">▼紅 假突破（MAx）</span>
-      <span style="font-size:.65rem;color:#38bdf8;white-space:nowrap" title="收盤跌破前10日低點，次日收復">▲藍 前低↑</span>
-      <span style="font-size:.65rem;color:#f97316;white-space:nowrap" title="收盤突破前10日高點，次日跌回">▼橙 前高↓</span>
-      <span style="font-size:.65rem;color:#6b7280;white-space:nowrap">｜</span>
-      <span style="font-size:.65rem;color:#f87171;white-space:nowrap" title="籌碼買入（level 3~4）">○紅下 籌碼買入</span>
-      <span style="font-size:.65rem;color:#ef4444;white-space:nowrap" title="籌碼強力買入（level ≥5）">▲紅 籌碼強買</span>
-      <span style="font-size:.65rem;color:#4ade80;white-space:nowrap" title="籌碼賣壓（level -3~-4）">○綠上 籌碼賣壓</span>
-      <span style="font-size:.65rem;color:#22c55e;white-space:nowrap" title="籌碼強力賣出（level ≤-5）">▼綠 籌碼強賣</span>
-      <span style="font-size:.65rem;color:#6b7280;white-space:nowrap">｜</span>
-      <span style="font-size:.65rem;color:#ef5350;white-space:nowrap" title="近12個段落的局部最高點，顯示與前段的漲跌幅%">○紅 段落高點</span>
-      <span style="font-size:.65rem;color:#26a69a;white-space:nowrap" title="近12個段落的局部最低點，顯示與前段的漲跌幅%">○綠 段落低點</span>
+    <div style="display:flex;align-items:center;padding:5px 16px;background:#0a0f1a;flex-shrink:0;flex-wrap:wrap;gap:12px;border-bottom:1px solid #1a1f2e">
+      <span style="font-size:.8rem;color:#6b7280">圖例：</span>
+      <span style="font-size:.8rem;color:#fbbf24" title="跌破 MAx 次日收復 → 洗盤完成，看多訊號">▲黃 假跌破（MAx）</span>
+      <span style="font-size:.8rem;color:#ef5350" title="突破 MAx 次日跌回 → 假突破，看空訊號">▼紅 假突破（MAx）</span>
+      <span style="font-size:.8rem;color:#38bdf8" title="收盤跌破前10日最低點，次日收復 → 假跌破前低">▲藍 前低↑</span>
+      <span style="font-size:.8rem;color:#f97316" title="收盤突破前10日最高點，次日跌回 → 假突破前高">▼橙 前高↓</span>
+      <span style="font-size:.8rem;color:#6b7280">｜</span>
+      <span style="font-size:.8rem;color:#f87171" title="⚠️ 籌碼訊號：散戶接盤警示（大戶賣+散戶買）或一般買入（level 3~4）">●紅 籌碼買入</span>
+      <span style="font-size:.8rem;color:#ef4444" title="籌碼訊號：法人強力買超（level ≥5），最強買入訊號">▲紅 籌碼強買</span>
+      <span style="font-size:.8rem;color:#4ade80" title="籌碼訊號：法人出貨賣壓（level -3~-4）">●綠 籌碼賣壓</span>
+      <span style="font-size:.8rem;color:#22c55e" title="籌碼訊號：法人強力賣出（level ≤-5），最強賣出訊號">▼綠 籌碼強賣</span>
+      <span style="font-size:.8rem;color:#6b7280">｜</span>
+      <span style="font-size:.8rem;color:#ef5350" title="近12段的局部最高點 → 顯示與前段的漲跌%，負值=高點下降（下降趨勢）">●紅 段落高點</span>
+      <span style="font-size:.8rem;color:#26a69a" title="近12段的局部最低點 → 顯示與前段的漲跌%，正值=低點抬高（上升趨勢）">●綠 段落低點</span>
     </div>
     <div id="chart-tv-container" style="flex:1;overflow:hidden"></div>
   </div>
