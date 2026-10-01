@@ -5,3 +5,15 @@ chip_data/
 .git/
 .gitignore
 render.yaml
+.agents/
+.claude/
+skills-lock.json
+*.bat
+PLAN*.md
+PLAN*.json
+INSPECT*.json
+backfill_history.py
+debug_api.py
+upload_stocks.py
+start.bat
+sector-frontend/corr-scan.html
