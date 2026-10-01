@@ -7,7 +7,7 @@ price_cache.py - 全市場日線價格快取
 import sqlite3
 import asyncio
 import httpx
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import pandas as pd
 from chip_tracker_v2 import DB_PATH, to_twse_date, last_n_trading_dates
 
@@ -137,40 +137,113 @@ async def fetch_price_latest_tpex(client: httpx.AsyncClient) -> tuple[str, list]
 
 # ── rwd fetch（本機回填用，Cloud Run 可能被擋）──────────────────────────
 
+_RWD_URL = "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY_ALL"
+
+def _parse_twse_rwd(text: str, fallback_dt: str = "") -> tuple[str, list]:
+    """
+    解析 TWSE rwd STOCK_DAY_ALL 回應，同時支援：
+    - CSV（2026-10 起 response=json 也回 text/csv）：表頭 `日期,證券代號,證券名稱,成交股數,...`
+    - 舊 JSON：{"stat":"OK","date":"20261001","data":[[代號,名稱,股數,金額,開,高,低,收,...]]}
+    以欄名定位欄位；只保留出現最多的日期。失敗回 ("", [])。
+    """
+    import csv, io, json, re
+    from collections import Counter
+    try:
+        text = (text or "").lstrip("﻿").strip()
+        if not text:
+            return "", []
+        rows = []  # (dt_str, sid, name, shares, open, high, low, close)
+        if text.startswith("{"):
+            data = json.loads(text)
+            if data.get("stat") != "OK":
+                return "", []
+            dt_str = str(data.get("date") or fallback_dt)
+            for row in data.get("data", []):
+                if len(row) >= 9:
+                    rows.append((dt_str, row[0], row[1], row[2], row[5], row[6], row[7], row[8]))
+        else:
+            lines = list(csv.reader(io.StringIO(text)))
+            hdr_i = next((i for i, r in enumerate(lines)
+                          if any(c.strip() == "證券代號" for c in r)), None)
+            if hdr_i is None:
+                print(f"[PRICE] rwd CSV 找不到表頭: {text[:80]!r}")
+                return "", []
+            hdr = [c.strip().lstrip("﻿") for c in lines[hdr_i]]
+            names = ("證券代號", "證券名稱", "成交股數", "開盤價", "最高價", "最低價", "收盤價")
+            if any(n not in hdr for n in names):
+                print(f"[PRICE] rwd CSV 欄位不足: {hdr}")
+                return "", []
+            idx = [hdr.index(n) for n in names]
+            date_col = hdr.index("日期") if "日期" in hdr else None
+            title_dt = ""
+            if date_col is None:
+                # 舊版格式：日期在表頭前的標題列，如「115年10月01日 ...」
+                m = re.search(r"(\d{2,3})年(\d{1,2})月(\d{1,2})日",
+                              " ".join(",".join(r) for r in lines[:hdr_i]))
+                if m:
+                    title_dt = f"{int(m.group(1)) + 1911}{int(m.group(2)):02d}{int(m.group(3)):02d}"
+                title_dt = title_dt or fallback_dt
+                if not title_dt:
+                    print("[PRICE] rwd CSV 找不到日期")
+                    return "", []
+            need = max(idx + ([date_col] if date_col is not None else []))
+            for r in lines[hdr_i + 1:]:
+                if len(r) <= need:
+                    continue
+                dt_str = _roc_to_twse(r[date_col].strip()) if date_col is not None else title_dt
+                rows.append((dt_str, *(r[i] for i in idx)))
+        valid_dates = [d for d, *_ in rows if d and len(d) == 8 and d.isdigit()]
+        if not valid_dates:
+            return "", []
+        dt_str = Counter(valid_dates).most_common(1)[0][0]
+        parsed, skipped = [], 0
+        for d, sid, name, shares, o, h, l, c in rows:
+            sid = str(sid).strip()
+            close_p = _to_float(c)
+            if d != dt_str or not sid[:4].isdigit() or close_p is None or close_p <= 0:
+                skipped += 1
+                continue
+            volume_shares = _to_float(shares)
+            parsed.append({
+                "date": dt_str, "stock_id": sid, "name": str(name).strip(),
+                "open": _to_float(o), "high": _to_float(h),
+                "low": _to_float(l), "close": close_p,
+                "volume": round(volume_shares / 1000) if volume_shares else 0,
+            })
+        print(f"[PRICE] rwd 解析 {dt_str}：{len(parsed)} 支（跳過 {skipped}）")
+        return dt_str, parsed
+    except Exception as e:
+        print(f"[PRICE] rwd 解析失敗: {type(e).__name__}: {str(e)[:60]} | {str(text)[:80]!r}")
+        return "", []
+
 async def fetch_price_day_rwd(client: httpx.AsyncClient, dt: date) -> tuple[str, list]:
     """從 TWSE rwd STOCK_DAY_ALL 取得指定日期（本機回填用）"""
     dt_str = to_twse_date(dt)
-    url = "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY_ALL"
     try:
-        r = await client.get(url, params={"date": dt_str, "response": "json"},
+        r = await client.get(_RWD_URL, params={"date": dt_str, "response": "json"},
                              headers=HEADERS, timeout=30)
         if r.status_code != 200 or not r.text.strip():
             return dt_str, []
-        data = r.json()
-        if data.get("stat") != "OK":
+        got_dt, parsed = _parse_twse_rwd(r.text, fallback_dt=dt_str)
+        if got_dt != dt_str:  # 休市日 rwd 可能回最近交易日，不可存成指定日期
             return dt_str, []
-        rows = data.get("data", [])
-        parsed = []
-        for row in rows:
-            if len(row) < 9:
-                continue
-            sid = str(row[0]).strip()
-            if not sid or not sid[:4].isdigit():
-                continue
-            close_p = _to_float(row[8])
-            if close_p is None or close_p <= 0:
-                continue
-            volume_shares = _to_float(row[2])
-            parsed.append({
-                "date": dt_str, "stock_id": sid, "name": str(row[1]).strip(),
-                "open": _to_float(row[5]), "high": _to_float(row[6]),
-                "low": _to_float(row[7]), "close": close_p,
-                "volume": round(volume_shares / 1000) if volume_shares else 0,
-            })
         return dt_str, parsed
     except Exception as e:
         print(f"[PRICE] rwd fetch {dt_str} failed: {type(e).__name__}: {str(e)[:60]}")
         return dt_str, []
+
+async def fetch_price_latest_rwd(client: httpx.AsyncClient) -> tuple[str, list]:
+    """從 TWSE rwd STOCK_DAY_ALL 取得最新一天（收盤後通常比 openapi 早更新）"""
+    try:
+        r = await client.get(_RWD_URL, params={"response": "json"},
+                             headers=HEADERS, timeout=30)
+        if r.status_code != 200 or not r.text.strip():
+            print(f"[PRICE] rwd latest HTTP {r.status_code}")
+            return "", []
+        return _parse_twse_rwd(r.text)
+    except Exception as e:
+        print(f"[PRICE] rwd latest failed: {type(e).__name__}: {str(e)[:60]}")
+        return "", []
 
 # ── 儲存 ──────────────────────────────────────────────────────────────────
 
@@ -381,29 +454,40 @@ async def update_price_cache(days: int = 260, local_mode: bool = False) -> dict:
     cached = get_cached_dates()
 
     if not local_mode:
-        # Cloud Run 模式：同時抓 TWSE（上市）+ TPEX（上櫃）最新一天
+        # Cloud Run 模式：同時抓 TWSE openapi + TWSE rwd + TPEX 最新一天
+        # openapi 常延遲到隔天才更新，rwd 收盤後即有資料 → 取日期較新的那份
         async with httpx.AsyncClient() as client:
-            twse_task = fetch_price_latest_openapi(client)
-            tpex_task = fetch_price_latest_tpex(client)
-            (dt_str, records), (tpex_dt, tpex_records) = await asyncio.gather(twse_task, tpex_task)
-        # 合併上市 + 上櫃（以 TWSE 日期為主，TPEX 同日才合併）
-        if not dt_str and not tpex_dt:
+            (oa_dt, oa_records), (rwd_dt, rwd_records), (tpex_dt, tpex_records) = await asyncio.gather(
+                fetch_price_latest_openapi(client),
+                fetch_price_latest_rwd(client),
+                fetch_price_latest_tpex(client),
+            )
+        # TWSE 來源選擇：筆數 >= 500 才算有效；日期大者勝；同日取 openapi；落選者不寫入
+        twse_dt, twse_records = "", []
+        for d, recs in ((oa_dt, oa_records), (rwd_dt, rwd_records)):
+            if d and len(recs) >= 500 and d > twse_dt:
+                twse_dt, twse_records = d, recs
+        print(f"[PRICE] TWSE openapi={oa_dt or '-'}({len(oa_records)}) rwd={rwd_dt or '-'}({len(rwd_records)})"
+              f" → 採用 {twse_dt or '無'}；TPEX={tpex_dt or '-'}({len(tpex_records)})")
+        if not twse_records and not tpex_records:
             return {"updated": 0, "cached_days": len(cached), "error": "openapi 無資料"}
-        # 取有效日期
-        final_dt = dt_str or tpex_dt
-        if tpex_records and tpex_dt == final_dt:
-            # 合併，去除重複 stock_id（TWSE 優先）
-            existing_ids = {r["stock_id"] for r in records}
-            records = records + [r for r in tpex_records if r["stock_id"] not in existing_ids]
-            print(f"[PRICE] 合併 TWSE+TPEX：{final_dt} 共 {len(records)} 支")
-        # 注意：不在這裡做 cached 日期跳過，因為 TPEX 可能是第一次加入當天已有的 TWSE 日期
-        # save_price_day 用 INSERT OR REPLACE，重複執行安全
-        if records:
-            save_price_day(final_dt, records)
-            cached.add(final_dt)
-            print(f"[PRICE] 儲存 {final_dt}: {len(records)} 支")
-            return {"updated": 1, "cached_days": len(cached), "latest": final_dt}
-        return {"updated": 0, "cached_days": len(cached), "error": "openapi 回傳空資料"}
+        # TWSE / TPEX 各自以自己的日期寫入（save_price_day 用 INSERT OR REPLACE，重複執行安全）
+        updated = 0
+        if twse_records:
+            save_price_day(twse_dt, twse_records)
+            cached.add(twse_dt)
+            updated += 1
+            print(f"[PRICE] 儲存 TWSE {twse_dt}: {len(twse_records)} 支")
+        if tpex_records:
+            # 同日時去除重複 stock_id（TWSE 優先）
+            twse_ids = {r["stock_id"] for r in twse_records} if tpex_dt == twse_dt else set()
+            tpex_only = [r for r in tpex_records if r["stock_id"] not in twse_ids]
+            save_price_day(tpex_dt, tpex_only)
+            cached.add(tpex_dt)
+            updated += 1
+            print(f"[PRICE] 儲存 TPEX {tpex_dt}: {len(tpex_only)} 支")
+        return {"updated": updated, "cached_days": len(cached),
+                "latest": max(twse_dt, tpex_dt), "twse_latest": twse_dt, "tpex_latest": tpex_dt}
     else:
         # 本機模式：補全所有缺少的歷史日期
         today = date.today()
@@ -493,6 +577,11 @@ def save_stock_ohlcv(stock_id: str, df: pd.DataFrame):
         if df is None or df.empty:
             return
         init_price_db()
+        # 盤中（台灣平日 09:00~13:35）今日 K 棒未完成，不落地；否則收盤後掃描會把它當完整日線
+        tw_now = datetime.utcnow() + timedelta(hours=8)
+        skip_date = (tw_now.strftime("%Y%m%d")
+                     if tw_now.weekday() < 5 and (9, 0) <= (tw_now.hour, tw_now.minute) < (13, 35)
+                     else "")
         records = []
         for _, row in df.iterrows():
             date_val = str(row.get("date", ""))
@@ -500,6 +589,8 @@ def save_stock_ohlcv(stock_id: str, df: pd.DataFrame):
                 continue
             # Yahoo 日期是 YYYY-MM-DD，轉為 YYYYMMDD 格式
             date_str = date_val.replace("-", "") if "-" in str(date_val) else str(date_val)
+            if date_str == skip_date:
+                continue
             records.append({
                 "date": date_str, "stock_id": stock_id, "name": "",
                 "open": float(row.get("open") or 0) or None,

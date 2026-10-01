@@ -278,12 +278,30 @@ STRATEGY_KEYS = ["S1", "S1_SHORT", "S2", "S5", "S17A", "S17B", "S10",
 
 _SCAN_WORKERS = 4    # Fly.io shared-cpu: 4 workers 避免 Yahoo 429 burst
 
-# update_price_cache() 成功取得的最新日期（由 server.py 在掃描前設定）
-# 讓 _fetch_for_scan() 以實際快取日期為基準（非 date.today()），正確處理盤前/盤後場景
+# 掃描目標日：快取最後日 >= 目標日才走快取，否則打 Yahoo。
+# 由 run_market_scan() 每次開頭依台灣時鐘重新計算（_compute_scan_target），
+# 不再用 update_price_cache() 的 latest（TWSE openapi 會延遲到隔天，導致停在前一日）。
 _scan_cache_target_date: str = ""  # e.g. "20261001"
 
+_MARKET_OPEN = (9, 0)
+
+def _tw_now() -> datetime.datetime:
+    """台灣時間（UTC+8，無夏令時間）。Fly 容器 TZ=UTC，不可用 date.today()。"""
+    return datetime.datetime.utcnow() + datetime.timedelta(hours=8)
+
+def _compute_scan_target(now: datetime.datetime = None) -> str:
+    """平日 09:00 後 → 今日；否則 → 最近一個已收盤平日（盤前取前一平日、週末取週五）。"""
+    now = now or _tw_now()
+    d = now.date()
+    if d.weekday() < 5 and (now.hour, now.minute) >= _MARKET_OPEN:
+        return d.strftime("%Y%m%d")
+    d -= datetime.timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= datetime.timedelta(days=1)
+    return d.strftime("%Y%m%d")
+
 def _set_scan_target_date(date_str: str):
-    """掃描前由 server.py 呼叫，設定 price_cache 最新日期。"""
+    """手動覆寫目標日（保留相容；run_market_scan() 開頭會重新計算覆寫）。"""
     global _scan_cache_target_date
     _scan_cache_target_date = date_str or ""
 
@@ -311,9 +329,9 @@ def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
     3. Yahoo 失敗 → 降級用 4 天內的 cache 備援（週末/假日場景）
     """
     import datetime as _dt
-    today_str = _dt.date.today().strftime("%Y%m%d")
-    # 以 update_price_cache() 實際取得的日期為基準；若未設定則退回今日
-    target_date = _scan_cache_target_date if _scan_cache_target_date else today_str
+    _now = _tw_now()
+    today_str = _now.strftime("%Y%m%d")
+    target_date = _scan_cache_target_date or _compute_scan_target(_now)
     _cached_fallback = pd.DataFrame()  # Yahoo 失敗時的備援
     # ── 1. price_cache 快速路徑（cache 已達目標日期）────────────────────────
     try:
@@ -325,7 +343,7 @@ def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
                 # Cache 已達目標日期，直接用，跳過 Yahoo
                 return cached
             # Cache 落後目標 → 嘗試 Yahoo；4 天內的 cache 保留備援
-            today_m4 = (_dt.date.today() - _dt.timedelta(days=4)).strftime("%Y%m%d")
+            today_m4 = (_now.date() - _dt.timedelta(days=4)).strftime("%Y%m%d")
             if last_date >= today_m4:
                 _cached_fallback = cached  # Yahoo 失敗時（週末/假日）可用
     except Exception:
@@ -360,6 +378,7 @@ def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
                 if not df.empty and len(df) >= 5:
                     try:
                         from price_cache import save_stock_ohlcv as _save
+                        # save_stock_ohlcv 盤中會略過今日未完成 K 棒；回傳給掃描的 df 仍含今日即時價
                         _save(sid, df)
                     except Exception:
                         pass
@@ -502,6 +521,13 @@ async def run_market_scan(strategy_params: dict = None):
     _scan_status["error"]          = None
     _scan_status["finished_at"]    = None
 
+    # 目標日每次重算（手動 / 18:00 排程同一路徑），不沿用上次殘留值
+    global _scan_cache_target_date
+    _scan_cache_target_date = _compute_scan_target()
+    _scan_status["target_date"]    = _scan_cache_target_date
+    _scan_status["target_hits"]    = 0   # 最後一根 K 棒已達目標日的股數
+    print(f"[SCAN] 目標日 {_scan_cache_target_date}（台灣時間 {_tw_now():%Y-%m-%d %H:%M}）")
+
     try:
         stocks = get_stock_list()
         names  = dict(zip(stocks["stock_id"], stocks["stock_name"]))
@@ -539,6 +565,8 @@ async def run_market_scan(strategy_params: dict = None):
                     _scan_status["failed_stocks"].append(sid)
                     return None
                 _scan_status["yahoo_ok"] += 1
+                if str(df.iloc[-1]["date"]) >= _scan_cache_target_date:
+                    _scan_status["target_hits"] += 1
             try:
                 result = scan_one_stock(df, sid, names.get(sid, ""),
                                         strategy_params=_strategy_params,
@@ -572,7 +600,8 @@ async def run_market_scan(strategy_params: dict = None):
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, _run_blocking)
         _first_pass_hits = sum(len(v) for v in all_results.values())
-        print(f"[SCAN] 第一輪完成：yahoo_ok={_scan_status['yahoo_ok']}, yahoo_fail={_scan_status['yahoo_fail']}, 命中={_first_pass_hits}")
+        print(f"[SCAN] 第一輪完成：yahoo_ok={_scan_status['yahoo_ok']}, yahoo_fail={_scan_status['yahoo_fail']}, 命中={_first_pass_hits}, "
+              f"達目標日 {_scan_cache_target_date}={_scan_status['target_hits']}")
         # 第一輪結束立即存檔，不管後續 retry/S_WARRANT_TOP 是否成功
         _scan_status["results"] = all_results
         _save_scan_cache(all_results)

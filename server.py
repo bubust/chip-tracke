@@ -523,7 +523,16 @@ async def lifespan(app: FastAPI):
                 if not get_scan_status()["running"]:
                     params = _load_strategy_params()
                     lg.info("[scan_scheduler] 18:00 Step 1: 全市場策略掃描啟動")
-                    _aio.run(run_market_scan(strategy_params=params))
+                    async def _update_then_scan():
+                        # 先寫入今日官方收盤（rwd/TPEX），掃描可直接命中快取，少打 Yahoo
+                        try:
+                            from price_cache import update_price_cache, init_price_db
+                            init_price_db()
+                            await update_price_cache(local_mode=False)
+                        except Exception as _pu_e:
+                            lg.warning(f"[scan_scheduler] price update 失敗（繼續掃描）: {_pu_e}")
+                        await run_market_scan(strategy_params=params)
+                    _aio.run(_update_then_scan())
                     lg.info("[scan_scheduler] Step 1 完成")
                 else:
                     lg.info("[scan_scheduler] 掃描進行中，跳過 Step 1")
@@ -3758,22 +3767,15 @@ async def api_screen_run(background_tasks: BackgroundTasks):
 
     async def _scan_with_price_update(params):
         """先更新今日收盤價快取，再啟動掃描，確保拿到最新資料"""
-        _latest_date = ""
         try:
             from price_cache import update_price_cache, init_price_db
             init_price_db()
-            _result = await update_price_cache(local_mode=False)
-            _latest_date = _result.get("latest", "")
+            await update_price_cache(local_mode=False)
         except Exception as _pu_e:
             import logging as _log
             _log.getLogger(__name__).warning(f"[scan] price update 失敗（繼續掃描）: {_pu_e}")
-        # 設定目標日期：讓 _fetch_for_scan 以實際 cache 日期為基準（非 date.today()）
-        # 盤前掃描時 _latest_date 可能是昨日收盤，cache 直接命中，不需打 Yahoo
-        try:
-            from yahoo_price import _set_scan_target_date
-            _set_scan_target_date(_latest_date)
-        except Exception:
-            pass
+        # 目標日由 run_market_scan() 依台灣時鐘自行計算（不用 update_price_cache 的 latest，
+        # TWSE openapi 會延遲到隔天，以它為準會整批停在前一交易日）
         await run_market_scan(strategy_params=params)
 
     background_tasks.add_task(_scan_with_price_update, strategy_params)
