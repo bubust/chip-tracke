@@ -1107,6 +1107,64 @@ def screen_s_warrant_top(
     return results
 
 
+# 純價格型策略（掃描、K 線回測共用同一份；CHIP / S_WARRANT_TOP 需外部資料不在此）
+PRICE_STRATEGY_FNS = {
+    "S1":           screen_s1,
+    "S1_SHORT":     screen_s1_short,
+    "S2":           screen_s2,
+    "S5":           screen_s5,
+    "S17A":         screen_s17a,
+    "S17B":         screen_s17b,
+    "S10":          screen_s10,
+    "S_PB":         screen_spb,
+    "S_FBD":        screen_sfbd,
+    "S_RES":        screen_sres,
+    "S_VOLX":       screen_svolx,
+    "S_VOLX_SHORT": screen_svolx_short,
+}
+SHORT_STRATEGIES = {"S1_SHORT", "S_VOLX_SHORT"}
+
+
+def _vol_prefilter_pass(df: pd.DataFrame, min_vol_ratio: float) -> bool:
+    """量能翻倍前置過濾：min_vol_ratio > 0 時，今日量 < 昨日量 × min_vol_ratio 則不通過。"""
+    if min_vol_ratio > 0 and len(df) >= 2:
+        vol_col = "volume" if "volume" in df.columns else "Volume"
+        _last_v = df.iloc[-1][vol_col] if vol_col in df.columns else None
+        _prev_v = df.iloc[-2][vol_col] if vol_col in df.columns else None
+        today_vol = float(_last_v) if pd.notna(_last_v) else 0.0
+        prev_vol  = float(_prev_v) if pd.notna(_prev_v) else 0.0
+        # 最低成交量門檻：昨日 < 500 張視為冷門股，跳過量能比對（避免 1→2 張假觸發）
+        _MIN_ABS_VOL = 500
+        if prev_vol < _MIN_ABS_VOL or today_vol < prev_vol * min_vol_ratio:
+            return False
+    return True
+
+
+def strategy_signal_mask(df: pd.DataFrame, key: str, params: dict = None,
+                         min_vol_ratio: float = 0.0, start: int = 30) -> list:
+    """
+    回測用：逐日以「截至當天」的資料呼叫策略掃描的同一個 screen 函式，
+    回傳長度 = len(df) 的 bool list（True = 當天收盤符合策略）。
+    """
+    fn = PRICE_STRATEGY_FNS[key]
+    df = df.reset_index(drop=True)
+    mask = [False] * len(df)
+    errors = 0
+    for i in range(start, len(df)):
+        sub = df.iloc[:i + 1]
+        if not _vol_prefilter_pass(sub, min_vol_ratio):
+            continue
+        try:
+            mask[i] = bool(fn({"BT": sub}, {"BT": ""}, params=params))
+        except Exception as e:
+            if errors == 0:
+                print(f"[BACKTEST] {key} 第 {i} 根計算失敗（視為無訊號）: {type(e).__name__}: {e}")
+            errors += 1
+    if errors:
+        print(f"[BACKTEST] {key} 共 {errors} 根計算失敗")
+    return mask
+
+
 def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "",
                    strategy_params: dict = None,
                    min_vol_ratio: float = 0.0) -> dict:
@@ -1117,38 +1175,13 @@ def scan_one_stock(df: pd.DataFrame, sid: str, name: str = "",
     min_vol_ratio > 0 時，今日量 < 昨日量 × min_vol_ratio 則全部回傳 None（量能翻倍過濾）。
     """
     # 量能前置過濾
-    if min_vol_ratio > 0 and len(df) >= 2:
-        vol_col = "volume" if "volume" in df.columns else "Volume"
-        _last_v = df.iloc[-1][vol_col] if vol_col in df.columns else None
-        _prev_v = df.iloc[-2][vol_col] if vol_col in df.columns else None
-        import pandas as _pd
-        today_vol = float(_last_v) if _pd.notna(_last_v) else 0.0
-        prev_vol  = float(_prev_v) if _pd.notna(_prev_v) else 0.0
-        # 最低成交量門檻：昨日 < 500 張視為冷門股，跳過量能比對（避免 1→2 張假觸發）
-        _MIN_ABS_VOL = 500
-        if prev_vol < _MIN_ABS_VOL or today_vol < prev_vol * min_vol_ratio:
-            return {k: None for k in [
-                "S1", "S1_SHORT", "S2", "S5", "S17A", "S17B", "S10",
-                "S_PB", "S_FBD", "S_RES", "S_VOLX", "S_VOLX_SHORT",
-            ]}
+    if not _vol_prefilter_pass(df, min_vol_ratio):
+        return {k: None for k in PRICE_STRATEGY_FNS}
     prices_single = {sid: df}
     names_single  = {sid: name}
     last_date = str(df.iloc[-1].get('date', '')) if not df.empty else ''
     out = {}
-    for key, fn in [
-        ("S1",       screen_s1),
-        ("S1_SHORT", screen_s1_short),
-        ("S2",       screen_s2),
-        ("S5",       screen_s5),
-        ("S17A",     screen_s17a),
-        ("S17B",     screen_s17b),
-        ("S10",      screen_s10),
-        ("S_PB",     screen_spb),
-        ("S_FBD",    screen_sfbd),
-        ("S_RES",    screen_sres),
-        ("S_VOLX",        screen_svolx),
-        ("S_VOLX_SHORT",  screen_svolx_short),
-    ]:
+    for key, fn in PRICE_STRATEGY_FNS.items():
         p = strategy_params.get(key, {}) if strategy_params else None
         results = fn(prices_single, names_single, params=p)
         result = results[0] if results else None
@@ -1166,19 +1199,5 @@ def run_strategy(strategy: str, prices: dict, names: dict = None,
                  strategy_params: dict = None) -> list:
     s = strategy.upper()
     p = strategy_params.get(s, {}) if strategy_params else None
-    fn_map = {
-        "S1":       screen_s1,
-        "S1_SHORT": screen_s1_short,
-        "S2":       screen_s2,
-        "S5":       screen_s5,
-        "S17A":     screen_s17a,
-        "S17B":     screen_s17b,
-        "S10":      screen_s10,
-        "S_PB":     screen_spb,
-        "S_FBD":    screen_sfbd,
-        "S_RES":    screen_sres,
-        "S_VOLX":        screen_svolx,
-        "S_VOLX_SHORT":  screen_svolx_short,
-    }
-    fn = fn_map.get(s)
+    fn = PRICE_STRATEGY_FNS.get(s)
     return fn(prices, names, params=p) if fn else []

@@ -2809,12 +2809,22 @@ def api_index_ohlcv(key: str, interval: str = "1d"):
     raise HTTPException(status_code=404, detail=f"{key} ({sym}) 無法取得 K 線資料")
 
 
+@app.get("/api/backtest/strategies")
+def api_backtest_strategies():
+    """K 線回測可選的策略（與策略掃描同一份 PRICE_STRATEGY_FNS）"""
+    from scanner import PRICE_STRATEGY_FNS, SHORT_STRATEGIES, STRATEGIES
+    return [{"key": k, "name": STRATEGIES.get(k, k),
+             "direction": "short" if k in SHORT_STRATEGIES else "long"}
+            for k in PRICE_STRATEGY_FNS]
+
+
 @app.get("/api/backtest/fbd")
 def api_backtest_fbd(stock_id: str, holding_days: int = 0,
                      trailing_low_days: int = 0,
                      exit_ma: int = 10,
                      stop_loss: float = 0.0, take_profit: float = 0.0,
-                     taiex_bull: int = 0, big_macd: int = 0):
+                     taiex_bull: int = 0, big_macd: int = 0,
+                     strategy: str = ""):
     """
     假跌破/假突破回測：
     - 進場：訊號當日收盤（尾盤進場）
@@ -2826,16 +2836,24 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 0,
     - 訊號定義：
         假跌破（FBD）: 當日 close < MA10，隔日 close > MA10
         假突破（FBR）: 當日 close > MA10，隔日 close < MA10
+    - strategy: 指定策略掃描的 key（如 S_FBD）→ 改用該策略的 screen 函式逐日判斷進場，
+      參數與量能過濾同全市場掃描；方向由後端依 SHORT_STRATEGIES 決定
     """
     import pandas as pd
     from yahoo_price import _parse_yahoo_json, get_stock_list
+    strategy = (strategy or "").strip().upper()
+    if strategy:
+        from scanner import PRICE_STRATEGY_FNS
+        if strategy not in PRICE_STRATEGY_FNS:
+            raise HTTPException(status_code=400, detail=f"不支援的策略：{strategy}")
     stocks = get_stock_list()
     row = stocks[stocks["stock_id"] == stock_id]
     market = str(row.iloc[0]["type"]) if not row.empty else "twse"
     suffixes = [".TW"] if market == "twse" else [".TWO", ".TW"]
     UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     now = int(_time.time())
-    p1 = now - 730 * 86400
+    # 策略模式抓 5 年（如 S1 需 ≥235 根才開始判斷，2 年樣本太少）
+    p1 = now - (1825 if strategy else 730) * 86400
     params = {"interval": "1d", "period1": p1, "period2": now}
 
     df = None
@@ -2927,12 +2945,12 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 0,
     if exit_ma > 0:
         exit_ma_arr = pd.Series(closes).rolling(exit_ma, min_periods=exit_ma).mean().values
 
-    def run_backtest(signal_type: str):
-        """signal_type: 'fbd' (看多/long) or 'fbr' (看空/short)"""
+    def run_backtest(signal_type: str, signal_mask: list = None):
+        """signal_type: 'fbd' (看多/long) or 'fbr' (看空/short)；signal_mask 有值時以它為進場訊號"""
         is_short = (signal_type == "fbr")
         trades = []
         for i in range(10, n - 1):
-            if pd.isna(ma10[i]) or pd.isna(ma10[i+1]):
+            if signal_mask is None and (pd.isna(ma10[i]) or pd.isna(ma10[i+1])):
                 continue
             # ── 市場環境篩選 ──
             if taiex_bull > 0 and dates[i] not in taiex_bull_dates:
@@ -2940,7 +2958,9 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 0,
             if big_macd > 0 and not big_macd_arr[i]:
                 continue
             # ── 訊號觸發 ──
-            if signal_type == "fbd":
+            if signal_mask is not None:
+                triggered = signal_mask[i]
+            elif signal_type == "fbd":
                 triggered = (closes[i-1] < ma10[i-1]) and (closes[i] > ma10[i])
             else:
                 triggered = (closes[i-1] > ma10[i-1]) and (closes[i] < ma10[i])
@@ -3047,7 +3067,7 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 0,
             "trades":        trades[-30:],
         }
 
-    return {
+    common = {
         "stock_id":    stock_id,
         "holding_days": holding_days,
         "trailing_low_days": trailing_low_days,
@@ -3057,9 +3077,23 @@ def api_backtest_fbd(stock_id: str, holding_days: int = 0,
         "taiex_bull":  taiex_bull,
         "big_macd":    big_macd,
         "total_bars":  n,
-        "fbd": run_backtest("fbd"),
-        "fbr": run_backtest("fbr"),
     }
+    if strategy:
+        from scanner import strategy_signal_mask, SHORT_STRATEGIES, STRATEGIES
+        all_params = _load_strategy_params()
+        mask = strategy_signal_mask(
+            df, strategy, params=all_params.get(strategy),
+            min_vol_ratio=(all_params.get("_global") or {}).get("min_vol_ratio", 0.0))
+        is_short = strategy in SHORT_STRATEGIES
+        return {**common,
+                "strategy":      strategy,
+                "strategy_name": STRATEGIES.get(strategy, strategy),
+                "direction":     "short" if is_short else "long",
+                "first_date":    str(dates[0]),
+                "result":        run_backtest("fbr" if is_short else "fbd", signal_mask=mask)}
+    return {**common,
+            "fbd": run_backtest("fbd"),
+            "fbr": run_backtest("fbr")}
 
 
 @app.get("/api/backtest/index")

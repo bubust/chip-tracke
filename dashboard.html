@@ -1778,6 +1778,8 @@ async function openBacktest() {
       `;
       document.getElementById('bt-body').before(ctrl);
     }
+    const _sigWrap = document.getElementById('bt-signal-wrap');
+    if (_sigWrap) _sigWrap.style.display = 'none';   // 指數回測不支援策略訊號
     modal.style.display = 'flex';
     await runIdxBacktest(key);
     return;
@@ -1785,7 +1787,7 @@ async function openBacktest() {
 
   // stock path (existing logic)
   if (!_chartStockId) return;
-  title.textContent = `${_btStockId}${_btStockName ? ' ' + _btStockName : ''} — 假跌破/假突破回測`;
+  title.textContent = `${_btStockId}${_btStockName ? ' ' + _btStockName : ''} — 回測`;
 
   // inject param controls once
   let ctrl = document.getElementById('bt-params');
@@ -1840,9 +1842,37 @@ async function openBacktest() {
       `;
     document.getElementById('bt-body').before(ctrl);
   }
+  _btEnsureSignalSelect(ctrl);
 
   modal.style.display = 'flex';
   await runBacktest();
+}
+
+// 個股回測「進場訊號」選單：面板可能先由指數回測建立，所以獨立補上；選項由後端提供（與策略掃描同一份清單）
+function _btEnsureSignalSelect(ctrl) {
+  let wrap = document.getElementById('bt-signal-wrap');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'bt-signal-wrap';
+    wrap.style.cssText = 'border:1px solid #21262d;border-radius:6px;padding:10px 14px;margin-bottom:2px;width:100%;box-sizing:border-box';
+    wrap.innerHTML = `
+      <div style="font-size:.72rem;color:var(--muted);font-weight:700;letter-spacing:.5px;margin-bottom:8px">進場訊號</div>
+      <select id="bt-signal" onchange="runBacktest()" style="background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem;max-width:100%">
+        <option value="">🟡 MA10 假跌破 / 假突破（K 線圖標記）</option>
+      </select>
+      <span style="color:#484f58;font-size:.72rem;margin-left:6px">選策略 = 與策略掃描同條件、同參數</span>`;
+    ctrl.prepend(wrap);
+    fetch('/api/backtest/strategies').then(r => r.json()).then(list => {
+      const sel = document.getElementById('bt-signal');
+      (list || []).forEach(s => {
+        const o = document.createElement('option');
+        o.value = s.key;
+        o.textContent = `${s.direction === 'short' ? '🔻' : '🔺'} ${s.name}（${s.key}）`;
+        sel.appendChild(o);
+      });
+    }).catch(() => {});
+  }
+  wrap.style.display = '';
 }
 
 async function runIdxBacktest(key) {
@@ -1944,10 +1974,16 @@ async function runBacktest() {
   const exitHint  = exitType === 'none' ? '持至末端' : exitType === 'tld' ? `跌破前${tld}天低/高點` : `MA${exitMa}出場`;
   const filterHint = [taiexBull ? '加權多頭排列' : '', bigMacd ? '大MACD多頭' : ''].filter(Boolean).join(' + ');
 
+  const strat = document.getElementById('bt-signal')?.value || '';
+  if (strat) body.innerHTML = '<div style="color:var(--muted);text-align:center;padding:40px">逐日套用策略條件計算中（約數秒）...</div>';
+
   try {
-    const r = await fetch(`/api/backtest/fbd?stock_id=${_btStockId}&holding_days=${days}&trailing_low_days=${tld}&exit_ma=${exitMa}&stop_loss=${sl}&take_profit=${tp}&taiex_bull=${taiexBull}&big_macd=${bigMacd}`);
+    const r = await fetch(`/api/backtest/fbd?stock_id=${_btStockId}&holding_days=${days}&trailing_low_days=${tld}&exit_ma=${exitMa}&stop_loss=${sl}&take_profit=${tp}&taiex_bull=${taiexBull}&big_macd=${bigMacd}&strategy=${encodeURIComponent(strat)}`);
     const d = await r.json();
-    if (d.error) { body.innerHTML = `<div style="color:var(--red)">${d.error}</div>`; return; }
+    if (d.error || d.detail) { body.innerHTML = `<div style="color:var(--red)">${d.error || d.detail}</div>`; return; }
+    // 策略模式：結果放進 fbd（多）或 fbr（空），沿用同一個 statBlock 渲染
+    const stratType = d.strategy ? (d.direction === 'short' ? 'fbr' : 'fbd') : '';
+    if (stratType) d[stratType] = d.result;
 
     // Taiwan convention: red=漲(+), green=跌(-)
     const retColor = v => v >= 0 ? '#ef4444' : '#22c55e';
@@ -2009,12 +2045,24 @@ async function runBacktest() {
         </div>`;
     }
 
-    body.innerHTML = `
-      <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">⚙️ MA10 假跌破/假突破 · 進場：訊號當日收盤 · 出場：${exitHint}${days>0?' · 最多'+days+'天':''}${slHint}${tpHint}${filterHint?' · 篩選：'+filterHint:''}</div>
-      <div style="font-size:.72rem;color:#484f58;margin-bottom:10px">🔴 紅=獲利　🟢 綠=虧損（台股慣例）｜持至末端 = 無出場條件觸發，持有到最後一筆資料</div>
-      ${statBlock('fbd','🟡 假跌破（看多）','#fbbf24')}
-      ${statBlock('fbr','🔴 假突破（看空）','#f85149')}
-    `;
+    const exitDesc = `進場：訊號當日收盤 · 出場：${exitHint}${days>0?' · 最多'+days+'天':''}${slHint}${tpHint}${filterHint?' · 篩選：'+filterHint:''}`;
+    const legend = `<div style="font-size:.72rem;color:#484f58;margin-bottom:10px">🔴 紅=獲利　🟢 綠=虧損（台股慣例）｜持至末端 = 無出場條件觸發，持有到最後一筆資料</div>`;
+    if (stratType) {
+      const fd = String(d.first_date || '');
+      const range = fd.length === 8 ? ` · 資料自 ${fd.slice(0,4)}/${fd.slice(4,6)}/${fd.slice(6)}` : '';
+      body.innerHTML = `
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">⚙️ 策略：${d.strategy_name}（${d.strategy}，與策略掃描同條件、同參數）· ${exitDesc}${range}</div>
+        ${legend}
+        ${statBlock(stratType, `${stratType==='fbr'?'🔻':'🔺'} ${d.strategy_name}`, stratType==='fbr' ? '#f85149' : '#fbbf24')}
+      `;
+    } else {
+      body.innerHTML = `
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">⚙️ MA10 假跌破/假突破 · ${exitDesc}</div>
+        ${legend}
+        ${statBlock('fbd','🟡 假跌破（看多）','#fbbf24')}
+        ${statBlock('fbr','🔴 假突破（看空）','#f85149')}
+      `;
+    }
   } catch(e) {
     body.innerHTML = `<div style="color:var(--red)">載入失敗: ${e.message}</div>`;
   }
