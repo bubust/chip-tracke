@@ -1432,7 +1432,7 @@ function renderWatchlist() {
         onclick="event.stopPropagation()" />
     </td>`;
     return `<tr class="clickable wl-row" draggable="true" data-sid="${s.stock_id}"
-        ondragstart="wlDragStart(event)" ondragover="wlDragOver(event)" ondragleave="wlDragLeave(event)" ondrop="wlDrop(event)"
+        ondragstart="wlDragStart(event)" ondragend="wlDragEnd(event)" ondragover="wlDragOver(event)" ondragleave="wlDragLeave(event)" ondrop="wlDrop(event)"
         onclick="openDetail('${s.stock_id}')">
       <td onclick="event.stopPropagation();openWlChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
       <td>${nameCell(s)}</td>
@@ -1492,6 +1492,11 @@ function wlDragStart(e) {
   _wlDragSid = e.currentTarget.dataset.sid;
   e.currentTarget.style.opacity = '0.5';
   e.dataTransfer.effectAllowed = 'move';
+}
+function wlDragEnd(e) {
+  e.currentTarget.style.opacity = '';
+  // 若沒成功 drop，也清掉 drag 狀態
+  if (_wlDragSid) _wlDragSid = null;
 }
 function wlDragOver(e) {
   e.preventDefault();

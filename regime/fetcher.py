@@ -19,7 +19,7 @@ _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 
 YAHOO_TICKERS = {
     "TAIEX":   "^TWII",
-    "OTC":     "^TWOII",
+    "OTC":     "^TWOTC",
     "SOX":     "^SOX",
     "VIX":     "^VIX",
     "US10Y":   "^TNX",

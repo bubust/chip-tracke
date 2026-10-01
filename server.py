@@ -2514,11 +2514,14 @@ def _do_system_refresh():
             lg.error(f"[refresh_all] sector: {e}")
             _set_step("sector", "error")
 
-        # 5. 權證合約更新
+        # 5. 權證合約更新 + 盤後掃描
         try:
             _set_step("warrant", "running")
             from warrant.ingester import ingest_contracts
             ingest_contracts()
+            # 合約更新完再跑一次盤外掃描，讓盤後也能看到結果
+            from warrant.router import run_scanner as _warrant_scan
+            _warrant_scan()
             _set_step("warrant", "done")
         except Exception as e:
             lg.error(f"[refresh_all] warrant: {e}")
