@@ -1,6 +1,6 @@
 # PLAN-BACKTEST — 「用我的策略回測」重新設計 + 停損機制
 
-狀態：討論／計畫階段（尚未授權實作）。主持：Claude；審查：Gemini + Groq（review_multi.py）。
+狀態：已實作（2026-10-02，雲端 Claude Code；用戶確認採用建議預設值）。程式尚未經 Gemini/Groq 審查，需回本機跑 review_multi.py。主持：Claude；審查：Gemini + Groq（review_multi.py）。
 
 ## 1. 目標
 
@@ -136,3 +136,17 @@
 - 實作順序建議：① `backtest_engine.py` + 還原股價 + 單元測試 → ② 單股 API/面板 → ③ 批量背景執行 + 快取。
 - 雲端環境沒有本機 `review_multi.py`（Gemini/Groq 審查腳本在本機 ~/.claude/skills），程式檢查需回本機或改用其他審查方式。
 - 部署：push main → GitHub Actions 自動部署 Fly.io；repo 會有自動掃描 commit，push 前先 `git pull --rebase`。
+
+## 實作紀錄（2026-10-02，雲端）
+
+- 用戶確認預設值照建議：隔日開盤進場、2×ATR 初始停損＋2.5×ATR 移動停損、最多 60 天、扣 0.585%、批量 100 支。
+- 新檔：`backtest_engine.py`（simulate / compute_stats / adjust_ohlcv / wilder_atr）、`backtest_service.py`（資料、mask 快取、單股、批量 worker）、`tests/test_backtest_engine.py`（§6 的 1–12 全部涵蓋，另加預設值、均線出場、收盤進場、統計指標測試）。
+- 實作細節／與計畫的差異：
+  - 時間停損預設關閉（計畫表格寫「預設 10 天」，但預設組合沒有它；依用戶確認的預設組合）。
+  - 收盤型出場（均線、跌破 N 日低點）收盤成立 → 隔天開盤出場；時間停損與天數到期在當天收盤出場。
+  - 移動停損用前一天收盤後算出的價位（當天盤中先檢查舊停損，收盤後才上移），避免同一根 K 線先高後低的順序誤判。
+  - 單股 API 算出的 mask 只放記憶體快取（HTTP 不寫 SQLite）；批量 worker 才寫入。
+  - 批量合併交易不顯示權益曲線／累計／回撤（各股同時持有，複利合併沒有意義），改用「每股平均策略累計 vs 每股平均買進持有」對照。
+  - 成交金額排名用 price_daily 快取（close×volume 近 20 日平均）；快取空時退回清單前 N 支並在畫面註明。
+- 驗證：雲端環境連不到 Yahoo（網路政策封鎖），API／畫面以合成 K 線＋真實 scanner 策略函式驗證（TestClient＋Playwright）；真實資料需上線後確認。
+- 待辦：回本機跑 review_multi.py 審查程式。

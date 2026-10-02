@@ -62,7 +62,8 @@ def get_stock_list() -> pd.DataFrame:
 
 # ── Yahoo Finance async fetch ─────────────────────────────────────────────────
 
-def _parse_yahoo_json(data: dict) -> pd.DataFrame:
+def _parse_yahoo_json(data: dict, adjusted: bool = False) -> pd.DataFrame:
+    """adjusted=True 時多一欄 adjclose（除權息還原收盤，回測用）；預設不變，掃描不受影響。"""
     result = (data.get("chart", {}).get("result") or [])
     if not result:
         return pd.DataFrame()
@@ -81,10 +82,14 @@ def _parse_yahoo_json(data: dict) -> pd.DataFrame:
         "close":  quote.get("close",  []),
         "volume": quote.get("volume", []),
     }, index=tw_idx)
+    if adjusted:
+        _adj = ((result["indicators"].get("adjclose") or [{}])[0] or {}).get("adjclose")
+        df["adjclose"] = _adj if _adj and len(_adj) == len(df) else df["close"]
     df = df.dropna(subset=["close"])
     df = df[df["close"] > 0]
     df["date"] = df.index.strftime("%Y%m%d")
-    df = df.reset_index(drop=True)[["date", "open", "high", "low", "close", "volume"]]
+    df = df.reset_index(drop=True)[["date", "open", "high", "low", "close", "volume"]
+                                   + (["adjclose"] if adjusted else [])]
     # Yahoo 成交量為「股數（股）」，台股 1 張 = 1000 股，統一轉為張，與 price_cache 一致
     df["volume"] = (df["volume"].fillna(0) / 1000).round().astype(int)
 
@@ -115,6 +120,7 @@ def _parse_yahoo_json(data: dict) -> pd.DataFrame:
                 new_row = pd.DataFrame([{
                     "date": last_date, "open": rmo, "high": rmh,
                     "low": rml, "close": float(rmp), "volume": vol,
+                    **({"adjclose": float(rmp)} if adjusted else {}),
                 }])
                 df = pd.concat([df, new_row], ignore_index=True)
     except Exception:

@@ -34,6 +34,8 @@ from positioning.router import router as positioning_router, _run_refresh as pos
 from positioning.db import init_db as init_positioning_db
 from relationship.router import router as relationship_router
 from relationship.db import init_db as init_relationship_db
+from treasury.router import router as treasury_router
+from treasury.db import init_db as init_treasury_db
 
 from chip_tracker_v2 import (
     DATA_DIR, DB_PATH,
@@ -255,6 +257,7 @@ async def lifespan(app: FastAPI):
     sector_init_db()
     init_positioning_db()
     init_relationship_db()
+    init_treasury_db()
     start_warrant_scheduler()
     # 從 Supabase 恢復 watchlist 到本地 SQLite（Render 重啟後 SQLite 為空）
     try:
@@ -392,6 +395,21 @@ async def lifespan(app: FastAPI):
         _rel_scheduler.start()
     except Exception as _rel_sch_e:
         import logging; logging.getLogger(__name__).warning(f"[relationship_scheduler] {_rel_sch_e}")
+    # 庫藏股：資料表空的話先回補 3 年；之後每個交易日 18:40 從 MOPS 更新近 180 天（含期滿後申報的執行結果）
+    try:
+        from treasury.router import run_refresh as _tb_refresh
+        from treasury.db import get_status as _tb_status
+        if not _tb_status().get("rows"):
+            threading.Thread(target=_tb_refresh, kwargs={"days": 1095}, daemon=True,
+                             name="treasury-init").start()
+        from apscheduler.schedulers.background import BackgroundScheduler as _TbSched
+        from zoneinfo import ZoneInfo as _TbZone
+        _tb_scheduler = _TbSched(timezone=_TbZone("Asia/Taipei"))
+        _tb_scheduler.add_job(lambda: _tb_refresh(days=180), "cron", day_of_week="mon-fri",
+                              hour=18, minute=40, id="treasury_daily", replace_existing=True)
+        _tb_scheduler.start()
+    except Exception as _tb_e:
+        import logging; logging.getLogger(__name__).warning(f"[treasury_scheduler] {_tb_e}")
     # 啟動 positioning 排程（每個交易日 16:45 自動更新）
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
@@ -731,6 +749,10 @@ app.mount("/relationship/static", StaticFiles(directory=str(RELATIONSHIP_FRONTEN
 @app.get("/relationship/", include_in_schema=False)
 def relationship_index():
     return FileResponse(str(BASE_DIR / "relationship-frontend" / "index.html"))
+
+# 掛載庫藏股路由與前端 JS（分頁直接在 dashboard 內，才能開 K 線、加觀察清單）
+app.include_router(treasury_router)
+app.mount("/treasury/static", StaticFiles(directory=str(BASE_DIR / "treasury-frontend")), name="treasury_static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -2819,282 +2841,73 @@ def api_backtest_strategies():
             for k in PRICE_STRATEGY_FNS]
 
 
+def _bt_exit_cfg(entry: str, stop: str, stop_atr: float, stop_pct: float,
+                 trail: str, trail_atr: float, trail_pct: float, max_hold: int,
+                 exit_ma: int, time_stop_days: int, time_stop_pct: float, take_profit: float,
+                 trailing_low_days: int = 0, holding_days: Optional[int] = None,
+                 stop_loss: Optional[float] = None):
+    """回測出場設定（新參數 + 舊參數 holding_days / stop_loss / trailing_low_days 相容）"""
+    from backtest_engine import ExitConfig
+    if holding_days is not None:
+        max_hold = holding_days
+    if stop_loss is not None and stop_loss > 0:
+        stop, stop_pct = "pct", stop_loss
+    if entry not in ("next_open", "close"):
+        raise HTTPException(status_code=400, detail=f"entry 只能是 next_open / close：{entry}")
+    for nm, v in (("stop", stop), ("trail", trail)):
+        if v not in ("atr", "pct", "none"):
+            raise HTTPException(status_code=400, detail=f"{nm} 只能是 atr / pct / none：{v}")
+    return ExitConfig(stop=stop, stop_atr=stop_atr, stop_pct=stop_pct,
+                      trail=trail, trail_atr=trail_atr, trail_pct=trail_pct,
+                      max_hold=max(0, max_hold), exit_ma=max(0, exit_ma),
+                      trail_low_days=max(0, trailing_low_days),
+                      time_stop_days=max(0, time_stop_days), time_stop_pct=time_stop_pct,
+                      take_profit=max(0.0, take_profit), entry=entry)
+
+
 @app.get("/api/backtest/fbd")
-def api_backtest_fbd(stock_id: str, holding_days: int = 0,
-                     trailing_low_days: int = 0,
-                     exit_ma: int = 10,
-                     stop_loss: float = 0.0, take_profit: float = 0.0,
+def api_backtest_fbd(stock_id: str, strategy: str = "", signal: str = "fbd",
+                     entry: str = "next_open",
+                     stop: str = "atr", stop_atr: float = 2.0, stop_pct: float = 0.0,
+                     trail: str = "atr", trail_atr: float = 2.5, trail_pct: float = 0.0,
+                     max_hold: int = 60, exit_ma: int = 0,
+                     time_stop_days: int = 0, time_stop_pct: float = 0.0,
+                     take_profit: float = 0.0, cost: float = 0.585,
                      taiex_bull: int = 0, big_macd: int = 0,
-                     strategy: str = ""):
+                     trailing_low_days: int = 0,
+                     holding_days: Optional[int] = None, stop_loss: Optional[float] = None):
     """
-    假跌破/假突破回測：
-    - 進場：訊號當日收盤（尾盤進場）
-    - 出場：跌破前 trailing_low_days 天低點，或觸及停損/停利
-    - holding_days: 出場天數上限，0 = 不限（持到跌破低點）
-    - trailing_low_days: 跌破幾天低點出場，0 = 不啟用
-    - stop_loss: 停損百分比（如 5 = 5%），0 = 不啟用
-    - take_profit: 停利百分比（如 10 = 10%），0 = 不啟用
-    - 訊號定義：
-        假跌破（FBD）: 當日 close < MA10，隔日 close > MA10
-        假突破（FBR）: 當日 close > MA10，隔日 close < MA10
-    - strategy: 指定策略掃描的 key（如 S_FBD）→ 改用該策略的 screen 函式逐日判斷進場，
-      參數與量能過濾同全市場掃描；方向由後端依 SHORT_STRATEGIES 決定
+    單股回測（PLAN-BACKTEST §3.1）：
+    - strategy：策略掃描的 key（S1、S5…）→ 逐日套用同一個 screen 函式＋同參數判斷進場；
+      空字串 → MA10 假跌破（signal=fbd，看多）/ 假突破（signal=fbr，看空）
+    - entry：next_open（訊號隔天開盤，預設）/ close（訊號日收盤，較樂觀）
+    - stop：atr（進場價 − stop_atr×ATR14，預設 2）/ pct / none
+    - trail：移動停損 atr（持有期最高價 − trail_atr×ATR，預設 2.5）/ pct / none，只往有利方向移
+    - max_hold：最多持有天數（預設 60，0 = 不限）；exit_ma / trailing_low_days：收盤成立、隔天開盤出場
+    - time_stop_days + time_stop_pct：N 天內沒賺到 X% 就出場；take_profit：停利 %
+    - cost：來回成本 %（預設 0.585 = 手續費 0.1425%×2 + 證交稅 0.3%）
+    - 一律用還原股價；出場以盤中高低價判定，跳空用開盤價；持倉中不重複進場
     """
-    import pandas as pd
-    from yahoo_price import _parse_yahoo_json, get_stock_list
+    from backtest_engine import CostConfig
+    from backtest_service import run_single
     strategy = (strategy or "").strip().upper()
     if strategy:
         from scanner import PRICE_STRATEGY_FNS
         if strategy not in PRICE_STRATEGY_FNS:
             raise HTTPException(status_code=400, detail=f"不支援的策略：{strategy}")
-    stocks = get_stock_list()
-    row = stocks[stocks["stock_id"] == stock_id]
-    market = str(row.iloc[0]["type"]) if not row.empty else "twse"
-    suffixes = [".TW"] if market == "twse" else [".TWO", ".TW"]
-    UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    now = int(_time.time())
-    # 策略模式抓 5 年（如 S1 需 ≥235 根才開始判斷，2 年樣本太少）
-    p1 = now - (1825 if strategy else 730) * 86400
-    params = {"interval": "1d", "period1": p1, "period2": now}
-
-    df = None
-    for host in ["query1", "query2"]:
-        for suffix in suffixes:
-            try:
-                r = httpx.get(
-                    f"https://{host}.finance.yahoo.com/v8/finance/chart/{stock_id}{suffix}",
-                    params=params,
-                    headers={"User-Agent": UA, "Accept": "application/json"},
-                    timeout=12.0, verify=False, follow_redirects=True,
-                )
-                r.raise_for_status()
-                df = _parse_yahoo_json(r.json())
-                if df is not None and not df.empty and len(df) >= 30:
-                    break
-            except Exception:
-                pass
-        if df is not None and not df.empty and len(df) >= 30:
-            break
-
-    if df is None or df.empty or len(df) < 30:
+    if signal not in ("fbd", "fbr"):
+        raise HTTPException(status_code=400, detail=f"signal 只能是 fbd / fbr：{signal}")
+    ec = _bt_exit_cfg(entry, stop, stop_atr, stop_pct, trail, trail_atr, trail_pct, max_hold,
+                      exit_ma, time_stop_days, time_stop_pct, take_profit,
+                      trailing_low_days, holding_days, stop_loss)
+    res = run_single(stock_id, strategy, signal, ec, CostConfig(max(0.0, cost) / 100.0),
+                     _load_strategy_params() if strategy else {},
+                     taiex_bull=taiex_bull, big_macd=big_macd)
+    if res is None:
         raise HTTPException(status_code=404, detail=f"{stock_id} 無法取得歷史資料")
-
-    closes = df["close"].values
-    lows   = df["low"].values
-    highs  = df["high"].values
-    dates  = df["date"].values
-    n = len(closes)
-
-    # 計算 MA10
-    ma10 = pd.Series(closes).rolling(10, min_periods=10).mean().values
-
-    sl_frac = stop_loss / 100.0   # e.g. 5% → 0.05
-    tp_frac = take_profit / 100.0
-
-    # ── 加權指數多頭排列篩選 (MA5 > MA10 > MA20 > MA60) ──────────────────────
-    taiex_bull_dates: set = set()
-    if taiex_bull > 0:
-        try:
-            from relationship.db import get_conn as _rel_conn
-            rc = _rel_conn()
-            trows = rc.execute(
-                "SELECT observation_date, taiex_close FROM market_daily "
-                "WHERE taiex_close IS NOT NULL ORDER BY observation_date ASC"
-            ).fetchall()
-            rc.close()
-            if trows:
-                t_closes = pd.Series([r[1] for r in trows],
-                                     index=[r[0] for r in trows])
-                _ma5  = t_closes.rolling(5).mean()
-                _ma10 = t_closes.rolling(10).mean()
-                _ma20 = t_closes.rolling(20).mean()
-                _ma60 = t_closes.rolling(60).mean()
-                for dt_dash, m5, m10, m20, m60 in zip(
-                    t_closes.index, _ma5, _ma10, _ma20, _ma60
-                ):
-                    if not any(pd.isna(x) for x in [m5, m10, m20, m60]):
-                        if m5 > m10 > m20 > m60:
-                            taiex_bull_dates.add(dt_dash.replace("-", ""))
-        except Exception:
-            pass  # 若 relationship DB 不存在，跳過此篩選
-
-    # ── 大 MACD（週線 DIF>0 & DEA>0 & 柱狀紅柱）篩選 ───────────────────────
-    big_macd_arr: list = [True] * n   # default: all pass
-    if big_macd > 0:
-        try:
-            date_idx = pd.to_datetime(pd.Series(dates), format="%Y%m%d")
-            close_s = pd.Series(closes, index=date_idx)
-            # 以週五收盤代表週K（台股週一至週五）
-            weekly = close_s.resample("W-FRI").last().dropna()
-            ema12w = weekly.ewm(span=12, adjust=False).mean()
-            ema26w = weekly.ewm(span=26, adjust=False).mean()
-            dif_w  = ema12w - ema26w
-            dea_w  = dif_w.ewm(span=9, adjust=False).mean()
-            hist_w = dif_w - dea_w
-            # 前填補：每個交易日繼承上個週五的週線 MACD 值
-            dif_d  = dif_w.reindex(date_idx, method="ffill")
-            dea_d  = dea_w.reindex(date_idx, method="ffill")
-            hist_d = hist_w.reindex(date_idx, method="ffill")
-            big_macd_arr = (
-                (dif_d > 0) & (dea_d > 0) & (hist_d > 0)
-            ).fillna(False).tolist()
-        except Exception:
-            big_macd_arr = [True] * n
-
-    # ── 出場均線陣列 ──────────────────────────────────────────────────────────
-    exit_ma_arr = None
-    if exit_ma > 0:
-        exit_ma_arr = pd.Series(closes).rolling(exit_ma, min_periods=exit_ma).mean().values
-
-    def run_backtest(signal_type: str, signal_mask: list = None):
-        """signal_type: 'fbd' (看多/long) or 'fbr' (看空/short)；signal_mask 有值時以它為進場訊號"""
-        is_short = (signal_type == "fbr")
-        trades = []
-        for i in range(10, n - 1):
-            if signal_mask is None and (pd.isna(ma10[i]) or pd.isna(ma10[i+1])):
-                continue
-            # ── 市場環境篩選 ──
-            if taiex_bull > 0 and dates[i] not in taiex_bull_dates:
-                continue
-            if big_macd > 0 and not big_macd_arr[i]:
-                continue
-            # ── 訊號觸發 ──
-            if signal_mask is not None:
-                triggered = signal_mask[i]
-            elif signal_type == "fbd":
-                triggered = (closes[i-1] < ma10[i-1]) and (closes[i] > ma10[i])
-            else:
-                triggered = (closes[i-1] > ma10[i-1]) and (closes[i] < ma10[i])
-            if not triggered:
-                continue
-
-            entry_price = closes[i]
-            # 停損/停利方向：做空時反轉
-            if is_short:
-                sl_price = round(entry_price * (1 + sl_frac), 2) if sl_frac > 0 else None
-                tp_price = round(entry_price * (1 - tp_frac), 2) if tp_frac > 0 else None
-            else:
-                sl_price = round(entry_price * (1 - sl_frac), 2) if sl_frac > 0 else None
-                tp_price = round(entry_price * (1 + tp_frac), 2) if tp_frac > 0 else None
-
-            # 出場模擬
-            exit_reason = ""
-            max_j = (i + holding_days) if holding_days > 0 else (n - 1)
-            exit_idx = min(max_j, n - 1)
-
-            for j in range(i + 1, min(max_j + 1, n)):
-                c = closes[j]
-                if is_short:
-                    # 做空停損：股價上漲超過 sl%
-                    if sl_price is not None and c >= sl_price:
-                        exit_idx = j; exit_reason = "停損"; break
-                    # 做空停利：股價下跌超過 tp%
-                    if tp_price is not None and c <= tp_price:
-                        exit_idx = j; exit_reason = "停利"; break
-                    # 做空均線出場：股價站回均線以上
-                    if exit_ma_arr is not None:
-                        ma_v = exit_ma_arr[j]
-                        if not pd.isna(ma_v) and c > ma_v:
-                            exit_idx = j; exit_reason = f"站上MA{exit_ma}"; break
-                    # 做空追蹤高點出場：股價突破前N天高點
-                    if trailing_low_days > 0:
-                        lb_start = max(i, j - trailing_low_days)
-                        if lb_start < j:
-                            trail_high = float(max(highs[lb_start:j]))
-                            if c > trail_high:
-                                exit_idx = j; exit_reason = "突破高點"; break
-                else:
-                    # 做多停損：股價下跌超過 sl%
-                    if sl_price is not None and c <= sl_price:
-                        exit_idx = j; exit_reason = "停損"; break
-                    # 做多停利：股價上漲超過 tp%
-                    if tp_price is not None and c >= tp_price:
-                        exit_idx = j; exit_reason = "停利"; break
-                    # 做多均線出場：股價跌破均線
-                    if exit_ma_arr is not None:
-                        ma_v = exit_ma_arr[j]
-                        if not pd.isna(ma_v) and c < ma_v:
-                            exit_idx = j; exit_reason = f"破MA{exit_ma}"; break
-                    # 做多追蹤低點出場
-                    if trailing_low_days > 0:
-                        lb_start = max(i, j - trailing_low_days)
-                        if lb_start < j:
-                            trail_low = float(min(lows[lb_start:j]))
-                            if c < trail_low:
-                                exit_idx = j; exit_reason = "跌破低點"; break
-
-            if not exit_reason:
-                exit_reason = "天數到期" if holding_days > 0 else "持至末端"
-
-            # 追蹤參考價（出場時點的追蹤低/高點）
-            trail_ref = None
-            if trailing_low_days > 0 and exit_idx > i:
-                lb_s = max(i, exit_idx - trailing_low_days)
-                if lb_s < exit_idx:
-                    trail_ref = round(float(
-                        max(highs[lb_s:exit_idx]) if is_short else min(lows[lb_s:exit_idx])
-                    ), 2)
-
-            exit_price = closes[exit_idx]
-            # 回報計算：做空時股價下跌才獲利
-            if is_short:
-                ret = (entry_price - exit_price) / entry_price
-            else:
-                ret = (exit_price - entry_price) / entry_price
-
-            trades.append({
-                "entry_date":  dates[i],
-                "entry_price": float(entry_price),
-                "exit_date":   dates[exit_idx],
-                "exit_price":  float(exit_price),
-                "return":      round(float(ret), 4),
-                "exit_reason": exit_reason,
-                "sl_price":    sl_price,
-                "tp_price":    tp_price,
-                "trail_ref":   trail_ref,
-            })
-
-        if not trades:
-            return {"count": 0}
-        rets = [t["return"] for t in trades]
-        wins = [r for r in rets if r > 0]
-        return {
-            "count":         len(trades),
-            "win_rate":      round(len(wins) / len(rets), 3),
-            "avg_return":    round(sum(rets) / len(rets), 4),
-            "median_return": round(sorted(rets)[len(rets)//2], 4),
-            "max_win":       round(max(rets), 4),
-            "max_loss":      round(min(rets), 4),
-            "trades":        trades[-30:],
-        }
-
-    common = {
-        "stock_id":    stock_id,
-        "holding_days": holding_days,
-        "trailing_low_days": trailing_low_days,
-        "exit_ma":     exit_ma,
-        "stop_loss":   stop_loss,
-        "take_profit": take_profit,
-        "taiex_bull":  taiex_bull,
-        "big_macd":    big_macd,
-        "total_bars":  n,
-    }
-    if strategy:
-        from scanner import strategy_signal_mask, SHORT_STRATEGIES, STRATEGIES
-        all_params = _load_strategy_params()
-        mask = strategy_signal_mask(
-            df, strategy, params=all_params.get(strategy),
-            min_vol_ratio=(all_params.get("_global") or {}).get("min_vol_ratio", 0.0))
-        is_short = strategy in SHORT_STRATEGIES
-        return {**common,
-                "strategy":      strategy,
-                "strategy_name": STRATEGIES.get(strategy, strategy),
-                "direction":     "short" if is_short else "long",
-                "first_date":    str(dates[0]),
-                "result":        run_backtest("fbr" if is_short else "fbd", signal_mask=mask)}
-    return {**common,
-            "fbd": run_backtest("fbd"),
-            "fbr": run_backtest("fbr")}
+    res["taiex_bull"] = taiex_bull
+    res["big_macd"] = big_macd
+    return res
 
 
 @app.get("/api/backtest/index")
@@ -3317,143 +3130,32 @@ def api_backtest_index(key: str, holding_days: int = 0,
 @app.get("/api/backtest/strategy-batch")
 def api_backtest_strategy_batch(
     strategy: str,
-    trailing_low_days: int = 2,
-    holding_days: int = 0,
-    stop_loss: float = 0.0,
-    take_profit: float = 0.0,
-    signal: str = "fbd",
-    max_stocks: int = 40,
+    max_stocks: int = 100,
+    entry: str = "next_open",
+    stop: str = "atr", stop_atr: float = 2.0, stop_pct: float = 0.0,
+    trail: str = "atr", trail_atr: float = 2.5, trail_pct: float = 0.0,
+    max_hold: int = 60, exit_ma: int = 0,
+    time_stop_days: int = 0, time_stop_pct: float = 0.0,
+    take_profit: float = 0.0, cost: float = 0.585,
 ):
-    """批量回測：對策略篩選出的股票跑 MA10 假跌破/假突破回測，彙總統計"""
-    import pandas as pd
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    from yahoo_price import get_scan_results, _parse_yahoo_json, get_stock_list
-
-    scan_res = get_scan_results()
-    raw_list = scan_res.get(strategy, [])
-    if not raw_list:
-        raise HTTPException(status_code=404, detail=f"策略 {strategy} 尚無掃描結果，請先執行全市場掃描")
-
-    stocks = get_stock_list()
-    stock_ids = [s["stock_id"] for s in raw_list[:max_stocks]]
-    UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    now_ts = int(_time.time())
-    p1 = now_ts - 730 * 86400
-    params_yf = {"interval": "1d", "period1": p1, "period2": now_ts}
-    sl_frac = stop_loss / 100.0
-    tp_frac = take_profit / 100.0
-
-    def _one_stock(stock_id):
-        row = stocks[stocks["stock_id"] == stock_id]
-        market = str(row.iloc[0]["type"]) if not row.empty else "twse"
-        suffixes = [".TW"] if market == "twse" else [".TWO", ".TW"]
-        df = None
-        for host in ["query1", "query2"]:
-            for suffix in suffixes:
-                try:
-                    r = httpx.get(
-                        f"https://{host}.finance.yahoo.com/v8/finance/chart/{stock_id}{suffix}",
-                        params=params_yf,
-                        headers={"User-Agent": UA, "Accept": "application/json"},
-                        timeout=12.0, verify=False, follow_redirects=True,
-                    )
-                    r.raise_for_status()
-                    df = _parse_yahoo_json(r.json())
-                    if df is not None and not df.empty and len(df) >= 30:
-                        break
-                except Exception:
-                    pass
-            if df is not None and not df.empty and len(df) >= 30:
-                break
-        if df is None or df.empty or len(df) < 30:
-            return None
-
-        closes = df["close"].values
-        lows_arr = df["low"].values
-        dates_arr = df["date"].values
-        n = len(closes)
-        ma10 = pd.Series(closes).rolling(10, min_periods=10).mean().values
-        trades = []
-        for i in range(10, n - 1):
-            if pd.isna(ma10[i]) or pd.isna(ma10[i + 1]):
-                continue
-            if signal == "fbd":
-                triggered = (closes[i - 1] < ma10[i - 1]) and (closes[i] > ma10[i])
-            else:
-                triggered = (closes[i - 1] > ma10[i - 1]) and (closes[i] < ma10[i])
-            if not triggered:
-                continue
-            entry_price = closes[i]
-            sl_price = round(entry_price * (1 - sl_frac), 2) if sl_frac > 0 else None
-            tp_price = round(entry_price * (1 + tp_frac), 2) if tp_frac > 0 else None
-            exit_reason = "時間"
-            max_j = (i + holding_days) if holding_days > 0 else (n - 1)
-            exit_idx = min(max_j, n - 1)
-            for j in range(i + 1, min(max_j + 1, n)):
-                c = closes[j]
-                if sl_price is not None and c <= sl_price:
-                    exit_idx = j; exit_reason = "停損"; break
-                if tp_price is not None and c >= tp_price:
-                    exit_idx = j; exit_reason = "停利"; break
-                if trailing_low_days > 0:
-                    lb_start = max(i, j - trailing_low_days)
-                    if lb_start < j:
-                        trail_low = float(min(lows_arr[lb_start:j]))
-                        if c < trail_low:
-                            exit_idx = j; exit_reason = "跌破低點"; break
-            exit_price = closes[exit_idx]
-            ret = (exit_price - entry_price) / entry_price
-            trades.append({"return": round(float(ret), 4), "exit_reason": exit_reason,
-                           "entry_date": dates_arr[i], "exit_date": dates_arr[exit_idx]})
-        if not trades:
-            return None
-        rets = [t["return"] for t in trades]
-        wins = [r for r in rets if r > 0]
-        return {
-            "stock_id": stock_id,
-            "name": next((s.get("name", "") for s in raw_list if s.get("stock_id") == stock_id), ""),
-            "count": len(trades),
-            "win_rate": round(len(wins) / len(rets), 3),
-            "avg_return": round(sum(rets) / len(rets), 4),
-            "max_win": round(max(rets), 4),
-            "max_loss": round(min(rets), 4),
-            "last_entry": trades[-1]["entry_date"] if trades else None,
-        }
-
-    by_stock = []
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        futures = {ex.submit(_one_stock, sid): sid for sid in stock_ids}
-        for fut in as_completed(futures):
-            res = fut.result()
-            if res:
-                by_stock.append(res)
-
-    if not by_stock:
-        return {"strategy": strategy, "total_scanned": len(stock_ids), "computed": 0,
-                "aggregate": {"count": 0}, "by_stock": []}
-
-    all_rets = []
-    for sr in by_stock:
-        # weight each stock's avg equally
-        all_rets.append(sr["avg_return"])
-
-    by_stock.sort(key=lambda x: x["avg_return"], reverse=True)
-    wins_agg = [r for r in all_rets if r > 0]
-    return {
-        "strategy": strategy,
-        "signal": signal,
-        "total_scanned": len(stock_ids),
-        "computed": len(by_stock),
-        "trailing_low_days": trailing_low_days,
-        "holding_days": holding_days,
-        "aggregate": {
-            "stocks_with_trades": len(by_stock),
-            "avg_win_rate": round(sum(s["win_rate"] for s in by_stock) / len(by_stock), 3),
-            "avg_return": round(sum(all_rets) / len(all_rets), 4),
-            "positive_stocks": len(wins_agg),
-        },
-        "by_stock": by_stock,
-    }
+    """
+    批量回測此策略（PLAN-BACKTEST §3.4）：全市場近 20 日平均成交金額前 N 大（預設 100，上限 300），
+    每支用該策略的進場訊號＋與單股相同的出場/成本/不疊單規則，所有交易合併統計。
+    背景單一 worker 執行；前端重複呼叫同一個網址輪詢：
+      status = started / running（progress/total）/ busy（另一個批量在跑）/ done（result）/ error
+    同一天同設定（策略參數＋出場＋成本＋股數）直接回快取。
+    """
+    from backtest_engine import CostConfig
+    from backtest_service import batch_request
+    from scanner import PRICE_STRATEGY_FNS
+    strategy = (strategy or "").strip().upper()
+    if strategy not in PRICE_STRATEGY_FNS:
+        raise HTTPException(status_code=400, detail=f"不支援的策略：{strategy}（批量只支援純價格策略）")
+    max_stocks = max(10, min(300, int(max_stocks)))
+    ec = _bt_exit_cfg(entry, stop, stop_atr, stop_pct, trail, trail_atr, trail_pct, max_hold,
+                      exit_ma, time_stop_days, time_stop_pct, take_profit)
+    return batch_request(strategy, ec, CostConfig(max(0.0, cost) / 100.0),
+                         _load_strategy_params(), max_stocks)
 
 
 @app.get("/api/stock/{stock_id}/ohlcv")
