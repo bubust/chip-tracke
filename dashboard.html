@@ -338,6 +338,7 @@
             <th title="集保所千張大戶持股%，點擊查看歷史趨勢" style="cursor:help">千張大戶</th>
             <th title="系統依MA10/MA60自動判斷，不可手動修改">🔦 狀態</th>
             <th>最新日期</th>
+            <th title="加入觀察清單的日期">加入日期</th>
             <th>操作</th>
           </tr>
         </thead>
@@ -1364,6 +1365,7 @@ function renderWatchlist() {
         ${ndKpctCell}
         ${ndStageCell}
         <td class="muted">—</td>
+        <td class="muted" title="${s.added_at || ''}">${_fmtAdded(s.added_at)}</td>
         <td onclick="event.stopPropagation()" style="white-space:nowrap">
           <button class="btn sm ghost" style="padding:2px 6px" onclick="moveWlItem('${s.stock_id}',-1)" title="上移">▲</button>
           <button class="btn sm ghost" style="padding:2px 6px;margin-left:2px" onclick="moveWlItem('${s.stock_id}',1)" title="下移">▼</button>
@@ -1449,6 +1451,7 @@ function renderWatchlist() {
       ${kpctCell}
       ${stageCell}
       <td class="muted">${s.date || '—'}</td>
+      <td class="muted" title="${s.added_at || ''}">${_fmtAdded(s.added_at)}</td>
       <td onclick="event.stopPropagation()" style="white-space:nowrap">
         <button class="btn sm ghost" style="padding:2px 6px" onclick="moveWlItem('${s.stock_id}',-1)" title="上移">▲</button>
         <button class="btn sm ghost" style="padding:2px 6px;margin-left:2px" onclick="moveWlItem('${s.stock_id}',1)" title="下移">▼</button>
@@ -1461,6 +1464,13 @@ function renderWatchlist() {
   }).join('');
   // 非同步補充千張大戶多週趨勢
   enrichTdccTrends().catch(() => {});
+}
+
+// 加入日期：ISO 時間 → 2026/10/02
+function _fmtAdded(v) {
+  if (!v) return '—';
+  const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[1]}/${m[2]}/${m[3]}` : String(v).slice(0, 10);
 }
 
 // 觀察清單上下移動
@@ -3243,7 +3253,7 @@ const STRATEGY_LABELS = {
   S_VOLX_SHORT: '💥 量爆下殺（今日成交量 ≥ 昨日3倍、收盤下跌、跌破10日均線MA10，放空訊號）',
   S_WARRANT_TOP: '📈 認購權證前十大（最近交易日認購成交額最高的標的股）',
 };
-// 策略短名稱（用於「也在策略」欄位badge）
+// 策略短名稱（用於「重疊策略」欄位badge）
 const STRATEGY_SHORT = {
   S1: 'S1 雙MACD多', S1_SHORT: 'S1空 雙MACD空',
   S2: 'S2 W底',
@@ -3630,16 +3640,6 @@ function renderScreenTable(strategy, data) {
   document.getElementById('screen-result-title').textContent = STRATEGY_LABELS[strategy] || strategy;
   document.getElementById('screen-result-count').textContent = `共 ${data.length} 支`;
 
-  // 排序
-  let sorted = [...data];
-  if (_screenSort.col) {
-    const col = _screenSort.col, dir = _screenSort.dir;
-    sorted.sort((a, b) => {
-      const av = a[col] ?? -Infinity, bv = b[col] ?? -Infinity;
-      return typeof av === 'string' ? av.localeCompare(bv) * dir : (av - bv) * dir;
-    });
-  }
-
   // 計算跨策略：每支股票還符合哪些其他策略
   const _otherStratMap = {};
   for (const [sk, sv] of Object.entries(_screenAllResults || {})) {
@@ -3650,16 +3650,29 @@ function renderScreenTable(strategy, data) {
     }
   }
 
+  // 排序（overlap = 重疊策略數量）
+  let sorted = [...data];
+  if (_screenSort.col) {
+    const col = _screenSort.col, dir = _screenSort.dir;
+    const val = r => col === 'overlap'  ? (_otherStratMap[r.stock_id] || []).length
+                   : col === 'turnover' ? (r.close && r.volume ? r.close * r.volume : null)
+                   : r[col];
+    sorted.sort((a, b) => {
+      const av = val(a) ?? -Infinity, bv = val(b) ?? -Infinity;
+      return typeof av === 'string' ? av.localeCompare(bv) * dir : (av - bv) * dir;
+    });
+  }
+
   // 表頭（可點擊排序）
-  function th(label, col) {
+  function th(label, col, cls = '', title = '') {
     const arrow = _screenSort.col === col ? (_screenSort.dir === 1 ? ' ▲' : ' ▼') : '';
-    return `<th style="cursor:pointer;user-select:none" onclick="sortScreenBy('${col}')">${label}${arrow}</th>`;
+    return `<th${cls ? ` class="${cls}"` : ''}${title ? ` title="${title}"` : ''} style="cursor:pointer;user-select:none" onclick="sortScreenBy('${col}')">${label}${arrow}</th>`;
   }
   let headRow = `<tr><th>#</th>${th('代號','stock_id')}${th('股名','name')}${th('股價','close')}${th('漲跌%','change_pct')}`;
   if (strategy === 'S10')  headRow += `${th('連續漲停','consec_limit_up')}`;
   if (strategy === 'S17B') headRow += `${th('頸線','neckline')}`;
   if (strategy === 'S_WARRANT_TOP') headRow += `${th('認購額(萬)','call_turnover_wan')}${th('認購/認售比','cp_ratio')}`;
-  headRow += `${th('成交量(張)','volume')}<th class="hide-mobile" onclick="sortBy('turnover')" style="cursor:pointer">成交金額</th><th class="hide-mobile" onclick="sortBy('bb_score')" style="cursor:pointer">BB位置</th><th class="hide-mobile" title="此股票同時符合的其他策略">也在策略</th><th>操作</th></tr>`;
+  headRow += `${th('成交量(張)','volume')}${th('成交金額','turnover','hide-mobile')}${th('BB位置','bb_score','hide-mobile')}${th('重疊策略','overlap','hide-mobile','此股票同時符合的其他策略，點擊依重疊數量排序')}<th>操作</th></tr>`;
   document.getElementById('screen-thead').innerHTML = headRow;
 
   const tbody = document.getElementById('screen-tbody');

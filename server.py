@@ -2202,7 +2202,7 @@ async def api_watchlist_summary():
     mkt_map    = dict(zip(stocks_df["stock_id"], stocks_df["type"]))
 
     conn = get_conn()
-    rows = conn.execute("SELECT stock_id, name, note, memo FROM watchlist ORDER BY added_at").fetchall()
+    rows = conn.execute("SELECT stock_id, name, note, memo, added_at FROM watchlist ORDER BY added_at").fetchall()
     conn.close()
 
     stock_ids = [r["stock_id"] for r in rows]
@@ -2252,6 +2252,7 @@ async def api_watchlist_summary():
             "name":       name,
             "note":       (r["note"] or "").strip() if "note" in r.keys() else "",
             "memo":       (r["memo"] or "").strip() if "memo" in r.keys() else "",
+            "added_at":   (r["added_at"] or "") if "added_at" in r.keys() else "",
             "close":      price_info.get("close"),
             "change_pct": price_info.get("change_pct"),
             "bb_score":   price_info.get("bb_score"),  # None → 前端顯示 "—"（MIS/FinMind fallback 無OHLCV無法計算BB）
