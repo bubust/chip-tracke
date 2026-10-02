@@ -1,6 +1,9 @@
 # SQLite database (contains settings & Telegram token)
 chip_data/cache.db
 
+# 回測訊號 / 批量結果快取（可重算）
+chip_data/backtest_cache.db*
+
 # CSV data files (generated, can re-fetch)
 chip_data/*.csv
 

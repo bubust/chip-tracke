@@ -502,17 +502,17 @@
       <strong id="batch-title">批量回測</strong>
       <span id="batch-meta" style="font-size:.8rem;color:var(--muted)"></span>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto;font-size:.82rem">
-        <label style="color:var(--muted)">訊號
-          <select id="batch-signal" style="margin-left:4px;padding:2px 6px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);font-size:.8rem">
-            <option value="fbd">假跌破（看多）</option>
-            <option value="fbr">假突破（看空）</option>
-          </select>
+        <label style="color:var(--muted)" title="ATR = 這支股票平常一天大概波動多少">初始停損 ×ATR
+          <input id="batch-stop-atr" type="number" value="2" min="0" max="20" step="0.5" style="width:46px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem">
         </label>
-        <label style="color:var(--muted)">跌破幾天低點
-          <input id="batch-tld" type="number" value="2" min="0" max="10" style="width:40px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem">
+        <label style="color:var(--muted)" title="股價漲上去停損跟著上移、不往下">移動停損 ×ATR
+          <input id="batch-trail-atr" type="number" value="2.5" min="0" max="30" step="0.5" style="width:46px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem">
         </label>
-        <label style="color:var(--muted)">天數上限
-          <input id="batch-days" type="number" value="0" min="0" max="60" style="width:40px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem">
+        <label style="color:var(--muted)">最多持有
+          <input id="batch-days" type="number" value="60" min="0" max="250" style="width:46px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem"> 天
+        </label>
+        <label style="color:var(--muted)">股數
+          <input id="batch-n" type="number" value="100" min="10" max="300" step="10" style="width:46px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem">
         </label>
         <button onclick="runStrategyBacktest()" style="background:#58a6ff;color:#fff;border:none;border-radius:5px;padding:4px 12px;cursor:pointer;font-size:.8rem">重新計算</button>
         <button onclick="document.getElementById('strategy-batch-card').style.display='none'" style="background:transparent;border:1px solid #30363d;border-radius:5px;padding:4px 8px;cursor:pointer;color:var(--muted);font-size:.8rem">✕</button>
@@ -1788,102 +1788,212 @@ async function openBacktest() {
       `;
       document.getElementById('bt-body').before(ctrl);
     }
-    const _sigWrap = document.getElementById('bt-signal-wrap');
-    if (_sigWrap) _sigWrap.style.display = 'none';   // 指數回測不支援策略訊號
+    ctrl.style.display = '';
+    const _sp = document.getElementById('bt-sparams');
+    if (_sp) _sp.style.display = 'none';   // 指數回測仍是 MA10 假跌破/假突破，用舊面板
     modal.style.display = 'flex';
     await runIdxBacktest(key);
     return;
   }
 
-  // stock path (existing logic)
+  // 個股回測（PLAN-BACKTEST）：預設就是「我的策略」，一張成績卡
   if (!_chartStockId) return;
   title.textContent = `${_btStockId}${_btStockName ? ' ' + _btStockName : ''} — 回測`;
-
-  // inject param controls once
-  let ctrl = document.getElementById('bt-params');
-  if (!ctrl) {
-    ctrl = document.createElement('div');
-    ctrl.id = 'bt-params';
-    ctrl.style.cssText = 'display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 0 6px;border-bottom:1px solid #30363d;margin-bottom:10px;font-size:.82rem;';
-    ctrl.innerHTML = `
-        <div style="border:1px solid #21262d;border-radius:6px;padding:10px 14px;margin-bottom:2px">
-          <div style="font-size:.72rem;color:var(--muted);font-weight:700;letter-spacing:.5px;margin-bottom:8px">出場條件</div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-            <select id="bt-exit-type" onchange="btUpdateExitUI()" style="background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem">
-              <option value="none">⏹ 不設條件（持至數據末端）</option>
-              <option value="ma5">📉 破5日均線（多）/ 站上5日均線（空）</option>
-              <option value="ma10" selected>📉 破10日均線（多）/ 站上10日均線（空）</option>
-              <option value="ma20">📉 破20日均線（多）/ 站上20日均線（空）</option>
-              <option value="ma60">📉 破60日均線（多）/ 站上60日均線（空）</option>
-              <option value="tld">🕯 跌破前N天低點（多）/ 突破N天高點（空）</option>
-            </select>
-            <span id="bt-tld-wrap" style="display:none;align-items:center;gap:4px;color:var(--muted);font-size:.82rem">
-              N= <input id="bt-tld" type="number" value="2" min="1" max="10" style="width:38px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 5px;font-size:.82rem">
-              <span style="color:#484f58;font-size:.72rem">天</span>
-            </span>
-          </div>
-          <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding-top:8px;border-top:1px solid #21262d;margin-bottom:8px">
-            <label style="color:var(--muted);font-size:.82rem">最多持有
-              <input id="bt-days" type="number" value="0" min="0" max="120" style="width:42px;margin-left:5px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 5px">
-              天 <span style="color:#484f58;font-size:.72rem">（0=不限）</span>
-            </label>
-            <label style="color:var(--muted);font-size:.82rem">停損%
-              <input id="bt-sl" type="number" value="0" min="0" max="50" step="0.5" style="width:46px;margin-left:5px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 5px">
-              <span style="color:#484f58;font-size:.72rem">（0=不啟用）</span>
-            </label>
-            <label style="color:var(--muted);font-size:.82rem">停利%
-              <input id="bt-tp" type="number" value="0" min="0" max="100" step="0.5" style="width:46px;margin-left:5px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 5px">
-              <span style="color:#484f58;font-size:.72rem">（0=不啟用）</span>
-            </label>
-          </div>
-          <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;padding-top:8px;border-top:1px solid #21262d">
-            <span style="font-size:.72rem;color:var(--muted);font-weight:700;letter-spacing:.5px">市場篩選</span>
-            <label style="color:var(--muted);font-size:.82rem;display:flex;align-items:center;gap:5px;cursor:pointer">
-              <input type="checkbox" id="bt-taiex-bull" style="accent-color:#58a6ff">
-              加權多頭排列 <span style="color:#484f58;font-size:.72rem">（MA5&gt;10&gt;20&gt;60）</span>
-            </label>
-            <label style="color:var(--muted);font-size:.82rem;display:flex;align-items:center;gap:5px;cursor:pointer">
-              <input type="checkbox" id="bt-big-macd" style="accent-color:#58a6ff">
-              大MACD多頭 <span style="color:#484f58;font-size:.72rem">（週線DIF&gt;DEA&gt;0且紅柱）</span>
-            </label>
-            <button onclick="runBacktest()" style="margin-left:auto;background:#58a6ff;color:#fff;border:none;border-radius:6px;padding:5px 18px;cursor:pointer;font-size:.85rem;font-weight:600">重新計算</button>
-          </div>
-        </div>
-      `;
-    document.getElementById('bt-body').before(ctrl);
-  }
-  _btEnsureSignalSelect(ctrl);
-
+  const idxCtrl = document.getElementById('bt-params');
+  if (idxCtrl) idxCtrl.style.display = 'none';
+  _btPreferredStrategy = _btDefaultStrategy();
+  _btEnsureStockPanel();
+  _btApplyPreferredStrategy();
   modal.style.display = 'flex';
   await runBacktest();
 }
 
-// 個股回測「進場訊號」選單：面板可能先由指數回測建立，所以獨立補上；選項由後端提供（與策略掃描同一份清單）
-function _btEnsureSignalSelect(ctrl) {
-  let wrap = document.getElementById('bt-signal-wrap');
-  if (!wrap) {
-    wrap = document.createElement('div');
-    wrap.id = 'bt-signal-wrap';
-    wrap.style.cssText = 'border:1px solid #21262d;border-radius:6px;padding:10px 14px;margin-bottom:2px;width:100%;box-sizing:border-box';
-    wrap.innerHTML = `
-      <div style="font-size:.72rem;color:var(--muted);font-weight:700;letter-spacing:.5px;margin-bottom:8px">進場訊號</div>
-      <select id="bt-signal" onchange="runBacktest()" style="background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem;max-width:100%">
-        <option value="">🟡 MA10 假跌破 / 假突破（K 線圖標記）</option>
-      </select>
-      <span style="color:#484f58;font-size:.72rem;margin-left:6px">選策略 = 與策略掃描同條件、同參數</span>`;
-    ctrl.prepend(wrap);
-    fetch('/api/backtest/strategies').then(r => r.json()).then(list => {
-      const sel = document.getElementById('bt-signal');
-      (list || []).forEach(s => {
-        const o = document.createElement('option');
-        o.value = s.key;
-        o.textContent = `${s.direction === 'short' ? '🔻' : '🔺'} ${s.name}（${s.key}）`;
-        sel.appendChild(o);
-      });
-    }).catch(() => {});
+let _btPreferredStrategy = 'S1';
+let _btStrategiesLoaded = null;   // Promise
+
+// 回測預設策略：策略掃描頁開 → 該策略；觀察清單 → 來源欄位對應的策略；都沒有 → S1
+function _btDefaultStrategy() {
+  const cleanLabel = k => (STRATEGY_LABELS[k] || k).replace(/[（(][^）)]{10,}[）)]/g, '').trim();
+  const fromText = txt => {
+    if (!txt) return '';
+    txt = String(txt).trim();
+    for (const k of Object.keys(STRATEGY_LABELS)) {
+      if (txt === k || txt === cleanLabel(k) || txt === STRATEGY_LABELS[k] || txt === STRATEGY_SHORT[k]) return k;
+    }
+    // 寬鬆比對：來源以策略代號開頭（如「S5 站上均線」）
+    const m = txt.match(/^(S\d+[A-Z]?|S_[A-Z_]+)(?![A-Z_\d])/i);
+    if (m && STRATEGY_LABELS[m[1].toUpperCase()]) return m[1].toUpperCase();
+    for (const k of Object.keys(STRATEGY_SHORT)) {
+      const core = STRATEGY_SHORT[k].replace(/^[^\p{L}\p{N}]+/u, '').trim();
+      if (core && txt.includes(core)) return k;
+    }
+    return '';
+  };
+  let k = '';
+  if (_chartSource && _viewingStrategy && _chartSource === cleanLabel(_viewingStrategy)) k = _viewingStrategy;
+  if (!k) k = fromText(_chartSource);
+  if (!k) {
+    const w = (_wlData || []).find(x => x.stock_id === _btStockId);
+    if (w) k = fromText(w.note);
   }
-  wrap.style.display = '';
+  if (k === 'S_WARRANT_TOP' || k === 'CHIP') k = '';   // 非純價格策略無法回測
+  return k || 'S1';
 }
+
+function _btApplyPreferredStrategy() {
+  const sel = document.getElementById('bt-signal');
+  if (!sel) return;
+  if ([...sel.options].some(o => o.value === _btPreferredStrategy)) sel.value = _btPreferredStrategy;
+}
+
+function _btInput(id, val, attrs = '') {
+  return `<input id="${id}" type="number" value="${val}" ${attrs} style="width:52px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 5px;font-size:.82rem">`;
+}
+const _btSelStyle = 'background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:3px 6px;font-size:.82rem';
+
+function _btEnsureStockPanel() {
+  let ctrl = document.getElementById('bt-sparams');
+  if (ctrl) { ctrl.style.display = ''; return; }
+  ctrl = document.createElement('div');
+  ctrl.id = 'bt-sparams';
+  ctrl.style.cssText = 'border:1px solid #21262d;border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:.82rem;color:var(--muted)';
+  ctrl.innerHTML = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+      <span style="font-weight:700;color:var(--text)">進場</span>
+      <select id="bt-signal" onchange="runBacktest()" style="${_btSelStyle};max-width:100%"></select>
+      <select id="bt-entry" style="${_btSelStyle}">
+        <option value="next_open" selected>訊號隔天開盤買（實際買得到）</option>
+        <option value="close">訊號日收盤買（尾盤進場，較樂觀）</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding-top:8px;border-top:1px solid #21262d">
+      <span style="font-weight:700;color:var(--text)">出場</span>
+      <label title="ATR = 這支股票平常一天大概波動多少；波動大的股票停損放寬、波動小的收緊">初始停損
+        <select id="bt-stop" style="${_btSelStyle};margin-left:4px" onchange="btUpdateStopUI()">
+          <option value="atr" selected>ATR 倍數</option><option value="pct">固定 %</option><option value="none">不設</option>
+        </select>${_btInput('bt-stop-val', 2, 'min="0.5" max="20" step="0.5"')}
+      </label>
+      <label title="股價漲上去，停損跟著往上移、不往下，讓獲利可以跑">移動停損
+        <select id="bt-trail" style="${_btSelStyle};margin-left:4px" onchange="btUpdateStopUI()">
+          <option value="atr" selected>ATR 倍數</option><option value="pct">回落 %</option><option value="none">不設</option>
+        </select>${_btInput('bt-trail-val', 2.5, 'min="0.5" max="30" step="0.5"')}
+      </label>
+      <label>最多持有${_btInput('bts-days', 60, 'min="0" max="250"')} 天 <span style="color:#484f58;font-size:.72rem">（0=不限）</span></label>
+    </div>
+    <details style="margin-top:8px">
+      <summary style="cursor:pointer">更多出場 / 成本 / 市場篩選</summary>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:8px">
+        <label>均線出場
+          <select id="bt-exit-ma" style="${_btSelStyle};margin-left:4px">
+            <option value="0" selected>不用</option><option value="5">收盤破 MA5</option><option value="10">收盤破 MA10</option>
+            <option value="20">收盤破 MA20</option><option value="60">收盤破 MA60</option>
+          </select>
+        </label>
+        <label>時間停損${_btInput('bt-ts-days', 0, 'min="0" max="120"')} 天內沒賺到${_btInput('bt-ts-pct', 0, 'step="0.5"')}% 就出場 <span style="color:#484f58;font-size:.72rem">（0=不用）</span></label>
+        <label>停利${_btInput('bts-tp', 0, 'min="0" max="200" step="0.5"')}% <span style="color:#484f58;font-size:.72rem">（0=不用）</span></label>
+        <label>來回成本${_btInput('bt-cost', 0.585, 'min="0" max="3" step="0.005"')}% <span style="color:#484f58;font-size:.72rem">（手續費 0.1425%×2 + 證交稅 0.3%）</span></label>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-top:8px">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="bts-taiex-bull" style="accent-color:#58a6ff">加權多頭排列才進場</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="bts-big-macd" style="accent-color:#58a6ff">週線大MACD多頭才進場</label>
+      </div>
+      <div style="font-size:.72rem;color:#484f58;margin-top:6px">均線出場收盤成立、隔天開盤賣；停損/停利用盤中高低價判定，跳空直接開在停損價外就用開盤價算。</div>
+    </details>
+    <div style="display:flex;justify-content:flex-end;margin-top:8px">
+      <button onclick="runBacktest()" style="background:#58a6ff;color:#fff;border:none;border-radius:6px;padding:5px 18px;cursor:pointer;font-size:.85rem;font-weight:600">重新計算</button>
+    </div>`;
+  document.getElementById('bt-body').before(ctrl);
+  const sel = document.getElementById('bt-signal');
+  const ma10 = `<option value="__fbd">🟡 MA10 假跌破（看多）— K 線黃色標記，非策略</option>
+                <option value="__fbr">🟡 MA10 假突破（看空）— K 線黃色標記，非策略</option>`;
+  sel.innerHTML = `<option value="${_btPreferredStrategy}">${STRATEGY_LABELS[_btPreferredStrategy] || _btPreferredStrategy}</option>` + ma10;
+  _btStrategiesLoaded = fetch('/api/backtest/strategies').then(r => r.json()).then(list => {
+    const keep = sel.value;
+    sel.innerHTML = (list || []).map(s =>
+      `<option value="${s.key}">${s.direction === 'short' ? '🔻' : '🔺'} ${s.name}（${s.key}）</option>`).join('') + ma10;
+    sel.value = [...sel.options].some(o => o.value === keep) ? keep : _btPreferredStrategy;
+  }).catch(() => {});
+}
+
+function btUpdateStopUI() {
+  const map = { atr: [2, '0.5'], pct: [7, '0.5'] };
+  [['bt-stop', 'bt-stop-val', 2], ['bt-trail', 'bt-trail-val', 2.5]].forEach(([sid, vid, atrDef]) => {
+    const mode = document.getElementById(sid)?.value;
+    const inp = document.getElementById(vid);
+    if (!inp) return;
+    inp.style.display = mode === 'none' ? 'none' : '';
+    if (inp.dataset.mode !== mode) {
+      inp.value = mode === 'atr' ? atrDef : (sid === 'bt-stop' ? 7 : 10);
+      inp.dataset.mode = mode;
+    }
+  });
+}
+
+function _btParams() {
+  const v = id => document.getElementById(id)?.value;
+  const num = (id, d) => { const x = parseFloat(v(id)); return isNaN(x) ? d : x; };
+  const stop = v('bt-stop') || 'atr', trail = v('bt-trail') || 'atr';
+  const p = {
+    entry: v('bt-entry') || 'next_open',
+    stop, trail,
+    max_hold: Math.max(0, parseInt(v('bts-days') ?? 60) || 0),
+    exit_ma: parseInt(v('bt-exit-ma') || 0),
+    time_stop_days: parseInt(v('bt-ts-days') || 0),
+    time_stop_pct: num('bt-ts-pct', 0),
+    take_profit: num('bts-tp', 0),
+    cost: num('bt-cost', 0.585),
+    taiex_bull: document.getElementById('bts-taiex-bull')?.checked ? 1 : 0,
+    big_macd: document.getElementById('bts-big-macd')?.checked ? 1 : 0,
+  };
+  if (stop === 'atr') p.stop_atr = num('bt-stop-val', 2); else if (stop === 'pct') p.stop_pct = num('bt-stop-val', 7);
+  if (trail === 'atr') p.trail_atr = num('bt-trail-val', 2.5); else if (trail === 'pct') p.trail_pct = num('bt-trail-val', 10);
+  return p;
+}
+
+function _btExitDesc(cfg, cost) {
+  if (!cfg) return '';
+  const parts = [cfg.entry === 'close' ? '訊號日收盤進場' : '訊號隔天開盤進場'];
+  if (cfg.stop === 'atr') parts.push(`初始停損 ${cfg.stop_atr}×ATR`); else if (cfg.stop === 'pct') parts.push(`初始停損 ${cfg.stop_pct}%`);
+  if (cfg.trail === 'atr') parts.push(`移動停損 ${cfg.trail_atr}×ATR`); else if (cfg.trail === 'pct') parts.push(`移動停損回落 ${cfg.trail_pct}%`);
+  if (cfg.exit_ma) parts.push(`收盤破 MA${cfg.exit_ma} 出場`);
+  if (cfg.trail_low_days) parts.push(`跌破前 ${cfg.trail_low_days} 日低點出場`);
+  if (cfg.time_stop_days) parts.push(`${cfg.time_stop_days} 天內沒賺到 ${cfg.time_stop_pct}% 出場`);
+  if (cfg.take_profit) parts.push(`停利 ${cfg.take_profit}%`);
+  parts.push(cfg.max_hold ? `最多持有 ${cfg.max_hold} 天` : '持有天數不限');
+  parts.push(`扣來回成本 ${(cost * 100).toFixed(3)}%`);
+  return parts.join(' · ');
+}
+
+const _btFmtDate = d => { d = String(d || ''); return d.length === 8 ? `${d.slice(0,4)}/${d.slice(4,6)}/${d.slice(6)}` : d; };
+const _btPct = (v, dp = 2) => v == null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(dp)}%`;
+const _btRetColor = v => v == null ? 'var(--muted)' : (v >= 0 ? '#ef4444' : '#22c55e');   // 台股慣例：紅漲綠跌
+
+function _btSparkline(curve) {
+  if (!curve || curve.length < 2) return '';
+  const w = 600, h = 70, ys = curve.map(p => p[1]);
+  const lo = Math.min(1, ...ys), hi = Math.max(1, ...ys), span = (hi - lo) || 1;
+  const pts = ys.map((y, i) => `${(i / (ys.length - 1) * w).toFixed(1)},${(h - (y - lo) / span * h).toFixed(1)}`).join(' ');
+  const base = (h - (1 - lo) / span * h).toFixed(1);
+  const col = ys[ys.length - 1] >= 1 ? '#ef4444' : '#22c55e';
+  return `<div style="font-size:.72rem;color:var(--muted);margin:10px 0 4px">權益曲線（每筆全額進出、複利）</div>
+    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:70px;background:#0d1117;border-radius:4px">
+      <line x1="0" y1="${base}" x2="${w}" y2="${base}" stroke="#30363d" stroke-dasharray="4 4"/>
+      <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+    </svg>`;
+}
+
+function _btReasonChips(reasons) {
+  const colors = { '停損':'#22c55e', '移動停損':'#d29922', '停利':'#ef4444', '天數到期':'#8b949e', '時間停損':'#8b949e' };
+  return Object.entries(reasons || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => {
+    const c = colors[k] || '#58a6ff';
+    return `<span style="font-size:.72rem;padding:1px 8px;border-radius:10px;background:${c}22;color:${c};border:1px solid ${c}44;margin-right:6px">${k} ${n}</span>`;
+  }).join('');
+}
+
+function _btMetric(label, val, color = 'var(--text)', hint = '') {
+  return `<div title="${hint}"><div style="font-size:.7rem;color:var(--muted)">${label}</div><div style="font-size:1.15rem;font-weight:700;color:${color}">${val}</div></div>`;
+}
+
 
 async function runIdxBacktest(key) {
   const body = document.getElementById('bt-body');
@@ -1969,114 +2079,83 @@ async function runIdxBacktest(key) {
 
 async function runBacktest() {
   const body = document.getElementById('bt-body');
-  body.innerHTML = '<div style="color:var(--muted);text-align:center;padding:40px">計算中...</div>';
-  const days      = parseInt(document.getElementById('bt-days')?.value ?? 0);
-  const exitType  = document.getElementById('bt-exit-type')?.value || 'ma10';
-  const tld       = exitType === 'tld' ? parseInt(document.getElementById('bt-tld')?.value ?? 2) : 0;
-  const exitMa    = {'ma5':5,'ma10':10,'ma20':20,'ma60':60}[exitType] || 0;
-  const sl        = parseFloat(document.getElementById('bt-sl')?.value || 0);
-  const tp        = parseFloat(document.getElementById('bt-tp')?.value || 0);
-  const taiexBull = document.getElementById('bt-taiex-bull')?.checked ? 1 : 0;
-  const bigMacd   = document.getElementById('bt-big-macd')?.checked ? 1 : 0;
-
-  const slHint    = sl > 0 ? ` · 停損 ${sl}%` : '';
-  const tpHint    = tp > 0 ? ` · 停利 ${tp}%` : '';
-  const exitHint  = exitType === 'none' ? '持至末端' : exitType === 'tld' ? `跌破前${tld}天低/高點` : `MA${exitMa}出場`;
-  const filterHint = [taiexBull ? '加權多頭排列' : '', bigMacd ? '大MACD多頭' : ''].filter(Boolean).join(' + ');
-
-  const strat = document.getElementById('bt-signal')?.value || '';
-  if (strat) body.innerHTML = '<div style="color:var(--muted);text-align:center;padding:40px">逐日套用策略條件計算中（約數秒）...</div>';
-
+  const sel = document.getElementById('bt-signal');
+  const val = sel?.value || _btPreferredStrategy;
+  const p = _btParams();
+  const isMa = val.startsWith('__');
+  const q = new URLSearchParams({ stock_id: _btStockId, ...p,
+    strategy: isMa ? '' : val, signal: val === '__fbr' ? 'fbr' : 'fbd' });
+  body.innerHTML = `<div style="color:var(--muted);text-align:center;padding:40px">${isMa ? '計算中...' : '逐日套用策略條件計算中（第一次約數秒）...'}</div>`;
   try {
-    const r = await fetch(`/api/backtest/fbd?stock_id=${_btStockId}&holding_days=${days}&trailing_low_days=${tld}&exit_ma=${exitMa}&stop_loss=${sl}&take_profit=${tp}&taiex_bull=${taiexBull}&big_macd=${bigMacd}&strategy=${encodeURIComponent(strat)}`);
-    const d = await r.json();
-    if (d.error || d.detail) { body.innerHTML = `<div style="color:var(--red)">${d.error || d.detail}</div>`; return; }
-    // 策略模式：結果放進 fbd（多）或 fbr（空），沿用同一個 statBlock 渲染
-    const stratType = d.strategy ? (d.direction === 'short' ? 'fbr' : 'fbd') : '';
-    if (stratType) d[stratType] = d.result;
-
-    // Taiwan convention: red=漲(+), green=跌(-)
-    const retColor = v => v >= 0 ? '#ef4444' : '#22c55e';
-
-    function statBlock(type, label, color) {
-      const s = d[type] || {};
-      if (!s.count) return `<div style="color:var(--muted);margin-bottom:12px">無 ${label} 訊號</div>`;
-      const exitReasonBadge = r => {
-        const map = {
-          '停損':'#ef4444','停利':'#22c55e',
-          '跌破低點':'#d29922','突破高點':'#d29922',
-          '破MA5':'#d29922','破MA10':'#d29922','破MA20':'#d29922','破MA60':'#d29922',
-          '站上MA5':'#d29922','站上MA10':'#d29922','站上MA20':'#d29922','站上MA60':'#d29922',
-          '天數到期':'#8b949e','持至末端':'#484f58',
-        };
-        const c = map[r] || '#484f58';
-        return `<span style="font-size:.68rem;padding:1px 6px;border-radius:10px;background:${c}22;color:${c};border:1px solid ${c}44">${r||'持至末端'}</span>`;
-      };
-      // show SL/TP price columns only if enabled
-      const showSl = sl > 0, showTp = tp > 0, showTld = tld > 0;
-      const extraTh = (showSl ? `<th style="color:var(--muted);padding:4px">停損價</th>` : '') +
-                      (showTp ? `<th style="color:var(--muted);padding:4px">停利價</th>` : '') +
-                      (showTld ? `<th style="color:var(--muted);padding:4px">追蹤低點</th>` : '');
-      const extraTd = t => (showSl ? `<td style="padding:3px 4px;text-align:center;color:#ef4444">${t.sl_price?.toFixed(2)||'—'}</td>` : '') +
-                           (showTp ? `<td style="padding:3px 4px;text-align:center;color:#22c55e">${t.tp_price?.toFixed(2)||'—'}</td>` : '') +
-                           (showTld ? `<td style="padding:3px 4px;text-align:center;color:#d29922">${t.trail_low_price?.toFixed(2)||'—'}</td>` : '');
-      return `
-        <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:12px">
-          <div style="font-size:.85rem;font-weight:700;color:${color};margin-bottom:10px">${label}（${s.count} 次）<span style="font-size:.72rem;font-weight:400;color:#484f58;margin-left:6px">${type==='fbr'?'做空：股價下跌才獲利':'做多：股價上漲才獲利'}</span></div>
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center">
-            <div><div style="font-size:.72rem;color:var(--muted)">勝率</div><div style="font-size:1.3rem;font-weight:700;color:${color}">${(s.win_rate*100).toFixed(1)}%</div></div>
-            <div><div style="font-size:.72rem;color:var(--muted)">平均報酬</div><div style="font-size:1.3rem;font-weight:700;color:${retColor(s.avg_return)}">${s.avg_return>=0?'+':''}${(s.avg_return*100).toFixed(2)}%</div></div>
-            <div><div style="font-size:.72rem;color:var(--muted)">最大獲利</div><div style="font-size:1.1rem;font-weight:700;color:#ef4444">+${(s.max_win*100).toFixed(2)}%</div></div>
-            <div><div style="font-size:.72rem;color:var(--muted)">最大虧損</div><div style="font-size:1.1rem;font-weight:700;color:#22c55e">${(s.max_loss*100).toFixed(2)}%</div></div>
-          </div>
-          <details style="margin-top:12px">
-            <summary style="cursor:pointer;color:var(--muted);font-size:.8rem">詳細交易紀錄（最近30筆）</summary>
-            <table style="width:100%;margin-top:8px;font-size:.78rem;border-collapse:collapse">
-              <thead><tr>
-                <th style="text-align:left;color:var(--muted);padding:4px">進場日</th>
-                <th style="color:var(--muted);padding:4px">${type==='fbr'?'放空價':'進場價'}</th>
-                ${extraTh}
-                <th style="color:var(--muted);padding:4px">出場日</th>
-                <th style="color:var(--muted);padding:4px">出場價</th>
-                <th style="color:var(--muted);padding:4px">報酬</th>
-                <th style="color:var(--muted);padding:4px">出場原因</th>
-              </tr></thead>
-              <tbody>${(s.trades||[]).map(t=>`<tr style="border-top:1px solid #21262d">
-                <td style="padding:3px 4px">${t.entry_date}</td>
-                <td style="padding:3px 4px;text-align:center">${t.entry_price.toFixed(2)}</td>
-                ${extraTd(t)}
-                <td style="padding:3px 4px">${t.exit_date||'未出場'}</td>
-                <td style="padding:3px 4px;text-align:center">${t.exit_price?t.exit_price.toFixed(2):'—'}</td>
-                <td style="padding:3px 4px;text-align:right;font-weight:700;color:${retColor(t.return)}">${t.return!=null?(t.return>=0?'+':'')+(t.return*100).toFixed(2)+'%':'—'}</td>
-                <td style="padding:3px 4px;text-align:center">${exitReasonBadge(t.exit_reason)}</td>
-              </tr>`).join('')}</tbody>
-            </table>
-          </details>
-        </div>`;
+    const d = await api('GET', `/api/backtest/fbd?${q}`);
+    const s = d.result || {};
+    const dirTxt = d.direction === 'short' ? '做空：股價下跌才獲利' : '做多：股價上漲才獲利';
+    const color = d.direction === 'short' ? '#f85149' : '#fbbf24';
+    const range = d.first_date ? `回測 ${_btFmtDate(d.first_date)} ～ ${_btFmtDate(d.last_date)}` : '';
+    let html = `<div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:16px">
+      <div style="font-size:.85rem;font-weight:700;color:${color};margin-bottom:6px">${d.direction === 'short' ? '🔻' : '🔺'} ${d.strategy_name}${d.strategy ? `（${d.strategy}）` : ''}
+        <span style="font-size:.72rem;font-weight:400;color:#484f58;margin-left:6px">${dirTxt}</span></div>
+      <div style="font-size:1.05rem;font-weight:700;color:var(--text);line-height:1.5;margin-bottom:12px">${d.summary || ''}</div>`;
+    if (s.count) {
+      const beat = d.buy_hold_return != null ? (s.total_return > d.buy_hold_return) : null;
+      html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;text-align:center">
+        ${_btMetric('交易次數', s.count)}
+        ${_btMetric('勝率', (s.win_rate * 100).toFixed(1) + '%', s.win_rate >= 0.5 ? '#ef4444' : '#22c55e')}
+        ${_btMetric('期望值（每筆）', _btPct(s.expectancy), _btRetColor(s.expectancy), '每筆平均淨報酬，已扣成本')}
+        ${_btMetric('賺賠比', s.payoff_ratio ?? '—', 'var(--text)', '平均獲利 ÷ 平均虧損')}
+        ${_btMetric('獲利因子', s.profit_factor ?? '—', (s.profit_factor ?? 0) >= 1 ? '#ef4444' : '#22c55e', '總獲利 ÷ 總虧損，>1 才賺')}
+        ${_btMetric('最大單筆虧損', _btPct(s.max_loss), '#22c55e')}
+        ${_btMetric('最大連續虧損', s.max_consec_losses + ' 筆')}
+        ${_btMetric('最大回撤', _btPct(s.max_drawdown, 1), '#22c55e', '每筆全額複利的權益曲線，從高點最多跌多少')}
+        ${_btMetric('平均持有', s.avg_hold_days + ' 天')}
+        ${_btMetric('策略累計', _btPct(s.total_return, 1), _btRetColor(s.total_return))}
+        ${_btMetric('同期買進持有', _btPct(d.buy_hold_return, 1), _btRetColor(d.buy_hold_return))}
+      </div>`;
+      if (s.low_sample) html += `<div style="margin-top:10px;font-size:.78rem;color:#d29922">⚠️ 樣本太少（少於 10 筆），參考性低</div>`;
+      html += _btSparkline(s.equity_curve);
+      html += `<div style="margin-top:10px;font-size:.72rem;color:var(--muted)">出場原因：${_btReasonChips(s.exit_reasons)}</div>`;
     }
-
-    const exitDesc = `進場：訊號當日收盤 · 出場：${exitHint}${days>0?' · 最多'+days+'天':''}${slHint}${tpHint}${filterHint?' · 篩選：'+filterHint:''}`;
-    const legend = `<div style="font-size:.72rem;color:#484f58;margin-bottom:10px">🔴 紅=獲利　🟢 綠=虧損（台股慣例）｜持至末端 = 無出場條件觸發，持有到最後一筆資料</div>`;
-    if (stratType) {
-      const fd = String(d.first_date || '');
-      const range = fd.length === 8 ? ` · 資料自 ${fd.slice(0,4)}/${fd.slice(4,6)}/${fd.slice(6)}` : '';
-      body.innerHTML = `
-        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">⚙️ 策略：${d.strategy_name}（${d.strategy}，與策略掃描同條件、同參數）· ${exitDesc}${range}</div>
-        ${legend}
-        ${statBlock(stratType, `${stratType==='fbr'?'🔻':'🔺'} ${d.strategy_name}`, stratType==='fbr' ? '#f85149' : '#fbbf24')}
-      `;
-    } else {
-      body.innerHTML = `
-        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">⚙️ MA10 假跌破/假突破 · ${exitDesc}</div>
-        ${legend}
-        ${statBlock('fbd','🟡 假跌破（看多）','#fbbf24')}
-        ${statBlock('fbr','🔴 假突破（看空）','#f85149')}
-      `;
+    const ot = d.open_trade;
+    if (ot) html += `<div style="margin-top:10px;font-size:.8rem;color:var(--text);background:#161b22;border-radius:6px;padding:8px 10px">
+        📌 持有中：${_btFmtDate(ot.entry_date)} 以 ${ot.entry_price} 進場，目前 ${ot.exit_price}，浮動 <b style="color:${_btRetColor(ot.return)}">${_btPct(ot.return)}</b>（已扣成本；不計入勝率/期望值）${ot.exit_reason && ot.exit_reason !== '持有中' ? ' · ' + ot.exit_reason : ''}</div>`;
+    if (d.pending_signal) html += `<div style="margin-top:8px;font-size:.8rem;color:#fbbf24">🔔 ${_btFmtDate(d.pending_signal)} 收盤訊號成立 → 下個交易日開盤進場</div>`;
+    if (d.blocked_entries) html += `<div style="margin-top:6px;font-size:.72rem;color:var(--muted)">另有 ${d.blocked_entries} 次訊號因${d.direction === 'short' ? '跌停' : '漲停'}一價到底買不到，已略過</div>`;
+    const trades = (s.trades || []).slice().reverse();
+    if (trades.length) {
+      html += `<details style="margin-top:12px">
+        <summary style="cursor:pointer;color:var(--muted);font-size:.8rem">交易明細（全部 ${trades.length} 筆，新到舊；價格為當天實際股價）</summary>
+        <div style="overflow-x:auto"><table style="width:100%;margin-top:8px;font-size:.78rem;border-collapse:collapse;white-space:nowrap">
+          <thead><tr>
+            <th style="text-align:left;color:var(--muted);padding:4px">進場日</th>
+            <th style="color:var(--muted);padding:4px">${d.direction === 'short' ? '放空價' : '進場價'}</th>
+            <th style="color:var(--muted);padding:4px">初始停損</th>
+            <th style="color:var(--muted);padding:4px">出場日</th>
+            <th style="color:var(--muted);padding:4px">出場價</th>
+            <th style="color:var(--muted);padding:4px">天數</th>
+            <th style="color:var(--muted);padding:4px">淨報酬</th>
+            <th style="color:var(--muted);padding:4px">出場原因</th>
+          </tr></thead>
+          <tbody>${trades.map(t => `<tr style="border-top:1px solid #21262d">
+            <td style="padding:3px 4px">${_btFmtDate(t.entry_date)}</td>
+            <td style="padding:3px 4px;text-align:center">${t.entry_price}</td>
+            <td style="padding:3px 4px;text-align:center;color:#8b949e">${t.stop_price ?? '—'}</td>
+            <td style="padding:3px 4px">${_btFmtDate(t.exit_date)}</td>
+            <td style="padding:3px 4px;text-align:center">${t.exit_price}</td>
+            <td style="padding:3px 4px;text-align:center">${t.hold_days}</td>
+            <td style="padding:3px 4px;text-align:right;font-weight:700;color:${_btRetColor(t.return)}">${_btPct(t.return)}</td>
+            <td style="padding:3px 4px;text-align:center">${_btReasonChips({[t.exit_reason]: ''}).replace(/ <\/span>$/, '</span>')}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+      </details>`;
     }
+    html += `<div style="margin-top:12px;font-size:.72rem;color:#484f58;line-height:1.6">⚙️ ${_btExitDesc(d.exit_cfg, d.cost)}${d.taiex_bull ? ' · 加權多頭才進場' : ''}${d.big_macd ? ' · 大MACD多頭才進場' : ''}<br>
+      ${range} · 使用還原股價（除權息不會誤判停損）· 持倉中不重複進場 · 🔴 紅=獲利 🟢 綠=虧損 · 歷史回測不代表未來績效</div></div>`;
+    body.innerHTML = html;
   } catch(e) {
     body.innerHTML = `<div style="color:var(--red)">載入失敗: ${e.message}</div>`;
   }
 }
+
 
 // 切換 tab 時停止自動刷新（省流量）
 function _stopPriceRefreshIfActive() {
@@ -3538,75 +3617,117 @@ function renderStratBar() {
 }
 
 let _batchStrategy = null;
+let _batchPollTimer = null, _batchRunId = 0;
 
 function openStrategyBacktest() {
   _batchStrategy = _viewingStrategy;
   if (!_batchStrategy) { toast('請先選擇策略', true); return; }
+  if (_batchStrategy === 'S_WARRANT_TOP' || _batchStrategy === 'CHIP') { toast('這個策略需要外部資料，無法回測', true); return; }
   document.getElementById('strategy-batch-card').style.display = 'block';
   document.getElementById('strategy-batch-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   runStrategyBacktest();
 }
 
+function _batchQuery() {
+  const num = (id, d) => { const x = parseFloat(document.getElementById(id)?.value); return isNaN(x) ? d : x; };
+  const stopAtr = num('batch-stop-atr', 2), trailAtr = num('batch-trail-atr', 2.5);
+  const q = { strategy: _batchStrategy, max_stocks: Math.round(num('batch-n', 100)),
+              max_hold: Math.max(0, Math.round(num('batch-days', 60))) };
+  if (stopAtr > 0) { q.stop = 'atr'; q.stop_atr = stopAtr; } else q.stop = 'none';
+  if (trailAtr > 0) { q.trail = 'atr'; q.trail_atr = trailAtr; } else q.trail = 'none';
+  return new URLSearchParams(q).toString();
+}
+
+function openBatchChart(sid, name) {
+  _frozenChartList = [...document.querySelectorAll('#batch-body tr[data-sid]')].map(tr => tr.dataset.sid);
+  _frozenChartIdx = _frozenChartList.indexOf(sid);
+  if (name) _chartNames[sid] = name;
+  _chartSource = (STRATEGY_LABELS[_batchStrategy] || _batchStrategy).replace(/[（(][^）)]{10,}[）)]/g, '').trim();
+  _chartOhlcvUrl = null;
+  _resetChartPeriod();
+  openChart(sid);
+}
+
 async function runStrategyBacktest() {
   if (!_batchStrategy) return;
-  const signal = document.getElementById('batch-signal').value;
-  const tld    = parseInt(document.getElementById('batch-tld').value ?? 2);
-  const days   = parseInt(document.getElementById('batch-days').value ?? 0);
-  const body   = document.getElementById('batch-body');
-  const label  = STRATEGY_LABELS[_batchStrategy] || _batchStrategy;
+  clearTimeout(_batchPollTimer);
+  const body = document.getElementById('batch-body');
+  const label = STRATEGY_LABELS[_batchStrategy] || _batchStrategy;
+  const runId = ++_batchRunId, qs = _batchQuery();
   document.getElementById('batch-title').textContent = `${label} 批量回測`;
   document.getElementById('batch-meta').textContent = '';
-  body.innerHTML = '<div style="color:var(--muted);text-align:center;padding:30px">計算中，需 30~60 秒...</div>';
-  try {
-    const r = await api('GET', `/api/backtest/strategy-batch?strategy=${_batchStrategy}&signal=${signal}&trailing_low_days=${tld}&holding_days=${days}&max_stocks=40`);
-    const agg = r.aggregate || {};
-    document.getElementById('batch-meta').textContent = `${r.strategy} · 掃描 ${r.total_scanned} 支，成功 ${r.computed} 支`;
-    if (!r.computed) { body.innerHTML = '<div style="color:var(--muted);text-align:center;padding:30px">無足夠資料（請先執行掃描）</div>'; return; }
-    const retColor = v => v >= 0 ? '#ef4444' : '#22c55e';
-    const tldHint = tld > 0 ? `跌破前${tld}天低點出場` : (days > 0 ? `最多${days}天` : '無出場上限');
-    body.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
-        <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px;text-align:center">
-          <div style="font-size:.72rem;color:var(--muted)">有效股票</div>
-          <div style="font-size:1.4rem;font-weight:700">${agg.stocks_with_trades}</div>
-        </div>
-        <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px;text-align:center">
-          <div style="font-size:.72rem;color:var(--muted)">平均勝率</div>
-          <div style="font-size:1.4rem;font-weight:700;color:${agg.avg_win_rate>=0.5?'#ef4444':'#22c55e'}">${(agg.avg_win_rate*100).toFixed(1)}%</div>
-        </div>
-        <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px;text-align:center">
-          <div style="font-size:.72rem;color:var(--muted)">平均報酬</div>
-          <div style="font-size:1.4rem;font-weight:700;color:${retColor(agg.avg_return)}">${agg.avg_return>=0?'+':''}${(agg.avg_return*100).toFixed(2)}%</div>
-        </div>
-        <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px;text-align:center">
-          <div style="font-size:.72rem;color:var(--muted)">正報酬股</div>
-          <div style="font-size:1.4rem;font-weight:700;color:#ef4444">${agg.positive_stocks}</div>
-        </div>
-      </div>
-      <div style="font-size:.72rem;color:var(--muted);margin-bottom:8px">⚙️ ${signal==='fbd'?'假跌破（看多）':'假突破（看空）'} · ${tldHint} · 各股歷史回測均值，不代表未來績效</div>
-      <table style="width:100%;border-collapse:collapse;font-size:.78rem">
-        <thead><tr style="background:#1c2128">
-          <th style="padding:5px 8px;text-align:left;color:var(--muted)">代號</th>
-          <th style="padding:5px 8px;text-align:left;color:var(--muted)">股名</th>
-          <th style="padding:5px 8px;color:var(--muted);text-align:right">次數</th>
-          <th style="padding:5px 8px;color:var(--muted);text-align:right">勝率</th>
-          <th style="padding:5px 8px;color:var(--muted);text-align:right">均報</th>
-          <th style="padding:5px 8px;color:var(--muted);text-align:right">最佳</th>
-          <th style="padding:5px 8px;color:var(--muted);text-align:right">最差</th>
-        </tr></thead>
-        <tbody>${r.by_stock.map(s=>`<tr style="border-top:1px solid #21262d" onclick="openChartById('${s.stock_id}','${s.name}')" style="cursor:pointer">
-          <td style="padding:4px 8px;color:var(--muted)">${s.stock_id}</td>
-          <td style="padding:4px 8px">${s.name}</td>
-          <td style="padding:4px 8px;text-align:right">${s.count}</td>
-          <td style="padding:4px 8px;text-align:right;color:${s.win_rate>=0.5?'#ef4444':'#22c55e'}">${(s.win_rate*100).toFixed(0)}%</td>
-          <td style="padding:4px 8px;text-align:right;font-weight:700;color:${retColor(s.avg_return)}">${s.avg_return>=0?'+':''}${(s.avg_return*100).toFixed(2)}%</td>
-          <td style="padding:4px 8px;text-align:right;color:#ef4444">+${(s.max_win*100).toFixed(1)}%</td>
-          <td style="padding:4px 8px;text-align:right;color:#22c55e">${(s.max_loss*100).toFixed(1)}%</td>
-        </tr>`).join('')}</tbody>
-      </table>`;
-  } catch(e) {
-    body.innerHTML = `<div style="color:var(--red)">載入失敗: ${e.message}</div>`;
-  }
+  const poll = async () => {
+    if (runId !== _batchRunId) return;   // 已重新計算，舊輪詢作廢
+    let r;
+    try { r = await api('GET', `/api/backtest/strategy-batch?${qs}`); }
+    catch (e) {
+      if (runId !== _batchRunId) return;
+      body.innerHTML = `<div style="color:var(--red)">載入失敗: ${e.message}</div>`;
+      return;
+    }
+    if (runId !== _batchRunId) return;
+    if (r.status === 'done') { _renderBatch(r.result); return; }
+    if (r.status === 'error') { body.innerHTML = `<div style="color:var(--red)">批量回測失敗：${r.error}</div>`; return; }
+    const pct = r.total ? Math.round(r.progress / r.total * 100) : 0;
+    const msg = r.status === 'busy'
+      ? `另一個批量回測（${STRATEGY_LABELS[r.strategy] || r.strategy}）正在跑，跑完會自動接著算這個…（${r.progress}/${r.total || '?'}）`
+      : `用策略訊號逐日回測成交金額前 ${new URLSearchParams(qs).get('max_stocks')} 大的股票… ${r.total ? `${r.progress}/${r.total}` : '準備中'}<br><span style="font-size:.72rem">第一次要算每支股票 5 年的訊號，約 1～3 分鐘；之後只改停損設定會很快</span>`;
+    body.innerHTML = `<div style="color:var(--muted);text-align:center;padding:24px">${msg}
+      <div style="height:6px;background:#21262d;border-radius:3px;margin:12px auto 0;max-width:360px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:#58a6ff;transition:width .3s"></div></div></div>`;
+    _batchPollTimer = setTimeout(poll, 2000);
+  };
+  body.innerHTML = '<div style="color:var(--muted);text-align:center;padding:30px">啟動中...</div>';
+  poll();
+}
+
+function _renderBatch(r) {
+  const body = document.getElementById('batch-body');
+  const agg = r.aggregate || {};
+  document.getElementById('batch-meta').textContent =
+    `${r.strategy} · ${r.universe}，成功 ${r.computed} 支、有交易 ${r.stocks_with_trades} 支 · ${r.computed_at}`;
+  if (!agg.count) { body.innerHTML = `<div style="color:var(--muted);text-align:center;padding:30px">${r.summary}</div>`; return; }
+  const box = (lbl, val, color = 'var(--text)', hint = '') => `<div title="${hint}" style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;text-align:center">
+      <div style="font-size:.7rem;color:var(--muted)">${lbl}</div><div style="font-size:1.2rem;font-weight:700;color:${color}">${val}</div></div>`;
+  body.innerHTML = `
+    <div style="font-size:1rem;font-weight:700;margin-bottom:10px;line-height:1.5">${r.summary}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:10px">
+      ${box('交易次數', agg.count)}
+      ${box('勝率', (agg.win_rate * 100).toFixed(1) + '%', agg.win_rate >= 0.5 ? '#ef4444' : '#22c55e')}
+      ${box('期望值（每筆）', _btPct(agg.expectancy), _btRetColor(agg.expectancy), '所有交易合併的平均淨報酬，已扣成本')}
+      ${box('賺賠比', agg.payoff_ratio ?? '—', 'var(--text)', '平均獲利 ÷ 平均虧損')}
+      ${box('獲利因子', agg.profit_factor ?? '—', (agg.profit_factor ?? 0) >= 1 ? '#ef4444' : '#22c55e', '總獲利 ÷ 總虧損')}
+      ${box('最大連續虧損', agg.max_consec_losses + ' 筆')}
+      ${box('平均持有', agg.avg_hold_days + ' 天')}
+      ${box('每股平均：策略', _btPct(r.avg_strategy_total_return, 1), _btRetColor(r.avg_strategy_total_return))}
+      ${box('每股平均：買進持有', _btPct(r.avg_buy_hold_return, 1), _btRetColor(r.avg_buy_hold_return))}
+    </div>
+    <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">出場原因：${_btReasonChips(agg.exit_reasons)}</div>
+    <div style="font-size:.72rem;color:#484f58;margin-bottom:8px">⚙️ ${_btExitDesc(r.exit_cfg, r.cost)} · 還原股價 · 所有交易合併統計（不是每股平均再平均）· 歷史回測不代表未來績效</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem;white-space:nowrap">
+      <thead><tr style="background:#1c2128">
+        <th style="padding:5px 8px;text-align:left;color:var(--muted)">代號</th>
+        <th style="padding:5px 8px;text-align:left;color:var(--muted)">股名</th>
+        <th style="padding:5px 8px;color:var(--muted);text-align:right">次數</th>
+        <th style="padding:5px 8px;color:var(--muted);text-align:right">勝率</th>
+        <th style="padding:5px 8px;color:var(--muted);text-align:right">每筆平均</th>
+        <th style="padding:5px 8px;color:var(--muted);text-align:right">策略累計</th>
+        <th style="padding:5px 8px;color:var(--muted);text-align:right">買進持有</th>
+        <th style="padding:5px 8px;color:var(--muted);text-align:right">最差一筆</th>
+        <th style="padding:5px 8px;color:var(--muted);text-align:center">現況</th>
+      </tr></thead>
+      <tbody>${r.by_stock.map(s => `<tr data-sid="${s.stock_id}" style="border-top:1px solid #21262d;cursor:pointer" onclick="openBatchChart('${s.stock_id}','${(s.name || '').replace(/'/g, '')}')">
+        <td style="padding:4px 8px;color:var(--muted)">${s.stock_id}</td>
+        <td style="padding:4px 8px">${s.name || ''}</td>
+        <td style="padding:4px 8px;text-align:right">${s.count}</td>
+        <td style="padding:4px 8px;text-align:right">${s.win_rate == null ? '—' : (s.win_rate * 100).toFixed(0) + '%'}</td>
+        <td style="padding:4px 8px;text-align:right;font-weight:700;color:${_btRetColor(s.expectancy)}">${_btPct(s.expectancy)}</td>
+        <td style="padding:4px 8px;text-align:right;color:${_btRetColor(s.total_return)}">${_btPct(s.total_return, 1)}</td>
+        <td style="padding:4px 8px;text-align:right;color:${_btRetColor(s.buy_hold_return)}">${_btPct(s.buy_hold_return, 1)}</td>
+        <td style="padding:4px 8px;text-align:right;color:#22c55e">${_btPct(s.max_loss, 1)}</td>
+        <td style="padding:4px 8px;text-align:center;font-size:.72rem">${s.open ? '📌持有中' : (s.pending_signal ? '🔔明天進場' : '')}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
 }
 
 function viewStrategy(s) {
