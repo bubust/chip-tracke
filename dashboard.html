@@ -227,6 +227,7 @@
   <button onclick="switchTab('regime')">📊 總經面板</button>
   <button onclick="switchTab('sector')">🔄 產業輪動</button>
   <button onclick="switchTab('relationship')">📊 市場關聯</button>
+  <button onclick="switchTab('treasury')">🏦 庫藏股</button>
   <button onclick="switchTab('settings')">設定</button>
 </nav>
 
@@ -523,6 +524,51 @@
 
 </div><!-- /tab-screen -->
 
+
+<!-- ═══════════════════════ 🏦 庫藏股 ═══════════════════════ -->
+<div id="tab-treasury" class="tab">
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+      <strong style="font-size:1.05rem">🏦 庫藏股追蹤</strong>
+      <span style="font-size:.78rem;color:var(--muted)">公司買回自家股票：董事會決議日、買回期間、預定／已買回張數、價格區間、執行率</span>
+      <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn sm" onclick="tbRefresh()">🔄 從公開資訊觀測站更新</button>
+        <label class="btn sm ghost" style="cursor:pointer" title="公開資訊觀測站「庫藏股買回資訊彙總」另存的 CSV，或整頁存成 HTML">📥 匯入 CSV／HTML
+          <input type="file" accept=".csv,.htm,.html,.txt" style="display:none" onchange="tbImport(this)"></label>
+      </span>
+    </div>
+    <div id="tb-status" style="font-size:.75rem;color:var(--muted)"></div>
+    <div id="tb-progress" style="display:none;font-size:.78rem;color:#f59e0b;margin-top:4px"></div>
+    <div id="tb-error" style="display:none;font-size:.78rem;color:#f59e0b;margin-top:6px;line-height:1.6"></div>
+  </div>
+  <div class="card">
+    <div id="tb-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;font-size:.82rem;color:var(--muted)">
+      <label>決議日
+        <select id="tb-days" onchange="tbLoad()" style="background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem">
+          <option value="90">近 3 個月</option><option value="180">近 6 個月</option>
+          <option value="365" selected>近 1 年</option><option value="1095">近 3 年</option>
+        </select></label>
+      <label>市場
+        <select id="tb-market" onchange="tbLoad()" style="background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem">
+          <option value="">全部</option><option value="twse">上市</option><option value="tpex">上櫃</option>
+        </select></label>
+      <label>目的
+        <select id="tb-purpose" onchange="tbRender()" style="background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem">
+          <option value="">全部</option><option>轉讓員工</option><option>維護股東權益</option><option>轉換／認股</option>
+        </select></label>
+      <input id="tb-search" placeholder="代號／名稱" oninput="tbRender()" style="width:110px;background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem">
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer" title="現價沒超過買回價格上限，公司還能在這個價位買">
+        <input type="checkbox" id="tb-inrange" onchange="tbRender()" style="accent-color:#f59e0b">現價在買回區間內</label>
+    </div>
+    <div id="tb-summary" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:12px"></div>
+    <div id="tb-body"><div style="color:var(--muted);text-align:center;padding:30px">載入中...</div></div>
+    <div style="font-size:.72rem;color:#484f58;margin-top:10px;line-height:1.7">
+      點一列看這家公司歷次買回、開 K 線或加入觀察清單 · 已買回張數、執行率、均價通常要等買回期間結束後公司申報才會出現 ·
+      現價／決議後漲跌用股價快取（最新收盤）· 紅＝漲 綠＝跌 · 觀察清單和策略篩選裡有 🏦庫藏 標記的，代表買回進行中或即將開始
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════════════════ 權證股期選擇器 ═══════════════════════ -->
 <div id="tab-warrant" class="tab">
@@ -1116,13 +1162,14 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  const idx = { watchlist: 0, market: 1, screen: 2, warrant: 3, regime: 4, sector: 5, relationship: 6, settings: 7 };
+  const idx = { watchlist: 0, market: 1, screen: 2, warrant: 3, regime: 4, sector: 5, relationship: 6, treasury: 7, settings: 8 };
   const navIdx = idx[name];
   if (navIdx !== undefined) document.querySelectorAll('nav button')[navIdx].classList.add('active');
   if (name === 'settings') { _doSwitchSettings(); }
   if (name === 'regime') { const rf = document.getElementById('regime-iframe'); if (rf && !rf.dataset.loaded) { rf.dataset.loaded = '1'; rf.src = '/regime/'; } }
   if (name === 'sector') { const sf = document.getElementById('sector-iframe'); if (sf && !sf.dataset.loaded) { sf.dataset.loaded = '1'; sf.src = '/sector/'; } }
   if (name === 'relationship') { const rf2 = document.getElementById('relationship-iframe'); if (rf2 && !rf2.dataset.loaded) { rf2.dataset.loaded = '1'; rf2.src = '/relationship/'; } }
+  if (name === 'treasury') { tbOnShow(); }
   if (name !== 'watchlist') { _stopPriceRefreshIfActive(); }
   if (name === 'watchlist') { _autoStartPriceRefresh(); }
 }
@@ -2204,7 +2251,7 @@ async function saveNote(sid, val, inputEl) {
 }
 
 function nameCell(s) {
-  return `<span class="view-name">${s.name || '<span style="color:var(--muted)">—</span>'}</span>
+  return `<span class="view-name">${s.name || '<span style="color:var(--muted)">—</span>'}${typeof tbBadge === 'function' ? tbBadge(s.stock_id) : ''}</span>
     <input class="inline-edit" type="text" value="${s.name || ''}"
       style="width:90px" onblur="saveName('${s.stock_id}', this.value)"
       onkeydown="if(event.key==='Enter') this.blur(); if(event.key==='Escape') this.parentElement.classList.remove('editing');"
@@ -3814,7 +3861,7 @@ function renderScreenTable(strategy, data) {
     return `<tr>
       <td class="muted">${i + 1}</td>
       <td><b class="link" onclick="openScreenChart('${row.stock_id}')" style="cursor:pointer;color:var(--accent)">${row.stock_id}</b></td>
-      <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openScreenChart('${row.stock_id}')">${row.name || '—'}${row.vol_ratio != null && row.vol_ratio >= 2 ? `<span style="margin-left:4px;font-size:.68rem;background:#3fb95022;color:#3fb950;border:1px solid #3fb95055;border-radius:3px;padding:0 4px">量×${row.vol_ratio}</span>` : ''}</td>
+      <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openScreenChart('${row.stock_id}')">${row.name || '—'}${typeof tbBadge === 'function' ? tbBadge(row.stock_id) : ''}${row.vol_ratio != null && row.vol_ratio >= 2 ? `<span style="margin-left:4px;font-size:.68rem;background:#3fb95022;color:#3fb950;border:1px solid #3fb95055;border-radius:3px;padding:0 4px">量×${row.vol_ratio}</span>` : ''}</td>
       <td>${(() => {
         if (row.close == null) return '—';
         const d = row.last_date || '';
@@ -5074,5 +5121,6 @@ async function saveAllStratParams() {
   </div>
 </div>
 
+<script src="/treasury/static/treasury.js"></script>
 </body>
 </html>

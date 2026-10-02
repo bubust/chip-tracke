@@ -34,6 +34,8 @@ from positioning.router import router as positioning_router, _run_refresh as pos
 from positioning.db import init_db as init_positioning_db
 from relationship.router import router as relationship_router
 from relationship.db import init_db as init_relationship_db
+from treasury.router import router as treasury_router
+from treasury.db import init_db as init_treasury_db
 
 from chip_tracker_v2 import (
     DATA_DIR, DB_PATH,
@@ -255,6 +257,7 @@ async def lifespan(app: FastAPI):
     sector_init_db()
     init_positioning_db()
     init_relationship_db()
+    init_treasury_db()
     start_warrant_scheduler()
     # 從 Supabase 恢復 watchlist 到本地 SQLite（Render 重啟後 SQLite 為空）
     try:
@@ -392,6 +395,21 @@ async def lifespan(app: FastAPI):
         _rel_scheduler.start()
     except Exception as _rel_sch_e:
         import logging; logging.getLogger(__name__).warning(f"[relationship_scheduler] {_rel_sch_e}")
+    # 庫藏股：資料表空的話先回補 3 年；之後每個交易日 18:40 從 MOPS 更新近 180 天（含期滿後申報的執行結果）
+    try:
+        from treasury.router import run_refresh as _tb_refresh
+        from treasury.db import get_status as _tb_status
+        if not _tb_status().get("rows"):
+            threading.Thread(target=_tb_refresh, kwargs={"days": 1095}, daemon=True,
+                             name="treasury-init").start()
+        from apscheduler.schedulers.background import BackgroundScheduler as _TbSched
+        from zoneinfo import ZoneInfo as _TbZone
+        _tb_scheduler = _TbSched(timezone=_TbZone("Asia/Taipei"))
+        _tb_scheduler.add_job(lambda: _tb_refresh(days=180), "cron", day_of_week="mon-fri",
+                              hour=18, minute=40, id="treasury_daily", replace_existing=True)
+        _tb_scheduler.start()
+    except Exception as _tb_e:
+        import logging; logging.getLogger(__name__).warning(f"[treasury_scheduler] {_tb_e}")
     # 啟動 positioning 排程（每個交易日 16:45 自動更新）
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
@@ -731,6 +749,10 @@ app.mount("/relationship/static", StaticFiles(directory=str(RELATIONSHIP_FRONTEN
 @app.get("/relationship/", include_in_schema=False)
 def relationship_index():
     return FileResponse(str(BASE_DIR / "relationship-frontend" / "index.html"))
+
+# 掛載庫藏股路由與前端 JS（分頁直接在 dashboard 內，才能開 K 線、加觀察清單）
+app.include_router(treasury_router)
+app.mount("/treasury/static", StaticFiles(directory=str(BASE_DIR / "treasury-frontend")), name="treasury_static")
 
 app.add_middleware(
     CORSMiddleware,
