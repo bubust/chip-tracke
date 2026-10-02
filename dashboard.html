@@ -327,6 +327,7 @@
           <tr>
             <th>代號</th>
             <th>名稱</th>
+            <th title="加入觀察清單的日期">加入日期</th>
             <th title="從哪個策略或市場排行加入">來源</th>
             <th title="自由填寫：進場價、停損、目標等">📝 備註</th>
             <th>股價</th>
@@ -338,7 +339,6 @@
             <th title="集保所千張大戶持股%，點擊查看歷史趨勢" style="cursor:help">千張大戶</th>
             <th title="系統依MA10/MA60自動判斷，不可手動修改">🔦 狀態</th>
             <th>最新日期</th>
-            <th title="加入觀察清單的日期">加入日期</th>
             <th>操作</th>
           </tr>
         </thead>
@@ -1354,6 +1354,7 @@ function renderWatchlist() {
         onclick="openDetail('${s.stock_id}')">
         <td onclick="event.stopPropagation();openWlChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
         <td>${nameCell(s)}</td>
+        <td class="muted" title="${s.added_at || ''}">${_fmtAdded(s.added_at)}</td>
         ${noteCell(s)}
         ${memoCellEarly}
         ${priceCell}
@@ -1365,11 +1366,7 @@ function renderWatchlist() {
         ${ndKpctCell}
         ${ndStageCell}
         <td class="muted">—</td>
-        <td class="muted" title="${s.added_at || ''}">${_fmtAdded(s.added_at)}</td>
         <td onclick="event.stopPropagation()" style="white-space:nowrap">
-          <button class="btn sm ghost" style="padding:2px 6px" onclick="moveWlItem('${s.stock_id}',-1)" title="上移">▲</button>
-          <button class="btn sm ghost" style="padding:2px 6px;margin-left:2px" onclick="moveWlItem('${s.stock_id}',1)" title="下移">▼</button>
-          <button class="btn sm ghost" style="margin-left:4px" onclick="openDetail('${s.stock_id}')">查詢</button>
           <button class="btn sm ghost" style="margin-left:4px;border-color:#a78bfa;color:#a78bfa" onclick="openDeepPanel('${s.stock_id}','${(s.name||s.stock_id).replace(/'/g,'')}')">🔬 分析</button>
           <button class="btn sm ghost" style="margin-left:4px;border-color:var(--yellow);color:var(--yellow)" onclick="openWarrant('${s.stock_id}','${(s.name||s.stock_id).replace(/'/g,'')}')">權證/股期</button>
           <span id="del-wrap-${s.stock_id}" style="position:relative;display:inline-block"><button class="btn sm danger" style="margin-left:4px" onclick="showDelConfirm('${s.stock_id}')">刪除</button></span>
@@ -1440,6 +1437,7 @@ function renderWatchlist() {
         onclick="openDetail('${s.stock_id}')">
       <td onclick="event.stopPropagation();openWlChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
       <td>${nameCell(s)}</td>
+      <td class="muted" title="${s.added_at || ''}">${_fmtAdded(s.added_at)}</td>
       ${noteCell(s)}
       ${memoCell}
       ${priceCell}
@@ -1451,11 +1449,7 @@ function renderWatchlist() {
       ${kpctCell}
       ${stageCell}
       <td class="muted">${s.date || '—'}</td>
-      <td class="muted" title="${s.added_at || ''}">${_fmtAdded(s.added_at)}</td>
       <td onclick="event.stopPropagation()" style="white-space:nowrap">
-        <button class="btn sm ghost" style="padding:2px 6px" onclick="moveWlItem('${s.stock_id}',-1)" title="上移">▲</button>
-        <button class="btn sm ghost" style="padding:2px 6px;margin-left:2px" onclick="moveWlItem('${s.stock_id}',1)" title="下移">▼</button>
-        <button class="btn sm ghost" style="margin-left:4px" onclick="openDetail('${s.stock_id}')">詳細</button>
         <button class="btn sm ghost" style="margin-left:4px;border-color:#a78bfa;color:#a78bfa" onclick="openDeepPanel('${s.stock_id}','${(s.name||s.stock_id).replace(/'/g,'')}')">🔬 分析</button>
         <button class="btn sm ghost" style="margin-left:4px;border-color:var(--yellow);color:var(--yellow)" onclick="openWarrant('${s.stock_id}','${(s.name||s.stock_id).replace(/'/g,'')}')">權證/股期</button>
         <span id="del-wrap-${s.stock_id}" style="position:relative;display:inline-block"><button class="btn sm danger" style="margin-left:4px" onclick="showDelConfirm('${s.stock_id}')">刪除</button></span>
