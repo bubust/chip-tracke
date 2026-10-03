@@ -16,7 +16,7 @@ from datetime import date, timedelta
 
 import httpx
 
-from .parser import classify, extract, parse_announcements
+from .parser import classify, extract, parse_announcements, parse_detail, short_company
 from treasury.parser import roc_to_iso
 
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -51,6 +51,61 @@ def fetch_detail(params: dict, client: httpx.Client) -> str:
     return ""
 
 
+_names = None
+
+
+def resolve_stock(company: str):
+    """公司全名 → (代號, 簡稱)：取股票簡稱是公司名開頭的、最長的那個（精誠資訊 → 6214 精誠）"""
+    global _names
+    if not company:
+        return None, None
+    if _names is None:
+        try:
+            from yahoo_price import get_stock_list
+            df = get_stock_list()
+            _names = list(zip(df["stock_id"], df["stock_name"]))
+        except Exception:
+            _names = []
+    sc = short_company(company)
+    best = None
+    for sid, nm in _names:
+        nm = str(nm)
+        if len(nm) >= 2 and sc.startswith(nm) and (best is None or len(nm) > len(best[1])):
+            best = (sid, nm)
+    return best if best else (None, None)
+
+
+def build_record(ddate: str, sid: str, name: str, subject: str, kind: str, detail: str) -> dict:
+    rec = {"target_id": sid, "target_name": name, "announcer_id": sid, "announce_date": roc_to_iso(ddate),
+           "subject": re.sub(r"\s+", " ", subject)[:500], "deal_type": kind, "source": "MOPS 重大訊息"}
+    info = extract(subject)
+    if detail:
+        d = parse_detail(detail, subject)
+        info = {**info, **{k: v for k, v in d.items() if v not in (None, "")}}
+        rec["notes"] = detail[:1500]
+    if info.get("deal_kind") and kind in ("合併", "收購股權"):
+        k = info["deal_kind"]
+        rec["deal_type"] = "股份轉換" if "轉換" in k else "合併" if "合併" in k else "收購股權" if "收購" in k or "受讓" in k else kind
+    tc = info.get("target_company")
+    if tc:
+        tid, tname = resolve_stock(tc)
+        if tid:
+            rec["target_id"], rec["target_name"] = tid, tname       # 被收購的是上市櫃公司 → 以它為標的
+        elif tid is None and info.get("acquirer") is None:
+            info["acquirer"] = name                                  # 標的未上市：公告公司是收購方
+    if info.get("stock_company"):
+        sref, _ = resolve_stock(info["stock_company"])
+        if sref:
+            info["stock_ref"] = sref
+    for k in ("offer_price", "min_shares", "max_shares", "offer_pct", "period_start", "period_end", "scope",
+              "consideration", "acquirer", "target_company", "deal_kind", "stock_company", "stock_ref", "stock_ratio"):
+        if info.get(k) not in (None, ""):
+            rec[k] = info[k]
+    if rec.get("acquirer"):
+        rec["acquirer"] = re.sub(r"^(接獲|本公司|代子公司)", "", rec["acquirer"]).strip()
+    return rec
+
+
 def _from_api(d: date, client: httpx.Client) -> tuple:
     """回傳 (records, ok, snippet)"""
     try:
@@ -75,13 +130,9 @@ def _from_api(d: date, client: httpx.Client) -> tuple:
         if len(row) > 5 and isinstance(row[5], dict) and isinstance(row[5].get("parameters"), dict):
             detail = fetch_detail(row[5]["parameters"], client)
             time.sleep(1.0)
-        rec = {"target_id": sid.strip(), "target_name": name.strip(), "announce_date": roc_to_iso(ddate),
-               "subject": subject[:500], "deal_type": kind, "source": "MOPS 重大訊息"}
-        info = extract(subject)
-        if detail:
-            info = {**extract(detail), **{k: v for k, v in info.items() if v not in (None, "")}}
-            rec["notes"] = detail[:1500]
-        rec.update(info)
+        if detail and kind != "公開收購" and re.search(r"簡易合併|持股\s*100\s*%\s*之子公司.*?無涉換股", detail[:3000]):
+            continue                                  # 跟百分之百子公司合併：跟股東無關
+        rec = build_record(ddate, sid.strip(), name.strip(), subject, kind, detail)
         out.append(rec)
     return out, True, ""
 

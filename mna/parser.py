@@ -16,7 +16,8 @@ _TYPES = [
     ("合併", re.compile(r"合併(?!報表|營收|財務|損益|資產負債)|併購")),
     ("收購股權", re.compile(r"(收購|取得).{0,12}(股權|股份|普通股)")),
 ]
-_EXCLUDE = re.compile(r"合併營收|合併財務|合併報表|合併損益|合併資產|子公司.*營收|自結|澄清媒體")
+_EXCLUDE = re.compile(r"合併營收|合併營業收入|合併財務|合併報表|合併損益|合併資產|合併及個體|合併中文財務|財務報告|"
+                      r"子公司.*營收|自結|澄清媒體|使用權資產|不動產|簡易合併|iXBRL")
 _PRICE = re.compile(r"每股(?:新[臺台]幣|現金)?\s*([0-9]+(?:\.[0-9]+)?)\s*元")
 _SHARES = re.compile(r"([0-9][0-9,]*(?:\.[0-9]+)?)\s*(萬)?股")
 _PERIOD = re.compile(r"(\d{2,4}[/.年]\d{1,2}[/.月]\d{1,2}日?)\s*(?:至|~|～|－|-)\s*(\d{2,4}[/.年]\d{1,2}[/.月]\d{1,2}日?)")
@@ -102,4 +103,114 @@ def parse_announcements(html: str) -> list:
                    "subject": subject[:500], "deal_type": kind, "source": "MOPS 重大訊息"}
             rec.update(extract(subject))
             out.append(rec)
+    return out
+
+
+# ── 公告內文（t05st02_detail）欄位解析：公告是「1.欄位名:內容 2.欄位名:內容 …」的固定樣板 ──
+_FIELD = re.compile(r"(?:^|\s)(\d{1,2})\.([^:：\d][^:：]{0,110}?)[:：]")
+_DATE_CN = re.compile(r"(\d{2,4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日|(\d{2,4})/(\d{1,2})/(\d{1,2})")
+_CASH = re.compile(r"現金(?:新[臺台]幣)?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*元")
+_RATIO = re.compile(r"(?:可換取|換發|配發|換取)\s*(.{2,20}?)(?:股份有限公司)?(?:\(下稱[^)]*\))?\s*普通股\s*([0-9]+(?:\.[0-9]+)?)\s*股")
+
+
+def split_fields(text: str) -> list:
+    """回傳 [(欄位名, 內容), ...]"""
+    ms = list(_FIELD.finditer(text or ""))
+    out = []
+    for i, m in enumerate(ms):
+        end = ms[i + 1].start() if i + 1 < len(ms) else len(text)
+        out.append((m.group(2).strip(), text[m.end():end].strip()))
+    return out
+
+
+def _dates(s: str) -> list:
+    out = []
+    for m in _DATE_CN.finditer(s or ""):
+        g = m.groups()
+        y, mo, d = (g[0], g[1], g[2]) if g[0] else (g[3], g[4], g[5])
+        iso = roc_to_iso(f"{y}/{mo}/{d}")
+        if iso:
+            out.append(iso)
+    return out
+
+
+def _company(s: str) -> str:
+    s = re.sub(r"\(下稱.*?\)|（以下簡稱.*?）|\(以下簡稱.*?\)", "", s or "").strip()
+    m = re.search(r"([^\s：:，,（(]{2,30}?股份有限公司|[^\s：:，,（(]{2,30}?(?:Inc\.|Ltd\.|Limited|Corporation))", s)
+    return (m.group(1) if m else s[:30]).strip()
+
+
+def short_company(name: str) -> str:
+    return re.sub(r"股份有限公司|\(股\)公司|（股）公司|公司$", "", name or "").strip()
+
+
+def parse_detail(text: str, subject: str = "") -> dict:
+    """從公告內文抓：收購方、被收購公司、價格（現金＋換股比例）、最高／最低數量、比例、期間、範圍、類型"""
+    out: dict = {}
+    fields = split_fields(text)
+    get = lambda *keys: next((v for k, v in fields if any(x in k for x in keys)), "")
+    # 類型
+    kind = get("併購種類")
+    if kind:
+        out["deal_kind"] = kind.split()[0][:20]
+    # 被收購公司 / 收購方
+    tgt = get("被收購有價證券之公開發行公司名稱", "被收購公司名稱")
+    party = get("參與併購公司名稱")
+    if tgt:
+        out["target_company"] = _company(tgt)
+    if party:
+        m = re.search(r"(?:被收購公司|合併消滅公司|消滅公司|標的公司)\s*[:：]\s*(.+?)(?=\s*(?:收購公司|存續公司|合併存續|$))", party)
+        if m:
+            out["target_company"] = _company(m.group(1))
+        m = re.search(r"(?:^|\s)(?:收購公司|合併存續公司|存續公司)\s*[:：]\s*(.+?)(?=\s*(?:被收購|消滅|合併消滅|$))", party)
+        if m:
+            out["acquirer"] = short_company(_company(m.group(1)))
+    m = re.search(r"代(?:重要)?子公司(.{2,20}?)(?:\(股\)|（股）)?(?:股份有限)?公司公告", subject or "")
+    if m and "acquirer" not in out:
+        out["acquirer"] = short_company(m.group(1))
+    m = re.search(r"接獲(.{2,30}?)(?:股份有限公司|公司)?公開收購", (subject or "") + " " + (text or "")[:600])
+    if m and "acquirer" not in out:
+        out["acquirer"] = short_company(m.group(1))
+    # 價格（公開收購第 5 欄／併購第 7、10、11 欄）
+    price_txt = get("有價證券價格", "收購價格", "收購對價") or get("對價條件", "併購目的及條件") or get("對價種類")
+    m = _CASH.search(price_txt)
+    if m:
+        out["offer_price"] = float(m.group(1).replace(",", ""))
+    m = _RATIO.search(price_txt)
+    if m:
+        out["stock_company"] = short_company(m.group(1))
+        out["stock_ratio"] = float(m.group(2))
+    if out.get("stock_ratio") and out.get("offer_price"):
+        out["consideration"] = "現金＋換股"
+    elif out.get("stock_ratio"):
+        out["consideration"] = "換股"
+    elif out.get("offer_price") or "現金為對價" in (text or ""):
+        out["consideration"] = "現金"
+    # 數量
+    qty = get("有價證券數量")
+    if qty:
+        m = re.search(r"預定收購數量[為:：\s]*([0-9][0-9,]*)\s*股", qty) or re.search(r"([0-9][0-9,]*)\s*股", qty)
+        if m:
+            out["max_shares"] = float(m.group(1).replace(",", ""))
+        m = re.search(r"([0-9][0-9,]*)\s*股[^。；]{0,80}?最低收購數量", qty)
+        if m:
+            out["min_shares"] = float(m.group(1).replace(",", ""))
+        m = re.search(r"已發行股份總數[^。]{0,60}?之\s*([0-9]+(?:\.[0-9]+)?)\s*%", qty)
+        if m:
+            out["offer_pct"] = float(m.group(1))
+    # 期間：延長後的期間優先
+    per = get("延長公開收購期間") or get("公開收購期間", "收購期間")
+    ds = _dates(per)
+    if len(ds) >= 2:
+        out["period_start"], out["period_end"] = ds[0], ds[-1]
+    else:
+        done = _dates(get("預定完成日程"))
+        if done:
+            out["period_end"] = done[0]
+    # 範圍
+    plan = get("併購完成後之計畫") + " " + get("其他與併購相關")
+    if re.search(r"100\s*%\s*持股|百分之百|下市|下櫃|全部股份|全數收購", plan + " " + (text or "")[:1500]):
+        out["scope"] = "完全收購"
+    elif out.get("min_shares") or (out.get("offer_pct") and out["offer_pct"] < 100):
+        out["scope"] = "部分收購"
     return out

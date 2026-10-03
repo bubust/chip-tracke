@@ -1,19 +1,12 @@
-"""臨時診斷：印出幾則收購併購公告的完整內文，用來對欄位名稱"""
-import sys, time, httpx
+"""臨時診斷：用實際的 mna.fetcher 抓近 8 個交易日（需要 stocks.csv 對應代號）"""
+import json, sys
 sys.path.insert(0, ".")
-from mna.fetcher import API, _API_HDR, _UA, fetch_detail
-want = ("公開收購", "股份轉換", "合併", "收購")
-c = httpx.Client(timeout=30, verify=False, headers={"User-Agent": _UA})
-seen = 0
-for day in ("29", "30", "23", "22"):
-    j = c.post(f"{API}/t05st02", json={"year": "115", "month": "09", "day": day}, headers=_API_HDR).json()
-    for row in (j.get("result") or {}).get("data") or []:
-        subj = str(row[4])
-        if any(w in subj for w in want) and "營" not in subj and "財務" not in subj and isinstance(row[5], dict):
-            print("=" * 100); print(row[:5])
-            print(fetch_detail(row[5]["parameters"], c)[:3500])
-            seen += 1; time.sleep(1.2)
-        if seen >= 7:
-            break
-    if seen >= 7:
-        break
+import mna.fetcher as f
+import csv
+f._names = [(r["stock_id"], r["stock_name"]) for r in csv.DictReader(open("stocks.csv", encoding="utf-8"))]
+res = f.fetch_range(days=8)
+print("errors:", res["errors"]); print("找到", len(res["records"]), "筆")
+keys = ("target_id", "target_name", "acquirer", "deal_type", "announce_date", "offer_price", "stock_company", "stock_ref", "stock_ratio",
+        "min_shares", "max_shares", "offer_pct", "scope", "period_start", "period_end", "consideration", "target_company")
+for r in res["records"]:
+    print(json.dumps({k: r.get(k) for k in keys if r.get(k) is not None}, ensure_ascii=False))

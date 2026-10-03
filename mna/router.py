@@ -109,7 +109,7 @@ def classify_status(r: dict, today: date) -> str:
 
 def enrich(rows: list, today: date = None) -> list:
     today = today or tw_today()
-    prices = _latest_prices({r["target_id"] for r in rows})
+    prices = _latest_prices({r["target_id"] for r in rows} | {r["stock_ref"] for r in rows if r.get("stock_ref")})
     out = []
     for r in rows:
         r = dict(r)
@@ -117,6 +117,11 @@ def enrich(rows: list, today: date = None) -> list:
         px, pdate = prices.get(r["target_id"], (None, None))
         r["price"], r["price_date"] = px, pdate
         op = r.get("offer_price")
+        # 現金＋換股：每股價值＝現金＋換股比例 × 換發股票現價
+        if r.get("stock_ratio") and r.get("stock_ref") and prices.get(r["stock_ref"]):
+            op = round((op or 0) + r["stock_ratio"] * prices[r["stock_ref"]][0], 2)
+            r["offer_value_note"] = f"現金 {r.get('offer_price') or 0} ＋ {r.get('stock_company') or r['stock_ref']} {r['stock_ratio']} 股"
+        r["offer_value"] = op
         r["premium_pct"] = round((op / px - 1) * 100, 2) if op and px else None
         pe = r.get("period_end")
         r["days_left"] = (date.fromisoformat(pe) - today).days if pe and r["status"] in ("進行中", "未開始") else None
@@ -125,6 +130,7 @@ def enrich(rows: list, today: date = None) -> list:
         r["min_lots"] = round(r["min_shares"] / 1000) if r.get("min_shares") else None
         r["max_lots"] = round(r["max_shares"] / 1000) if r.get("max_shares") else None
         r["amount_yi"] = round(op * r["max_shares"] / 1e8, 2) if op and r.get("max_shares") else None
+        r["listed_target"] = r.get("target_id") != r.get("announcer_id") or not r.get("target_company")
         out.append(r)
     return out
 
