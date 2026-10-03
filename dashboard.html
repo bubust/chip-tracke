@@ -223,11 +223,11 @@
   }
   @media (max-width: 480px) {
     header h1 { font-size: .95rem; }
-    /* 觀察清單只留重點欄：代號、名稱、加入後漲跌、股價、最新訊號、大戶今日 */
+    /* 觀察清單只留重點欄：代號、名稱、加入後漲跌、股價、關鍵價位、最新訊號、大戶今日 */
     #watchlist-table th:nth-child(3), #watchlist-table td:nth-child(3),
     #watchlist-table th:nth-child(5), #watchlist-table td:nth-child(5),
     #watchlist-table th:nth-child(6), #watchlist-table td:nth-child(6),
-    #watchlist-table th:nth-child(n+10), #watchlist-table td:nth-child(n+10) { display: none; }
+    #watchlist-table th:nth-child(n+11), #watchlist-table td:nth-child(n+11) { display: none; }
     input[type=text], input[type=number], select { font-size: 16px; }   /* iOS 不會自動放大 */
   }
 </style>
@@ -264,6 +264,7 @@
   <button onclick="switchTab('sector')">🔄 產業輪動</button>
   <button onclick="switchTab('relationship')">📊 市場關聯</button>
   <button onclick="switchTab('treasury')">🏦 庫藏股</button>
+  <button onclick="switchTab('mna')">🤝 收購併購</button>
   <button onclick="switchTab('settings')">設定</button>
 </nav>
 
@@ -369,6 +370,7 @@
             <th title="從哪個策略或市場排行加入">來源</th>
             <th title="自由填寫：進場價、停損、目標等">📝 備註</th>
             <th>股價</th>
+            <th title="依你的看盤邏輯：第一壓力、目標價、停損（點開看全部）">關鍵價位</th>
             <th>最新訊號</th>
             <th>大戶今日 (張)</th>
             <th>7日累計 (張)</th>
@@ -508,6 +510,7 @@
       <button class="btn ghost screen-strat-btn" data-s="S_RES"   onclick="viewStrategy('S_RES')">🟡 共振起點 <span class="strat-cnt" id="cnt-S_RES"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_VOLX"       onclick="viewStrategy('S_VOLX')">💥 量爆拉升 <span class="strat-cnt" id="cnt-S_VOLX"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_VOLX_SHORT" onclick="viewStrategy('S_VOLX_SHORT')">💥 量爆下殺 <span class="strat-cnt" id="cnt-S_VOLX_SHORT"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_THUNDER" onclick="viewStrategy('S_THUNDER')" title="盤整 90 天（區間 ≤15%）後帶量 2.5 倍突破；回檔 ≤0.618 時目標價＝第一段高點−突破點＋回檔低點">⚡ 平地一聲雷 <span class="strat-cnt" id="cnt-S_THUNDER"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_WARRANT_TOP" onclick="viewStrategy('S_WARRANT_TOP')">📈 認購前十大 <span class="strat-cnt" id="cnt-S_WARRANT_TOP"></span></button>
     </div>
   </div>
@@ -607,6 +610,44 @@
     <div style="font-size:.72rem;color:#484f58;margin-top:10px;line-height:1.7">
       點一列看這家公司歷次買回、開 K 線或加入觀察清單 · 已買回張數、執行率、均價通常要等買回期間結束後公司申報才會出現 ·
       現價／決議後漲跌用股價快取（最新收盤）· 紅＝漲 綠＝跌 · 觀察清單和策略篩選裡有 🏦庫藏 標記的，代表買回進行中或即將開始
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ 🤝 收購併購 ═══════════════════════ -->
+<div id="tab-mna" class="tab">
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+      <strong style="font-size:1.05rem">🤝 收購／併購</strong>
+      <span style="font-size:.78rem;color:var(--muted)">公開收購、合併、股份轉換：收購價、溢價、數量、完全或部分收購、收購期間</span>
+      <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn sm" onclick="mnaRefresh()">🔄 從公開資訊觀測站更新</button>
+        <button class="btn sm ghost" onclick="mnaEdit(null)">＋ 手動新增</button>
+        <label class="btn sm ghost" style="cursor:pointer" title="表頭：標的代號、標的名稱、收購方、類型、公告日、收購價、最低數量、最高數量、比例、範圍、期間起、期間迄、對價、備註">📥 匯入 CSV
+          <input type="file" accept=".csv,.txt" style="display:none" onchange="mnaImport(this)"></label>
+      </span>
+    </div>
+    <div id="mna-status" style="font-size:.75rem;color:var(--muted)"></div>
+    <div id="mna-progress" style="display:none;font-size:.78rem;color:#f59e0b;margin-top:4px"></div>
+    <div id="mna-error" style="display:none;font-size:.78rem;color:#f59e0b;margin-top:6px;line-height:1.6"></div>
+  </div>
+  <div class="card">
+    <div id="mna-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;font-size:.82rem;color:var(--muted)">
+      <label>公告日
+        <select id="mna-days" onchange="mnaLoad()" style="background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem">
+          <option value="90">近 3 個月</option><option value="180">近 6 個月</option><option value="365" selected>近 1 年</option><option value="1095">近 3 年</option>
+        </select></label>
+      <label>類型
+        <select id="mna-type" onchange="mnaRender()" style="background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem">
+          <option value="">全部</option><option>公開收購</option><option>合併</option><option>股份轉換</option><option>收購股權</option><option>其他</option>
+        </select></label>
+      <input id="mna-search" placeholder="代號／名稱／收購方" oninput="mnaRender()" style="width:150px;background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem">
+    </div>
+    <div id="mna-body"><div style="color:var(--muted);text-align:center;padding:30px">載入中...</div></div>
+    <div style="font-size:.72rem;color:#484f58;margin-top:10px;line-height:1.7">
+      自動從重大訊息主旨抓類型、收購價、數量、期間；主旨沒寫的欄位顯示「待補」，點一列可以編輯補上 ·
+      溢價＝收購價 ÷ 現價 − 1 · 年化＝溢價換算成以剩餘天數計的年報酬（部分收購可能按比例收購，實際報酬會較低）· 細節以公開資訊觀測站公告為準
     </div>
   </div>
 </div>
@@ -1186,7 +1227,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  const idx = { watchlist: 0, market: 1, screen: 2, warrant: 3, regime: 4, sector: 5, relationship: 6, treasury: 7, settings: 8 };
+  const idx = { watchlist: 0, market: 1, screen: 2, warrant: 3, regime: 4, sector: 5, relationship: 6, treasury: 7, mna: 8, settings: 9 };
   const navIdx = idx[name];
   if (navIdx !== undefined) document.querySelectorAll('nav button')[navIdx].classList.add('active');
   if (name === 'settings') { _doSwitchSettings(); }
@@ -1194,6 +1235,7 @@ function switchTab(name) {
   if (name === 'sector') { const sf = document.getElementById('sector-iframe'); if (sf && !sf.dataset.loaded) { sf.dataset.loaded = '1'; sf.src = '/sector/'; } }
   if (name === 'relationship') { const rf2 = document.getElementById('relationship-iframe'); if (rf2 && !rf2.dataset.loaded) { rf2.dataset.loaded = '1'; rf2.src = '/relationship/'; } }
   if (name === 'treasury') { tbOnShow(); }
+  if (name === 'mna') { mnaOnShow(); }
   if (name !== 'watchlist') { _stopPriceRefreshIfActive(); }
   if (name === 'watchlist') { _autoStartPriceRefresh(); }
 }
@@ -1328,6 +1370,7 @@ async function loadWatchlist() {
 }
 
 function renderWatchlist() {
+  setTimeout(_loadLevels, 0);   // 關鍵價位非同步補上
   const tbody = document.getElementById('wl-tbody');
   if (!_wlData.length) {
     document.getElementById('wl-empty').style.display = 'block';
@@ -1430,6 +1473,7 @@ function renderWatchlist() {
         ${noteCell(s)}
         ${memoCellEarly}
         ${priceCell}
+        ${_levelsCell(s)}
         ${ndSignalCell}
         <td class="muted">—</td>
         <td class="muted">—</td>
@@ -1514,6 +1558,7 @@ function renderWatchlist() {
       ${noteCell(s)}
       ${memoCell}
       ${priceCell}
+      ${_levelsCell(s)}
       <td><span class="sig-badge sig-${level}" title="${_sigDesc(s.signal_title)}">${s.signal_emoji} ${s.signal_title}</span></td>
       <td class="${w  >= 0 ? 'pos' : 'neg'}">${fmtNum(w)}</td>
       <td class="${c7 >= 0 ? 'pos' : 'neg'}">${fmtNum(c7)}</td>
@@ -1531,6 +1576,96 @@ function renderWatchlist() {
   }).join('');
   // 非同步補充千張大戶多週趨勢
   enrichTdccTrends().catch(() => {});
+}
+
+// ── 關鍵價位（price_levels.py）：第一／第二壓力、目標價、停損 ─────────────────
+let _levelsData = {};
+let _levelsLoading = false;
+function _levelsPrimaryStop(lv) {
+  const st = (lv && lv.stops) || {};
+  return st.uptrend_exit || st.volume_low || st.swing_low || st.prev_low || null;
+}
+function _levelsCell(s) {
+  const lv = _levelsData[s.stock_id];
+  const inner = !lv ? '<span class="muted">…</span>'
+    : lv.error ? '<span class="muted" title="' + _esc(lv.error) + '">—</span>'
+    : (() => {
+        const p1 = lv.pressure1 ? lv.pressure1.low : null, stop = _levelsPrimaryStop(lv);
+        return `<span style="font-size:.74rem;line-height:1.45;display:inline-block">
+          ${p1 != null ? `<span style="color:#f59e0b">壓 ${p1}</span>` : '<span class="muted">無前高</span>'}
+          ${lv.target != null ? ` / <span style="color:#ef4444;font-weight:700">標 ${lv.target}</span>` : ''}
+          <br>${stop ? `<span style="color:#22c55e">損 ${stop.price}</span>` : ''}
+          ${lv.mode && lv.mode !== '一般' ? `<span style="color:#a78bfa"> ${lv.mode.startsWith('平地') ? '⚡' : '▭'}</span>` : ''}</span>`;
+      })();
+  return `<td id="levels-${s.stock_id}" onclick="event.stopPropagation();showLevels('${_jsq(s.stock_id)}')" style="cursor:pointer" title="點開看關鍵價位">${inner}</td>`;
+}
+async function _loadLevels() {
+  if (_levelsLoading || !(_wlData || []).length) return;
+  const ids = _wlData.map(x => x.stock_id).filter(id => !_levelsData[id]);
+  if (!ids.length) return;
+  _levelsLoading = true;
+  try {
+    for (let i = 0; i < ids.length; i += 20) {
+      const r = await api('GET', `/api/levels?ids=${ids.slice(i, i + 20).join(',')}`);
+      Object.assign(_levelsData, r || {});
+      Object.keys(r || {}).forEach(sid => {
+        const td = document.getElementById(`levels-${sid}`);
+        const item = _wlData.find(x => x.stock_id === sid);
+        if (td && item) td.outerHTML = _levelsCell(item);
+      });
+    }
+  } catch (e) { /* 抓不到就留 … */ } finally { _levelsLoading = false; }
+}
+async function showLevels(sid) {
+  let lv = _levelsData[sid];
+  if (!lv) { try { lv = await api('GET', `/api/levels/${encodeURIComponent(sid)}`); _levelsData[sid] = lv; } catch (e) { toast(e.message, true); return; } }
+  const name = lv.name || (_chartNames && _chartNames[sid]) || '';
+  const fmtD = d => (d && String(d).length === 8) ? `${String(d).slice(4, 6)}/${String(d).slice(6)}` : '';
+  const zone = z => z ? (z.low === z.high ? `${z.low}` : `${z.low}～${z.high}`) + (z.touches > 1 ? `（碰過 ${z.touches} 次）` : '') : '—';
+  const st = lv.stops || {};
+  const stopRows = ['uptrend_exit', 'volume_low', 'swing_low', 'prev_low'].filter(k => st[k]).map(k =>
+    `<div>🟢 <b>${st[k].price}</b> <span class="muted">${_esc(st[k].label)} ${fmtD(st[k].date)}</span></div>`).join('') || '<div class="muted">現價下方找不到支撐</div>';
+  const th = lv.thunder;
+  const thHtml = th ? `<div style="margin-top:10px;padding:8px 10px;border:1px solid #a78bfa55;border-radius:6px;font-size:.8rem;line-height:1.7">
+      ⚡ <b>平地一聲雷</b>：${_esc(th.stage)}<br>
+      盤整 ${th.base_days} 天、上緣（突破點）<b>${th.base_top}</b>，${fmtD(th.breakout_date)} 帶 ${th.breakout_vol_ratio} 倍量突破<br>
+      第一段高點 <b>${th.high}</b>${th.pullback_low != null ? `，回檔低點 <b>${th.pullback_low}</b>（回檔 ${(th.retrace * 100).toFixed(0)}%）` : ''}
+      ${th.target != null ? `<br>目標價 ${th.high} − ${th.base_top} ＋ ${th.pullback_low} ＝ <b style="color:#ef4444">${th.target}</b>` : ''}
+      ${th.uptrend ? `<br><span style="color:#f59e0b">上漲模式：收盤跌破 ${th.exit_prev_low}（今天低點）就出場</span>` : ''}</div>` : '';
+  const m = document.createElement('div');
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.onclick = e => { if (e.target === m) m.remove(); };
+  m.innerHTML = `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;max-width:460px;width:100%;max-height:85vh;overflow:auto;font-size:.85rem">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <b style="font-size:1rem">${_esc(sid)} ${_esc(name)}</b><button class="btn sm ghost" onclick="this.closest('div[style*=fixed]').remove()">✕</button></div>
+    ${lv.error ? `<div class="muted">${_esc(lv.error)}</div>` : `
+    <div class="muted" style="margin-bottom:8px">現價 <b style="color:var(--text)">${lv.price}</b>（${fmtD(lv.date)}）· 型態：<b style="color:#a78bfa">${_esc(lv.mode)}</b></div>
+    <div style="line-height:1.9">
+      <div>🟠 第一壓力區 <b>${zone(lv.pressure1)}</b></div>
+      <div>🟠 第二壓力區 <b>${zone(lv.pressure2)}</b></div>
+      <div>🔴 目標價 <b style="color:#ef4444">${lv.target ?? '—'}</b>${lv.upside_pct != null ? ` <span class="muted">（還有 ${lv.upside_pct}%）</span>` : ''}<br><span class="muted" style="font-size:.76rem">${_esc(lv.target_method || '')}</span></div>
+      <div style="margin-top:6px"><b>停損參考</b></div>${stopRows}
+    </div>${thHtml}
+    ${(lv.notes || []).length ? `<div style="margin-top:8px;font-size:.78rem;color:#f59e0b">${lv.notes.map(_esc).join('<br>')}</div>` : ''}
+    <div style="margin-top:12px;display:flex;gap:8px"><button class="btn sm" onclick="this.closest('div[style*=fixed]').remove();openWlChart('${_jsq(sid)}')">📈 K 線（畫出價位線）</button></div>
+    <div class="muted" style="margin-top:10px;font-size:.72rem">壓力區＝現價上方的前高；停損看爆量低點、波段低點、前低，跌破出場、站回是假跌破。只是依線圖規則計算，不是投資建議。</div>`}
+  </div>`;
+  document.body.appendChild(m);
+}
+// K 線畫上關鍵價位線
+async function _drawLevelLines(series, sid) {
+  if (!series || !sid || String(sid).startsWith('__idx_')) return;
+  let lv = _levelsData[sid];
+  if (!lv) { try { lv = await api('GET', `/api/levels/${encodeURIComponent(sid)}`); _levelsData[sid] = lv; } catch (e) { return; } }
+  if (!lv || lv.error || _chartStockId !== sid) return;
+  const add = (price, color, title, style = 2) => { if (price != null) try { series.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }); } catch (e) {} };
+  if (lv.pressure1) add(lv.pressure1.low, '#f59e0b', '壓1');
+  if (lv.pressure2) add(lv.pressure2.low, '#f59e0b', '壓2', 3);
+  add(lv.target, '#ef4444', '目標', 0);
+  const st = lv.stops || {};
+  if (st.volume_low) add(st.volume_low.price, '#22c55e', '爆量低');
+  if (st.swing_low) add(st.swing_low.price, '#16a34a', '波段低', 3);
+  if (st.uptrend_exit) add(st.uptrend_exit.price, '#a78bfa', '破此出場', 1);
 }
 
 // 加入後漲跌：加入日收盤 → 現價
@@ -3426,6 +3561,7 @@ const STRATEGY_LABELS = {
   S_VOLX:       '💥 量爆拉升（今日成交量 ≥ 昨日3倍、收盤上漲、站上20週均線MA100，強勢噴出）',
   S_VOLX_SHORT: '💥 量爆下殺（今日成交量 ≥ 昨日3倍、收盤下跌、跌破10日均線MA10，放空訊號）',
   S_WARRANT_TOP: '📈 認購權證前十大（最近交易日認購成交額最高的標的股）',
+  S_THUNDER: '⚡ 平地一聲雷（長期盤整後帶量突破，回檔不破才買）',
 };
 // 策略短名稱（用於「重疊策略」欄位badge）
 const STRATEGY_SHORT = {
@@ -3439,6 +3575,7 @@ const STRATEGY_SHORT = {
   S_VOLX:       '💥 量爆拉升',
   S_VOLX_SHORT: '💥 量爆下殺',
   S_WARRANT_TOP: '📈 認購前十大',
+  S_THUNDER: '⚡ 平地一聲雷',
 };
 
 async function runScreen() {
@@ -3950,6 +4087,7 @@ function renderScreenTable(strategy, data) {
   if (strategy === 'S10')  headRow += `${th('連續漲停','consec_limit_up')}`;
   if (strategy === 'S17B') headRow += `${th('頸線','neckline')}`;
   if (strategy === 'S_WARRANT_TOP') headRow += `${th('認購額(萬)','call_turnover_wan')}${th('認購/認售比','cp_ratio')}`;
+  if (strategy === 'S_THUNDER') headRow += `${th('階段','stage')}${th('突破點','base_top')}${th('第一段高','first_high')}${th('回檔低','pullback_low')}${th('目標價','target')}`;
   headRow += `${th('成交量(張)','volume')}${th('成交金額','turnover','hide-mobile')}${th('BB位置','bb_score','hide-mobile')}${th('重疊策略','overlap','hide-mobile','此股票同時符合的其他策略，點擊依重疊數量排序')}<th>操作</th></tr>`;
   document.getElementById('screen-thead').innerHTML = headRow;
 
@@ -3970,6 +4108,11 @@ function renderScreenTable(strategy, data) {
       extraTd = `<td>${row.consec_limit_up != null ? row.consec_limit_up : '—'} 天</td>`;
     else if (strategy === 'S17B')
       extraTd = `<td>${row.neckline != null ? row.neckline : '—'}</td>`;
+    else if (strategy === 'S_THUNDER')
+      extraTd = `<td style="font-size:.75rem;white-space:normal;min-width:140px">${_esc(row.stage || '')}${row.uptrend ? `<br><span style="color:#f59e0b">上漲模式：收盤破 ${row.exit_prev_low} 出場</span>` : ''}</td>
+        <td>${row.base_top ?? '—'}<br><small class="muted">${String(row.breakout_date||'').slice(4,6)}/${String(row.breakout_date||'').slice(6)} ${row.breakout_vol_ratio ?? ''}倍量</small></td>
+        <td>${row.first_high ?? '—'}</td><td>${row.pullback_low ?? '—'}${row.retrace != null ? `<br><small class="muted">回檔 ${(row.retrace*100).toFixed(0)}%</small>` : ''}</td>
+        <td style="color:#ef4444;font-weight:700">${row.target ?? '—'}</td>`;
     else if (strategy === 'S_WARRANT_TOP') {
       extraTd = `<td>${row.call_turnover_wan != null ? row.call_turnover_wan : '—'}</td>`
               + `<td>${row.cp_ratio != null ? row.cp_ratio : '—'}</td>`;
@@ -4698,6 +4841,7 @@ async function openChart(stockId, savedRange = null) {
     _drawChart  = cChart;
     _drawSeries = cSeries;
     _restoreDrawings(_chartStockId);
+    _drawLevelLines(cSeries, _chartStockId);
 
     // ── 繪圖點擊事件 ──────────────────────────────────────────────────────
     cEl.addEventListener('click', e => {
@@ -5245,5 +5389,6 @@ async function saveAllStratParams() {
 </div>
 
 <script src="/treasury/static/treasury.js"></script>
+<script src="/mna/static/mna.js"></script>
 </body>
 </html>
