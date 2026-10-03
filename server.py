@@ -38,6 +38,8 @@ from treasury.router import router as treasury_router
 from treasury.db import init_db as init_treasury_db
 from mna.router import router as mna_router
 from mna.db import init_db as init_mna_db
+from cb.router import router as cb_router
+from cb.db import init_db as init_cb_db
 
 from chip_tracker_v2 import (
     DATA_DIR, DB_PATH,
@@ -261,6 +263,7 @@ async def lifespan(app: FastAPI):
     init_relationship_db()
     init_treasury_db()
     init_mna_db()
+    init_cb_db()
     start_warrant_scheduler()
     # 從 Supabase 恢復 watchlist 到本地 SQLite（Render 重啟後 SQLite 為空）
     try:
@@ -441,6 +444,22 @@ async def lifespan(app: FastAPI):
         _mna_scheduler.start()
     except Exception as _mna_e:
         import logging; logging.getLogger(__name__).warning(f"[mna_scheduler] {_mna_e}")
+    # 可轉債：沒資料就回補（延後 3 分鐘，避開收購併購同時打 MOPS）；之後每個交易日 19:05 更新
+    try:
+        from cb.router import run_refresh as _cb_refresh
+        from cb.db import get_status as _cb_status
+        if not _cb_status().get("bonds"):
+            _cb_t = threading.Timer(180, _cb_refresh)
+            _cb_t.daemon = True
+            _cb_t.start()
+        from apscheduler.schedulers.background import BackgroundScheduler as _CbSched
+        from zoneinfo import ZoneInfo as _CbZone
+        _cb_scheduler = _CbSched(timezone=_CbZone("Asia/Taipei"))
+        _cb_scheduler.add_job(_cb_refresh, "cron", day_of_week="mon-fri",
+                              hour=19, minute=5, id="cb_daily", replace_existing=True)
+        _cb_scheduler.start()
+    except Exception as _cb_e:
+        import logging; logging.getLogger(__name__).warning(f"[cb_scheduler] {_cb_e}")
     # 啟動 positioning 排程（每個交易日 16:45 自動更新）
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
@@ -835,6 +854,8 @@ app.include_router(treasury_router)
 app.mount("/treasury/static", StaticFiles(directory=str(BASE_DIR / "treasury-frontend")), name="treasury_static")
 app.include_router(mna_router)
 app.mount("/mna/static", StaticFiles(directory=str(BASE_DIR / "mna-frontend")), name="mna_static")
+app.include_router(cb_router)
+app.mount("/cb/static", StaticFiles(directory=str(BASE_DIR / "cb-frontend")), name="cb_static")
 
 app.add_middleware(
     CORSMiddleware,

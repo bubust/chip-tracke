@@ -16,7 +16,7 @@ from datetime import date, timedelta
 
 import httpx
 
-from .parser import classify, extract, parse_announcements, parse_detail, short_company
+from .parser import CAPITAL_TYPES, capital_info, classify, extract, parse_announcements, parse_detail, short_company
 from treasury.parser import roc_to_iso
 
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -84,6 +84,11 @@ def resolve_stock(company: str):
 def build_record(ddate: str, sid: str, name: str, subject: str, kind: str, detail: str) -> dict:
     rec = {"target_id": sid, "target_name": name, "announcer_id": sid, "announce_date": roc_to_iso(ddate),
            "subject": re.sub(r"\s+", " ", subject)[:500], "deal_type": kind, "source": "MOPS 重大訊息"}
+    if kind in CAPITAL_TYPES:                    # 減資／增資：不套收購欄位解析
+        if detail:
+            rec["notes"] = detail[:1500]
+        rec.update(capital_info(subject, detail))
+        return rec
     info = extract(subject)
     if detail:
         d = parse_detail(detail, subject)
