@@ -25,6 +25,17 @@ _PCT = re.compile(r"([0-9]+(?:\.[0-9]+)?)\s*%")
 _ACQ = re.compile(r"(?:代子公司|本公司)?(?:擬)?由?\s*([^\s，,、]{2,20}?(?:股份有限公司|公司|投資|基金|集團))\s*(?:擬)?(?:對|公開收購|收購)")
 
 
+# 減資／增資（老王筆記：虧損減資首日跳上、增資短線別碰…）；排除對子公司增資、轉投資、庫藏股註銷、公司債
+_CAPITAL = [
+    ("減資", re.compile(r"減資|減少資本|資本減少")),
+    ("現金增資", re.compile(r"現金增資|私募普通股|私募.{0,6}股票|辦理私募")),
+]
+_CAPITAL_EXCLUDE = re.compile(r"子公司|孫公司|轉投資|被投資|(?:參與|認購|投資|增資).{0,20}(?:公司|Ltd|Inc).{0,10}(?:現金增資|增資)|"
+                              r"(?:參與|認購).{0,25}增資|庫藏股|員工認股|可轉換|公司債|特別股|海外存託|GDR|全球存託|"
+                              r"澄清|媒體報導|更正|補充")
+CAPITAL_TYPES = ("減資", "現金增資")
+
+
 def classify(subject: str) -> Optional[str]:
     s = subject or ""
     if _EXCLUDE.search(s):
@@ -32,7 +43,42 @@ def classify(subject: str) -> Optional[str]:
     for name, rx in _TYPES:
         if rx.search(s):
             return name
+    if not _CAPITAL_EXCLUDE.search(s):
+        for name, rx in _CAPITAL:
+            if rx.search(s):
+                return name
     return None
+
+
+def capital_info(subject: str, text: str = "") -> dict:
+    """減資／增資：細分種類、減資比率、恢復買賣日（減資）或繳款期間（增資）、認購價"""
+    s = f"{subject or ''} {text or ''}"
+    out: dict = {}
+    if re.search(r"減資|減少資本|資本減少", subject or "") or (not re.search(r"增資", subject or "") and "減資" in s):
+        if re.search(r"減資.{0,40}(?:再|後|同時).{0,10}(?:現金)?增資|增資.{0,20}減資", s[:3000]):
+            out["deal_kind"] = "減資再增資"
+        elif re.search(r"彌補虧損|虧損", s[:3000]):
+            out["deal_kind"] = "虧損減資"
+        elif re.search(r"退還|返還|現金減資", s[:3000]):
+            out["deal_kind"] = "現金減資"
+        else:
+            out["deal_kind"] = "減資"
+        m = re.search(r"減資比率[^0-9%]{0,12}([0-9]+(?:\.[0-9]+)?)\s*%", s) or re.search(r"減資[^。；]{0,30}?([0-9]+(?:\.[0-9]+)?)\s*%", s)
+        if m:
+            out["offer_pct"] = float(m.group(1))
+        m = re.search(r"(?:恢復買賣|新股上市|換發新股上市|恢復交易)[^。；]{0,30}?(\d{2,4}[/.年]\d{1,2}[/.月]\d{1,2})", s)
+        if m:
+            out["period_start"] = roc_to_iso(re.sub(r"[年月.]", "/", m.group(1)))
+    else:
+        out["deal_kind"] = "私募" if "私募" in s[:600] else "現金增資"
+        m = re.search(r"(?:發行|認購|承銷)價(?:格)?[^0-9。]{0,15}([0-9]+(?:\.[0-9]+)?)\s*元", s)
+        if m:
+            out["offer_price"] = float(m.group(1))
+        m = re.search(r"繳款期間[^。；]{0,10}?(\d{2,4}[/.年]\d{1,2}[/.月]\d{1,2})日?\s*(?:至|~|～|－|-)\s*(\d{2,4}[/.年]\d{1,2}[/.月]\d{1,2})", s)
+        if m:
+            out["period_start"] = roc_to_iso(re.sub(r"[年月.]", "/", m.group(1)))
+            out["period_end"] = roc_to_iso(re.sub(r"[年月.]", "/", m.group(2)))
+    return {k: v for k, v in out.items() if v not in (None, "")}
 
 
 def extract(subject: str) -> dict:
@@ -101,7 +147,7 @@ def parse_announcements(html: str) -> list:
             rec = {"target_id": sid, "target_name": r[cn].strip() if cn is not None and cn < len(r) else "",
                    "announce_date": roc_to_iso(r[cd]) if cd is not None and cd < len(r) else None,
                    "subject": subject[:500], "deal_type": kind, "source": "MOPS 重大訊息"}
-            rec.update(extract(subject))
+            rec.update(capital_info(subject) if kind in CAPITAL_TYPES else extract(subject))
             out.append(rec)
     return out
 

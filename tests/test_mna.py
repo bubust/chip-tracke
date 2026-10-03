@@ -104,3 +104,28 @@ def test_group_related_announcements():
     tw = next(x for x in g if x["target_id"] == "6214")
     assert tw["offer_price"] == 92.5 and tw["acquirer"] == "台信電訊" and tw["min_shares"] == 1e8
     assert tw["first_announce"] == "2026-08-12" and len(tw["related"]) == 3
+
+
+def test_capital_classify_and_info():
+    from mna.parser import capital_info
+    assert classify("公告本公司董事會決議辦理減資彌補虧損，減資比率40%") == "減資"
+    assert classify("本公司董事會決議辦理現金增資發行新股") == "現金增資"
+    assert classify("代子公司公告參與XX公司現金增資") is None
+    assert classify("公告本公司註銷庫藏股減資") is None
+    x = capital_info("公告本公司董事會決議辦理減資彌補虧損，減資比率40%")
+    assert x["deal_kind"] == "虧損減資" and x["offer_pct"] == 40
+    y = capital_info("公告本公司現金增資發行新股，認購價格每股25元，繳款期間115/10/12至115/10/20")
+    assert y["offer_price"] == 25 and y["period_end"] == "2026-10-20"
+
+
+def test_signals():
+    from mna.router import deal_signal
+    today = date(2026, 10, 3)
+    base = {"deal_type": "公開收購", "status": "進行中", "first_announce": "2026-10-02"}
+    s = deal_signal({**base, "premium_pre_pct": 20, "premium_pct": 12, "scope": "完全收購"}, today)
+    assert s["level"] == "buy" and "漲停" in s["label"]
+    assert deal_signal({**base, "premium_pre_pct": 18, "premium_pct": 10, "scope": "部分收購"}, today)["level"] == "buy"
+    assert deal_signal({**base, "premium_pre_pct": 8, "premium_pct": 5}, today)["level"] == "watch"
+    assert deal_signal({**base, "premium_pre_pct": 20, "premium_pct": 1}, today)["label"] == "價差已收斂"
+    assert deal_signal({"deal_type": "現金增資", "deal_kind": "現金增資", "status": "已公告"}, today)["level"] == "avoid"
+    assert deal_signal({"deal_type": "減資", "deal_kind": "虧損減資", "status": "未開始", "period_start": "2026-10-20"}, today)["level"] == "watch"

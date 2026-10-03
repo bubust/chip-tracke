@@ -230,6 +230,21 @@
     #watchlist-table th:nth-child(n+11), #watchlist-table td:nth-child(n+11) { display: none; }
     input[type=text], input[type=number], select { font-size: 16px; }   /* iOS 不會自動放大 */
   }
+/* 分頁開頭的使用說明 */
+details.guide{margin:4px 0 8px;border:1px solid #30363d;border-radius:8px;background:#0d1117}
+details.guide>summary{cursor:pointer;padding:7px 10px;font-size:.84rem;font-weight:600;color:var(--accent);list-style:none}
+details.guide>summary::-webkit-details-marker{display:none}
+details.guide>summary::before{content:'▸ ';}
+details.guide[open]>summary::before{content:'▾ ';}
+.guide-body{padding:2px 12px 10px;font-size:.8rem;line-height:1.75;color:var(--text)}
+.guide-body ul{margin:2px 0 6px;padding-left:18px}
+.guide-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:4px 16px;margin:6px 0}
+.guide-body .muted{color:var(--muted);font-size:.74rem}
+.sig{display:inline-block;font-size:.72rem;padding:1px 7px;border-radius:10px;white-space:nowrap;border:1px solid}
+.sig-buy{color:#ef4444;background:#ef444422;border-color:#ef444466}
+.sig-watch{color:#f59e0b;background:#f59e0b22;border-color:#f59e0b66}
+.sig-avoid{color:#22c55e;background:#22c55e1a;border-color:#22c55e55}
+.sig-info{color:#94a3b8;background:#94a3b81a;border-color:#94a3b855}
 </style>
 </head>
 <body>
@@ -265,6 +280,7 @@
   <button onclick="switchTab('relationship')">📊 市場關聯</button>
   <button onclick="switchTab('treasury')">🏦 庫藏股</button>
   <button onclick="switchTab('mna')">🤝 收購併購</button>
+  <button onclick="switchTab('cb')">🎫 可轉債</button>
   <button onclick="switchTab('settings')">設定</button>
 </nav>
 
@@ -619,7 +635,7 @@
   <div class="card">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
       <strong style="font-size:1.05rem">🤝 收購／併購</strong>
-      <span style="font-size:.78rem;color:var(--muted)">公開收購、合併、股份轉換：收購價、溢價、數量、完全或部分收購、收購期間</span>
+      <span style="font-size:.78rem;color:var(--muted)">公開收購、合併、股份轉換、減資／增資：收購價、溢價、數量、完全或部分收購、期間＋進場訊號</span>
       <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn sm" onclick="mnaRefresh()">🔄 從公開資訊觀測站更新</button>
         <button class="btn sm ghost" onclick="mnaEdit(null)">＋ 手動新增</button>
@@ -627,6 +643,33 @@
           <input type="file" accept=".csv,.txt" style="display:none" onchange="mnaImport(this)"></label>
       </span>
     </div>
+    <details id="mna-guide" class="guide" open>
+      <summary>📖 使用說明（依老王筆記設計）</summary>
+      <div class="guide-body">
+        <b>這頁做什麼：</b>每天 18:50 自動從公開資訊觀測站重大訊息抓「公開收購／合併／股份轉換／收購股權」和「減資／現金增資」公告，
+        整理出收購價、溢價、數量、期間，並依筆記規則給<b>訊號</b>。點任一列看細節與提醒。
+        <div class="guide-grid">
+          <div><b>🤝 收購怎麼看</b><ul>
+            <li><b>溢價 ≥ 15%</b> 才進場（溢價＝收購價 ÷ 公告前一天收盤 − 1；表格另列「現價溢價」看還剩多少價差）。</li>
+            <li>看到<b>溢價收購＋買全部股份（完全收購）</b> → 隔天 all in <b>掛漲停買</b>（🔥 訊號）。</li>
+            <li>掛單要<b>分批、一張一張掛</b>，不要一次掛大單。</li>
+            <li>部分收購：應賣超過上限會按比例收購，沒收走的會退回，實際報酬比溢價低。</li>
+          </ul></div>
+          <div><b>✂️ 減資</b><ul>
+            <li><b>虧損減資</b>：恢復買賣首日常跳上，守第一天高低點；一字線就看第二天。短線可能漲，長線看營收，成長的才留。</li>
+            <li><b>減資再增資</b>：看是不是「好資」，是的話後勢可期。</li>
+            <li><b>大漲後減資</b>（現金減資）：依然後勢可期。</li>
+          </ul></div>
+          <div><b>💰 增資</b><ul>
+            <li>增資<b>短線別碰</b>：通常老股換新股，賣壓大；現金增資短線偏利空。</li>
+            <li><b>申購前容易拉抬、繳款前容易大漲</b>：繳款前股價需要有所表現。</li>
+            <li>融券增加、拉回是買點；融券開始減少就是高點。</li>
+          </ul></div>
+        </div>
+        <div class="muted">訊號：<span class="sig sig-buy">可進場</span> <span class="sig sig-watch">觀察</span> <span class="sig sig-avoid">避開</span> <span class="sig sig-info">參考</span>
+          · 主旨或內文沒寫的欄位顯示「待補」，可點進去手動補 · 僅供參考，細節以公告內文為準</div>
+      </div>
+    </details>
     <div id="mna-status" style="font-size:.75rem;color:var(--muted)"></div>
     <div id="mna-progress" style="display:none;font-size:.78rem;color:#f59e0b;margin-top:4px"></div>
     <div id="mna-error" style="display:none;font-size:.78rem;color:#f59e0b;margin-top:6px;line-height:1.6"></div>
@@ -640,14 +683,14 @@
         </select></label>
       <label>類型
         <select id="mna-type" onchange="mnaRender()" style="background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem">
-          <option value="">全部</option><option>公開收購</option><option>合併</option><option>股份轉換</option><option>收購股權</option><option>其他</option>
+          <option value="">全部</option><option value="@mna">收購／合併類</option><option>公開收購</option><option>合併</option><option>股份轉換</option><option>收購股權</option><option>減資</option><option>現金增資</option><option>其他</option>
         </select></label>
       <input id="mna-search" placeholder="代號／名稱／收購方" oninput="mnaRender()" style="width:150px;background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem">
     </div>
     <div id="mna-body"><div style="color:var(--muted);text-align:center;padding:30px">載入中...</div></div>
     <div style="font-size:.72rem;color:#484f58;margin-top:10px;line-height:1.7">
       自動從重大訊息主旨抓類型、收購價、數量、期間；主旨沒寫的欄位顯示「待補」，點一列可以編輯補上 ·
-      溢價＝收購價 ÷ 現價 − 1 · 年化＝溢價換算成以剩餘天數計的年報酬（部分收購可能按比例收購，實際報酬會較低）· 細節以公開資訊觀測站公告為準
+      公告溢價＝收購價 ÷ 公告前一天收盤 − 1（判斷 15% 門檻）· 現價溢價＝收購價 ÷ 現價 − 1（還剩多少價差）· 年化＝現價溢價換算成以剩餘天數計的年報酬（部分收購可能按比例收購，實際報酬會較低）· 細節以公開資訊觀測站公告為準
     </div>
   </div>
 </div>
@@ -670,6 +713,74 @@
 <!-- ═══════════════════════ 市場關聯研究 ═══════════════════════ -->
 <div id="tab-relationship" class="tab">
   <iframe id="relationship-iframe" src="" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
+</div>
+
+<!-- ═══════════════════════ 可轉債 ═══════════════════════ -->
+<div id="tab-cb" class="tab">
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+      <strong style="font-size:1.05rem">🎫 可轉債篩選</strong>
+      <span style="font-size:.78rem;color:var(--muted)">依老王筆記：合理價、六大流程、兩波時機、好債條件 → 找出可以買、有機會的</span>
+      <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn sm" onclick="cbRefresh()">🔄 更新資料</button>
+      </span>
+    </div>
+    <details id="cb-guide" class="guide" open>
+      <summary>📖 使用說明（依老王筆記設計）</summary>
+      <div class="guide-body">
+        <b>這頁做什麼：</b>每個交易日 19:05 自動抓櫃買中心的可轉債（發行資料＋每日行情）、轉換價格調整公告、發行公司的融券餘額和月營收，
+        逐檔套用筆記規則分成四類：<span class="sig sig-buy">可以買</span> <span class="sig sig-watch">有機會</span>
+        <span class="sig sig-avoid">該出場</span> <span class="sig sig-info">觀察</span>。點任一列看完整理由、六大流程進度、K 線。
+        <div class="guide-grid">
+          <div><b>🧮 合理價（重點）</b><ul>
+            <li><b>合理價＝股價 ÷ 轉換價 × 100</b>。比 CB 現價高 → 市場看好，股價會往上；反之則否。</li>
+            <li>轉換價越低，一張（面額 10 萬）可以換越多股；<b>注意籌碼</b>。</li>
+            <li>CB <b>低於面額 100 元＝現賺</b>（到期至少拿回 100）；大股災時可以拼可轉債。</li>
+            <li>CB 訂價前價格會被壓低。</li>
+          </ul></div>
+          <div><b>🔁 六大流程</b><ul>
+            <li>① <b>低檔發債</b>（利多出現）→ 可以參考進場</li>
+            <li>② 營收成長　③ 利多消息（要自己看新聞）</li>
+            <li>④ <b>融券大增</b> → 相對高點到了，考慮出場</li>
+            <li>⑤ 可轉債成交量大增　⑥ 融券大減</li>
+            <li>融券大增後就沒了，大部分撐不到轉換時間；沒有融券可看就看技術分析（季線）。</li>
+          </ul></div>
+          <div><b>⏱ 兩波時機＋好債</b><ul>
+            <li>第一波：<b>定價（發行）之後</b>；第二波：<b>快到期</b>（快到期時營收容易上升）。</li>
+            <li>好債：<b>股東人數少、已轉換率少、委買要高</b>（股東人數、委買要自己查，可在明細手動記錄）。</li>
+            <li>可轉債跟股價一起看，再看融券。</li>
+          </ul></div>
+        </div>
+        <div class="muted">
+          分類規則：<b>可以買</b>＝（合理價 ≥ CB 價 或 CB &lt; 100）＋（營收成長 或 低檔發債）＋已轉換 &lt; 50%＋沒有融券大增 ·
+          <b>有機會</b>＝符合多項加分條件（低檔發債、營收負轉正、CB 量大增、融券大減、兩波時機、溢價低、站上季線…）·
+          <b>該出場</b>＝發行公司融券 5 日大增（≥30% 且 ≥100 張）·
+          低檔發債＝發債日股價在前一年區間的 40% 以下 · 轉換價用最新「轉換價格調整」公告，沒有就用發行時轉換價（可手動修正）· 僅供參考
+        </div>
+      </div>
+    </details>
+    <div id="cb-status" style="font-size:.75rem;color:var(--muted)"></div>
+    <div id="cb-progress" style="display:none;font-size:.78rem;color:#f59e0b;margin-top:4px"></div>
+    <div id="cb-error" style="display:none;font-size:.78rem;color:#f59e0b;margin-top:6px;line-height:1.6"></div>
+  </div>
+  <div class="card">
+    <div id="cb-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;font-size:.82rem;color:var(--muted)">
+      <label>時機
+        <select id="cb-stage" onchange="cbRender()" style="background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem">
+          <option value="">全部</option><option value="new">定價後（新發行）</option><option value="near">快到期／賣回將到</option>
+        </select></label>
+      <label><input type="checkbox" id="cb-par" onchange="cbRender()"> CB &lt; 100</label>
+      <label><input type="checkbox" id="cb-gap" onchange="cbRender()"> 合理價 ≥ CB 價</label>
+      <label><input type="checkbox" id="cb-traded" onchange="cbRender()" checked> 只看近 5 日有成交</label>
+      <input id="cb-search" placeholder="代號／名稱" oninput="cbRender()" style="width:130px;background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem">
+    </div>
+    <div id="cb-body"><div style="color:var(--muted);text-align:center;padding:30px">載入中...</div></div>
+    <div style="font-size:.72rem;color:#484f58;margin-top:10px;line-height:1.7">
+      資料：櫃買中心 OpenAPI（轉(交)換債發行資料）、櫃買可轉債每日行情表、公開資訊觀測站重大訊息（轉換價格調整）、證交所／櫃買融資融券餘額、月營收 ·
+      轉換溢價＝CB 價 ÷ 合理價 − 1 · 已轉換率＝1 − 流通在外 ÷ 發行額
+    </div>
+  </div>
 </div>
 
 <!-- ═══════════════════════ 設定 ═══════════════════════ -->
@@ -1227,7 +1338,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  const idx = { watchlist: 0, market: 1, screen: 2, warrant: 3, regime: 4, sector: 5, relationship: 6, treasury: 7, mna: 8, settings: 9 };
+  const idx = { watchlist: 0, market: 1, screen: 2, warrant: 3, regime: 4, sector: 5, relationship: 6, treasury: 7, mna: 8, cb: 9, settings: 10 };
   const navIdx = idx[name];
   if (navIdx !== undefined) document.querySelectorAll('nav button')[navIdx].classList.add('active');
   if (name === 'settings') { _doSwitchSettings(); }
@@ -1236,6 +1347,7 @@ function switchTab(name) {
   if (name === 'relationship') { const rf2 = document.getElementById('relationship-iframe'); if (rf2 && !rf2.dataset.loaded) { rf2.dataset.loaded = '1'; rf2.src = '/relationship/'; } }
   if (name === 'treasury') { tbOnShow(); }
   if (name === 'mna') { mnaOnShow(); }
+  if (name === 'cb') { cbOnShow(); }
   if (name !== 'watchlist') { _stopPriceRefreshIfActive(); }
   if (name === 'watchlist') { _autoStartPriceRefresh(); }
 }
@@ -5390,5 +5502,6 @@ async function saveAllStratParams() {
 
 <script src="/treasury/static/treasury.js"></script>
 <script src="/mna/static/mna.js"></script>
+<script src="/cb/static/cb.js"></script>
 </body>
 </html>
