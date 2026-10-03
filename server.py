@@ -36,6 +36,8 @@ from relationship.router import router as relationship_router
 from relationship.db import init_db as init_relationship_db
 from treasury.router import router as treasury_router
 from treasury.db import init_db as init_treasury_db
+from mna.router import router as mna_router
+from mna.db import init_db as init_mna_db
 
 from chip_tracker_v2 import (
     DATA_DIR, DB_PATH,
@@ -258,6 +260,7 @@ async def lifespan(app: FastAPI):
     init_positioning_db()
     init_relationship_db()
     init_treasury_db()
+    init_mna_db()
     start_warrant_scheduler()
     # 從 Supabase 恢復 watchlist 到本地 SQLite（Render 重啟後 SQLite 為空）
     try:
@@ -424,6 +427,20 @@ async def lifespan(app: FastAPI):
         _tb_scheduler.start()
     except Exception as _tb_e:
         import logging; logging.getLogger(__name__).warning(f"[treasury_scheduler] {_tb_e}")
+    # 收購併購：資料表空的話回補近 30 個交易日重大訊息；之後每個交易日 18:50 更新近 5 天
+    try:
+        from mna.router import run_refresh as _mna_refresh
+        from mna.db import get_status as _mna_status
+        if not _mna_status().get("rows"):
+            threading.Thread(target=_mna_refresh, kwargs={"days": 30}, daemon=True, name="mna-init").start()
+        from apscheduler.schedulers.background import BackgroundScheduler as _MnaSched
+        from zoneinfo import ZoneInfo as _MnaZone
+        _mna_scheduler = _MnaSched(timezone=_MnaZone("Asia/Taipei"))
+        _mna_scheduler.add_job(lambda: _mna_refresh(days=5), "cron", day_of_week="mon-fri",
+                               hour=18, minute=50, id="mna_daily", replace_existing=True)
+        _mna_scheduler.start()
+    except Exception as _mna_e:
+        import logging; logging.getLogger(__name__).warning(f"[mna_scheduler] {_mna_e}")
     # 啟動 positioning 排程（每個交易日 16:45 自動更新）
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
@@ -816,6 +833,8 @@ def relationship_index():
 # 掛載庫藏股路由與前端 JS（分頁直接在 dashboard 內，才能開 K 線、加觀察清單）
 app.include_router(treasury_router)
 app.mount("/treasury/static", StaticFiles(directory=str(BASE_DIR / "treasury-frontend")), name="treasury_static")
+app.include_router(mna_router)
+app.mount("/mna/static", StaticFiles(directory=str(BASE_DIR / "mna-frontend")), name="mna_static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -3644,6 +3663,57 @@ async def api_screen_run(background_tasks: BackgroundTasks):
 def api_screen_status():
     from yahoo_price import get_scan_status
     return get_scan_status()
+
+_levels_cache: dict = {}
+
+
+def _levels_for(sid: str) -> dict:
+    """單支股票關鍵價位（price_levels.compute_levels），10 分鐘快取"""
+    import time as _t
+    from yahoo_price import _fetch_for_scan, get_stock_list
+    from price_levels import compute_levels
+    hit = _levels_cache.get(sid)
+    if hit and _t.time() - hit[0] < 600:
+        return hit[1]
+    stocks = get_stock_list()
+    row = stocks[stocks["stock_id"] == sid]
+    mkt = str(row.iloc[0]["type"]) if not row.empty else "twse"
+    name = str(row.iloc[0]["stock_name"]) if not row.empty else ""
+    df = _fetch_for_scan(sid, mkt)
+    if df is None or df.empty:
+        res = {"stock_id": sid, "name": name, "error": "抓不到 K 線資料"}
+    else:
+        tp = {}
+        try:
+            sp = _load_strategy_params().get("S_THUNDER") or {}
+            tp = {"base_days": int(sp.get("base_days", 90)), "base_range": float(sp.get("base_range", 15)) / 100,
+                  "vol_mult": float(sp.get("vol_mult", 2.5)), "max_retrace": float(sp.get("max_retrace", 0.618)),
+                  "breakout_within": 120}   # 觀察清單：半年內的突破都算進來
+        except Exception:
+            pass
+        res = {"stock_id": sid, "name": name, **compute_levels(df, tp)}
+    _levels_cache[sid] = (_t.time(), res)
+    return res
+
+
+@app.get("/api/levels/{stock_id}")
+def api_levels(stock_id: str):
+    """關鍵價位：第一／第二壓力區、目標價、停損（爆量低點／波段低點／前低／上漲模式出場）"""
+    sid = _check_sid(stock_id)
+    return JSONResponse(content=_sanitize_for_json(_levels_for(sid)))
+
+
+@app.get("/api/levels")
+def api_levels_batch(ids: str = ""):
+    """批次：ids=2330,2317（最多 40 支）"""
+    from concurrent.futures import ThreadPoolExecutor
+    sids = [x for x in (i.strip() for i in ids.split(",")) if _SID_OK.match(x)][:40]
+    out = {}
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        for sid, res in zip(sids, ex.map(lambda x: _levels_for(x), sids)):
+            out[sid] = res
+    return JSONResponse(content=_sanitize_for_json(out))
+
 
 @app.get("/api/screen/warrant-top")
 def api_screen_warrant_top():

@@ -44,6 +44,7 @@ STRATEGIES = {
     "S_VOLX":       "量爆拉升（成交量暴增3倍且站上20週線）",
     "S_VOLX_SHORT": "量爆下殺（成交量暴增3倍且跌破20週線）",
     "S_WARRANT_TOP": "認購權證前十大（昨日）",
+    "S_THUNDER":    "平地一聲雷（長期盤整後帶量突破）",
 }
 
 STRATEGY_PARAMS_SCHEMA = {
@@ -102,6 +103,15 @@ STRATEGY_PARAMS_SCHEMA = {
         {"key": "vol_ref_days",     "label": "均量參考天數",          "type": "number", "default": 20,  "min": 5,   "max": 60,   "step": 5},
         {"key": "macd_ref_days",    "label": "MACD綠柱縮短比較天數",  "type": "number", "default": 3,   "min": 1,   "max": 8,    "step": 1},
     ],
+    "S_THUNDER": [
+        {"key": "min_price",       "label": "最低股價",                 "type": "number", "default": 10,   "min": 1,   "max": 500, "step": 1},
+        {"key": "base_days",       "label": "盤整天數（≥）",             "type": "number", "default": 90,   "min": 30,  "max": 250, "step": 5},
+        {"key": "base_range",      "label": "盤整區間（收盤高低差 %）",   "type": "number", "default": 15,   "min": 5,   "max": 40,  "step": 1},
+        {"key": "vol_mult",        "label": "突破量（20 日均量倍數 ≥）",  "type": "number", "default": 2.5,  "min": 1.5, "max": 10,  "step": 0.5},
+        {"key": "max_retrace",     "label": "回檔上限（第一段漲幅比例）", "type": "number", "default": 0.618,"min": 0.3, "max": 1,   "step": 0.01},
+        {"key": "breakout_within", "label": "突破發生在近幾天內",         "type": "number", "default": 30,   "min": 1,   "max": 120, "step": 1},
+    ],
+
     "S_RES": [
         {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
         {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
@@ -1107,6 +1117,40 @@ def screen_s_warrant_top(
     return results
 
 
+def screen_sthunder(prices: dict, names: dict = None, params: dict = None) -> list:
+    """平地一聲雷：盤整 base_days 天（收盤區間 ≤ base_range%）後，收盤帶量（≥ 20 日均量 vol_mult 倍）突破盤整上緣，
+    突破在近 breakout_within 天內、現價仍在盤整上緣之上。回檔 ≤ max_retrace 時給目標價＝第一段高點 − 突破點 ＋ 回檔低點。"""
+    from price_levels import detect_thunder
+    p = params or {}
+    tp = {"base_days": int(p.get("base_days", 90)), "base_range": float(p.get("base_range", 15)) / 100,
+          "vol_mult": float(p.get("vol_mult", 2.5)), "max_retrace": float(p.get("max_retrace", 0.618)),
+          "breakout_within": int(p.get("breakout_within", 30))}
+    min_price = float(p.get("min_price", 10))
+    results = []
+    for sid, df in prices.items():
+        if len(df) < tp["base_days"] + 22:
+            continue
+        c = float(df.iloc[-1]["close"])
+        if c < min_price:
+            continue
+        try:
+            th = detect_thunder(df.reset_index(drop=True), tp)
+        except Exception:
+            th = None
+        if not th:
+            continue
+        results.append({
+            "stock_id": sid, "name": _name(sid, names), "close": round(c, 2),
+            "change_pct": _change_pct(df), "volume": round(float(df.iloc[-1].get("volume", 0) or 0)),
+            "bb_score": calc_bb_score(df), "strategy": "S_THUNDER",
+            "stage": th["stage"], "base_top": th["base_top"], "breakout_date": th["breakout_date"],
+            "breakout_vol_ratio": th["breakout_vol_ratio"], "first_high": th["high"],
+            "pullback_low": th["pullback_low"], "retrace": th["retrace"], "target": th["target"],
+            "uptrend": th["uptrend"], "exit_prev_low": th["exit_prev_low"],
+        })
+    return results
+
+
 # 純價格型策略（掃描、K 線回測共用同一份；CHIP / S_WARRANT_TOP 需外部資料不在此）
 PRICE_STRATEGY_FNS = {
     "S1":           screen_s1,
@@ -1121,6 +1165,7 @@ PRICE_STRATEGY_FNS = {
     "S_RES":        screen_sres,
     "S_VOLX":       screen_svolx,
     "S_VOLX_SHORT": screen_svolx_short,
+    "S_THUNDER":    screen_sthunder,
 }
 SHORT_STRATEGIES = {"S1_SHORT", "S_VOLX_SHORT"}
 
