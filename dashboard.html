@@ -3879,6 +3879,27 @@ function viewStrategy(s) {
     btn.classList.toggle('active', btn.dataset.s === s);
   });
   renderScreenTable(s, _screenAllResults[s] || []);
+  if (s === 'S_WARRANT_TOP') _loadWarrantTopLive();
+}
+
+// 認購前十大：點開就即時抓（盤中＝今天到目前，週六日＝週五）
+let _wtLoading = false;
+async function _loadWarrantTopLive() {
+  if (_wtLoading) return;
+  _wtLoading = true;
+  const note = document.getElementById('scan-warrant-note');
+  if (note) note.textContent = '🏷 認購前十大：抓取最新權證成交中…';
+  try {
+    const r = await api('GET', '/api/screen/warrant-top');
+    _screenAllResults = _screenAllResults || {};
+    _screenAllResults.S_WARRANT_TOP = r.results || [];
+    try { lsSaveScreen(_screenAllResults); } catch (e) {}
+    renderStratBar();
+    if (_viewingStrategy === 'S_WARRANT_TOP') renderScreenTable('S_WARRANT_TOP', _screenAllResults.S_WARRANT_TOP);
+    if (note) note.textContent = '🏷 ' + (r.note || '');
+  } catch (e) {
+    if (note) note.textContent = '🏷 認購前十大抓取失敗：' + e.message;
+  } finally { _wtLoading = false; }
 }
 
 function sortScreenBy(col) {

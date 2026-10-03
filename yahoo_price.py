@@ -494,6 +494,86 @@ if _cached_results and _cached_ts:
     _scan_status["finished_at"] = _cached_ts   # 讓前端 finished_at 路徑正常走
 
 
+_wt_lock = threading.Lock()
+_wt_cache = {"at": 0.0, "trade_date": None, "result": None}
+
+
+def refresh_warrant_top(force: bool = False) -> dict:
+    """認購前十大：即時抓（盤中＝今天目前為止的權證成交；收盤後／週六日＝最近交易日，例如週五）。
+    盤中 3 分鐘內、盤後 30 分鐘內重複呼叫直接回快取。結果同步寫回掃描結果的 S_WARRANT_TOP。"""
+    from scanner import screen_s_warrant_top
+    from warrant.flow import get_available_dates, get_ranking
+    from warrant.router import refresh_flow_from_mis, _is_market_open
+    market_open = _is_market_open()
+    ttl = 180 if market_open else 1800
+    if not _wt_lock.acquire(timeout=120):
+        return _wt_cache["result"] or {"results": [], "note": "其他人正在更新，請稍後再試"}
+    try:
+        if not force and _wt_cache["result"] and time.time() - _wt_cache["at"] < ttl:
+            return _wt_cache["result"]
+        note = ""
+        try:
+            info = refresh_flow_from_mis()
+        except Exception as e:
+            info = {"trade_date": None}
+            print(f"[WARRANT_TOP] MIS 失敗: {e}")
+        if not info.get("trade_date") and not market_open:
+            # MIS 拿不到 → 試官方日報（最近一個交易日）
+            try:
+                from warrant.flow import calc_and_save
+                t = _compute_scan_target()
+                calc_and_save(f"{t[:4]}-{t[4:6]}-{t[6:]}")
+            except Exception as e:
+                print(f"[WARRANT_TOP] 官方日報失敗: {e}")
+        dates = get_available_dates()
+        wf_date = info.get("trade_date") or (dates[0] if dates else None)
+        if not wf_date:
+            result = {"results": [], "trade_date": None, "mode": "盤中" if market_open else "盤後",
+                      "note": "抓不到權證成交資料（MIS 與證交所都沒有回應）"}
+        else:
+            stocks = get_stock_list()
+            names = dict(zip(stocks["stock_id"], stocks["stock_name"]))
+            mkt = dict(zip(stocks["stock_id"], stocks["type"]))
+            params = {}
+            try:
+                from chip_tracker_v2 import get_conn
+                c = get_conn()
+                row = c.execute("SELECT value FROM settings WHERE key='sp_S_WARRANT_TOP'").fetchone()
+                c.close()
+                if row:
+                    params = _json.loads(row[0])
+            except Exception:
+                pass
+            limit = int(params.get("limit", 10))
+            rows = get_ranking(date_str=wf_date, sort_by="call", limit=min(limit * 3, 60))
+            prices = {}
+            for r in rows:
+                sid = r.get("underlying_code", "")
+                if sid and sid not in prices:
+                    try:
+                        df = _fetch_for_scan(sid, mkt.get(sid, "twse"))
+                        if not df.empty:
+                            prices[sid] = df
+                    except Exception:
+                        pass
+            res = screen_s_warrant_top(rows, prices, names, params=params)
+            mode = "盤中即時" if market_open else "最近交易日"
+            note = f"認購前十大：{wf_date}（{mode}{'，' + time.strftime('%H:%M') + ' 更新' if market_open else ''}）"
+            with _results_lock:
+                if _scan_status.get("results") is not None:
+                    _scan_status["results"]["S_WARRANT_TOP"] = res
+                    _scan_status["warrant_note"] = note
+            try:
+                _save_scan_cache(dict(_scan_status["results"]))
+            except Exception:
+                pass
+            result = {"results": res, "trade_date": wf_date, "mode": mode, "note": note}
+        _wt_cache.update(at=time.time(), trade_date=wf_date, result=result)
+        return result
+    finally:
+        _wt_lock.release()
+
+
 def get_scan_status() -> dict:
     counts = {k: len(v) for k, v in _scan_status["results"].items()} if _scan_status["results"] else {}
     return {
@@ -784,64 +864,12 @@ async def run_market_scan(strategy_params: dict = None):
         _save_scan_cache(all_results)
         print(f"[SCAN] 主要策略完成，命中={sum(len(v) for v in all_results.values())}")
 
-        # S_WARRANT_TOP：認購權證前十大（按需 fetch 價格，不再依賴已移除的 all_prices）
+        # S_WARRANT_TOP：認購權證前十大（即時：盤中＝今天到目前，收盤後／週末＝最近交易日）
         try:
-            from warrant.flow import get_available_dates as _wf_dates_fn, get_ranking as _wf_ranking
-            from scanner import screen_s_warrant_top
-            _wf_dates  = _wf_dates_fn()
-            _wf_date   = _wf_dates[0] if _wf_dates else None
-            _tgt = _scan_cache_target_date
-            _tgt_dash = f"{_tgt[:4]}-{_tgt[4:6]}-{_tgt[6:]}" if len(_tgt) == 8 else ""
-            if (not _wf_date or (_tgt_dash and _wf_date < _tgt_dash)):
-                # 權證金流缺最新交易日：先試官方日報，再用權證盤外掃描（MIS 盤後成交量）聚合
-                print(f"[SCAN] S_WARRANT_TOP：warrant_flow 最新 {_wf_date or '無'}，目標 {_tgt_dash}，補算中…")
-                def _refresh_flow():
-                    try:
-                        from warrant.flow import calc_and_save as _wf_calc
-                        if _tgt_dash and _wf_calc(_tgt_dash) > 0:
-                            return
-                    except Exception as _e1:
-                        print(f"[SCAN] 權證官方日報失敗: {_e1}")
-                    try:
-                        from warrant.router import run_scanner as _w_scan, _is_market_open as _w_open
-                        if not _w_open():
-                            _w_scan()
-                    except Exception as _e2:
-                        print(f"[SCAN] 權證盤外掃描失敗: {_e2}")
-                await loop.run_in_executor(None, _refresh_flow)
-                _wf_dates = _wf_dates_fn()
-                _wf_date = _wf_dates[0] if _wf_dates else None
-            # 最多接受 7 天前的金流（連假時用最後一個交易日）
-            if _wf_date and (datetime.date.today() - datetime.date.fromisoformat(_wf_date)).days > 7:
-                print(f"[SCAN] S_WARRANT_TOP：最新金流 {_wf_date} 已超過 7 天，不採用")
-                _scan_status["warrant_note"] = f"權證金流最新只有 {_wf_date}（超過 7 天），認購前十大暫停"
-                _wf_date = None
-            if _wf_date:
-                _scan_status["warrant_note"] = f"認購前十大使用 {_wf_date} 權證成交"
-                _wf_params = _strategy_params.get("S_WARRANT_TOP", {})
-                _wf_limit  = int(_wf_params.get("limit", 10))
-                _wf_fetch  = min(_wf_limit * 3, 60)
-                _wf_rows   = _wf_ranking(date_str=_wf_date, sort_by="call", limit=_wf_fetch)
-                # 只為權證標的股票按需取得價格（通常 10-30 支，不再累積全市場）
-                _warrant_prices = {}
-                def _fetch_warrant_prices():
-                    for _wr in _wf_rows:
-                        _wsid = _wr.get("underlying_code", "")
-                        if _wsid and _wsid not in _warrant_prices:
-                            try:
-                                _wdf = _fetch_for_scan(_wsid, market_type_map.get(_wsid, "twse"))
-                                if not _wdf.empty:
-                                    _warrant_prices[_wsid] = _wdf
-                            except Exception:
-                                pass
-                await loop.run_in_executor(None, _fetch_warrant_prices)
-                all_results["S_WARRANT_TOP"] = screen_s_warrant_top(
-                    _wf_rows, _warrant_prices, names, params=_wf_params
-                )
-                print(f"[SCAN] S_WARRANT_TOP {_wf_date} 命中：{len(all_results['S_WARRANT_TOP'])} 支")
-            else:
-                print("[SCAN] S_WARRANT_TOP 跳過（warrant_flow 無資料）")
-                _scan_status.setdefault("warrant_note", "權證金流抓不到（證交所/櫃買被擋且 MIS 也沒有資料），認購前十大暫停")
+            _wt = await loop.run_in_executor(None, lambda: refresh_warrant_top(force=True))
+            all_results["S_WARRANT_TOP"] = _wt.get("results", [])
+            _scan_status["warrant_note"] = _wt.get("note", "")
+            print(f"[SCAN] S_WARRANT_TOP {_wt.get('trade_date')} 命中：{len(all_results['S_WARRANT_TOP'])} 支")
         except Exception as _we:
             import traceback; traceback.print_exc()
             print(f"[SCAN] S_WARRANT_TOP 失敗: {_we}")
