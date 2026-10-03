@@ -345,6 +345,77 @@ def run_scanner():
         with _scanner_lock:
             _scanner_cache["is_scanning"] = False
 
+def refresh_flow_from_mis(limit: int = 3000) -> dict:
+    """用 MIS 即時報價算權證金流（認購前十大用）：
+    盤中 = 今天到目前為止的累積成交；收盤後／週末 = 最近一個交易日（MIS 會保留到下個交易日開盤前）。
+    成交金額 = 累積成交張數 v × 成交價 × 1000。依 MIS 回傳的資料日期寫入 warrant_flow；
+    該日已有官方日報（warrant_flow_raw 有資料）就不覆蓋。回傳 {trade_date, rows, warrants}"""
+    with _db.db() as conn:
+        cands = conn.execute("""
+            SELECT w.code, w.market, w.kind, w.underlying_code, u.name AS underlying_name
+            FROM warrants w LEFT JOIN underlyings u ON u.code = w.underlying_code
+            WHERE w.is_active = 1 AND w.underlying_code IS NOT NULL
+              AND w.last_trade_date >= date('now')
+            ORDER BY w.issued_lots DESC LIMIT ?
+        """, (limit,)).fetchall()
+    flow: dict = {}
+    trade_date = None
+    n_traded = 0
+    BATCH = 50
+    for i in range(0, len(cands), BATCH):
+        batch = cands[i:i + BATCH]
+        codes = [f"otc_{r['code']}" if r["market"] == "OTC" else r["code"] for r in batch]
+        try:
+            data = mis.get_quotes(codes, cache_ttl=0)
+        except Exception as e:
+            log.warning(f"[flow-mis] batch {i // BATCH} 失敗: {e}")
+            continue
+        for r in batch:
+            item = data.get(r["code"]) or data.get(f"otc_{r['code']}")
+            if not item:
+                continue
+            q = mis.parse_price(item)
+            vol, px = q.get("volume") or 0, q.get("price") or 0
+            d = str(item.get("d") or "")
+            if len(d) == 8 and d.isdigit() and (trade_date is None or d > trade_date):
+                trade_date = d
+            if vol <= 0 or not px:
+                continue
+            n_traded += 1
+            f = flow.setdefault(r["underlying_code"], {
+                "name": r["underlying_name"] or r["underlying_code"],
+                "call_volume": 0, "call_turnover": 0.0, "call_count": 0,
+                "put_volume": 0, "put_turnover": 0.0, "put_count": 0})
+            k = "call" if r["kind"] == "CALL" else "put"
+            f[f"{k}_volume"] += vol
+            f[f"{k}_turnover"] += vol * px * 1000
+            f[f"{k}_count"] += 1
+    if not trade_date or not flow:
+        return {"trade_date": None, "rows": 0, "warrants": n_traded}
+    td = f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]}"
+    with _db.db() as conn:
+        official = conn.execute("SELECT 1 FROM warrant_flow_raw WHERE trade_date=? LIMIT 1", (td,)).fetchone()
+        if official:
+            return {"trade_date": td, "rows": 0, "warrants": n_traded, "official": True}
+        now_s = datetime.now().isoformat(timespec="seconds")
+        rows = []
+        for ul, f in flow.items():
+            total = f["call_turnover"] + f["put_turnover"]
+            if total <= 0:
+                continue
+            cp = round(f["call_turnover"] / f["put_turnover"], 3) if f["put_turnover"] > 0 else None
+            rows.append((td, ul, f["name"], f["call_volume"], round(f["call_turnover"]), f["call_count"],
+                         f["put_volume"], round(f["put_turnover"]), f["put_count"],
+                         round(f["call_turnover"] - f["put_turnover"]), round(total), cp, now_s))
+        conn.executemany("""
+            INSERT OR REPLACE INTO warrant_flow
+            (trade_date, underlying_code, underlying_name, call_volume, call_turnover, call_count,
+             put_volume, put_turnover, put_count, net_turnover, total_turnover, cp_ratio, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""", rows)
+    log.info(f"[flow-mis] {td} 寫入 {len(rows)} 檔標的（{n_traded} 檔權證有成交）")
+    return {"trade_date": td, "rows": len(rows), "warrants": n_traded}
+
+
 # ── Scheduler ───────────────────────────────────────────────────────────
 scheduler = BackgroundScheduler(timezone="Asia/Taipei")
 

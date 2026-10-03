@@ -3645,6 +3645,13 @@ def api_screen_status():
     from yahoo_price import get_scan_status
     return get_scan_status()
 
+@app.get("/api/screen/warrant-top")
+def api_screen_warrant_top():
+    """認購前十大即時抓：盤中＝今天目前為止，週六日／收盤後＝最近交易日（週五）"""
+    from yahoo_price import refresh_warrant_top
+    return JSONResponse(content=_sanitize_for_json(refresh_warrant_top()))
+
+
 @app.get("/api/screen/results")
 def api_screen_results():
     from yahoo_price import get_scan_results
