@@ -332,7 +332,21 @@ async def lifespan(app: FastAPI):
                 if not has_oh:
                     _lg.info("[regime_backfill] OVERHEATING_INDEX 缺失，重新抓取 MI5MINS")
                     fetch_mi5mins()
+                # 融資餘額 < 20 天（Leverage 算不出來）、上櫃指數 < 20 天（舊版 Yahoo 代號錯）→ 回補
+                with _rdb() as _c3:
+                    _n_margin = _c3.execute("SELECT COUNT(*) FROM market_daily WHERE series='MARGIN_BALANCE'").fetchone()[0]
+                    _n_otc = _c3.execute("SELECT COUNT(*) FROM market_daily WHERE series='OTC'").fetchone()[0]
+                if _n_otc < 20:
+                    _lg.info(f"[regime_backfill] OTC 只有 {_n_otc} 天，重抓指數")
+                    regime_fetch_all(days=90)
+                if _n_margin < 20:
+                    from regime.fetcher import fetch_twse_margin_history
+                    _lg.info(f"[regime_backfill] 融資餘額只有 {_n_margin} 天，回補歷史")
+                    fetch_twse_margin_history(days=60)
                 regime_backfill_factors(days=120)
+                # 每次啟動重算近 60 天（很輕）：公式更新或資料補齊後，舊的 Leverage=50 / Divergence=0 佔位值會被覆蓋
+                from regime.factor import recalc_recent_factors
+                recalc_recent_factors(days=60)
             except Exception as _e:
                 import logging; logging.getLogger(__name__).error(f"[regime_backfill] {_e}")
         threading.Thread(target=_regime_backfill, daemon=True).start()
@@ -699,6 +713,55 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="籌碼追蹤系統", lifespan=lifespan)
 
+# ── 寫入保護：設定 ADMIN_PASSWORD 後，所有 POST/PUT/PATCH/DELETE 都要帶有效的 X-Auth-Token ──
+_AUTH_EXEMPT = {"/api/auth/login"}
+# 讀取也要登入的診斷端點（會露出觀察清單、推播紀錄、資料源原始回應）
+_AUTH_READ_PREFIXES = ("/api/debug", "/api/watchlist/debug", "/api/ingest/debug", "/api/ingest/log",
+                       "/warrant/api/ingest/debug", "/warrant/api/ingest/log", "/api/push-log")
+
+
+@app.middleware("http")
+async def _auth_guard(request: Request, call_next):
+    import auth as _auth
+    path = request.url.path
+    needs = (request.method in ("POST", "PUT", "PATCH", "DELETE") and path not in _AUTH_EXEMPT) \
+        or path.startswith(_AUTH_READ_PREFIXES)
+    if (needs and _auth.password_configured()
+            and not _auth.check_token(request.headers.get("x-auth-token", ""))):
+        return JSONResponse({"detail": "需要登入才能修改資料", "auth_required": True}, status_code=401)
+    return await call_next(request)
+
+
+class _LoginBody(BaseModel):
+    password: str = ""
+
+
+@app.post("/api/auth/login")
+def api_auth_login(body: _LoginBody, request: Request):
+    import auth as _auth
+    if not _auth.password_configured():
+        return {"ok": True, "token": "", "protected": False,
+                "message": "尚未設定 ADMIN_PASSWORD，目前不需要登入"}
+    if not _auth.allow_attempt(_auth.client_ip(request)):
+        raise HTTPException(status_code=429, detail="嘗試太多次，請 10 分鐘後再試")
+    if not _auth.check_password(body.password):
+        raise HTTPException(status_code=401, detail="密碼錯誤")
+    return {"ok": True, "token": _auth.make_token(), "days": _auth.TOKEN_DAYS, "protected": True}
+
+
+@app.get("/api/auth/status")
+def api_auth_status(request: Request):
+    import auth as _auth
+    protected = _auth.password_configured()
+    return {"protected": protected,
+            "logged_in": (not protected) or _auth.check_token(request.headers.get("x-auth-token", ""))}
+
+
+@app.get("/auth-shim.js", include_in_schema=False)
+def auth_shim_js():
+    return FileResponse(str(BASE_DIR / "auth-shim.js"), media_type="application/javascript")
+
+
 # 掛載 warrant 路由（prefix=/warrant）
 app.include_router(warrant_router, prefix="/warrant")
 
@@ -864,11 +927,29 @@ def api_get_watchlist():
     conn.close()
     return [dict(r) for r in rows]
 
+import re as _re_wl
+_SID_OK = _re_wl.compile(r"^[0-9A-Za-z]{2,10}$")
+
+
+def _check_sid(sid: str) -> str:
+    """股票代號只能是英數字（避免被塞進畫面變成程式碼）"""
+    sid = (sid or "").strip()
+    if not _SID_OK.match(sid):
+        raise HTTPException(status_code=400, detail="股票代號格式不正確")
+    return sid
+
+
+def _clean_text(v, limit: int) -> str:
+    """去掉控制字元、限制長度（前端也會跳脫，這裡再擋一層）"""
+    v = "".join(ch for ch in str(v or "") if ch >= " " or ch == "\t").strip()
+    return v[:limit]
+
+
 @app.post("/api/watchlist")
 def api_add_watchlist(item: WatchlistItem):
-    sid  = item.stock_id.strip()
-    name = (item.name or "").strip()
-    note = (item.note or "").strip()
+    sid  = _check_sid(item.stock_id)
+    name = _clean_text(item.name, 40)
+    note = _clean_text(item.note, 60)
     now  = datetime.now().isoformat()
     sb.wl_add(sid, name, now, note)
     conn = get_conn()
@@ -889,6 +970,7 @@ def api_add_watchlist(item: WatchlistItem):
 
 @app.delete("/api/watchlist/{stock_id}")
 def api_del_watchlist(stock_id: str):
+    stock_id = _check_sid(stock_id)
     sb.wl_delete(stock_id)
     sb.cd_delete_stock(stock_id)
     conn = get_conn()
@@ -899,7 +981,8 @@ def api_del_watchlist(stock_id: str):
 
 @app.put("/api/watchlist/{stock_id}")
 def api_update_watchlist(stock_id: str, item: WatchlistItem):
-    name = (item.name or "").strip()
+    stock_id = _check_sid(stock_id)
+    name = _clean_text(item.name, 40)
     sb.wl_update_name(stock_id, name)
     conn = get_conn()
     conn.execute("UPDATE watchlist SET name=? WHERE stock_id=?", (name, stock_id))
@@ -910,8 +993,9 @@ def api_update_watchlist(stock_id: str, item: WatchlistItem):
 @app.post("/api/watchlist/{stock_id}/memo")
 async def api_update_memo(stock_id: str, request: Request):
     """更新個人備註（不影響策略 note 欄位）"""
+    stock_id = _check_sid(stock_id)
     body = await request.json()
-    memo = str(body.get("memo", "")).strip()
+    memo = _clean_text(body.get("memo", ""), 200)
     conn = get_conn()
     conn.execute("UPDATE watchlist SET memo=? WHERE stock_id=?", (memo, stock_id))
     conn.commit()
@@ -921,8 +1005,9 @@ async def api_update_memo(stock_id: str, request: Request):
 @app.post("/api/watchlist/{stock_id}/note")
 async def api_update_note(stock_id: str, request: Request):
     """更新來源標籤"""
+    stock_id = _check_sid(stock_id)
     body = await request.json()
-    note = str(body.get("note", "")).strip()
+    note = _clean_text(body.get("note", ""), 60)
     sb.wl_update_note(stock_id, note)
     conn = get_conn()
     conn.execute("UPDATE watchlist SET note=? WHERE stock_id=?", (note, stock_id))
@@ -1138,7 +1223,7 @@ async def api_indices():
 
     # ── 3. FinMind 備援：TF/TE 最近日收盤 ──
     import datetime as _dt_idx
-    _FM_TOKEN_IDX = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0.LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
+    _FM_TOKEN_IDX = _FINMIND_TOKEN
     missing_fut = [k for k in ("tf", "te") if result[k]["price"] is None]
     if missing_fut:
         start_fm = (_dt_idx.datetime.now(_dt_idx.timezone(_dt_idx.timedelta(hours=8))).date() - _dt_idx.timedelta(days=10)).strftime("%Y-%m-%d")
@@ -2185,6 +2270,33 @@ async def _api_stock_deep_analysis_impl(stock_id: str):
     }
 
 
+def _added_prices(rows) -> dict:
+    """{stock_id: (加入日收盤價, YYYYMMDD)}：加入當天（假日則前一個交易日）的收盤，來自 price_daily 快取"""
+    out = {}
+    try:
+        from price_cache import init_price_db
+        init_price_db()
+        pconn = sqlite3.connect(str(DB_PATH), timeout=5.0)
+        for r in rows:
+            added = (r["added_at"] or "") if "added_at" in r.keys() else ""
+            d = added[:10].replace("-", "").replace("/", "")
+            if len(d) != 8 or not d.isdigit():
+                continue
+            row = pconn.execute(
+                "SELECT close, date FROM price_daily WHERE stock_id=? AND date<=? AND close>0 "
+                "ORDER BY date DESC LIMIT 1", (r["stock_id"], d)).fetchone()
+            if row is None:   # 加入日早於快取 → 用快取最早一天，總比沒有好（前端會標示日期）
+                row = pconn.execute(
+                    "SELECT close, date FROM price_daily WHERE stock_id=? AND date>=? AND close>0 "
+                    "ORDER BY date LIMIT 1", (r["stock_id"], d)).fetchone()
+            if row:
+                out[r["stock_id"]] = (round(float(row[0]), 2), str(row[1]))
+        pconn.close()
+    except Exception as e:
+        print(f"[watchlist] 加入日股價查詢失敗: {e}")
+    return out
+
+
 @app.get("/api/watchlist/summary")
 async def api_watchlist_summary():
     from yahoo_price import get_stock_list
@@ -2263,6 +2375,8 @@ async def api_watchlist_summary():
         fm_fb = await _fetch_finmind_prices(still_miss)
         latest_prices.update(fm_fb)
 
+    added_px = _added_prices(rows)
+
     result = []
     for r in rows:
         sid  = r["stock_id"]
@@ -2275,6 +2389,8 @@ async def api_watchlist_summary():
             "note":       (r["note"] or "").strip() if "note" in r.keys() else "",
             "memo":       (r["memo"] or "").strip() if "memo" in r.keys() else "",
             "added_at":   (r["added_at"] or "") if "added_at" in r.keys() else "",
+            "added_price":      (added_px.get(sid) or (None, None))[0],
+            "added_price_date": (added_px.get(sid) or (None, None))[1],
             "close":      price_info.get("close"),
             "change_pct": price_info.get("change_pct"),
             "bb_score":   price_info.get("bb_score"),  # None → 前端顯示 "—"（MIS/FinMind fallback 無OHLCV無法計算BB）
@@ -2496,6 +2612,12 @@ def _do_system_refresh():
             _set_step("regime", "running")
             regime_fetch_all(days=5)
             fetch_twse_margin()
+            try:
+                from regime.fetcher import fetch_twse_margin_history, fetch_mis_index_today
+                fetch_mis_index_today()
+                fetch_twse_margin_history(days=60)   # 只補缺的日子（已有就跳過，很快）
+            except Exception as _mh_e:
+                lg.warning(f"[refresh_all] 融資歷史/MIS 指數: {_mh_e}")
             fetch_twse_foreign_spot()
             fetch_twse_market_breadth(lookback=90)
             fetch_taifex_foreign_futures()
@@ -3288,7 +3410,7 @@ def api_stock_ohlcv(stock_id: str, interval: str = "1d"):
     # Yahoo Finance 全部失敗 → FinMind 備援（日線 / 週線 / 月線）
     if not is_intraday:
         try:
-            _FM_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0.LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
+            _FM_TOKEN = _FINMIND_TOKEN
             import datetime as _dt2
             start_date = (_dt2.datetime.now(_dt2.timezone(_dt2.timedelta(hours=8))).date() - _dt2.timedelta(days=days)).strftime("%Y-%m-%d")
             fm_r = httpx.get(
@@ -3973,7 +4095,7 @@ async def debug_prices():
         # FinMind — 測試今日收盤 + 分鐘資料
         import datetime as _dt
         today_str = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).date().strftime("%Y-%m-%d")
-        FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0.LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
+        FINMIND_TOKEN = _FINMIND_TOKEN
         for fm_dataset in ["TaiwanStockPrice", "TaiwanStockPriceMinute"]:
             try:
                 fm_r = await client.get(

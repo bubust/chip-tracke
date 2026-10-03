@@ -182,13 +182,20 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
     else:
         vix_risk = 0.0
 
-    # ── Margin Risk ───────────────────────────────────────────────────────
-    if margin and len(margin) >= 20:
-        m_vals = [v for _, v in margin[-60:]]
-        m_20d_chg = (m_vals[-1] - m_vals[-20]) / max(m_vals[-20], 1) * 100
-        margin_risk = min(100, max(0, 50 + m_20d_chg * 5))
-    else:
-        margin_risk = 50.0
+    # ── Margin Risk（融資餘額水位）────────────────────────────────────────
+    # 20 日增減幅（資料不足 20 天時用現有天數，換算成 20 日等效）＋ 在可得歷史中的分位數
+    # 少於 5 天 → None（前端顯示「資料累積中」，不再假裝是 50）
+    margin_risk = None
+    if margin and len(margin) >= 5:
+        m_vals = [v for _, v in margin[-252:]]
+        span = min(20, len(m_vals) - 1)
+        chg = (m_vals[-1] - m_vals[-1 - span]) / max(m_vals[-1 - span], 1) * 100 * (20 / span)
+        chg_score = min(100, max(0, 50 + chg * 5))
+        if len(m_vals) >= 20:
+            pct = sum(1 for x in m_vals if x <= m_vals[-1]) / len(m_vals) * 100
+            margin_risk = round(chg_score * 0.6 + pct * 0.4, 1)
+        else:
+            margin_risk = round(chg_score, 1)
 
     # ── USD/TWD divergence (macro risk indicator) ─────────────────────────
     usdtwd_px = [v for _, v in usdtwd]
@@ -207,7 +214,7 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
 
     risk_score = round(
         vix_risk * 0.40 +
-        margin_risk * 0.30 +
+        (margin_risk if margin_risk is not None else 50.0) * 0.30 +
         max(0, fx_risk) * 0.30,
         1
     )
@@ -279,32 +286,24 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
         else:
             concentration = 0.0
 
-    # ── Divergence (背離：廣度與指數方向不一致) ──────────────────────────
-    # 主要來源：BREADTH_50MA vs TAIEX；資料不足時改用 OTC vs TAIEX 動能背離
-    divergence = 0.0
-    _look = min(10, len(breadth_50ma)) if breadth_50ma else 0
-    if breadth_50ma and _look >= 3 and taiex and len(taiex) >= _look:
-        b_trend = breadth_50ma[-1][1] - breadth_50ma[-_look][1]
-        t_trend = (taiex[-1][1] - taiex[-_look][1]) / max(taiex[-_look][1], 1) * 100
-        # 背離：正值=底部訊號（指數跌但廣度撐），負值=見頂警訊（指數漲但廣度跌）
-        threshold = max(2.0, 5.0 * _look / 10)
-        if t_trend > 0 and b_trend < -threshold:
-            # 指數漲但廣度跌 → 見頂警訊 → 負值
-            divergence = -round(min(100, abs(t_trend) * 5 + abs(b_trend)), 1)
-        elif t_trend < 0 and b_trend > threshold:
-            # 指數跌但廣度漲 → 底部訊號 → 正值
-            divergence = round(min(100, abs(t_trend) * 5 + abs(b_trend)), 1)
-    elif otc and len(otc) >= 10 and taiex and len(taiex) >= 10:
-        # Fallback：OTC vs 加權 10日動能背離（中小型股與大型股齊漲跌=無背離；分歧=背離）
-        otc_ret  = (otc[-1][1]   - otc[-10][1])  / max(otc[-10][1],   1) * 100
-        taiex_ret = (taiex[-1][1] - taiex[-10][1]) / max(taiex[-10][1], 1) * 100
-        diff = otc_ret - taiex_ret  # 正值=小型股強(健康)；負值=大型股撐盤(警示)
-        # 大型股明顯超跑小型股（集中度高）→ 背離警示
-        if diff < -3:
-            divergence = round(min(100, abs(diff) * 5), 1)
-        # 小型股崩潰但大盤撐住 → 背離警示
-        elif diff > 5 and taiex_ret < -1:
-            divergence = round(min(100, diff * 4), 1)
+    # ── Divergence (背離：多數股票 vs 指數) ─────────────────────────────
+    # 連續值：近 10 日「全市場中位數累積漲跌」減「加權指數漲跌」
+    #   正值 = 多數股票比指數強（指數跌、個股撐 → 底部訊號）
+    #   負值 = 指數靠少數權值股撐（指數漲、多數股跌 → 見頂警訊）
+    # 沒有中位數資料時改用廣度變化、再沒有用上櫃 vs 加權；都沒有 → None（前端顯示無資料）
+    divergence = None
+    taiex_ret10 = None
+    if taiex and len(taiex) >= 11:
+        taiex_ret10 = (taiex[-1][1] - taiex[-11][1]) / max(taiex[-11][1], 1) * 100
+    if median_ret and len(median_ret) >= 10 and taiex_ret10 is not None:
+        med_cum = sum(v for _, v in median_ret[-10:])
+        divergence = round(max(-100, min(100, (med_cum - taiex_ret10) * 8)), 1)
+    elif breadth_50ma and len(breadth_50ma) >= 10 and taiex_ret10 is not None:
+        b_trend = breadth_50ma[-1][1] - breadth_50ma[-10][1]       # 廣度變化（百分點）
+        divergence = round(max(-100, min(100, b_trend * 2 - taiex_ret10 * 6)), 1)
+    elif otc and len(otc) >= 11 and taiex_ret10 is not None:
+        otc_ret10 = (otc[-1][1] - otc[-11][1]) / max(otc[-11][1], 1) * 100
+        divergence = round(max(-100, min(100, (otc_ret10 - taiex_ret10) * 8)), 1)
 
     result = {
         "date": today,
@@ -313,9 +312,9 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
         "positioning": round(positioning_score, 1),
         "macro_factor": round(macro_score, 1),
         "direction": round(direction, 1),
-        "leverage_risk": round(margin_risk, 1),
+        "leverage_risk": margin_risk,      # may be None（資料累積中）
         "concentration": concentration,  # may be None
-        "divergence": divergence,
+        "divergence": divergence,          # may be None
         "risk_score": round(risk_score, 1),
         "exhaustion": round(exhaustion, 1),
         "regime_label": label,
@@ -387,3 +386,20 @@ def backfill_factors(days: int = 120):
     except Exception as e:
         log.error(f"[factor] backfill_factors 錯誤: {e}")
         return 0
+
+
+def recalc_recent_factors(days: int = 60) -> int:
+    """重算最近 days 個交易日的因子（公式或資料補齊後，覆蓋舊值）"""
+    with db() as conn:
+        dates = [r[0] for r in conn.execute(
+            "SELECT DISTINCT date FROM market_daily WHERE series='TAIEX' ORDER BY date DESC LIMIT ?",
+            (days,)).fetchall()]
+    n = 0
+    for d in sorted(dates):
+        try:
+            calculate_factors(target_date=d)
+            n += 1
+        except Exception as e:
+            log.warning(f"[factor] recalc {d} 失敗: {e}")
+    log.info(f"[factor] 重算最近 {n} 天因子")
+    return n

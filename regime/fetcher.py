@@ -6,6 +6,7 @@ Sprint 3: TWSE MI_INDEX 直接抓漲跌家數（不依賴 price_daily）
 Sprint 4: MI_5MINS 過熱/恐慌指數，MI_MARGN 更健壯解析
 """
 import logging
+import os
 import sqlite3
 from datetime import datetime, date, timedelta
 from pathlib import Path
@@ -19,7 +20,7 @@ _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 
 YAHOO_TICKERS = {
     "TAIEX":   "^TWII",
-    "OTC":     "^TWOTC",
+    "OTC":     ("^TWOII", "^TWOTC"),   # Yahoo 上櫃指數正確代號是 ^TWOII，依序嘗試
     "SOX":     "^SOX",
     "VIX":     "^VIX",
     "US10Y":   "^TNX",
@@ -121,7 +122,12 @@ def fetch_all(days: int = 60):
     taiex_count = 0
     with db() as conn:
         for series, ticker in YAHOO_TICKERS.items():
-            rows = _yahoo_close(ticker, days)
+            rows = []
+            for tk in (ticker if isinstance(ticker, tuple) else (ticker,)):
+                rows = _yahoo_close(tk, days)
+                if rows:
+                    ticker = tk
+                    break
             for dt, val in rows:
                 upsert_series(conn, dt, series, val, "YAHOO")
                 inserted += 1
@@ -131,10 +137,11 @@ def fetch_all(days: int = 60):
                     taiex_count += 1
             log.info(f"[fetcher] {series}({ticker}): {len(rows)} 筆")
     log.info(f"[fetcher] 共寫入 {inserted} 筆")
-    # OTC 無資料時嘗試 TPEx API 補充
+    # OTC 無資料時嘗試 TPEx API 補充，再不行用 MIS 當日收盤（至少每天累積一筆）
     if otc_count == 0:
         log.info("[fetcher] Yahoo ^TWOII 無資料，嘗試 TPEx API 補充 OTC 指數")
         fetch_tpex_otc_index(days=days)
+        fetch_mis_index_today()
     # TAIEX 無資料時嘗試 TWSE OpenAPI 補充（divergence 計算需要）
     if taiex_count == 0:
         log.info("[fetcher] Yahoo ^TWII 無資料，嘗試 TWSE OpenAPI 補充 TAIEX 指數")
@@ -202,6 +209,115 @@ def fetch_tpex_otc_index(days: int = 30):
         log.info(f"[fetcher] TPEx OTC index: 補充 {inserted} 筆")
     except Exception as e:
         log.warning(f"[fetcher] TPEx OTC index 失敗（非致命）: {e}")
+
+
+def fetch_mis_index_today():
+    """MIS 即時/收盤指數（雲端 IP 通常可用）：寫入當天 TAIEX / OTC。只寫有成交價(z)的那天。"""
+    try:
+        base = "https://mis.twse.com.tw"
+        with httpx.Client(timeout=12, verify=False, follow_redirects=True,
+                          headers={"User-Agent": _UA, "Accept-Language": "zh-TW,zh;q=0.9"}) as c:
+            try:
+                c.get(f"{base}/stock/index.jsp", timeout=8)
+            except Exception:
+                pass
+            r = c.get(f"{base}/stock/api/getStockInfo.jsp",
+                      headers={"Referer": f"{base}/stock/index.jsp", "X-Requested-With": "XMLHttpRequest"},
+                      params={"ex_ch": "tse_t00.tw|otc_o00.tw", "json": "1", "delay": "0"})
+            items = r.json().get("msgArray", [])
+        n = 0
+        with db() as conn:
+            for it in items:
+                series = {"t00": "TAIEX", "o00": "OTC"}.get(it.get("c", ""))
+                d = str(it.get("d") or "")
+                try:
+                    z = float(it.get("z"))
+                except (TypeError, ValueError):
+                    z = None
+                if series and z and z > 0 and len(d) == 8:
+                    dt = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+                    exists = conn.execute("SELECT 1 FROM market_daily WHERE series=? AND date=?",
+                                          (series, dt)).fetchone()
+                    if not exists:
+                        upsert_series(conn, dt, series, z, "MIS")
+                        n += 1
+        log.info(f"[fetcher] MIS 指數補 {n} 筆")
+    except Exception as e:
+        log.warning(f"[fetcher] MIS 指數失敗（非致命）: {e}")
+
+
+def _parse_mi_margn_rwd(jdata: dict):
+    """TWSE rwd MI_MARGN（含 date 參數的歷史查詢同格式）→ (YYYY-MM-DD, 融資餘額張, 融券餘額張) 或 None"""
+    if not isinstance(jdata, dict) or jdata.get("stat") != "OK":
+        return None
+    date_str = str(jdata.get("date", ""))
+    tables = jdata.get("tables") or []
+    if len(date_str) != 8 or not tables:
+        return None
+    fields = tables[0].get("fields", [])
+    rows = tables[0].get("data", [])
+    idx = len(fields) - 1
+    for i, f in enumerate(fields):
+        if "今日餘額" in str(f):
+            idx = i
+            break
+    m = sh = None
+    for row in rows:
+        if not row or len(row) <= idx:
+            continue
+        label = str(row[0])
+        try:
+            v = float(str(row[idx]).replace(",", "").strip())
+        except ValueError:
+            continue
+        if "融資" in label and ("交易" in label or "單位" in label) and v > 0:
+            m = v
+        elif "融券" in label and ("交易" in label or "單位" in label) and v > 0:
+            sh = v
+    if m is None and sh is None:
+        return None
+    return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}", m, sh
+
+
+def fetch_twse_margin_history(days: int = 60, pause: float = 1.5) -> int:
+    """回補融資餘額歷史（Leverage 需要至少 20 個交易日）。只補缺的日子；連續 3 次連不上就停。"""
+    import time as _t
+    from datetime import date as _date, timedelta as _td
+    with db() as conn:
+        have = {r[0] for r in conn.execute(
+            "SELECT date FROM market_daily WHERE series='MARGIN_BALANCE'").fetchall()}
+    d = _date.today()
+    fails = inserted = 0
+    checked = 0
+    while checked < days and fails < 3:
+        d -= _td(days=1)
+        if d.weekday() >= 5:
+            continue
+        checked += 1
+        if d.isoformat() in have:
+            continue
+        try:
+            with httpx.Client(timeout=15, headers={"User-Agent": _UA}, verify=False) as c:
+                r = c.get("https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN",
+                          params={"date": d.strftime("%Y%m%d"), "selectType": "MS", "response": "json"})
+            parsed = _parse_mi_margn_rwd(r.json())
+            fails = 0
+            if parsed:
+                dt, m, sh = parsed
+                with db() as conn:
+                    if m:
+                        upsert_series(conn, dt, "MARGIN_BALANCE", m, "TWSE_RWD")
+                        inserted += 1
+                    if sh:
+                        upsert_series(conn, dt, "SHORT_BALANCE", sh, "TWSE_RWD")
+                    if m and sh:
+                        upsert_series(conn, dt, "SHORT_MARGIN_RATIO", round(sh / m * 100, 2), "TWSE_RWD")
+        except Exception as e:
+            fails += 1
+            log.warning(f"[fetcher] 融資歷史 {d} 失敗: {e}")
+        _t.sleep(pause)
+    log.info(f"[fetcher] 融資餘額歷史回補 {inserted} 天")
+    return inserted
 
 
 def fetch_twse_margin(days: int = 5):
@@ -828,7 +944,7 @@ def fetch_twse_market_breadth(lookback: int = 90):
         _fetch_breadth_finmind(targets)
 
 
-_FINMIND_TOKEN = (
+_FINMIND_TOKEN = os.environ.get("FINMIND_TOKEN", "").strip() or (
     "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
     ".eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0"
     ".LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"

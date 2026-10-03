@@ -10,7 +10,7 @@ from .db import db, init_db
 from .fetcher import (
     fetch_all, fetch_twse_margin, fetch_twse_foreign_spot,
     fetch_breadth_ad, fetch_twse_market_breadth, fetch_taifex_foreign_futures,
-    fetch_mi5mins,
+    fetch_mi5mins, fetch_twse_margin_history, fetch_mis_index_today,
 )
 from .factor import calculate_factors, backfill_factors
 
@@ -136,6 +136,8 @@ def regime_refresh():
         try:
             fetch_all(days=90)
             fetch_twse_margin()
+            fetch_twse_margin_history(days=60)   # 只補缺的日子；Leverage 需要 20 天
+            fetch_mis_index_today()              # 上櫃/加權指數當日收盤（Yahoo 沒有時補）
             fetch_twse_foreign_spot()
             fetch_twse_market_breadth(lookback=90)  # 廣度：直接用 TWSE 上漲家數占比（外部資料）
             fetch_taifex_foreign_futures()

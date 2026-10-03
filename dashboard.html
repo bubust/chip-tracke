@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
+<script src="/auth-shim.js"></script>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>牆泥袋溥的戰術中心</title>
@@ -162,8 +163,6 @@
     #deep-panel { width: 100vw !important; }
     #deep-panel.dp-open { right: 0 !important; }
     #deep-panel:not(.dp-open) { right: -100vw !important; }
-    /* 觀察清單表格 */
-    #watchlist-table td:nth-child(n+5), #watchlist-table th:nth-child(n+5) { display: none; }
     /* 掃描 header 堆疊 */
     .scan-hdr { flex-direction: column; align-items: flex-start; gap: 8px; }
     /* 股票 row 操作欄位縮小 */
@@ -194,6 +193,43 @@
   .idx-name { font-size:.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; white-space:nowrap; }
   .idx-price { font-size:1.05rem; font-weight:700; font-variant-numeric:tabular-nums; line-height:1.3; }
   .idx-chg { font-size:.76rem; font-weight:500; }
+
+  /* ══ 手機 / 平板版（全系統）══════════════════════════════════════════ */
+  /* 分頁列：任何寬度都不折行，放不下就左右滑 */
+  nav { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  nav::-webkit-scrollbar { display: none; }
+  nav button { flex-shrink: 0; white-space: nowrap; }
+  .tab iframe { height: calc(100dvh - 120px) !important; }
+  @media (max-width: 1024px) {
+    nav button { padding: 11px 14px; }
+  }
+  @media (max-width: 768px) {
+    header .sub { display: none; }
+    nav { position: sticky; top: 0; z-index: 50; }
+    .tab iframe { height: calc(100dvh - 96px) !important; border-radius: 0 !important; }
+    main { padding: 8px 6px; }
+    .card { padding: 12px 10px; border-radius: 8px; }
+    table { font-size: .8rem; }
+    th { padding: 6px 7px; font-size: .7rem; }
+    td { padding: 7px 7px; }
+    /* 觀察清單：代號、名稱固定在左邊，其餘左右滑 */
+    #watchlist-table th:nth-child(1), #watchlist-table td:nth-child(1) { position: sticky; left: 0; z-index: 2; background: var(--card); }
+    #watchlist-table th:nth-child(2), #watchlist-table td:nth-child(2) { position: sticky; left: 52px; z-index: 2; background: var(--card); box-shadow: 4px 0 6px -4px #000a; }
+    /* K 線、回測彈窗：全螢幕 */
+    #chart-modal, #backtest-modal { padding: 0 !important; }
+    #chart-modal-box { width: 100vw !important; height: 100dvh !important; border-radius: 0 !important; }
+    #backtest-modal-box { width: 100vw !important; max-height: 100dvh !important; height: 100dvh; border-radius: 0 !important; padding: 14px 12px !important; }
+    #toast { left: 12px; right: 12px; bottom: 16px; max-width: none; }
+  }
+  @media (max-width: 480px) {
+    header h1 { font-size: .95rem; }
+    /* 觀察清單只留重點欄：代號、名稱、加入後漲跌、股價、最新訊號、大戶今日 */
+    #watchlist-table th:nth-child(3), #watchlist-table td:nth-child(3),
+    #watchlist-table th:nth-child(5), #watchlist-table td:nth-child(5),
+    #watchlist-table th:nth-child(6), #watchlist-table td:nth-child(6),
+    #watchlist-table th:nth-child(n+10), #watchlist-table td:nth-child(n+10) { display: none; }
+    input[type=text], input[type=number], select { font-size: 16px; }   /* iOS 不會自動放大 */
+  }
 </style>
 </head>
 <body>
@@ -305,12 +341,12 @@
 
   <!-- 觀察清單表格 -->
   <div class="card" id="watchlist-card">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
       <div style="display:flex;align-items:center;gap:10px">
         <div class="section-title" style="margin:0">我的選股清單</div>
         <span id="chip-data-date" style="font-size:.75rem;color:var(--muted);background:var(--card2);padding:2px 8px;border-radius:6px;border:1px solid var(--border);display:none"></span>
       </div>
-      <div style="display:flex;align-items:center;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <button class="btn sm ghost" onclick="exportWatchlist()" title="匯出觀察清單為 CSV，可用手機 Excel/Numbers 查看">📤 匯出清單</button>
         <button class="btn sm ghost" id="btn-refresh-tdcc" onclick="refreshWatchlistTdcc()" title="用 FinMind 更新觀察清單的千張大戶週資料">🏦 更新千張大戶</button>
         <span style="color:var(--muted);font-size:.8rem">現價自動刷新：</span>
@@ -323,12 +359,13 @@
     <div id="wl-loading" class="loading" style="display:none"><span class="spinner"></span>載入中...</div>
     <div id="wl-empty" class="empty" style="display:none">尚無股票，請從上方新增</div>
     <div class="tbl-wrap" id="wl-table-wrap" style="display:none">
-      <table>
+      <table id="watchlist-table">
         <thead>
           <tr>
             <th>代號</th>
             <th>名稱</th>
             <th title="加入觀察清單的日期">加入日期</th>
+            <th title="加入當天收盤 → 現價的漲跌幅（加入日是假日就用前一個交易日收盤）">加入後漲跌</th>
             <th title="從哪個策略或市場排行加入">來源</th>
             <th title="自由填寫：進場價、停損、目標等">📝 備註</th>
             <th>股價</th>
@@ -447,7 +484,11 @@
       <button class="btn green" id="btn-trigger-gh" onclick="triggerGithubScan()" title="在伺服器直接執行全市場掃描">⚡ 全市場掃描</button>
       <span id="screen-progress-text" style="color:var(--muted);font-size:.82rem"></span>
     </div>
-    <div id="gh-scan-last-badge" style="font-size:.78rem;min-height:1.2em;margin-bottom:4px" title="找到N支＝全市場掃描後，符合任一策略的股票總數（去重）&#10;成功＝成功抓到 Yahoo 資料的股票數&#10;失敗＝Yahoo 無法抓取資料&#10;跳過＝超過60天無更新的殭屍股"></div>
+    <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:4px">
+      <div id="gh-scan-last-badge" style="font-size:.78rem;min-height:1.2em" title="命中N筆＝各策略命中數加總（同一支股票符合 3 個策略算 3 筆）&#10;不重複M支＝至少符合一個策略的股票數&#10;成功＝抓到 K 線資料的股票數&#10;失敗＝抓不到資料（點「失敗清單」看原因）&#10;跳過＝超過 60 天沒有成交的殭屍股（下市/長期停牌）"></div>
+      <a href="#" onclick="showScanFailures();return false" style="font-size:.75rem;color:var(--accent)">失敗清單</a>
+    </div>
+    <div id="scan-warrant-note" style="font-size:.72rem;color:var(--muted);margin-bottom:4px"></div>
     <div id="screen-progress-bar-wrap" style="display:none;margin-bottom:10px">
       <div style="background:var(--border);border-radius:4px;height:6px;overflow:hidden">
         <div id="screen-progress-bar" style="height:100%;background:var(--accent);transition:width .3s;width:0%"></div>
@@ -592,6 +633,7 @@
 
 <!-- ═══════════════════════ 設定 ═══════════════════════ -->
 <div id="tab-settings" class="tab">
+  <div id="auth-banner" class="card" style="font-size:.84rem;line-height:1.7;border-width:1px"></div>
 
   <div class="sg">
     <div class="card">
@@ -691,47 +733,27 @@
 <div id="_js-err-banner" style="display:none;position:fixed;bottom:8px;left:50%;transform:translateX(-50%);background:#b91c1c;color:#fff;padding:8px 16px 8px 12px;border-radius:8px;font-size:.78rem;z-index:99999;max-width:92vw;word-break:break-all;box-shadow:0 2px 12px rgba(0,0,0,.5);cursor:pointer" onclick="this.style.display='none'" title="點擊關閉"></div>
 
 <!-- ══════════════════ 設定頁密碼 Modal ══════════════════ -->
-<div id="settings-auth-modal" style="display:none;position:fixed;inset:0;
-  background:rgba(0,0,0,.65);z-index:2000;align-items:center;justify-content:center">
-  <div style="background:#161b22;border:1px solid #30363d;border-radius:10px;
-    padding:28px 32px;width:320px;box-shadow:0 8px 30px rgba(0,0,0,.5);
-    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)">
-    <div style="font-size:1rem;font-weight:700;margin-bottom:16px;color:#e6edf3">🔒 設定頁面 — 請輸入密碼</div>
-    <input type="password" id="settings-pw-input" placeholder="密碼"
-      style="width:100%;padding:8px 10px;background:#0d1117;border:1px solid #30363d;
-      border-radius:6px;color:#e6edf3;font-size:.95rem;box-sizing:border-box;outline:none"
-      onkeydown="if(event.key==='Enter') _settingsAuthSubmit()" />
-    <div id="settings-pw-err" style="color:#f85149;font-size:.8rem;min-height:1.2em;margin-top:6px"></div>
-    <div style="display:flex;gap:10px;margin-top:14px">
-      <button onclick="_settingsAuthSubmit()" style="flex:1;padding:8px;background:#238636;
-        border:none;border-radius:6px;color:#fff;cursor:pointer;font-weight:600">確認</button>
-      <button onclick="_settingsAuthCancel()" style="flex:1;padding:8px;background:#21262d;
-        border:1px solid #30363d;border-radius:6px;color:#e6edf3;cursor:pointer">取消</button>
-    </div>
-  </div>
-</div>
-
 <script>
-const _SETTINGS_PW = 'Thebu1301@';
-
-function _settingsAuthSubmit() {
-  const val = document.getElementById('settings-pw-input').value;
-  if (val === _SETTINGS_PW) {
-    sessionStorage.setItem('settings_auth', '1');
-    document.getElementById('settings-auth-modal').style.display = 'none';
-    document.getElementById('settings-pw-input').value = '';
-    document.getElementById('settings-pw-err').textContent = '';
-    // 密碼正確後直接切換到設定頁（sessionStorage 已設定，不會再觸發密碼檢查）
+// 設定頁：改由伺服器驗證（auth-shim.js 的登入框）；沒設定 ADMIN_PASSWORD 時不擋，但顯示警告
+let _settingsUnlocked = false;
+async function _openSettingsWithAuth() {
+  let st = { protected: false, logged_in: true };
+  try { st = await window.chipAuthStatus(); } catch (e) {}
+  _renderAuthBanner(st);
+  if (!st.protected || st.logged_in || await window.chipAuthLogin()) {
+    _settingsUnlocked = true;
     switchTab('settings');
-  } else {
-    document.getElementById('settings-pw-err').textContent = '密碼錯誤，請重試';
   }
 }
-
-function _settingsAuthCancel() {
-  document.getElementById('settings-auth-modal').style.display = 'none';
-  document.getElementById('settings-pw-input').value = '';
-  document.getElementById('settings-pw-err').textContent = '';
+function _renderAuthBanner(st) {
+  const el = document.getElementById('auth-banner');
+  if (!el) return;
+  el.innerHTML = st.protected
+    ? `🔒 寫入保護已啟用（修改資料、啟動掃描、推播前要登入）<button class="btn sm ghost" style="margin-left:10px" onclick="chipAuthLogout();toast('已登出這台裝置')">登出這台裝置</button>`
+    : `⚠️ <b>寫入保護尚未啟用</b>：任何人都能從網路直接修改觀察清單、參數、Telegram 設定或啟動掃描。
+       請到 GitHub → 這個 repo → Settings → Secrets and variables → Actions → New repository secret，
+       名稱 <code>ADMIN_PASSWORD</code>、值填一組<b>新的</b>密碼，然後重新部署（Actions → Deploy to Fly.io → Re-run）。`;
+  el.style.borderColor = st.protected ? 'var(--green)' : 'var(--red)';
 }
 
 function _doSwitchSettings() {
@@ -1138,6 +1160,13 @@ function toast(msg, err = false) {
 const BACKEND_URL = 'https://chip-tracker-ikxn.onrender.com';
 const API_BASE = location.hostname.includes('github.io') ? BACKEND_URL : '';
 
+// HTML 跳脫：使用者可編輯或外部來的文字（名稱、來源、備註）放進畫面前一律跳脫
+function _esc(v) {
+  return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+// 放進 onclick="fn('...')" 的字串：先跳脫 JS 單引號/反斜線，再做 HTML 跳脫
+function _jsq(v) { return _esc(String(v ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")); }
+
 async function api(method, path, body = null) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
@@ -1152,13 +1181,8 @@ async function api(method, path, body = null) {
 
 // ───── Tab ─────
 function switchTab(name) {
-  // 設定頁需要密碼
-  if (name === 'settings' && !sessionStorage.getItem('settings_auth')) {
-    const modal = document.getElementById('settings-auth-modal');
-    modal.style.display = 'block';
-    setTimeout(() => document.getElementById('settings-pw-input').focus(), 50);
-    return;
-  }
+  // 設定頁：伺服器端驗證
+  if (name === 'settings' && !_settingsUnlocked) { _openSettingsWithAuth(); return; }
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
@@ -1333,7 +1357,7 @@ function renderWatchlist() {
       return `<td id="price-${s.stock_id}" class="${cls}">${s.close} <small style="opacity:.7">${sign}${pct.toFixed(2)}%</small></td>`;
     })();
     // 個人備註（可自由編輯，失焦自動儲存）- 提前計算供 no-data row 使用
-    const memoValEarly = (s.memo || '').replace(/"/g, '&quot;');
+    const memoValEarly = _esc(s.memo || '');
     const memoCellEarly = `<td onclick="event.stopPropagation()" style="min-width:100px;max-width:160px">
       <input type="text" value="${memoValEarly}" placeholder="進場價、停損…"
         style="width:100%;background:transparent;border:none;border-bottom:1px dashed var(--border);color:var(--fg);font-size:.78rem;padding:2px 0;outline:none"
@@ -1382,7 +1406,7 @@ function renderWatchlist() {
       const ndKpct = s.kpct;
       const ndKpctChg = s.kpct_change;
       const ndKpctCell = (() => {
-        const onclick = `event.stopPropagation();openTdccDetail('${s.stock_id}','${s.name||s.stock_id}')`;
+        const onclick = `event.stopPropagation();openTdccDetail('${_jsq(s.stock_id)}','${_jsq(s.name||s.stock_id)}')`;
         if (ndKpct == null) return `<td class="muted" onclick="${onclick}" style="cursor:pointer" title="無資料，點擊查詢">─</td>`;
         const arrow = ndKpctChg > 0.3 ? '▲' : ndKpctChg < -0.3 ? '▼' : '─';
         const cls = ndKpctChg > 0.3 ? 'pos' : ndKpctChg < -0.3 ? 'neg' : 'muted';
@@ -1402,6 +1426,7 @@ function renderWatchlist() {
         <td onclick="event.stopPropagation();openWlChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
         <td>${nameCell(s)}</td>
         <td class="muted" title="${s.added_at || ''}">${_fmtAdded(s.added_at)}</td>
+        ${_sinceAddedCell(s)}
         ${noteCell(s)}
         ${memoCellEarly}
         ${priceCell}
@@ -1449,7 +1474,7 @@ function renderWatchlist() {
     const kpct = s.kpct;
     const kpctChg = s.kpct_change;
     const kpctCell = (() => {
-      const onclick = `event.stopPropagation();openTdccDetail('${s.stock_id}','${s.name||s.stock_id}')`;
+      const onclick = `event.stopPropagation();openTdccDetail('${_jsq(s.stock_id)}','${_jsq(s.name||s.stock_id)}')`;
       if (kpct == null) return `<td class="muted" onclick="${onclick}" style="cursor:pointer" title="無資料，點擊查詢">─</td>`;
       const arrow = kpctChg > 0.3 ? '▲' : kpctChg < -0.3 ? '▼' : '─';
       const cls = kpctChg > 0.3 ? 'pos' : kpctChg < -0.3 ? 'neg' : 'muted';
@@ -1485,6 +1510,7 @@ function renderWatchlist() {
       <td onclick="event.stopPropagation();openWlChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
       <td>${nameCell(s)}</td>
       <td class="muted" title="${s.added_at || ''}">${_fmtAdded(s.added_at)}</td>
+        ${_sinceAddedCell(s)}
       ${noteCell(s)}
       ${memoCell}
       ${priceCell}
@@ -1505,6 +1531,34 @@ function renderWatchlist() {
   }).join('');
   // 非同步補充千張大戶多週趨勢
   enrichTdccTrends().catch(() => {});
+}
+
+// 加入後漲跌：加入日收盤 → 現價
+function _sinceAddedHtml(s) {
+  const base = s.added_price, now = s.close;
+  if (!base || now == null) return { cls: 'muted', html: '—', tip: '沒有加入日的股價資料' };
+  const pct = (now / base - 1) * 100;
+  const d = String(s.added_price_date || '');
+  const added = String(s.added_at || '').slice(0, 10).replace(/-/g, '');
+  // 加入日早於股價快取時，基準日會晚於加入日，要標出來
+  const late = d.length === 8 && added.length === 8 && d > added;
+  const dTxt = d.length === 8 ? `${d.slice(4, 6)}/${d.slice(6)}` : '';
+  return {
+    cls: pct > 0 ? 'pos' : pct < 0 ? 'neg' : '',
+    html: `<b>${pct > 0 ? '+' : ''}${pct.toFixed(1)}%</b>${late ? `<small style="display:block;opacity:.6">自 ${dTxt}</small>` : ''}`,
+    tip: `${dTxt} 收盤 ${base} → 現在 ${now}${late ? '（加入日早於股價資料，從最早有資料那天算）' : ''}`,
+  };
+}
+function _sinceAddedCell(s) {
+  const r = _sinceAddedHtml(s);
+  return `<td id="since-${s.stock_id}" class="${r.cls}" title="${r.tip}" style="white-space:nowrap">${r.html}</td>`;
+}
+function _renderSinceAdded(sid) {
+  const td = document.getElementById(`since-${sid}`);
+  const item = (_wlData || []).find(x => x.stock_id === sid);
+  if (!td || !item) return;
+  const r = _sinceAddedHtml(item);
+  td.className = r.cls; td.title = r.tip; td.innerHTML = r.html;
 }
 
 // 加入日期：ISO 時間 → 2026/10/02
@@ -1656,7 +1710,7 @@ async function refreshPricesOnly(force = false) {
     for (const [sid, info] of Object.entries(data)) {
       _renderPriceCell(sid, info.close, info.change_pct);
       const item = _wlData.find(x => x.stock_id === sid);
-      if (item) { item.close = info.close; item.change_pct = info.change_pct; }
+      if (item) { item.close = info.close; item.change_pct = info.change_pct; _renderSinceAdded(sid); }
     }
     if (status) status.textContent = `上次更新 ${new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit',second:'2-digit'})}`;
   } catch(e) {
@@ -2218,9 +2272,9 @@ function _stopPriceRefreshIfActive() {
 }
 
 function noteCell(s) {
-  const val = (s.note || '').replace(/"/g, '&quot;');
+  const val = _esc(s.note || '');
   const display = s.note
-    ? `<span style="font-size:.72rem;padding:2px 7px;border-radius:10px;background:rgba(79,142,247,.18);color:var(--accent);white-space:nowrap;border:1px solid rgba(79,142,247,.3)">${s.note}</span>`
+    ? `<span style="font-size:.72rem;padding:2px 7px;border-radius:10px;background:rgba(79,142,247,.18);color:var(--accent);white-space:nowrap;border:1px solid rgba(79,142,247,.3)">${_esc(s.note)}</span>`
     : `<span style="font-size:.72rem;color:var(--muted)">點擊編輯</span>`;
   return `<td onclick="event.stopPropagation()" style="min-width:90px;max-width:180px;cursor:text" title="點擊編輯來源">
     <div class="note-view" onclick="this.style.display='none';this.nextElementSibling.style.display='block';this.nextElementSibling.focus()">${display}</div>
@@ -2251,8 +2305,8 @@ async function saveNote(sid, val, inputEl) {
 }
 
 function nameCell(s) {
-  return `<span class="view-name">${s.name || '<span style="color:var(--muted)">—</span>'}${typeof tbBadge === 'function' ? tbBadge(s.stock_id) : ''}</span>
-    <input class="inline-edit" type="text" value="${s.name || ''}"
+  return `<span class="view-name">${s.name ? _esc(s.name) : '<span style="color:var(--muted)">—</span>'}${typeof tbBadge === 'function' ? tbBadge(s.stock_id) : ''}</span>
+    <input class="inline-edit" type="text" value="${_esc(s.name || '')}"
       style="width:90px" onblur="saveName('${s.stock_id}', this.value)"
       onkeydown="if(event.key==='Enter') this.blur(); if(event.key==='Escape') this.parentElement.classList.remove('editing');"
       onclick="event.stopPropagation()" />`;
@@ -3417,6 +3471,42 @@ let _ghScanStartedAt = null;
 
 // 持久狀態標誌（存 localStorage，頁面重整後仍顯示）
 // isOk: true=成功(綠), false=失敗(紅), undefined=進行中(灰) — transient 狀態不存 localStorage
+// 命中筆數（各策略加總，同股多策略重複算）與不重複支數
+function _screenHitSummary(results) {
+  const ids = new Set();
+  let hits = 0;
+  Object.values(results || {}).forEach(arr => { (arr || []).forEach(r => { hits++; if (r && r.stock_id) ids.add(r.stock_id); }); });
+  return { hits, unique: ids.size, text: `命中 ${hits} 筆／不重複 ${ids.size} 支` };
+}
+
+async function showScanFailures() {
+  let s;
+  try { s = await api('GET', '/api/screen/status'); } catch (e) { toast(e.message, true); return; }
+  const fd = s.failed_detail || {};
+  const groups = {};
+  (s.failed_stocks || []).forEach(sid => { const k = fd[sid] || '未分類（舊版掃描沒有記錄原因）'; (groups[k] = groups[k] || []).push(sid); });
+  const name = sid => (_chartNames && _chartNames[sid]) ? ' ' + _chartNames[sid] : '';
+  let html = `<div style="font-size:.82rem;line-height:1.7">`;
+  if (!Object.keys(groups).length) html += '<div style="color:var(--muted)">上次掃描沒有失敗的股票</div>';
+  for (const [k, ids] of Object.entries(groups)) {
+    html += `<div style="margin-top:8px"><b>${k}</b>：${ids.length} 支<div style="color:var(--muted);font-size:.76rem">${ids.map(i => i + name(i)).join('、')}</div></div>`;
+  }
+  if ((s.skipped_list || []).length)
+    html += `<div style="margin-top:10px"><b>跳過（超過 60 天沒有成交）</b>：${s.skipped_list.length} 支<div style="color:var(--muted);font-size:.76rem">${s.skipped_list.join('、')}</div></div>`;
+  html += `<div style="margin-top:10px;color:var(--muted);font-size:.74rem">限流/連線失敗的會自動重試三輪；Yahoo 查無的多半是下市或暫停交易，不影響策略結果。</div></div>`;
+  const m = document.createElement('div');
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.onclick = e => { if (e.target === m) m.remove(); };
+  m.innerHTML = `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;max-width:640px;width:100%;max-height:80vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center"><b>掃描失敗清單</b><button class="btn sm ghost" onclick="this.closest('div[style*=fixed]').remove()">✕</button></div>${html}</div>`;
+  document.body.appendChild(m);
+}
+
+function _scanWarrantNote(s) {
+  const el = document.getElementById('scan-warrant-note');
+  if (el) el.textContent = (s && s.warrant_note) ? '🏷 ' + s.warrant_note : '';
+}
+
 function _ghBadgeSet(text, isOk, persist) {
   const el = document.getElementById('gh-scan-last-badge');
   if (el) {
@@ -3514,8 +3604,10 @@ async function _pollGhProgress() {
               }
             }
             if (tot > 0) {
-              _unlockGhBtn(`✅ 掃描完成！找到 ${tot} 支符合策略`, false,
-                `✅ 找到 ${tot} 支 · 成功${s.yahoo_ok}/失敗${s.yahoo_fail}/跳過${s.skipped_stale||0}`, true);
+              const _hs = _screenHitSummary(_screenAllResults);
+              _scanWarrantNote(s);
+              _unlockGhBtn(`✅ 掃描完成！${_hs.text}`, false,
+                `✅ ${_hs.text} · 成功${s.yahoo_ok}/失敗${s.yahoo_fail}/跳過${s.skipped_stale||0}`, true);
             } else {
               _unlockGhBtn('掃描完成（無符合策略）', false, '⚠️ 無符合策略');
             }
@@ -3553,8 +3645,10 @@ async function _pollGhProgress() {
       const first = Object.keys(STRATEGY_LABELS).find(k => (_screenAllResults[k] || []).length > 0);
       if (first) viewStrategy(first);
       const _ts2 = new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'});
-      _ghBadgeSet(`${_ts2} ✅ 找到 ${newTotal} 支（掃${s.progress} 成${s.yahoo_ok}/失${s.yahoo_fail}/跳${s.skipped_stale||0}）`, true);
-      toast(`✅ 掃描完成！共掃 ${s.progress} 支，找到 ${newTotal} 支符合策略`);
+      const _hs2 = _screenHitSummary(_screenAllResults);
+      _scanWarrantNote(s);
+      _ghBadgeSet(`${_ts2} ✅ ${_hs2.text}（掃${s.progress} 成${s.yahoo_ok}/失${s.yahoo_fail}/跳${s.skipped_stale||0}）`, true);
+      toast(`✅ 掃描完成！共掃 ${s.progress} 支，${_hs2.text}`);
       btn.disabled = false;
       btn.textContent = '⚡ 全市場掃描';
       document.getElementById('screen-progress-text').textContent = '';
@@ -3638,7 +3732,8 @@ async function pollScreenStatus() {
         const dateTip = dataDate.length === 8
           ? `　資料日期 ${dataDate.slice(0,4)}/${dataDate.slice(4,6)}/${dataDate.slice(6,8)}`
           : '';
-        toast(`✅ 掃描完成，費時 ${_elapsedStr}，共找到 ${total} 支${dateTip} ${diagMsg}`);
+        _scanWarrantNote(s);
+        toast(`✅ 掃描完成，費時 ${_elapsedStr}，${_screenHitSummary(_screenAllResults).text}${dateTip} ${diagMsg}`);
         if (s.failed_stocks && s.failed_stocks.length > 0) {
           console.warn('[掃描失敗清單]', s.failed_stocks.join(', '));
         }
@@ -3915,8 +4010,15 @@ async function warmupServer() {
   // 恢復上次掃描狀態標誌（只有最終結果才存 localStorage，重整後仍顯示）
   try {
     const _b = JSON.parse(localStorage.getItem('chip_scan_badge') || 'null');
-    if (_b) _ghBadgeSet(_b.text, _b.isOk, false);  // persist=false 避免重寫
+    if (_b) {
+      // 舊版存的是「找到 N 支」（其實是各策略加總），改成「命中 N 筆／不重複 M 支」
+      let _t = _b.text;
+      const _ls = (typeof lsLoadScreen === 'function') ? lsLoadScreen() : null;
+      if (/找到 \d+ 支/.test(_t) && _ls && _screenHitSummary(_ls).hits) _t = _t.replace(/找到 \d+ 支/, _screenHitSummary(_ls).text);
+      _ghBadgeSet(_t, _b.isOk, false);  // persist=false 避免重寫
+    }
   } catch(e) {}
+  try { _scanWarrantNote(await api('GET', '/api/screen/status')); } catch(e) {}
 
   // 偵測掃描正在執行 → 自動重連進度追蹤（不需要使用者再按一次）
   try {
@@ -5045,7 +5147,7 @@ async function saveAllStratParams() {
 
 <!-- K 線圖 Modal -->
 <div id="chart-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeChart()">
-  <div style="background:#131722;border-radius:var(--radius);width:min(98vw,1300px);height:85vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 60px #000c">
+  <div id="chart-modal-box" style="background:#131722;border-radius:var(--radius);width:min(98vw,1300px);height:85vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 60px #000c">
     <!-- 第一行：導航 + 標題 + 時間週期 + 觀察清單/回測/關閉 -->
     <div style="display:flex;align-items:center;padding:8px 16px;border-bottom:1px solid #1e2435;flex-shrink:0;gap:6px;flex-wrap:wrap">
       <button id="chart-prev-btn" class="btn sm ghost" onclick="chartNav(-1)" title="上一檔" style="padding:4px 10px">◀ 上一檔</button>
@@ -5112,7 +5214,7 @@ async function saveAllStratParams() {
 
 <!-- 回測 Modal -->
 <div id="backtest-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:10000;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)document.getElementById('backtest-modal').style.display='none'">
-  <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;width:min(98vw,1100px);max-height:92vh;overflow-y:auto;padding:20px 24px">
+  <div id="backtest-modal-box" style="background:#161b22;border:1px solid #30363d;border-radius:8px;width:min(98vw,1100px);max-height:92vh;overflow-y:auto;padding:20px 24px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <h2 style="color:#e6edf3;font-size:1.1rem" id="bt-title">回測結果</h2>
       <button class="btn sm ghost" onclick="document.getElementById('backtest-modal').style.display='none'">✕</button>

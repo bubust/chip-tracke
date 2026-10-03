@@ -8,6 +8,7 @@ import csv
 import io
 import json
 import logging
+import os
 from datetime import date, datetime, timedelta, timezone
 
 def _tw_today() -> date:
@@ -33,7 +34,7 @@ TAIFEX_HEADERS = {
     "Content-Type": "application/x-www-form-urlencoded",
 }
 
-_FM_TOKEN = (
+_FM_TOKEN = os.environ.get("FINMIND_TOKEN", "").strip() or (
     "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
     ".eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0"
     ".LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"

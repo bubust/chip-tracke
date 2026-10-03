@@ -625,14 +625,22 @@ def get_stocks_with_history(min_days: int = 100) -> int:
     return result
 
 def get_stale_stocks(days_threshold: int = 60) -> set:
-    """回傳最後成交日距今超過 days_threshold 天的股票 ID 集合（殭屍股）。
-    利用 idx_price_stock 索引高效掃描；price_daily.date 格式為 YYYY-MM-DD。
-    """
-    from datetime import date, timedelta
-    threshold = (date.today() - timedelta(days=days_threshold)).strftime("%Y-%m-%d")
+    """回傳最後成交日距今超過 days_threshold 天的股票 ID 集合（殭屍股：下市、長期停牌）。
+    price_daily.date 格式為 YYYYMMDD（舊版誤用 YYYY-MM-DD 比較，字串永遠比門檻大，一支都抓不到）。
+    以快取裡最新的市場日期為基準而非今天：快取本身沒更新時不會把全市場誤判成殭屍股；
+    快取最新日期落後今天超過 10 天時直接不過濾。"""
+    from datetime import date, datetime, timedelta
     init_price_db()
     conn = sqlite3.connect(str(DB_PATH))
     try:
+        latest = conn.execute("SELECT MAX(date) FROM price_daily").fetchone()[0]
+        if not latest or len(str(latest)) != 8:
+            return set()
+        latest_d = datetime.strptime(str(latest), "%Y%m%d").date()
+        if (date.today() - latest_d).days > 10:
+            print(f"[PRICE] get_stale_stocks: 快取最新只到 {latest}，不做殭屍過濾")
+            return set()
+        threshold = (latest_d - timedelta(days=days_threshold)).strftime("%Y%m%d")
         rows = conn.execute(
             "SELECT stock_id FROM price_daily GROUP BY stock_id HAVING MAX(date) < ?",
             (threshold,)

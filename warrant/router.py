@@ -139,17 +139,45 @@ def run_scanner():
             except Exception as _tw_e:
                 log.warning(f"[scanner] TWSE盤後資料失敗: {_tw_e}")
 
+        # 盤外且 TWSE/TPEx 被擋：MIS 收盤後仍保留當天累積成交張數(v)與成交價(z)，用它補成交量/金額
+        mis_vol: dict[str, dict] = {}
+        flow_trade_date = None
+        if not market_open and not twse_vol:
+            for i in range(0, len(candidates), BATCH):
+                batch = candidates[i:i + BATCH]
+                codes = [f"otc_{r['code']}" if r["market"] == "OTC" else r["code"] for r in batch]
+                try:
+                    mis_data = mis.get_quotes(codes, cache_ttl=0)
+                except Exception as e:
+                    errors += 1
+                    continue
+                for w_row in batch:
+                    code = w_row["code"]
+                    item = mis_data.get(code) or mis_data.get(f"otc_{code}", {})
+                    if not item:
+                        continue
+                    pd2 = mis.parse_price(item)
+                    vol = pd2.get("volume") or 0
+                    px = pd2.get("price") or 0
+                    if vol > 0 and px:
+                        mis_vol[code] = {"volume": vol, "price": px,
+                                         "turnover": int(vol * px * 1000)}
+                    d = str(item.get("d") or "")
+                    if len(d) == 8 and d.isdigit() and (flow_trade_date is None or d > flow_trade_date):
+                        flow_trade_date = d
+            log.info(f"[scanner] TWSE/TPEx 被擋，改用 MIS 盤後成交量：{len(mis_vol)} 檔")
+
         for i in range(0, len(candidates), BATCH):
             batch = candidates[i:i + BATCH]
 
             if not market_open:
-                # ── 盤外：直接用 TWSE 官方成交量 ──
-                # 若 twse_vol 空（TWSE geo-blocked），改用 DB issued_lots 作為 fallback
-                _vol_available = bool(twse_vol)
+                # ── 盤外：TWSE 官方成交量 → MIS 盤後成交量 → issued_lots 流動性代理 ──
+                _vol_src = twse_vol or mis_vol
+                _vol_available = bool(_vol_src)
                 for w_row in batch:
                     code = w_row["code"]
                     if _vol_available:
-                        td = twse_vol.get(code)
+                        td = _vol_src.get(code)
                         if not td:
                             continue
                         volume   = td["volume"]
@@ -251,7 +279,15 @@ def run_scanner():
         # ── A1: 盤外掃描後直接聚合 warrant_flow（不依賴 geo-blocked TWSE API）──
         if not market_open and results:
             try:
-                _today_str2 = datetime.now().strftime("%Y-%m-%d")
+                if flow_trade_date:
+                    _today_str2 = f"{flow_trade_date[:4]}-{flow_trade_date[4:6]}-{flow_trade_date[6:]}"
+                else:
+                    _d2 = datetime.now()
+                    if _d2.hour * 60 + _d2.minute < 9 * 60:   # 盤前：資料是前一個交易日的
+                        _d2 -= timedelta(days=1)
+                    while _d2.weekday() >= 5:
+                        _d2 -= timedelta(days=1)
+                    _today_str2 = _d2.strftime("%Y-%m-%d")
                 flow_agg: dict = {}
                 for r in results:
                     ul = r.get("underlying_code")
@@ -366,6 +402,9 @@ def start_warrant_scheduler():
     scheduler.add_job(run_scanner, "cron", day_of_week="mon-fri",
                       hour="9-13", minute="0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45,48,51,54,57",
                       id="w_scanner", replace_existing=True)
+    # 收盤後跑一次盤外掃描：TWSE/TPEx 被擋時由 MIS 盤後成交量聚合當日 warrant_flow
+    scheduler.add_job(run_scanner, "cron", day_of_week="mon-fri", hour=14, minute=5,
+                      id="w_scanner_close", replace_existing=True)
     # 每日 15:30 自動計算金流日報（確保盤後資料已發布）
     scheduler.add_job(lambda: _flow.calc_and_save(), "cron",
                       day_of_week="mon-fri", hour=15, minute=30,

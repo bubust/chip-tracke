@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:   # 設好 GitHub secret 後可手動重新部署
 
 jobs:
   deploy:
@@ -12,6 +13,18 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      # GitHub repo secrets 有設定才同步到 Fly（--stage：跟著這次部署生效，不另外重啟）
+      - name: Sync secrets
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+        run: |
+          set --
+          if [ -n "$ADMIN_PASSWORD" ]; then set -- "$@" "ADMIN_PASSWORD=$ADMIN_PASSWORD"; fi
+          if [ -n "$FINMIND_TOKEN" ]; then set -- "$@" "FINMIND_TOKEN=$FINMIND_TOKEN"; fi
+          if [ $# -gt 0 ]; then flyctl secrets set "$@" --stage; else echo "no secrets to sync"; fi
 
       - name: Deploy
         run: flyctl deploy --remote-only

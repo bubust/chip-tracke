@@ -118,3 +118,10 @@ def test_json_import_from_sync_script():
     strip = lambda rs: sorted(({k: v for k, v in r.items() if k != "market"} for r in rs), key=lambda r: r["stock_id"])
     assert strip(back) == strip(recs)
     assert parse_any(b'[{"stock_id": "<script>", "board_date": "2024-01-01"}]') == []
+
+
+def test_purpose_codes_mapped():
+    html = HTML.replace("<td>轉讓股份予員工</td>", "<td>1</td>").replace("<td>維護公司信用及股東權益</td>", "<td>3</td>")
+    recs = {r["stock_id"]: r for r in parse_html(html)}
+    assert recs["2330"]["purpose"] == "轉讓股份予員工"
+    assert recs["6488"]["purpose"].startswith("為維護公司信用")
