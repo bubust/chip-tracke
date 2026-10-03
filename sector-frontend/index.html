@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
+<script src="/auth-shim.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>台股產業輪動引擎 V1</title>
@@ -96,6 +97,15 @@
     font-size: .85rem;
     transition: .15s;
     margin-bottom: -1px;
+  }
+  .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab-btn { white-space: nowrap; flex-shrink: 0; }
+  @media (max-width: 600px) {
+    .tabs { padding: 6px 6px 0; }
+    .tab-btn { padding: 8px 11px; font-size: .8rem; }
+    .header-actions { width: 100%; display: flex; gap: 6px; overflow-x: auto; }
+    .header-actions .btn { flex-shrink: 0; white-space: nowrap; font-size: .76rem; padding: 6px 10px; }
   }
   .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
   .tab-btn:hover:not(.active) { color: var(--text); }
@@ -290,10 +300,12 @@
   /* ── 樹狀熱力圖 ── */
   #bubbleSection {
     padding: 12px 16px 20px;
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr);
     gap: 16px;
-    align-items: flex-start;
+    align-items: start;
   }
+  @media (max-width: 1100px) { #bubbleSection { grid-template-columns: 1fr; padding: 8px 6px 16px; } }
   .bubble-left { flex: 1; min-width: 0; }
   /* bubble chart SVG 撐滿左欄 */
   #bubble-left svg { max-width: 100%; }
@@ -314,8 +326,7 @@
     padding: 40px 0;
   }
   @media (max-width: 800px) {
-    #bubbleSection { flex-direction: column; }
-    .sector-detail-panel { max-width: 100%; min-width: 0; }
+    .sector-detail-panel { max-width: 100%; min-width: 0; padding: 12px; }
   }
   .sdp-header {
     display: flex; align-items: center; justify-content: space-between;
@@ -393,10 +404,8 @@
     body { padding: 10px 8px; }
     .header { flex-wrap: wrap; gap: 8px; }
     .header h1 { font-size: 1rem; }
-    #bubbleSection { flex-direction: column; }
     .sector-detail-panel { max-width: 100%; min-width: 0; }
     .sdp-metrics { grid-template-columns: repeat(2, 1fr); }
-    #bubble-left svg { width: 100%; }
     .btn { min-height: 44px; }
     .kline-modal-box { flex-direction: column; max-height: 95vh; overflow-y: auto; }
     .kline-right { max-width: 100%; flex-direction: row; flex-wrap: wrap; gap: 6px; overflow-y: visible; }
@@ -475,12 +484,12 @@
         <div class="loading"><div class="spinner"></div> 載入中...</div>
       </div>
       <div class="sector-detail-panel" id="sector-detail-panel">
-        <div class="sdp-placeholder" id="sdp-placeholder">← 點擊左側產業查看詳情</div>
+        <div class="sdp-placeholder" id="sdp-placeholder" style="padding:0">載入中...</div>
         <div id="sdp-main" style="display:none">
           <div class="sdp-header">
             <span class="sdp-title" id="sdp-title">—</span>
             <button class="btn" style="padding:4px 8px;font-size:.75rem"
-              onclick="document.getElementById('sdp-main').style.display='none';document.getElementById('sdp-placeholder').style.display=''">✕</button>
+              onclick="document.getElementById('sdp-main').style.display='none';document.getElementById('sdp-placeholder').style.display='';_bubbleSelected=null;if(_bubbleSectors)renderBubbleChart(_bubbleSectors)">← 象限清單</button>
           </div>
           <div class="sdp-metrics" id="sdp-metrics"></div>
           <div id="sdp-stocks"></div>

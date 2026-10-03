@@ -222,6 +222,7 @@ def _from_json(text: str) -> list:
         rec["done"] = r.get("done") if r.get("done") in (0, 1) else None
         for k in ("name", "market", "purpose", "not_done_reason"):
             rec[k] = str(rec[k] or "").strip()
+        rec["purpose"] = purpose_text(rec["purpose"])
         out.append(rec)
     return _dedupe(out)
 
@@ -266,6 +267,19 @@ def _split_range(s: str):
     return (parts[0], parts[-1]) if len(parts) >= 2 else (s, "")
 
 
+# MOPS 買回目的有時只給代碼（證交法 28-2 條第 1 項各款）
+PURPOSE_CODES = {
+    "1": "轉讓股份予員工",
+    "2": "配合附認股權公司債、可轉換公司債或認股權憑證之發行，作為股權轉換之用",
+    "3": "為維護公司信用及股東權益所必要而買回，並辦理銷除股份",
+}
+
+
+def purpose_text(p) -> str:
+    p = str(p or "").strip()
+    return PURPOSE_CODES.get(p.rstrip(".、 "), p)
+
+
 def normalize(r: dict) -> Optional[dict]:
     sid = (r.get("stock_id") or "").strip()
     bd = roc_to_iso(r.get("board_date", ""))
@@ -283,7 +297,7 @@ def normalize(r: dict) -> Optional[dict]:
         "stock_id":        sid,
         "name":            (r.get("name") or "").strip(),
         "board_date":      bd,
-        "purpose":         (r.get("purpose") or "").strip(),
+        "purpose":         purpose_text(r.get("purpose")),
         "amount_cap":      to_num(r.get("amount_cap")),
         "plan_shares":     to_num(r.get("plan_shares")),
         "price_low":       to_num(lo),

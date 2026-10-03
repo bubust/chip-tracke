@@ -326,6 +326,21 @@ def _get_scan_session():
     return _scan_thread_local.session
 
 
+# 掃描失敗原因：not_found = Yahoo 查無（多半下市/暫停交易）；throttled = 被 Yahoo 限流；
+# network = 連線錯誤/逾時；empty = 有回應但沒有 K 線
+_fetch_fail_reason: dict = {}
+_FAIL_LABELS = {"not_found": "Yahoo 查無此股（可能下市或暫停交易）", "throttled": "Yahoo 限流",
+                "network": "連線失敗/逾時", "empty": "Yahoo 沒有 K 線資料"}
+
+
+def _note_fail(sid: str, reason: str):
+    """同一支多次嘗試時，可重試的原因（限流/連線）優先記下"""
+    rank = {"not_found": 0, "empty": 1, "network": 2, "throttled": 3}
+    old = _fetch_fail_reason.get(sid)
+    if old is None or rank.get(reason, 0) > rank.get(old, 0):
+        _fetch_fail_reason[sid] = reason
+
+
 def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
     """
     同步版 fetch（供 ThreadPoolExecutor worker 呼叫）：
@@ -378,9 +393,15 @@ def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
                                  headers={"User-Agent": _rand_ua(), **_SCAN_HEADERS},
                                  timeout=20)
                     if r.status_code == 429:
+                        _note_fail(sid, "throttled")
                         return pd.DataFrame()   # 快速放棄，讓 retry pass 處理
+                if r.status_code == 404:
+                    _note_fail(sid, "not_found")
+                    continue
                 r.raise_for_status()
                 df = _parse_yahoo_json(r.json())
+                if df.empty or len(df) < 5:
+                    _note_fail(sid, "empty")
                 if not df.empty and len(df) >= 5:
                     try:
                         from price_cache import save_stock_ohlcv as _save
@@ -388,9 +409,10 @@ def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
                         _save(sid, df)
                     except Exception:
                         pass
+                    _fetch_fail_reason.pop(sid, None)
                     return df
             except Exception:
-                pass
+                _note_fail(sid, "network")
     # ── 3. Fallback：Yahoo 全失敗時用 cache 備援（週末/假日）──────────────────
     if not _cached_fallback.empty:
         return _cached_fallback
@@ -484,6 +506,9 @@ def get_scan_status() -> dict:
         "phase":          _scan_status.get("phase", ""),
         "tdcc_total":     _scan_status.get("tdcc_total", 0),
         "skipped_stale":  _scan_status.get("skipped_stale", 0),
+        "skipped_list":   _scan_status.get("skipped_list", []),
+        "failed_detail":  _scan_status.get("failed_detail", {}),
+        "warrant_note":   _scan_status.get("warrant_note", ""),
         "counts":         counts,
         "finished_at":    _scan_status["finished_at"],
         "error":          _scan_status["error"],
@@ -523,6 +548,10 @@ async def run_market_scan(strategy_params: dict = None):
     _scan_status["yahoo_fail"]     = 0
     _scan_status["skipped_stale"]  = 0
     _scan_status["failed_stocks"]  = []
+    _scan_status["skipped_list"]   = []
+    _scan_status["failed_detail"]  = {}
+    _scan_status.pop("warrant_note", None)
+    _fetch_fail_reason.clear()
     _scan_status["results"]        = {}
     _scan_status["error"]          = None
     _scan_status["finished_at"]    = None
@@ -543,7 +572,11 @@ async def run_market_scan(strategy_params: dict = None):
         try:
             from price_cache import get_stale_stocks
             stale_set = get_stale_stocks(days_threshold=60)
+            if stale_set and len(stale_set) > len(tasks) * 0.25:
+                print(f"[SCAN] 殭屍股 {len(stale_set)} 支超過四分之一，疑似快取異常，本次不過濾")
+                stale_set = set()
             if stale_set:
+                _scan_status["skipped_list"] = sorted(stale_set & {sid for sid, _ in tasks})
                 before = len(tasks)
                 tasks = [(sid, mkt) for sid, mkt in tasks if sid not in stale_set]
                 _scan_status["skipped_stale"] = before - len(tasks)
@@ -695,10 +728,56 @@ async def run_market_scan(strategy_params: dict = None):
                                     pass
 
                 await loop.run_in_executor(None, _run_retry_blocking)
-                print(f"[SCAN] 二次重試完成，剩餘失敗 {_scan_status['yahoo_fail']} 支（非活躍股，不再重試）")
+                print(f"[SCAN] 二次重試完成，剩餘失敗 {_scan_status['yahoo_fail']} 支")
+
+            # ── 三次重試：只針對限流/連線失敗（Yahoo 查無的不重試），2 workers 慢慢來，被限流就等 3 秒 ──
+            _retryable = [sid for sid in list(_scan_status["failed_stocks"])
+                          if _fetch_fail_reason.get(sid, "network") in ("throttled", "network", "empty")]
+            if _retryable:
+                print(f"[SCAN] 三次重試 {len(_retryable)} 支（限流/連線失敗）…")
+
+                def _slow_one(sid):
+                    mkt = market_type_map.get(sid, "twse")
+                    for attempt in range(2):
+                        df = _fetch_for_scan(sid, mkt)
+                        if not df.empty and len(df) >= 5:
+                            return sid, df
+                        if _fetch_fail_reason.get(sid) != "throttled":
+                            break
+                        time.sleep(3 + attempt * 3)
+                    return sid, None
+
+                def _run_slow_blocking():
+                    with ThreadPoolExecutor(max_workers=2) as ex3:
+                        for sid3, df3 in ex3.map(_slow_one, _retryable):
+                            if df3 is None:
+                                continue
+                            try:
+                                result3 = scan_one_stock(df3, sid3, names.get(sid3, ""),
+                                                         strategy_params=_strategy_params,
+                                                         min_vol_ratio=_min_vol_ratio)
+                            except Exception:
+                                result3 = {}
+                            with _results_lock:
+                                if sid3 in _scan_status["failed_stocks"]:
+                                    _scan_status["failed_stocks"].remove(sid3)
+                                    _scan_status["yahoo_fail"] -= 1
+                                    _scan_status["yahoo_ok"] += 1
+                                for strat, r3 in (result3 or {}).items():
+                                    if r3 is not None:
+                                        all_results[strat].append(r3)
+
+                await loop.run_in_executor(None, _run_slow_blocking)
+                print(f"[SCAN] 三次重試完成，剩餘失敗 {_scan_status['yahoo_fail']} 支")
 
         except Exception as _retry_e:
             print(f"[SCAN] 重試異常（主要結果不受影響）: {_retry_e}")
+
+        # 每支失敗股票的原因（給畫面顯示）
+        _scan_status["failed_detail"] = {
+            sid: _FAIL_LABELS.get(_fetch_fail_reason.get(sid, ""), "未知原因")
+            for sid in _scan_status["failed_stocks"]
+        }
 
         # 重試後更新存檔（含重試新增的命中）
         _scan_status["results"] = all_results
@@ -711,7 +790,34 @@ async def run_market_scan(strategy_params: dict = None):
             from scanner import screen_s_warrant_top
             _wf_dates  = _wf_dates_fn()
             _wf_date   = _wf_dates[0] if _wf_dates else None
+            _tgt = _scan_cache_target_date
+            _tgt_dash = f"{_tgt[:4]}-{_tgt[4:6]}-{_tgt[6:]}" if len(_tgt) == 8 else ""
+            if (not _wf_date or (_tgt_dash and _wf_date < _tgt_dash)):
+                # 權證金流缺最新交易日：先試官方日報，再用權證盤外掃描（MIS 盤後成交量）聚合
+                print(f"[SCAN] S_WARRANT_TOP：warrant_flow 最新 {_wf_date or '無'}，目標 {_tgt_dash}，補算中…")
+                def _refresh_flow():
+                    try:
+                        from warrant.flow import calc_and_save as _wf_calc
+                        if _tgt_dash and _wf_calc(_tgt_dash) > 0:
+                            return
+                    except Exception as _e1:
+                        print(f"[SCAN] 權證官方日報失敗: {_e1}")
+                    try:
+                        from warrant.router import run_scanner as _w_scan, _is_market_open as _w_open
+                        if not _w_open():
+                            _w_scan()
+                    except Exception as _e2:
+                        print(f"[SCAN] 權證盤外掃描失敗: {_e2}")
+                await loop.run_in_executor(None, _refresh_flow)
+                _wf_dates = _wf_dates_fn()
+                _wf_date = _wf_dates[0] if _wf_dates else None
+            # 最多接受 7 天前的金流（連假時用最後一個交易日）
+            if _wf_date and (datetime.date.today() - datetime.date.fromisoformat(_wf_date)).days > 7:
+                print(f"[SCAN] S_WARRANT_TOP：最新金流 {_wf_date} 已超過 7 天，不採用")
+                _scan_status["warrant_note"] = f"權證金流最新只有 {_wf_date}（超過 7 天），認購前十大暫停"
+                _wf_date = None
             if _wf_date:
+                _scan_status["warrant_note"] = f"認購前十大使用 {_wf_date} 權證成交"
                 _wf_params = _strategy_params.get("S_WARRANT_TOP", {})
                 _wf_limit  = int(_wf_params.get("limit", 10))
                 _wf_fetch  = min(_wf_limit * 3, 60)
@@ -735,9 +841,11 @@ async def run_market_scan(strategy_params: dict = None):
                 print(f"[SCAN] S_WARRANT_TOP {_wf_date} 命中：{len(all_results['S_WARRANT_TOP'])} 支")
             else:
                 print("[SCAN] S_WARRANT_TOP 跳過（warrant_flow 無資料）")
+                _scan_status.setdefault("warrant_note", "權證金流抓不到（證交所/櫃買被擋且 MIS 也沒有資料），認購前十大暫停")
         except Exception as _we:
             import traceback; traceback.print_exc()
             print(f"[SCAN] S_WARRANT_TOP 失敗: {_we}")
+            _scan_status["warrant_note"] = f"認購前十大計算失敗：{type(_we).__name__}"
             all_results["S_WARRANT_TOP"] = []
 
         _scan_status["results"] = all_results

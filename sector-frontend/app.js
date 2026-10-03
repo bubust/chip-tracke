@@ -724,10 +724,59 @@ function squarifyLayout(items, x0, y0, w, h, rects) {
   }
 }
 
+let _bubbleSectors = null;
+let _bubbleSelected = null;
+let _bubbleResizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(_bubbleResizeTimer);
+  _bubbleResizeTimer = setTimeout(() => {
+    const p = document.getElementById('bubble-panel');
+    if (_bubbleSectors && p && p.style.display !== 'none') renderBubbleChart(_bubbleSectors);
+  }, 250);
+});
+
+const _QUADS = [
+  { key: 'up',   name: '強勢加速', pos: '右上', col: '#3fb950', test: (a, b) => a >= 0 && b >= 0, hint: '5 日、20 日都漲：主流族群' },
+  { key: 'rec',  name: '反彈修復', pos: '左上', col: '#58a6ff', test: (a, b) => a <  0 && b >= 0, hint: '20 日漲、近 5 日回檔：強勢股休息' },
+  { key: 'turn', name: '短多長弱', pos: '右下', col: '#d29922', test: (a, b) => a >= 0 && b <  0, hint: '20 日跌、近 5 日反彈：可能落底轉強' },
+  { key: 'weak', name: '雙弱',     pos: '左下', col: '#f85149', test: (a, b) => a <  0 && b <  0, hint: '5 日、20 日都跌：避開' },
+];
+
+function _shortSector(n) {
+  n = String(n || '');
+  if (n.length > 3 && n.endsWith('工業')) return n.slice(0, -2);          // 汽車工業 → 汽車
+  if (n.length > 3 && n.endsWith('業')) n = n.slice(0, -1);               // 半導體業 → 半導體
+  return n.replace('電腦及週邊設備', '電腦週邊').replace('電子零組件', '電子零件');
+}
+
+// 尚未點選產業時，右側顯示四象限清單（手機上比泡泡圖好讀）
+function renderQuadrantList(sectors) {
+  const el = document.getElementById('sdp-placeholder');
+  if (!el || !sectors) return;
+  const rows = sectors.map(s => ({
+    s, r5: (s.return_ew_5d || 0) * 100, r20: (s.return_ew_20d || 0) * 100,
+  }));
+  const fmt = v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+  el.innerHTML = `<div style="text-align:left">
+    <div style="font-size:.78rem;color:var(--muted);margin-bottom:10px">點泡泡或下面的產業看成份股 · 依 20 日報酬排序</div>
+    ${_QUADS.map(q => {
+      const list = rows.filter(r => q.test(r.r5, r.r20)).sort((a, b) => b.r20 - a.r20);
+      return `<div style="margin-bottom:12px">
+        <div style="font-size:.82rem;font-weight:700;color:${q.col};margin-bottom:4px">${q.name}（${q.pos}）${list.length} 個
+          <span style="font-weight:400;color:var(--muted);font-size:.72rem;margin-left:4px">${q.hint}</span></div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px">${list.map(r => {
+          const nm = escHtml(r.s.sector_name || r.s.sector_id), sid = escHtml(r.s.sector_id);
+          return `<button onclick="onBubbleClick('${sid}','${nm}')" title="5日 ${fmt(r.r5)}｜20日 ${fmt(r.r20)}"
+            style="cursor:pointer;background:${q.col}14;border:1px solid ${q.col}55;color:var(--text);border-radius:14px;padding:3px 9px;font-size:.76rem">
+            ${nm} <span style="color:${q.col};font-weight:600">${fmt(r.r20)}</span></button>`;
+        }).join('') || '<span style="color:var(--muted);font-size:.75rem">—</span>'}</div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
 async function renderBubbleChart(sectors) {
   const leftEl = document.getElementById("bubble-left");
-  const container = document.getElementById("bubbleSection");
-
   if (!sectors || sectors.length === 0) {
     if (leftEl) leftEl.innerHTML = '<div class="loading"><div class="spinner"></div> 載入中...</div>';
     try {
@@ -735,167 +784,134 @@ async function renderBubbleChart(sectors) {
       const d = await r.json();
       sectors = d.sectors || [];
     } catch (e) {
-      if (leftEl) leftEl.innerHTML = `<div style="color:var(--red);padding:20px">載入失敗：${e.message}</div>`;
+      if (leftEl) leftEl.innerHTML = `<div style="color:var(--red);padding:20px">載入失敗：${escHtml(e.message)}</div>`;
       return;
     }
   }
-
   if (!sectors || sectors.length === 0) {
     if (leftEl) leftEl.innerHTML = '<div class="empty-state"><h3>尚無資料</h3><p>請先初始化並執行計算</p></div>';
     return;
   }
+  _bubbleSectors = sectors;
+  renderQuadrantList(sectors);
 
-  const W = Math.max(340, (leftEl ? leftEl.clientWidth : 0) || Math.round((container.clientWidth || 900) * 0.46));
-  const H = Math.max(360, Math.round(W * 0.82));
-  const PAD = { top: 40, right: 28, bottom: 52, left: 58 };
-  const iW = W - PAD.left - PAD.right;
-  const iH = H - PAD.top - PAD.bottom;
+  const W = Math.max(300, Math.round(leftEl.clientWidth || 640));
+  const small = W < 520;
+  const H = Math.round(W * (small ? 0.95 : 0.72));
+  const PAD = small ? { top: 30, right: 12, bottom: 40, left: 42 } : { top: 34, right: 20, bottom: 46, left: 54 };
+  const iW = W - PAD.left - PAD.right, iH = H - PAD.top - PAD.bottom;
 
-  // 軸範圍
-  const r5vals  = sectors.map(s => (s.return_ew_5d  || 0) * 100);
+  // 軸範圍：用 90 百分位而非最大值，少數極端產業不會把其他產業擠在中間；超出的貼邊並標出實際數字
+  const pctl = (arr, p) => { const a = arr.map(Math.abs).sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(a.length * p))] || 0; };
+  const r5vals = sectors.map(s => (s.return_ew_5d || 0) * 100);
   const r20vals = sectors.map(s => (s.return_ew_20d || 0) * 100);
-  const xMax = Math.max(4, ...r5vals.map(Math.abs)) * 1.2;
-  const yMax = Math.max(6, ...r20vals.map(Math.abs)) * 1.2;
-
-  const FIXED_RAD = 20;  // 所有泡泡固定大小（縮小以減少重疊）
+  const xMax = Math.max(3, pctl(r5vals, 0.9) * 1.35);
+  const yMax = Math.max(5, pctl(r20vals, 0.9) * 1.35);
   const toX = v => PAD.left + ((Math.max(-xMax, Math.min(xMax, v)) + xMax) / (2 * xMax)) * iW;
-  const toY = v => PAD.top  + ((yMax - Math.max(-yMax, Math.min(yMax, v))) / (2 * yMax)) * iH;
+  const toY = v => PAD.top + ((yMax - Math.max(-yMax, Math.min(yMax, v))) / (2 * yMax)) * iH;
   const x0 = toX(0), y0 = toY(0);
-
-  // 象限顏色：依 5d/20d 正負決定
-  const quadColor = (r5, r20) => {
-    if (r5 >= 0 && r20 >= 0) return '#3fb950';  // 右上：強勢加速（綠）
-    if (r5 <  0 && r20 >= 0) return '#58a6ff';  // 左上：反彈修復（藍）
-    if (r5 >= 0 && r20 <  0) return '#d29922';  // 右下：短多長弱（黃）
-    return '#f85149';                             // 左下：雙弱（紅）
-  };
   const fmtPct = v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
 
-  // ── 初始座標（固定大小，依象限著色）──────────────────────────────
+  // 泡泡大小 ∝ √成份股數
+  const maxCnt = Math.max(...sectors.map(s => s.stock_count || 1));
+  const rMin = small ? 6 : 8, rMax = small ? 13 : 18;
   const bubbles = sectors.map(s => {
-    const v5  = (s.return_ew_5d  || 0) * 100;
-    const v20 = (s.return_ew_20d || 0) * 100;
-    const ox  = toX(v5);
-    const oy  = toY(v20);
-    const col = quadColor(v5, v20);
-    const name = escHtml(s.sector_name || s.sector_id);
-    const sid  = escHtml(s.sector_id);
-    return { ox, oy, x: ox, y: oy, rad: FIXED_RAD, col, name, sid,
-             r5: fmtPct(v5), r20: fmtPct(v20), cnt: s.stock_count || 1 };
+    const v5 = (s.return_ew_5d || 0) * 100, v20 = (s.return_ew_20d || 0) * 100;
+    const q = _QUADS.find(q => q.test(v5, v20));
+    const cnt = s.stock_count || 1;
+    const rad = rMin + (rMax - rMin) * Math.sqrt(cnt / maxCnt);
+    const clipped = Math.abs(v5) > xMax || Math.abs(v20) > yMax;
+    return { x: toX(v5), y: toY(v20), ox: toX(v5), oy: toY(v20), rad, col: q.col, clipped,
+             name: escHtml(s.sector_name || s.sector_id), short: escHtml(_shortSector(s.sector_name || s.sector_id)),
+             sid: escHtml(s.sector_id), r5: fmtPct(v5), r20: fmtPct(v20), cnt, v20 };
   });
 
-  // ── 軸刻度 ──────────────────────────────────────────────────────────
-  const nTick = 4;
-  const xTickVals = Array.from({length: nTick + 1}, (_, i) => -xMax + i * (2 * xMax / nTick));
-  const yTickVals = Array.from({length: nTick + 1}, (_, i) => -yMax + i * (2 * yMax / nTick));
-  const xTicks = xTickVals.map(v => {
-    const px = toX(v);
-    const lbl = (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
-    return `<line x1="${px}" y1="${PAD.top}" x2="${px}" y2="${PAD.top+iH}" stroke="#21262d" stroke-width="1"/>
-            <line x1="${px}" y1="${PAD.top+iH}" x2="${px}" y2="${PAD.top+iH+4}" stroke="#484f58" stroke-width="1.5"/>
-            <text x="${px}" y="${PAD.top+iH+16}" text-anchor="middle" font-size="11" fill="#8b949e">${lbl}</text>`;
-  }).join('');
-  const yTicks = yTickVals.map(v => {
-    const py = toY(v);
-    const lbl = (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
-    return `<line x1="${PAD.left}" y1="${py}" x2="${PAD.left+iW}" y2="${py}" stroke="#21262d" stroke-width="1"/>
-            <line x1="${PAD.left-4}" y1="${py}" x2="${PAD.left}" y2="${py}" stroke="#484f58" stroke-width="1.5"/>
-            <text x="${PAD.left-8}" y="${py+4}" text-anchor="end" font-size="11" fill="#8b949e">${lbl}</text>`;
-  }).join('');
-
-  // ── 象限標題帶（四角 header bar）───────────────────────────────────
-  const BAND_H = 22;
-  const halfW  = (x0 - PAD.left);       // 左半寬
-  const rightW = (PAD.left + iW - x0);  // 右半寬
-  const quadLabels = [
-    // 右上：強勢加速
-    `<rect x="${x0}" y="${PAD.top}" width="${rightW}" height="${BAND_H}" fill="#3fb950" fill-opacity=".10" rx="0"/>
-     <text x="${x0 + rightW - 6}" y="${PAD.top + 15}" text-anchor="end" font-size="12" font-weight="700" fill="#3fb950" opacity=".85">強勢加速 ↗</text>`,
-    // 左上：反彈修復
-    `<rect x="${PAD.left}" y="${PAD.top}" width="${halfW}" height="${BAND_H}" fill="#58a6ff" fill-opacity=".10" rx="0"/>
-     <text x="${PAD.left + 6}" y="${PAD.top + 15}" text-anchor="start" font-size="12" font-weight="700" fill="#58a6ff" opacity=".85">↖ 反彈修復</text>`,
-    // 右下：短多長弱
-    `<rect x="${x0}" y="${PAD.top + iH - BAND_H}" width="${rightW}" height="${BAND_H}" fill="#d29922" fill-opacity=".10" rx="0"/>
-     <text x="${x0 + rightW - 6}" y="${PAD.top + iH - 7}" text-anchor="end" font-size="12" font-weight="700" fill="#d29922" opacity=".85">短多長弱 ↘</text>`,
-    // 左下：雙弱
-    `<rect x="${PAD.left}" y="${PAD.top + iH - BAND_H}" width="${halfW}" height="${BAND_H}" fill="#f85149" fill-opacity=".10" rx="0"/>
-     <text x="${PAD.left + 6}" y="${PAD.top + iH - 7}" text-anchor="start" font-size="12" font-weight="700" fill="#f85149" opacity=".85">↙ 雙弱</text>`,
-  ].join('');
-
-  // ── 限制位移的分離（讓重疊泡泡可各自被點到）────────────────────────
-  const MAX_DISP = FIXED_RAD * 1.5;  // 最多偏移 1.5 倍半徑
-  for (let iter = 0; iter < 25; iter++) {
-    for (let i = 0; i < bubbles.length; i++) {
-      for (let j = i + 1; j < bubbles.length; j++) {
-        const bi = bubbles[i], bj = bubbles[j];
-        const dx = bj.x - bi.x, dy = bj.y - bi.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
-        const minD = bi.rad + bj.rad + 2;
-        if (dist < minD) {
-          const push = (minD - dist) * 0.35;
-          const nx = dx / dist, ny = dy / dist;
-          bi.x -= nx * push; bi.y -= ny * push;
-          bj.x += nx * push; bj.y += ny * push;
-        }
-      }
+  // 輕度分離，避免完全疊在一起點不到（最多偏移 1 個半徑）
+  for (let it = 0; it < 30; it++) {
+    for (let i = 0; i < bubbles.length; i++) for (let j = i + 1; j < bubbles.length; j++) {
+      const a = bubbles[i], b = bubbles[j];
+      const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01, m = a.rad + b.rad + 1;
+      if (d < m) { const p = (m - d) * 0.3, nx = dx / d, ny = dy / d; a.x -= nx * p; a.y -= ny * p; b.x += nx * p; b.y += ny * p; }
     }
-    // 限制每個泡泡偏移量不超過 MAX_DISP（避免漂移）
     for (const b of bubbles) {
-      const ddx = b.x - b.ox, ddy = b.y - b.oy;
-      const d = Math.sqrt(ddx * ddx + ddy * ddy);
-      if (d > MAX_DISP) { b.x = b.ox + ddx / d * MAX_DISP; b.y = b.oy + ddy / d * MAX_DISP; }
+      const ddx = b.x - b.ox, ddy = b.y - b.oy, d = Math.hypot(ddx, ddy), lim = b.rad;
+      if (d > lim) { b.x = b.ox + ddx / d * lim; b.y = b.oy + ddy / d * lim; }
       b.x = Math.max(PAD.left + b.rad, Math.min(PAD.left + iW - b.rad, b.x));
-      b.y = Math.max(PAD.top  + b.rad, Math.min(PAD.top  + iH - b.rad, b.y));
+      b.y = Math.max(PAD.top + b.rad, Math.min(PAD.top + iH - b.rad, b.y));
     }
   }
 
-  // ── Bubbles + Labels ────────────────────────────────────────────────
-  const sorted = [...bubbles];
+  // 標籤放泡泡旁邊（右→左→上→下），跟已放的標籤或泡泡重疊就換位置，都不行就不顯示（點/滑過仍看得到）
+  const fs = small ? 10 : 11.5;
+  const placed = [];
+  const overlap = (r1, r2) => r1.x < r2.x + r2.w && r1.x + r1.w > r2.x && r1.y < r2.y + r2.h && r1.y + r1.h > r2.y;
+  const bubbleBoxes = bubbles.map(b => ({ x: b.x - b.rad, y: b.y - b.rad, w: b.rad * 2, h: b.rad * 2 }));
+  // 貼邊的極端值產業優先標，其次大產業
+  const order = [...bubbles].sort((a, b) => (b.clipped - a.clipped) || (b.cnt - a.cnt));
+  for (const b of order) {
+    const text = b.short + (b.clipped ? ' ⇢' : '');
+    const tw = text.length * fs * 0.95, th = fs * 1.2;
+    const cands = [
+      { x: b.x + b.rad + 3, y: b.y - th / 2, anchor: 'start' },
+      { x: b.x - b.rad - 3 - tw, y: b.y - th / 2, anchor: 'end' },
+      { x: b.x - tw / 2, y: b.y - b.rad - th - 1, anchor: 'middle' },
+      { x: b.x - tw / 2, y: b.y + b.rad + 1, anchor: 'middle' },
+    ];
+    for (const c of cands) {
+      const box = { x: c.x, y: c.y, w: tw, h: th };
+      if (box.x < PAD.left || box.x + tw > PAD.left + iW || box.y < PAD.top || box.y + th > PAD.top + iH) continue;
+      if (placed.some(p => overlap(p, box))) continue;
+      if (bubbleBoxes.some((bb, k) => bubbles[k] !== b && overlap(bb, box))) continue;
+      placed.push(box);
+      b.label = { text, x: c.anchor === 'start' ? c.x : c.anchor === 'end' ? c.x + tw : b.x, y: c.y + th * 0.8, anchor: c.anchor };
+      break;
+    }
+  }
 
-  const circles = sorted.map(b =>
-    `<circle cx="${b.x}" cy="${b.y}" r="${b.rad}" fill="${b.col}" fill-opacity=".22"
-      stroke="${b.col}" stroke-width="1.8" cursor="pointer"
-      onclick="onBubbleClick('${b.sid}','${b.name}')"
-      title="${b.name}&#10;5日: ${b.r5}  20日: ${b.r20}&#10;成份股: ${b.cnt} 支"/>`
-  ).join('');
+  const nTick = 4;
+  const ticks = (max) => Array.from({ length: nTick + 1 }, (_, i) => -max + i * (2 * max / nTick));
+  const xTicks = ticks(xMax).map(v => `<line x1="${toX(v)}" y1="${PAD.top}" x2="${toX(v)}" y2="${PAD.top + iH}" stroke="#21262d"/>
+      <text x="${toX(v)}" y="${PAD.top + iH + 14}" text-anchor="middle" font-size="10" fill="#8b949e">${fmtPct(v)}</text>`).join('');
+  const yTicks = ticks(yMax).map(v => `<line x1="${PAD.left}" y1="${toY(v)}" x2="${PAD.left + iW}" y2="${toY(v)}" stroke="#21262d"/>
+      <text x="${PAD.left - 5}" y="${toY(v) + 3}" text-anchor="end" font-size="10" fill="#8b949e">${fmtPct(v)}</text>`).join('');
+  const qBands = [
+    [x0, PAD.top, PAD.left + iW - x0, '#3fb950', '強勢加速 ↗', 'end', PAD.left + iW - 6, PAD.top + 13],
+    [PAD.left, PAD.top, x0 - PAD.left, '#58a6ff', '↖ 反彈修復', 'start', PAD.left + 6, PAD.top + 13],
+    [x0, PAD.top + iH - 18, PAD.left + iW - x0, '#d29922', '短多長弱 ↘', 'end', PAD.left + iW - 6, PAD.top + iH - 5],
+    [PAD.left, PAD.top + iH - 18, x0 - PAD.left, '#f85149', '↙ 雙弱', 'start', PAD.left + 6, PAD.top + iH - 5],
+  ].map(([x, y, w, c, t, a, tx, ty]) => `<rect x="${x}" y="${y}" width="${Math.max(0, w)}" height="18" fill="${c}" fill-opacity=".08"/>
+      <text x="${tx}" y="${ty}" text-anchor="${a}" font-size="${small ? 10 : 11}" font-weight="700" fill="${c}" opacity=".85">${t}</text>`).join('');
 
-  const labels = sorted.map(b => {
-    if (b.rad < 14) return '';          // 太小不顯示
-    const fs = Math.max(9, Math.min(12, b.rad * 0.38));
-    const maxChars = Math.floor(b.rad * 1.6 / fs);
-    const label = b.name.length > maxChars ? b.name.slice(0, maxChars - 1) + '…' : b.name;
-    return `<text x="${b.x}" y="${b.y + fs * 0.38}" text-anchor="middle" font-size="${fs}"
-      fill="#e6edf3" pointer-events="none"
-      style="text-shadow:0 1px 3px #000,0 -1px 3px #000,1px 0 3px #000,-1px 0 3px #000">${label}</text>`;
+  const circles = bubbles.map(b => {
+    const sel = _bubbleSelected === b.sid;
+    return `<g cursor="pointer" onclick="onBubbleClick('${b.sid}','${b.name}')">
+      <title>${b.name}　5日 ${b.r5}｜20日 ${b.r20}｜成份股 ${b.cnt} 支${b.clipped ? '（超出圖表範圍，貼邊顯示）' : ''}</title>
+      <circle cx="${b.x.toFixed(1)}" cy="${b.y.toFixed(1)}" r="${(b.rad + (small ? 6 : 4)).toFixed(1)}" fill="transparent"/>
+      <circle cx="${b.x.toFixed(1)}" cy="${b.y.toFixed(1)}" r="${b.rad.toFixed(1)}" fill="${b.col}" fill-opacity="${sel ? .55 : .25}"
+        stroke="${sel ? '#fff' : b.col}" stroke-width="${sel ? 2.5 : 1.5}" ${b.clipped ? 'stroke-dasharray="3,2"' : ''}/>
+    </g>`;
   }).join('');
+  const labels = bubbles.filter(b => b.label).map(b =>
+    `<text x="${b.label.x.toFixed(1)}" y="${b.label.y.toFixed(1)}" text-anchor="${b.label.anchor}" font-size="${fs}"
+      fill="#e6edf3" pointer-events="none" paint-order="stroke" stroke="#0d1117" stroke-width="3">${b.label.text}</text>`).join('');
 
-  const svg = `<svg width="${W}" height="${H}" style="display:block;overflow:visible">
-    <defs>
-      <clipPath id="bcp"><rect x="${PAD.left}" y="${PAD.top}" width="${iW}" height="${iH}"/></clipPath>
-    </defs>
+  const svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:${W}px;touch-action:manipulation">
+    <defs><clipPath id="bcp"><rect x="${PAD.left}" y="${PAD.top}" width="${iW}" height="${iH}"/></clipPath></defs>
     <rect x="${PAD.left}" y="${PAD.top}" width="${iW}" height="${iH}" fill="#161b22" rx="6"/>
     ${xTicks}${yTicks}
-    <!-- 邊框 -->
-    <rect x="${PAD.left}" y="${PAD.top}" width="${iW}" height="${iH}" fill="none" stroke="#30363d" stroke-width="1" rx="6"/>
-    <!-- 象限分隔線 -->
-    <line x1="${x0}" y1="${PAD.top}" x2="${x0}" y2="${PAD.top+iH}" stroke="#58a6ff" stroke-width="1.2" stroke-dasharray="5,3" opacity=".55"/>
-    <line x1="${PAD.left}" y1="${y0}" x2="${PAD.left+iW}" y2="${y0}" stroke="#58a6ff" stroke-width="1.2" stroke-dasharray="5,3" opacity=".55"/>
-    ${quadLabels}
-    <!-- 軸標題 -->
-    <text x="${PAD.left+iW/2}" y="${H-6}" text-anchor="middle" font-size="11" fill="#6e7681" font-weight="500">◀ 5日報酬率 % ▶</text>
-    <text x="13" y="${PAD.top+iH/2}" text-anchor="middle" font-size="11" fill="#6e7681" font-weight="500" transform="rotate(-90,13,${PAD.top+iH/2})">▼ 20日報酬率 % ▲</text>
-    <!-- Bubbles（clip 在圖區內）-->
+    <rect x="${PAD.left}" y="${PAD.top}" width="${iW}" height="${iH}" fill="none" stroke="#30363d" rx="6"/>
+    <line x1="${x0}" y1="${PAD.top}" x2="${x0}" y2="${PAD.top + iH}" stroke="#58a6ff" stroke-dasharray="5,3" opacity=".5"/>
+    <line x1="${PAD.left}" y1="${y0}" x2="${PAD.left + iW}" y2="${y0}" stroke="#58a6ff" stroke-dasharray="5,3" opacity=".5"/>
+    ${qBands}
+    <text x="${PAD.left + iW / 2}" y="${H - 6}" text-anchor="middle" font-size="10.5" fill="#6e7681">◀ 5 日報酬率 ▶</text>
+    <text x="11" y="${PAD.top + iH / 2}" text-anchor="middle" font-size="10.5" fill="#6e7681" transform="rotate(-90,11,${PAD.top + iH / 2})">▼ 20 日報酬率 ▲</text>
     <g clip-path="url(#bcp)">${circles}${labels}</g>
   </svg>`;
-
-  const legend = `<div style="display:flex;gap:16px;margin-top:10px;font-size:.72rem;color:var(--muted);flex-wrap:wrap">
-    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3fb950;margin-right:4px"></span>強勢加速（右上）</span>
-    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#58a6ff;margin-right:4px"></span>反彈修復（左上）</span>
-    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#d29922;margin-right:4px"></span>短多長弱（右下）</span>
-    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f85149;margin-right:4px"></span>雙弱（左下）</span>
-    <span style="margin-left:8px">點擊查看詳情</span>
+  const clippedN = bubbles.filter(b => b.clipped).length;
+  const legend = `<div style="display:flex;gap:12px;margin-top:8px;font-size:.72rem;color:var(--muted);flex-wrap:wrap">
+    ${_QUADS.map(q => `<span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${q.col};margin-right:4px"></span>${q.name}</span>`).join('')}
+    <span>泡泡大小＝成份股數</span>${clippedN ? `<span>虛線＋⇢＝超出範圍貼邊（${clippedN} 個）</span>` : ''}
   </div>`;
-
   if (leftEl) leftEl.innerHTML = svg + legend;
 }
 
@@ -905,6 +921,9 @@ async function onBubbleClick(sectorId, name) {
   if (!main) return;
   if (placeholder) placeholder.style.display = 'none';
   main.style.display = '';
+  _bubbleSelected = sectorId;
+  if (_bubbleSectors) renderBubbleChart(_bubbleSectors);   // 標出選到的泡泡
+  if (window.innerWidth < 1100) main.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   document.getElementById("sdp-title").textContent = name;
   document.getElementById("sdp-metrics").innerHTML =

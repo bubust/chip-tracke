@@ -19,11 +19,12 @@ from datetime import date, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
 
+import os
 import httpx
 
 # ── 設定 ─────────────────────────────────────────────────────────────────────
 
-RENDER_URL = "https://chip-tracker.onrender.com"   # Render 部署網址
+RENDER_URL = os.environ.get("CHIP_SERVER", "https://chip-tracker-tw.fly.dev")   # 網站網址（已從 Render 搬到 Fly.io）
 
 TDCC_WEB = "https://www.tdcc.com.tw/portal/zh/smWeb/qryStock"
 THOUSAND_LOT_TIERS = {15, 16, 17}
@@ -203,7 +204,8 @@ def upload_to_render(date_str: str, data: dict[str, float]):
     payload = {"date": date_str, "data": data}
     print(f"[上傳] POST {url}，date={date_str}，{len(data)} 支 ...")
     try:
-        r = httpx.post(url, json=payload, timeout=30)
+        from server_auth_client import auth_headers
+        r = httpx.post(url, json=payload, headers=auth_headers(RENDER_URL), timeout=30)
         if r.status_code == 200:
             j = r.json()
             print(f"[上傳] 成功！date={j['date']}，count={j['count']}")

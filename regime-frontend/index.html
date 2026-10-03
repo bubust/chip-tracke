@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
+<script src="/auth-shim.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>台股市場 Regime 面板</title>
@@ -378,12 +379,12 @@ function renderToday(data) {
       desc: '外資現貨+期貨+融資的綜合方向。正值外資買進、負值賣超' },
     { name: 'Macro 總經',        key: 'macro_factor', dir: true,
       desc: 'VIX、美債、美元、SOX 半導體等外部環境。負值代表外部風險升高' },
-    { name: 'Leverage 槓桿風險', key: 'leverage_risk',dir: false,
-      desc: '融資餘額水位。&gt;70 槓桿過高，下跌易引爆斷頭潮' },
+    { name: 'Leverage 槓桿風險', key: 'leverage_risk',dir: false, nullText: '資料累積中',
+      desc: '融資餘額近 20 日增減＋在歷史中的水位。50 中性，&gt;70 槓桿過高，下跌易引爆斷頭潮' },
     { name: 'Concentration 集中',key: 'concentration',dir: false,
       desc: '漲幅集中少數股(如台積電)的程度。100 = 指數假象，底下多數股在跌' },
-    { name: 'Divergence 背離',   key: 'divergence',   dir: false,
-      desc: '指數與廣度的落差。正值為底部訊號、負值為見頂警訊' },
+    { name: 'Divergence 背離',   key: 'divergence',   dir: true, nullText: '資料累積中',
+      desc: '近 10 日多數股票（中位數）比指數強或弱。0 附近＝同步；正值＝個股撐、底部訊號；負值＝只靠權值股撐、見頂警訊' },
   ];
 
   document.getElementById('factors-grid').innerHTML = factors.map(f => {
@@ -392,7 +393,7 @@ function renderToday(data) {
     const v = isNull ? 0 : raw;
     const pct = f.dir ? (v + 100) / 2 : v;
     const col = isNull ? '#484f58' : (f.dir ? colorDir(v) : colorRisk(v));
-    const display = isNull ? '無資料' : (f.dir ? ((v >= 0 ? '+' : '') + v) : v);
+    const display = isNull ? (f.nullText || '無資料') : (f.dir ? ((v >= 0 ? '+' : '') + v) : v);
     const descHtml = f.desc ? `<div class="desc">${f.desc.replace(/\n/g,'<br>')}</div>` : '';
     return `<div class="factor-row">
       <div class="name">${f.name}</div>

@@ -19,7 +19,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from . import db
 from .fetcher import fetch_range
-from .parser import parse_any
+from .parser import parse_any, purpose_text
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -167,6 +167,7 @@ def enrich(rows: list, today: date = None, with_prices: bool = True) -> list:
             r["name"] = r.get("name") or m[0]
             r["market"] = r.get("market") or m[1]
         r["market"] = {"sii": "twse", "otc": "tpex"}.get(r.get("market"), r.get("market"))
+        r["purpose"] = purpose_text(r.get("purpose"))   # 舊資料可能存的是代碼 1/2/3
         r["status"] = classify(r, today)
         plan, bought = r.get("plan_shares"), r.get("bought_shares")
         r["plan_lots"] = round(plan / 1000) if plan else None

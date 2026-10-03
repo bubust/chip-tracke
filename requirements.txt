@@ -2,8 +2,10 @@ httpx
 pandas
 fastapi
 uvicorn
-apscheduler
+apscheduler>=3.10,<4
 scipy
 pyyaml
 requests
 python-dotenv
+pytz
+tzdata
