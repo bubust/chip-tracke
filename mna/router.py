@@ -135,10 +135,39 @@ def enrich(rows: list, today: date = None) -> list:
     return out
 
 
+_MERGE_KEYS = ("acquirer", "offer_price", "min_shares", "max_shares", "offer_pct", "scope", "period_start",
+               "period_end", "consideration", "target_company", "stock_company", "stock_ref", "stock_ratio", "deal_kind")
+
+
+def group_deals(rows: list) -> list:
+    """同一案常有好幾則公告（收購方、被收購方、延長期間…）：同標的＋同類型、公告日相差 120 天內合成一列，
+    欄位以「資料最完整、最新」的那則為主，缺的從其他則補；related 記下所有公告"""
+    rows = sorted(rows, key=lambda r: (r.get("announce_date") or ""), reverse=True)
+    groups: list = []
+    for r in rows:
+        g = next((g for g in groups if g["target_id"] == r["target_id"] and g["deal_type"] == r["deal_type"]
+                  and abs((date.fromisoformat(g["_first"]) - date.fromisoformat(r.get("announce_date") or g["_first"])).days) <= 120), None)
+        if g is None:
+            g = {**r, "_first": r.get("announce_date") or tw_today().isoformat(), "related": []}
+            groups.append(g)
+        else:
+            for k in _MERGE_KEYS:
+                if g.get(k) in (None, "") and r.get(k) not in (None, ""):
+                    g[k] = r[k]
+            if r.get("status_override") and not g.get("status_override"):
+                g["status_override"] = r["status_override"]
+            g["_first"] = min(g["_first"], r.get("announce_date") or g["_first"])
+        g["related"].append({"id": r["id"], "date": r.get("announce_date"), "subject": r.get("subject") or r.get("notes") or "",
+                             "source": r.get("source")})
+    for g in groups:
+        g["first_announce"] = g.pop("_first")
+    return groups
+
+
 @router.get("/api/mna/list")
 def list_deals(days: int = Query(365, ge=7, le=3650)):
     since = (tw_today() - timedelta(days=days)).isoformat()
-    rows = enrich(db.all_rows(since))
+    rows = enrich(group_deals(db.all_rows(since)))
     counts = {}
     for r in rows:
         counts[r["status"]] = counts.get(r["status"], 0) + 1

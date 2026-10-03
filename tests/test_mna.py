@@ -88,3 +88,19 @@ def test_noise_excluded():
     for s in ("公告本公司115年9月合併營業收入淨額", "富邦金控代子公司富邦人壽公告取得「富邦產物保險股份有限公司」使用權資產",
               "公告本公司與子公司簡易合併案(合併基準日異動)。", "更正本公司114年第4季合併及個體財務報告附註部份內容"):
         assert classify(s) is None, s
+
+
+def test_group_related_announcements():
+    from mna.router import group_deals
+    rows = [
+        {"id": 1, "target_id": "6214", "deal_type": "公開收購", "announce_date": "2026-09-29", "subject": "接獲延長通知", "acquirer": "台信電訊"},
+        {"id": 2, "target_id": "6214", "deal_type": "公開收購", "announce_date": "2026-09-29", "subject": "代子公司公告延長",
+         "offer_price": 92.5, "stock_ratio": 0.84, "stock_ref": "3045", "period_end": "2026-11-05"},
+        {"id": 3, "target_id": "6214", "deal_type": "公開收購", "announce_date": "2026-08-12", "subject": "公告公開收購", "min_shares": 1e8},
+        {"id": 4, "target_id": "1103", "deal_type": "股份轉換", "announce_date": "2026-09-29", "subject": "股份轉換"},
+    ]
+    g = group_deals(rows)
+    assert len(g) == 2
+    tw = next(x for x in g if x["target_id"] == "6214")
+    assert tw["offer_price"] == 92.5 and tw["acquirer"] == "台信電訊" and tw["min_shares"] == 1e8
+    assert tw["first_announce"] == "2026-08-12" and len(tw["related"]) == 3

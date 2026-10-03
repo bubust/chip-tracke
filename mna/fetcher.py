@@ -41,13 +41,19 @@ def _texts(obj, out=None) -> list:
 
 
 def fetch_detail(params: dict, client: httpx.Client) -> str:
-    try:
-        r = client.post(f"{API}/t05st02_detail", json=params, headers=_API_HDR)
-        j = r.json()
-        if j.get("code") == 200:
-            return re.sub(r"\s+", " ", " ".join(_texts(j.get("result"))))[:6000]
-    except Exception:
-        pass
+    """內文；MOPS 太頻繁會回空或錯誤 → 退避重試兩次"""
+    for wait in (0, 3, 8):
+        if wait:
+            time.sleep(wait)
+        try:
+            r = client.post(f"{API}/t05st02_detail", json=params, headers=_API_HDR)
+            j = r.json()
+            if j.get("code") == 200:
+                txt = re.sub(r"\s+", " ", " ".join(_texts(j.get("result"))))
+                if len(txt) > 50:
+                    return txt[:6000]
+        except Exception:
+            pass
     return ""
 
 
@@ -129,7 +135,7 @@ def _from_api(d: date, client: httpx.Client) -> tuple:
         detail = ""
         if len(row) > 5 and isinstance(row[5], dict) and isinstance(row[5].get("parameters"), dict):
             detail = fetch_detail(row[5]["parameters"], client)
-            time.sleep(1.0)
+            time.sleep(1.5)
         if detail and kind != "公開收購" and re.search(r"簡易合併|持股\s*100\s*%\s*之子公司.*?無涉換股", detail[:3000]):
             continue                                  # 跟百分之百子公司合併：跟股東無關
         rec = build_record(ddate, sid.strip(), name.strip(), subject, kind, detail)
