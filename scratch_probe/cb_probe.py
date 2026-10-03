@@ -1,38 +1,27 @@
-import requests, json, re, datetime as dt
+import requests, json, re
 H={"User-Agent":"Mozilla/5.0","Accept":"application/json,text/html,*/*"}
-def get(u,**k):
+s=requests.Session(); s.headers.update(H)
+r=s.get("https://www.tpex.org.tw/openapi/v1/bond_ISSBD5_data",timeout=40); d=r.json()
+print("ISSBD5",len(d)); print("KEYS",list(d[0].keys()))
+for x in d:
+    if "台泥" in x.get("ShortName","") or x.get("BondCode")=="11011" or "遠東新" in x.get("ShortName",""):
+        print(json.dumps(x,ensure_ascii=False)); 
+from collections import Counter
+print(Counter(x.get("ListingStatus") for x in d), Counter(x.get("BondType") for x in d))
+for u in ["https://www.tpex.org.tw/zh-tw/bond/info/statistics/cb.html","https://www.tpex.org.tw/zh-tw/mainboard/trading/info/pricing.html",
+          "https://www.tpex.org.tw/zh-tw/index.html","https://www.tpex.org.tw/zh-tw/bond/index.html"]:
     try:
-        r=requests.get(u,headers=H,timeout=30,**k); return r
-    except Exception as e:
-        print("ERR",u,e); return None
-for name,url,base in [("TPEX","https://www.tpex.org.tw/openapi/swagger.json","https://www.tpex.org.tw/openapi/v1"),
-                      ("TWSE","https://openapi.twse.com.tw/v1/swagger.json","https://openapi.twse.com.tw/v1")]:
-    r=get(url)
-    if not r: continue
-    print("==",name,r.status_code,len(r.text))
-    try: sw=r.json()
-    except Exception: print(r.text[:300]); continue
-    for p,v in sw.get("paths",{}).items():
-        summ=" ".join((m.get("summary") or "") for m in v.values() if isinstance(m,dict))
-        print(" PATH",p,summ)
-        if re.search(r"cb|bond|convert|轉換|債|margin|融資|融券|ap05|營收|股東",p+summ,re.I):
-            rr=get(base+p)
-            if rr is None: continue
-            try:
-                d=rr.json(); print("   ->",rr.status_code,len(d), json.dumps(d[:2],ensure_ascii=False)[:900])
-            except Exception: print("   ->",rr.status_code,rr.text[:200])
-today=dt.date.today()
-for i in range(0,6):
-    d=today-dt.timedelta(days=i)
-    for u in [f"https://www.tpex.org.tw/storage/bond_zone/tradeinfo/cb/{d:%Y}/{d:%Y%m}/RSta0113.{d:%Y%m%d}-C.csv",
-              f"https://www.tpex.org.tw/storage/bond_zone/tradeinfo/cb/{d:%Y}/{d:%Y%m}/RSta0113.{d:%Y%m%d}-C.CSV"]:
-        r=get(u)
-        if r is not None:
-            print("CSV",u,r.status_code,len(r.content)); 
-            if r.status_code==200: print(r.content[:1500].decode("big5","replace"))
-for u in ["https://www.tpex.org.tw/web/bond/publish/convertible_bond_search/memo.php?l=zh-tw",
-          "https://www.tpex.org.tw/www/zh-tw/bond/cbIssue",
-          "https://www.tpex.org.tw/www/zh-tw/bond/cbDaily",
-          "https://www.tpex.org.tw/web/bond/tradeinfo/cb/cb_daily.php?l=zh-tw"]:
-    r=get(u)
-    if r is not None: print("PAGE",u,r.status_code,r.text[:300].replace("\n"," "))
+        r=s.get(u,timeout=30); hs=sorted(set(re.findall(r'href="([^"]*bond[^"]*)"',r.text)))
+        print("PAGE",u,r.status_code,len(hs)); [print("  ",h) for h in hs[:200]]
+    except Exception as e: print("ERR",u,e)
+for meth,u,data in [("POST","https://www.tpex.org.tw/www/zh-tw/bond/cbDaily",{"date":"2026/10/02","response":"json"}),
+                    ("GET","https://www.tpex.org.tw/www/zh-tw/bond/cbDaily?date=2026/10/02&response=json",None),
+                    ("POST","https://www.tpex.org.tw/www/zh-tw/bond/cbIssue",{"response":"json"}),
+                    ("POST","https://www.tpex.org.tw/www/zh-tw/bond/cbInfo",{"response":"json"}),
+                    ("POST","https://www.tpex.org.tw/www/zh-tw/bond/cbConvPrice",{"response":"json"}),
+                    ("POST","https://www.tpex.org.tw/www/zh-tw/bond/issueCb",{"response":"json"}),
+                    ("POST","https://www.tpex.org.tw/www/zh-tw/bond/cbBasic",{"response":"json"})]:
+    try:
+        r=s.post(u,data=data,timeout=30) if meth=="POST" else s.get(u,timeout=30)
+        print("API",meth,u,r.status_code,r.text[:1500].replace("\n"," "))
+    except Exception as e: print("ERR",u,e)
