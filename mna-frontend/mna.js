@@ -56,12 +56,13 @@ function mnaRender() {
     </tr></thead><tbody>${rows.map(r => {
       const c = _MNA_STATUS_COLOR[r.status] || '#64748b';
       return `<tr style="border-top:1px solid #21262d;cursor:pointer" onclick="mnaDetail(${r.id})">
-        ${td(`<b style="color:var(--accent)">${_mnaE(r.target_id)}</b> ${_mnaE(r.target_name || '')}`)}
+        ${td(`<b style="color:var(--accent)">${_mnaE(r.target_id)}</b> ${_mnaE(r.target_name || '')}${r.target_company && r.target_id === r.announcer_id
+            ? `<br><span style="font-size:.7rem;color:var(--muted)">收購 ${_mnaE(r.target_company.replace('股份有限公司', ''))}（未上市櫃）</span>` : ''}`)}
         ${td(_mnaE(r.acquirer || '—'), 'max-width:160px;overflow:hidden;text-overflow:ellipsis')}
         ${td(_mnaE(r.deal_type || '—'))}
         ${td(`<span style="font-size:.72rem;padding:1px 7px;border-radius:10px;background:${c}22;color:${c};border:1px solid ${c}55">${_mnaE(r.status)}</span>`)}
-        ${td(_mnaD(r.announce_date))}
-        ${td(r.offer_price != null ? `<b>${_mnaN(r.offer_price, 2)}</b>` : '<span class="muted">待補</span>', 'text-align:right')}
+        ${td(_mnaD(r.first_announce || r.announce_date) + ((r.related || []).length > 1 ? `<br><span style="font-size:.66rem;color:var(--muted)">${r.related.length} 則公告</span>` : ''))}
+        ${td(r.offer_value != null ? `<b title="${_mnaE(r.offer_value_note || '')}">${_mnaN(r.offer_value, 2)}</b>${r.offer_value_note ? '<br><span style="font-size:.66rem;color:var(--muted)">含換股</span>' : ''}` : '<span class="muted">待補</span>', 'text-align:right')}
         ${td(r.price != null ? _mnaN(r.price, 2) : '—', 'text-align:right')}
         ${td(_mnaPct(r.premium_pct), `text-align:right;font-weight:700;color:${r.premium_pct == null ? 'var(--muted)' : r.premium_pct > 0 ? '#ef4444' : '#22c55e'}`)}
         ${td(r.max_lots != null ? `${r.min_lots != null ? _mnaN(r.min_lots) + '～' : ''}${_mnaN(r.max_lots)}` : '—', 'text-align:right')}
@@ -84,11 +85,14 @@ function mnaDetail(id) {
     <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:1rem">${_mnaE(r.target_id)} ${_mnaE(r.target_name || '')}</b>
       <button class="btn sm ghost" onclick="this.closest('div[style*=fixed]').remove()">✕</button></div>
     ${line('類型', _mnaE(r.deal_type || '—'))}${line('收購方', _mnaE(r.acquirer || '—'))}${line('狀態', _mnaE(r.status))}
-    ${line('每股收購價', r.offer_price != null ? `<b>${_mnaN(r.offer_price, 2)}</b>（現價 ${_mnaN(r.price, 2)}，溢價 ${_mnaPct(r.premium_pct)}）` : '待補')}
+    ${r.target_company ? line('被收購公司', _mnaE(r.target_company)) : ''}
+    ${line('每股收購價', r.offer_value != null ? `<b>${_mnaN(r.offer_value, 2)}</b>${r.offer_value_note ? `（${_mnaE(r.offer_value_note)}，以換發股票現價計）` : ''}（現價 ${_mnaN(r.price, 2)}，溢價 ${_mnaPct(r.premium_pct)}）` : '待補')}
     ${line('收購數量', r.max_shares ? `最低 ${_mnaN(r.min_lots)} 張～上限 ${_mnaN(r.max_lots)} 張${r.offer_pct ? `（約 ${r.offer_pct}%）` : ''}${r.amount_yi ? `，約 ${r.amount_yi} 億` : ''}` : '待補')}
     ${line('範圍', _mnaE(r.scope || '—'))}${line('對價', _mnaE(r.consideration || '—'))}
     ${line('期間', r.period_start ? `${r.period_start} ～ ${r.period_end}${r.days_left != null ? `（剩 ${r.days_left} 天，年化 ${_mnaPct(r.annualized_pct)}）` : ''}` : '待補')}
-    ${r.subject ? `<div style="margin-top:6px;padding:8px;background:#0d1117;border-radius:6px;font-size:.78rem">${_mnaE(r.subject)}</div>` : ''}
+    ${(r.related || []).length ? `<div style="margin-top:6px"><span class="muted">相關公告（${r.related.length} 則）</span>${r.related.map(x =>
+      `<div style="margin-top:4px;padding:6px 8px;background:#0d1117;border-radius:6px;font-size:.76rem">${_mnaD(x.date)}　${_mnaE((x.subject || '').slice(0, 160))}</div>`).join('')}</div>`
+      : (r.subject ? `<div style="margin-top:6px;padding:8px;background:#0d1117;border-radius:6px;font-size:.78rem">${_mnaE(r.subject)}</div>` : '')}
     ${r.notes ? line('備註', _mnaE(r.notes)) : ''}
     <div class="muted" style="font-size:.72rem">來源：${_mnaE(r.source || '—')}　細節以公開資訊觀測站公告內文為準</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">

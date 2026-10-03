@@ -6,7 +6,10 @@ DB_PATH = Path(__file__).parent.parent / "chip_data" / "mna.db"
 
 FIELDS = ["target_id", "target_name", "acquirer", "deal_type", "announce_date", "offer_price",
           "min_shares", "max_shares", "offer_pct", "scope", "period_start", "period_end",
-          "consideration", "status_override", "source", "subject", "notes"]
+          "consideration", "status_override", "source", "subject", "notes",
+          "target_company", "deal_kind", "stock_company", "stock_ref", "stock_ratio", "announcer_id"]
+_NEW_COLS = {"target_company": "TEXT", "deal_kind": "TEXT", "stock_company": "TEXT", "stock_ref": "TEXT",
+             "stock_ratio": "REAL", "announcer_id": "TEXT"}
 
 
 def get_conn(db_path=None):
@@ -47,6 +50,10 @@ def init_db(db_path=None):
         );
         CREATE TABLE IF NOT EXISTS mna_status (key TEXT PRIMARY KEY, value TEXT);
     """)
+    have = {r[1] for r in c.execute("PRAGMA table_info(mna_deal)")}
+    for col, typ in _NEW_COLS.items():
+        if col not in have:
+            c.execute(f"ALTER TABLE mna_deal ADD COLUMN {col} {typ}")
     c.commit()
     c.close()
 

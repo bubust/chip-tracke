@@ -109,7 +109,7 @@ def classify_status(r: dict, today: date) -> str:
 
 def enrich(rows: list, today: date = None) -> list:
     today = today or tw_today()
-    prices = _latest_prices({r["target_id"] for r in rows})
+    prices = _latest_prices({r["target_id"] for r in rows} | {r["stock_ref"] for r in rows if r.get("stock_ref")})
     out = []
     for r in rows:
         r = dict(r)
@@ -117,6 +117,11 @@ def enrich(rows: list, today: date = None) -> list:
         px, pdate = prices.get(r["target_id"], (None, None))
         r["price"], r["price_date"] = px, pdate
         op = r.get("offer_price")
+        # 現金＋換股：每股價值＝現金＋換股比例 × 換發股票現價
+        if r.get("stock_ratio") and r.get("stock_ref") and prices.get(r["stock_ref"]):
+            op = round((op or 0) + r["stock_ratio"] * prices[r["stock_ref"]][0], 2)
+            r["offer_value_note"] = f"現金 {r.get('offer_price') or 0} ＋ {r.get('stock_company') or r['stock_ref']} {r['stock_ratio']} 股"
+        r["offer_value"] = op
         r["premium_pct"] = round((op / px - 1) * 100, 2) if op and px else None
         pe = r.get("period_end")
         r["days_left"] = (date.fromisoformat(pe) - today).days if pe and r["status"] in ("進行中", "未開始") else None
@@ -125,14 +130,44 @@ def enrich(rows: list, today: date = None) -> list:
         r["min_lots"] = round(r["min_shares"] / 1000) if r.get("min_shares") else None
         r["max_lots"] = round(r["max_shares"] / 1000) if r.get("max_shares") else None
         r["amount_yi"] = round(op * r["max_shares"] / 1e8, 2) if op and r.get("max_shares") else None
+        r["listed_target"] = r.get("target_id") != r.get("announcer_id") or not r.get("target_company")
         out.append(r)
     return out
+
+
+_MERGE_KEYS = ("acquirer", "offer_price", "min_shares", "max_shares", "offer_pct", "scope", "period_start",
+               "period_end", "consideration", "target_company", "stock_company", "stock_ref", "stock_ratio", "deal_kind")
+
+
+def group_deals(rows: list) -> list:
+    """同一案常有好幾則公告（收購方、被收購方、延長期間…）：同標的＋同類型、公告日相差 120 天內合成一列，
+    欄位以「資料最完整、最新」的那則為主，缺的從其他則補；related 記下所有公告"""
+    rows = sorted(rows, key=lambda r: (r.get("announce_date") or ""), reverse=True)
+    groups: list = []
+    for r in rows:
+        g = next((g for g in groups if g["target_id"] == r["target_id"] and g["deal_type"] == r["deal_type"]
+                  and abs((date.fromisoformat(g["_first"]) - date.fromisoformat(r.get("announce_date") or g["_first"])).days) <= 120), None)
+        if g is None:
+            g = {**r, "_first": r.get("announce_date") or tw_today().isoformat(), "related": []}
+            groups.append(g)
+        else:
+            for k in _MERGE_KEYS:
+                if g.get(k) in (None, "") and r.get(k) not in (None, ""):
+                    g[k] = r[k]
+            if r.get("status_override") and not g.get("status_override"):
+                g["status_override"] = r["status_override"]
+            g["_first"] = min(g["_first"], r.get("announce_date") or g["_first"])
+        g["related"].append({"id": r["id"], "date": r.get("announce_date"), "subject": r.get("subject") or r.get("notes") or "",
+                             "source": r.get("source")})
+    for g in groups:
+        g["first_announce"] = g.pop("_first")
+    return groups
 
 
 @router.get("/api/mna/list")
 def list_deals(days: int = Query(365, ge=7, le=3650)):
     since = (tw_today() - timedelta(days=days)).isoformat()
-    rows = enrich(db.all_rows(since))
+    rows = enrich(group_deals(db.all_rows(since)))
     counts = {}
     for r in rows:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
