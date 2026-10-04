@@ -59,7 +59,7 @@ def test_signals_helpers():
 
 
 def _bond(**k):
-    b = {"code": "11011", "name": "台泥一永", "sid": "1101", "issuer": "台泥", "issue_date": "2026-08-01",
+    b = {"conv_start": None, "code": "11011", "name": "台泥一永", "sid": "1101", "issuer": "台泥", "issue_date": "2026-08-01",
          "maturity_date": "2029-08-01", "issue_amt": 1e9, "outstanding": 9.5e8, "put_date": None}
     b.update(k)
     return b
@@ -71,12 +71,17 @@ def test_evaluate_tiers():
     closes = [("20261002", 40.0)]
     r = evaluate(_bond(), 36.5, "發行時", quotes, closes, [], {"ym": "11508", "yoy": 12.0, "cum_yoy": -3.0}, today)
     assert r["parity"] == round(40 / 36.5 * 100, 2) and r["gap"] > 0 and r["tier"] == "buy"
-    assert r["rev_turn"] and "定價後（新發行）" in r["stage"] and r["shares_per_bond"] == 2740
+    assert r["rev_turn"] and "定價後・開放轉換前" in r["stage"] and r["near_par"] and r["shares_per_bond"] == 2740
     shorts = [(f"2026-09-{i:02d}", v) for i, v in enumerate([100, 100, 100, 100, 200, 500], 20)]
     assert evaluate(_bond(), 36.5, "發行時", quotes, closes, shorts, None, today)["tier"] == "exit"
     r2 = evaluate(_bond(issue_date="2024-01-01"), 60, "發行時", [{"date": "2026-10-02", "close": 120.0, "volume": 5}],
                   closes, [], {"yoy": -5.0, "cum_yoy": -2.0}, today)
-    assert r2["tier"] == "watch" and r2["premium_pct"] > 30
+    assert r2["tier"] == "watch" and r2["premium_pct"] > 30 and not r2["grab"]
+    # 上課筆記：CB 市價 > 理論價＋CB 量大增＝搶購訊號
+    qs = [{"date": f"2026-09-{i:02d}", "close": 105.0, "volume": 10} for i in range(1, 22)] + \
+         [{"date": "2026-10-02", "close": 112.0, "volume": 200}]
+    r3 = evaluate(_bond(issue_date="2025-01-01"), 40, "發行時", qs, closes, [], {"yoy": 5.0, "cum_yoy": 3.0}, today)
+    assert r3["grab"] and r3["tier"] == "buy"
 
 
 def test_build_list(tmp_path):

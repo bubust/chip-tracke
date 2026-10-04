@@ -281,6 +281,10 @@ def fetch_yahoo(stock_id: str, market: str = "twse") -> pd.DataFrame:
 
 STRATEGY_KEYS = ["S1", "S1_SHORT", "S2", "S5", "S17A", "S17B", "S10",
                  "S_PB", "S_FBD", "S_RES", "S_VOLX", "S_VOLX_SHORT", "S_THUNDER", "S_WARRANT_TOP"]
+# 上課筆記新增：價格型（scanner_course）＋籌碼型（chip_course，掃描後另外算）
+from scanner_course import COURSE_FNS as _COURSE_FNS  # noqa: E402
+from chip_course import CHIP_STRATEGIES as _CHIP_STRATS  # noqa: E402
+STRATEGY_KEYS += [k for k in _COURSE_FNS if k not in STRATEGY_KEYS] + [k for k in _CHIP_STRATS if k not in STRATEGY_KEYS]
 
 _SCAN_WORKERS = 4    # Fly.io shared-cpu: 4 workers 避免 Yahoo 429 burst
 
@@ -875,6 +879,17 @@ async def run_market_scan(strategy_params: dict = None):
             print(f"[SCAN] S_WARRANT_TOP 失敗: {_we}")
             _scan_status["warrant_note"] = f"認購前十大計算失敗：{type(_we).__name__}"
             all_results["S_WARRANT_TOP"] = []
+
+        # 上課筆記籌碼面（投信連買、融券大增／退潮、大戶散戶）：抓投信／融券／集保後另外算
+        try:
+            from chip_course import run_all as _course_run
+            _scan_status["phase"] = "chip_course"
+            _cr = await loop.run_in_executor(None, lambda: _course_run(names, _strategy_params))
+            for _k, _v in _cr.items():
+                all_results[_k] = _v
+            print(f"[SCAN] 籌碼面（上課筆記）：" + "、".join(f"{k}={len(v)}" for k, v in _cr.items()))
+        except Exception as _ce:
+            print(f"[SCAN] 籌碼面（上課筆記）失敗: {_ce}")
 
         _scan_status["results"] = all_results
         _save_scan_cache(all_results)  # 持久化，重啟後訊號不消失

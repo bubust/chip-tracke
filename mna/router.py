@@ -112,16 +112,37 @@ def _pre_prices(pairs) -> dict:
     return out
 
 
+def _day23(sid: str, resume: str) -> Optional[dict]:
+    """減資恢復交易後的第 2 天（第 2 天是一字線就用第 3 天）K 棒"""
+    try:
+        from chip_tracker_v2 import DB_PATH
+        c = sqlite3.connect(str(DB_PATH), timeout=5.0)
+        rows = c.execute("SELECT date, open, high, low, close FROM price_daily WHERE stock_id=? AND date>=? ORDER BY date LIMIT 3",
+                         (sid, resume.replace("-", ""))).fetchall()
+        c.close()
+    except Exception:
+        return None
+    if len(rows) < 2:
+        return None
+    n = 2
+    if rows[1][2] == rows[1][3] and len(rows) >= 3:      # 第 2 天一字線
+        n = 3
+    d = rows[n - 1]
+    return {"n": n, "date": f"{d[0][:4]}-{d[0][4:6]}-{d[0][6:]}", "high": d[2], "low": d[3]}
+
+
 MNA_TYPES = ("公開收購", "合併", "股份轉換", "收購股權")
 _TIP_LOTS = "分批掛單：一張一張掛，不要一次掛大單"
+# 上課筆記（2026-10-04）為主：減資用恢復交易 Day 2／Day 3 畫線法；現增看用途、繳款前 1~2 週拉抬
+_DAY23 = "恢復交易後看第 2 天或第 3 天的高低點：有效突破該日高點＝買訊，跌破該日低點＝出場"
 _CAPITAL_TIPS = {
-    "虧損減資": ["虧損減資後恢復買賣首日常跳上：守第一天的高低點", "首日一字線（開＝收）就改看第二天",
-               "短線可能漲；長線看營收，營收成長的才留"],
-    "減資再增資": ["減資再增資：看增資是不是「好資」（引進策略股東、資金用途明確），是的話後勢可期"],
-    "現金減資": ["大漲後減資（退還現金）依然後勢可期", "恢復買賣後守第一天高低點"],
-    "減資": ["減資後首日守第一天高低點；長線看營收成長", "大漲後減資依然後勢可期"],
-    "現金增資": ["增資短線別碰：通常老股換新股，賣壓大；現金增資短線偏利空（可考慮放空）",
-               "申購前容易拉抬、增資認購繳款前容易大漲：繳款前股價需要有所表現",
+    "虧損減資": ["彌補虧損大舉減資，之後營收與獲利由負轉正成長 → 容易變翻倍大標股", _DAY23],
+    "減資再增資": ["減資再增資：看增資是不是「好資」（引進策略股東、資金用途明確），是的話後勢可期", _DAY23],
+    "現金減資": ["大漲後減資（退還現金）依然後勢可期", _DAY23],
+    "減資": [_DAY23, "長線看營收：由負轉正、成長的才留"],
+    "現金增資": ["宣布現增短線必然利空（股本稀釋、賣老股換新股）",
+               "用途是償還債務、營收又不好 → 避開；體質好、用途是擴充產能，或股價在低點現增 → 長線仍看好",
+               "認購繳款日前 1~2 週，公司／大戶有動機拉抬（特別是先前修正／盤整過、有成交量的股票）",
                "融券增加、拉回是買點；融券開始減少就是高點"],
     "私募": ["私募看對象：引進策略投資人是好資，後勢可期；私募股有閉鎖期，短線影響小"],
 }
@@ -146,9 +167,10 @@ def deal_signal(r: dict, today: date) -> Optional[dict]:
                 lab = ("🔥 新公告：溢價≥15%＋買全部股份 → 隔天掛漲停買" if fresh
                        else "🔥 溢價≥15%＋完全收購：可進場")
                 return {"level": "buy", "label": lab,
-                        "tips": ["看到溢價收購、買全部股份 → 隔天 all in 掛漲停買爆", _TIP_LOTS]}
-            return {"level": "buy", "label": "✅ 溢價≥15%：可進場",
-                    "tips": ["溢價 15% 以上就可以進", "部分收購：應賣超過上限會按比例收購，沒收走的股票會退回", _TIP_LOTS]}
+                        "tips": ["100% 收購＋溢價 15%~30% 以上 → 隔日開盤掛漲停搶購", "大單拆成多筆單張掛單（一張一張掛）"]}
+            return {"level": "buy", "label": "✅ 溢價≥15%（部分收購）",
+                    "tips": ["溢價 15%~30% 以上可以進", "非 100% 收購：收購期結束後股價容易回落，要在期間內處理",
+                             "應賣超過上限會按比例收購，沒收走的股票會退回", _TIP_LOTS]}
         if base >= 15:
             return {"level": "watch", "label": "價差已收斂", "tips": [f"公告溢價 {base:.1f}%，但現價離收購價只剩 {cur:.1f}%，已經沒什麼空間"]}
         if cur is not None and cur <= 0:
@@ -156,20 +178,33 @@ def deal_signal(r: dict, today: date) -> Optional[dict]:
         return {"level": "watch", "label": f"溢價 {base:.1f}% 未達 15%", "tips": ["老王：溢價要 15% 以上才進"]}
     if t in ("減資", "現金增資"):
         k = r.get("deal_kind") or t
-        tips = _CAPITAL_TIPS.get(k, _CAPITAL_TIPS.get(t, []))
+        tips = list(_CAPITAL_TIPS.get(k, _CAPITAL_TIPS.get(t, [])))
         ps, pe = r.get("period_start"), r.get("period_end")
         tday = today.isoformat()
         if t == "減資":
+            d23 = r.get("day23")
+            if d23:
+                tips.insert(0, f"第 {d23['n']} 天（{d23['date']}）高 {d23['high']}、低 {d23['low']}；現價 {r.get('price')}")
+                if r.get("price") is not None and r["price"] > d23["high"]:
+                    return {"level": "buy", "label": f"{k}：突破恢復交易第{d23['n']}天高點（買訊）", "tips": tips}
+                if r.get("price") is not None and r["price"] < d23["low"]:
+                    return {"level": "avoid", "label": f"{k}：跌破第{d23['n']}天低點（出場）", "tips": tips}
+                return {"level": "watch", "label": f"{k}：在第{d23['n']}天高低點之間，等突破", "tips": tips}
             if ps and ps >= tday:
-                return {"level": "watch", "label": f"{k}：{ps[5:].replace('-', '/')} 恢復買賣，首日守高低點", "tips": tips}
-            if ps and (today - date.fromisoformat(ps)).days <= 5:
-                return {"level": "watch", "label": f"{k}：剛恢復買賣，看第一天高低點", "tips": tips}
+                return {"level": "watch", "label": f"{k}：{ps[5:].replace('-', '/')} 恢復交易，看 Day2/3 高低點", "tips": tips}
             return {"level": "info", "label": k, "tips": tips}
         if k == "私募":
             return {"level": "info", "label": "私募：看對象", "tips": tips}
+        use = r.get("consideration")
+        if ps and ps >= tday and (date.fromisoformat(ps) - today).days <= 14:
+            return {"level": "watch", "label": "繳款前 1~2 週：容易拉抬", "tips": tips}
+        if use == "償還債務":
+            return {"level": "avoid", "label": "現增還債：避開（營收不佳更要避）", "tips": tips}
+        if use == "擴充產能":
+            return {"level": "info", "label": "現增擴產：短空長多", "tips": tips}
         if pe and pe >= tday:
-            return {"level": "watch", "label": "繳款前：容易拉抬（短線別追增資）", "tips": tips}
-        return {"level": "avoid", "label": "增資：短線別碰", "tips": tips}
+            return {"level": "watch", "label": "繳款期間：短線別追", "tips": tips}
+        return {"level": "avoid", "label": "現增：短線利空", "tips": tips}
     return None
 
 
@@ -216,6 +251,8 @@ def enrich(rows: list, today: date = None) -> list:
         r["min_lots"] = round(r["min_shares"] / 1000) if r.get("min_shares") else None
         r["max_lots"] = round(r["max_shares"] / 1000) if r.get("max_shares") else None
         r["amount_yi"] = round(op * r["max_shares"] / 1e8, 2) if op and r.get("max_shares") else None
+        if r.get("deal_type") == "減資" and r.get("period_start") and r["period_start"] <= today.isoformat():
+            r["day23"] = _day23(r["target_id"], r["period_start"])
         r["signal"] = deal_signal(r, today)
         r["listed_target"] = r.get("target_id") != r.get("announcer_id") or not r.get("target_company")
         out.append(r)
