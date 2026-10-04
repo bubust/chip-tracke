@@ -5,6 +5,30 @@ let _cbRows = [];
 let _cbFilter = 'buy';
 let _cbLoaded = false;
 let _cbPoll = null;
+let _cbSort = { key: null, dir: -1 };   // 表頭點擊排序
+// 欄位：表頭與該欄資料同一個對齊方式；v = 排序值（null 一律排最後）
+const _CB_COLS = [
+  { key: 'code', label: '可轉債', align: 'left', v: r => r.code },
+  { key: 'score', label: '分類', align: 'left', v: r => r.score },
+  { key: 'cb_price', label: 'CB 價', align: 'right', title: 'CB 收市價（百元價）', v: r => r.cb_price },
+  { key: 'stock_price', label: '股價', align: 'right', v: r => r.stock_price },
+  { key: 'conv_price', label: '轉換價', align: 'right', title: '目前轉換價（公告調整／發行時／手動）', v: r => r.conv_price },
+  { key: 'parity', label: '合理價', align: 'right', title: '股價 ÷ 轉換價 × 100', v: r => r.parity },
+  { key: 'premium_pct', label: '轉換溢價', align: 'right', title: 'CB 價 ÷ 合理價 − 1', v: r => r.premium_pct },
+  { key: 'flow', label: '六大流程', align: 'left', title: '六大流程：①低檔發債 ②營收成長 ③利多消息 ④融券大增 ⑤CB量大增 ⑥融券大減（紅＝符合，④綠＝出場警訊，虛線＝無資料）；排序依符合數', v: r => r.flow.filter(f => f.on).length },
+  { key: 'rev_yoy', label: '營收年增', align: 'right', title: '單月營收年增率', v: r => r.rev_yoy },
+  { key: 'short_chg5', label: '融券 5 日', align: 'right', title: '發行公司融券餘額 5 日變化', v: r => r.short_chg5 },
+  { key: 'cb_vol', label: 'CB 量', align: 'right', title: '最近一日成交張數／20 日均量', v: r => r.cb_vol },
+  { key: 'converted_pct', label: '已轉換', align: 'right', title: '1 − 流通在外 ÷ 發行額', v: r => r.converted_pct },
+  { key: 'stage', label: '時機', align: 'left', v: r => r.stage.join(' ') || null },
+  { key: 'maturity_date', label: '到期', align: 'left', v: r => r.maturity_date },
+];
+
+function cbSortBy(key) {
+  if (_cbSort.key === key) _cbSort.dir = -_cbSort.dir;
+  else _cbSort = { key, dir: ['code', 'stage', 'maturity_date'].includes(key) ? 1 : -1 };   // 文字欄先升冪，數字欄先大到小
+  cbRender();
+}
 const _CB_TIER = {
   buy: { label: '可以買', cls: 'sig-buy', color: '#ef4444' },
   chance: { label: '有機會', cls: 'sig-watch', color: '#f59e0b' },
@@ -62,7 +86,13 @@ function cbRender() {
     const t = _CB_TIER[k] || { label: '全部', color: 'var(--accent)' }, on = _cbFilter === k;
     return `<button onclick="_cbFilter='${k}';cbRender()" style="cursor:pointer;border-radius:14px;padding:3px 12px;font-size:.8rem;border:1px solid ${on ? t.color : '#30363d'};background:${on ? t.color + '22' : 'transparent'};color:${on ? t.color : 'var(--muted)'}">${t.label} <b>${counts[k] || 0}</b></button>`;
   }).join('');
-  const rows = base.filter(r => _cbFilter === 'all' || r.tier === _cbFilter);
+  let rows = base.filter(r => _cbFilter === 'all' || r.tier === _cbFilter);
+  const sc = _CB_COLS.find(c => c.key === _cbSort.key);
+  if (sc) rows.sort((a, b) => {
+    const x = sc.v(a), y = sc.v(b);
+    if (x == null || y == null) return x == null ? (y == null ? 0 : 1) : -1;
+    return (typeof x === 'string' ? x.localeCompare(y, 'zh-TW') : x - y) * _cbSort.dir;
+  });
   const body = document.getElementById('cb-body');
   if (!rows.length) {
     body.innerHTML = `<div style="color:var(--muted);text-align:center;padding:30px">${_cbRows.length ? '沒有符合條件的可轉債' : '尚無資料：按「🔄 更新資料」（第一次約 10～15 分鐘）'}</div>`;
@@ -73,11 +103,7 @@ function cbRender() {
     f.on ? (f.n === 4 ? 'background:#22c55e;color:#000' : 'background:#ef4444;color:#fff') : f.unknown ? 'border:1px dashed #30363d;color:#484f58' : 'border:1px solid #30363d;color:var(--muted)'}">${f.n}</span>`).join('');
   body.innerHTML = `<div class="tbl-wrap" style="overflow-x:auto"><table style="width:100%;font-size:.8rem;border-collapse:collapse">
     <thead><tr style="background:#1c2128;color:var(--muted)">
-      <th style="padding:6px 8px;text-align:left">可轉債</th><th>分類</th><th title="CB 收市價（百元價）">CB 價</th><th>股價</th>
-      <th title="目前轉換價（公告調整／發行時／手動）">轉換價</th><th title="股價 ÷ 轉換價 × 100">合理價</th><th title="CB 價 ÷ 合理價 − 1">轉換溢價</th>
-      <th title="六大流程：①低檔發債 ②營收成長 ③利多消息 ④融券大增 ⑤CB量大增 ⑥融券大減（紅＝符合，④綠＝出場警訊，虛線＝無資料）">六大流程</th>
-      <th title="單月營收年增率">營收年增</th><th title="發行公司融券餘額 5 日變化">融券 5 日</th><th title="最近一日成交張數／20 日均量">CB 量</th>
-      <th title="1 − 流通在外 ÷ 發行額">已轉換</th><th>時機</th><th>到期</th>
+      ${_CB_COLS.map(c => `<th onclick="cbSortBy('${c.key}')"${c.title ? ` title="${_cbE(c.title)}"` : ''} style="padding:6px 8px;white-space:nowrap;text-align:${c.align};cursor:pointer;user-select:none;${_cbSort.key === c.key ? 'color:var(--accent)' : ''}">${c.label}${_cbSort.key === c.key ? (_cbSort.dir === 1 ? ' ▲' : ' ▼') : ''}</th>`).join('')}
     </tr></thead><tbody>${rows.map(r => {
       const t = _CB_TIER[r.tier];
       return `<tr style="border-top:1px solid #21262d;cursor:pointer" onclick="cbDetail('${_cbE(r.code)}')">
