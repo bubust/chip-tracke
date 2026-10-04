@@ -1493,14 +1493,14 @@ async function loadWatchlist() {
         _dateEl2.style.display = 'inline-block';
       }
     }
-    // 合併本機備份：把本機有、伺服器沒有的股票補回去
-    // （防止 Render 重啟時 Supabase 只有部分股票，導致本機備份被少量資料覆蓋）
+    // 本機備份只在「伺服器清單是空的」時才問要不要補回（2026-10-04 修正）：
+    // 以前只要本機有、伺服器沒有就自動補回 → 在另一台裝置（手機／iPad）刪掉的股票，這台一打開又被加回去。
     const backup = lsLoadWatchlist();
-    const serverIds = new Set(_wlData.map(x => x.stock_id));
-    const missing = backup.filter(x => x.stock_id && !serverIds.has(x.stock_id));
-    if (missing.length > 0) {
-      toast(`🔄 從本機備份補回 ${missing.length} 支股票...`);
-      for (const item of missing) {
+    if (_wlData.length === 0 && backup.length > 0 &&
+        confirm(`伺服器上的觀察清單是空的。\n要用這台裝置的備份補回 ${backup.length} 支股票嗎？\n（如果是你自己全部刪掉的，請按「取消」）`)) {
+      toast(`🔄 從本機備份補回 ${backup.length} 支股票...`);
+      for (const item of backup) {
+        if (!item.stock_id) continue;
         try { await api('POST', '/api/watchlist', { stock_id: item.stock_id, name: item.name || '', note: item.note || '' }); } catch(e) {}
       }
       const _wlResp2 = await api('GET', '/api/watchlist/summary');
@@ -1521,8 +1521,8 @@ async function loadWatchlist() {
       }
     }
     if (noteRestoreTasks.length > 0) await Promise.all(noteRestoreTasks);
-    // 更新本機備份（合併後的完整清單）
-    if (_wlData.length > 0) {
+    // 本機備份＝伺服器清單（伺服器為準，刪掉的也從備份拿掉）
+    {
       lsSaveWatchlist(_wlData.map(x => ({ stock_id: x.stock_id, name: x.name || '', memo: x.memo || '', note: x.note || '' })));
     }
     renderWatchlist();

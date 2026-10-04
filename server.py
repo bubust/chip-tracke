@@ -993,7 +993,9 @@ def api_add_watchlist(item: WatchlistItem):
     name = _clean_text(item.name, 40)
     note = _clean_text(item.note, 60)
     now  = datetime.now().isoformat()
-    sb.wl_add(sid, name, now, note)
+    # Supabase 是觀察清單的唯一來源：寫不進去就回錯誤（不然下次重新整理會被同步掉，看起來像「加了又不見」）
+    if sb._enabled() and not sb.wl_add(sid, name, now, note):
+        raise HTTPException(status_code=502, detail="雲端清單（Supabase）寫入失敗，請稍後再試")
     conn = get_conn()
     existing = conn.execute("SELECT note FROM watchlist WHERE stock_id=?", (sid,)).fetchone()
     if existing is None:
@@ -1013,7 +1015,8 @@ def api_add_watchlist(item: WatchlistItem):
 @app.delete("/api/watchlist/{stock_id}")
 def api_del_watchlist(stock_id: str):
     stock_id = _check_sid(stock_id)
-    sb.wl_delete(stock_id)
+    if sb._enabled() and not sb.wl_delete(stock_id):
+        raise HTTPException(status_code=502, detail="雲端清單（Supabase）刪除失敗，請稍後再試")
     sb.cd_delete_stock(stock_id)
     conn = get_conn()
     conn.execute("DELETE FROM watchlist WHERE stock_id=?", (stock_id,))
@@ -2343,34 +2346,25 @@ def _added_prices(rows) -> dict:
 async def api_watchlist_summary():
     from yahoo_price import get_stock_list
 
-    # 雙向同步：Supabase ↔ 本地 SQLite（持久磁碟）
-    # 方向一：Supabase → 本地（已有才同步；Supabase 有但本地沒有 → INSERT）
+    # Supabase 是唯一來源（2026-10-04 修正「刪掉的股票重新整理又跑回來」）：
+    # 以前是「雙向聯集」— 本地有、Supabase 沒有就推回 Supabase。刪除只會清掉處理那次請求的那台的本地資料，
+    # 另一台（例如舊網址 chip-tracker-tw、或之後重建的機器）本地還留著，就會把刪掉的股票推回去。
+    # 現在：Supabase 讀得到 → 本地完全照 Supabase（多的刪、少的補）；讀不到才用本地。
     sb_rows = sb.wl_list()
-    sb_ids = set()
     if sb_rows is not None:
-        sb_ids = {r["stock_id"] for r in sb_rows}
-        if sb_rows:
-            conn = get_conn()
-            local_ids = {r["stock_id"] for r in conn.execute("SELECT stock_id FROM watchlist").fetchall()}
-            for r in sb_rows:
-                if r["stock_id"] not in local_ids:
-                    conn.execute(
-                        "INSERT OR IGNORE INTO watchlist (stock_id, name, added_at, note) VALUES (?,?,?,?)",
-                        (r["stock_id"], r.get("name", ""), r.get("added_at", ""), r.get("note", ""))
-                    )
-            conn.commit()
-            conn.close()
-    # 方向二：本地 → Supabase（持久磁碟有但 Supabase 沒有 → 補上去）
-    if sb._enabled():
-        try:
-            conn = get_conn()
-            all_local = conn.execute("SELECT stock_id, name, added_at, note FROM watchlist").fetchall()
-            conn.close()
-            for r in all_local:
-                if r["stock_id"] not in sb_ids:
-                    sb.wl_add(r["stock_id"], r["name"] or "", r["added_at"] or "", r["note"] or "")
-        except Exception:
-            pass
+        conn = get_conn()
+        sb_map = {r["stock_id"]: r for r in sb_rows if r.get("stock_id")}
+        local_ids = {r["stock_id"] for r in conn.execute("SELECT stock_id FROM watchlist").fetchall()}
+        for sid, r in sb_map.items():
+            if sid not in local_ids:
+                conn.execute(
+                    "INSERT OR IGNORE INTO watchlist (stock_id, name, added_at, note) VALUES (?,?,?,?)",
+                    (sid, r.get("name", ""), r.get("added_at", ""), r.get("note", ""))
+                )
+        for sid in local_ids - set(sb_map):
+            conn.execute("DELETE FROM watchlist WHERE stock_id=?", (sid,))
+        conn.commit()
+        conn.close()
 
     # stocks.csv → 備用股名 + 市場類型（OTC 補查 MIS 用）
     stocks_df  = get_stock_list()

@@ -4,6 +4,12 @@
 
 ## 2026-10-04
 
+### fix: 觀察清單刪掉的股票重新整理又跑回來
+- 原因：伺服器以前是「雙向聯集」同步（本地有、Supabase 沒有就推回 Supabase）；網頁也會把「這台裝置備份有、伺服器沒有」的股票自動加回。
+  只要有另一台機器（舊網址 chip-tracker-tw 跟新 app 共用同一個 Supabase）或另一台裝置（手機／iPad）還留著舊清單，刪掉的就會被加回去。
+- 改成 Supabase 為唯一來源：讀得到就讓本地完全照 Supabase（多的刪、少的補），不再推回；新增／刪除寫不進 Supabase 會直接報錯，不會悄悄不同步。
+- 網頁的本機備份只在伺服器清單是空的時候才「詢問」要不要補回；平常備份直接跟伺服器一致。
+
 ### 網址搬家：qiangni-tactics.fly.dev
 - 新 Fly app `qiangni-tactics`（舊 `chip-tracker-tw` 的 volume 資料整包搬過去），cron-job.org keep-alive 改指新網址；`chip_data/*.db` 移出 git。
 
