@@ -881,6 +881,10 @@ def run_sector_engine(days_back: int = 120) -> dict:
     # ── 寫入 DB ────────────────────────────────────────────────────────────────
     log.info(f"[engine] 寫入 sector_daily：{len(all_rows)} 列")
     with db() as conn:
+        # 重算的日期區間先清空：產業分類改過後，已經沒有在算的產業（或成份股變了）舊列不會殘留
+        if all_rows:
+            conn.execute("DELETE FROM sector_daily WHERE observation_date >= ?",
+                         (min(r["observation_date"] for r in all_rows),))
         conn.executemany(
             """
             INSERT OR REPLACE INTO sector_daily (

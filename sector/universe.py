@@ -20,8 +20,23 @@ _FALLBACK_FM_TOKEN = (
 FINMIND_TOKEN = os.environ.get("FINMIND_TOKEN", "") or _FALLBACK_FM_TOKEN
 FINMIND_URL = "https://api.finmindtrade.com/api/v4/data"
 
-# 排除的 industry_category 關鍵字
-_EXCLUDE_KEYWORDS = ["ETF", "指數", "基金", "存託"]
+# 排除的 industry_category 關鍵字（ETF、指數、權證「所有證券」、ETN 都不是一般股票）
+_EXCLUDE_KEYWORDS = ["ETF", "指數", "基金", "存託", "Index", "大盤", "所有證券", "ETN"]
+
+# FinMind 上市／上櫃同一個產業用不同名字 → 合併成一個（舊版分開算，例：上櫃「金融業」只剩券商 8 支）
+_CATEGORY_ALIAS = {
+    "金融業": "金融保險",
+    "數位雲端類": "數位雲端",
+    "綠能環保類": "綠能環保",
+    "居家生活類": "居家生活",
+    "運動休閒類": "運動休閒",
+    "其他電子類": "其他電子業",
+    "農業科技業": "農業科技",
+    "觀光事業": "觀光餐旅",
+    "創新版股票": "創新板股票",
+}
+# 上市的「大類」：同一支股票通常還有細分產業（2330＝半導體業＋電子工業）→ 有細分就用細分
+_UMBRELLA = {"電子工業", "化學生技醫療"}
 
 # 只保留純數字 stock_id（4~6碼）；含字母者通常是憑證/債券
 _VALID_STOCK_RE = re.compile(r"^\d{4,6}$")
@@ -42,8 +57,25 @@ def _is_valid_stock(row: dict) -> bool:
 
 
 def _make_sector_id(category: str) -> str:
-    """把 industry_category 直接當 sector_id（中文 slug）"""
-    return category.strip()
+    """industry_category → sector_id（中文；上市／上櫃不同名的合併成一個）"""
+    c = category.strip()
+    return _CATEGORY_ALIAS.get(c, c)
+
+
+def build_mapping(rows: list) -> dict:
+    """FinMind TaiwanStockInfo 列 → {stock_id: sector_id}。
+    同一支股票會出現好幾列：舊分類也留著（例 6195：2023 貿易百貨、2026 居家生活類）→ 用 date 最新的那列；
+    同一天有大類＋細分（2330：電子工業＋半導體業）→ 用細分。興櫃（type=emerging）沒有每日行情，不納入。"""
+    cands: dict = {}
+    for row in rows:
+        if not _is_valid_stock(row) or str(row.get("type", "")).strip() == "emerging":
+            continue
+        sid = str(row["stock_id"]).strip()
+        sec = _make_sector_id(str(row["industry_category"]))
+        d = str(row.get("date") or "")
+        d = d if d[:4].isdigit() else ""                    # 'None' 當最舊
+        cands.setdefault(sid, []).append((d, sec not in _UMBRELLA, sec))
+    return {sid: max(lst)[2] for sid, lst in cands.items()}
 
 
 def fetch_and_build_mapping() -> dict:
@@ -77,21 +109,21 @@ def fetch_and_build_mapping() -> dict:
     log.info(f"[universe] 收到 {len(rows)} 筆股票資料")
 
     today = date.today().isoformat()
-    sectors: dict[str, str] = {}  # sector_id -> sector_name
-    mappings: list[tuple] = []    # (stock_id, sector_id, effective_date)
+    m = build_mapping(rows)
+    sectors: dict[str, str] = {sec: sec for sec in m.values()}           # sector_id -> sector_name
+    mappings: list[tuple] = [(sid, sec, today) for sid, sec in m.items()]  # (stock_id, sector_id, effective_date)
 
-    for row in rows:
-        if not _is_valid_stock(row):
-            continue
-        sid = str(row["stock_id"]).strip()
-        category = str(row["industry_category"]).strip()
-        sector_id = _make_sector_id(category)
-        sectors[sector_id] = category
-        mappings.append((sid, sector_id, today))
-
-    log.info(f"[universe] 有效股票 {len(mappings)} 筆，產業 {len(sectors)} 個")
+    log.info(f"[universe] 有效股票 {len(mappings)} 支，產業 {len(sectors)} 個")
 
     with db() as conn:
+        # 整個重建：舊對照表的主鍵含日期，不清掉的話同一支股票會同時屬於新舊兩個產業；
+        # 已經不存在的產業（例：舊的「金融業」）在每日結果／事件裡的舊資料也一起清掉
+        conn.execute("DELETE FROM stock_sector_map")
+        conn.execute("DELETE FROM sector_master")
+        keep = list(sectors)
+        ph = ",".join("?" * len(keep))
+        conn.execute(f"DELETE FROM sector_daily WHERE sector_id NOT IN ({ph})", keep)
+        conn.execute(f"DELETE FROM sector_events WHERE sector_id NOT IN ({ph})", keep)
         # 寫入 sector_master
         for sector_id, sector_name in sectors.items():
             conn.execute(
