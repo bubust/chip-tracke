@@ -24,7 +24,7 @@ import httpx
 
 # ── 設定 ─────────────────────────────────────────────────────────────────────
 
-RENDER_URL = os.environ.get("CHIP_SERVER", "https://chip-tracker-tw.fly.dev")   # 網站網址（已從 Render 搬到 Fly.io）
+RENDER_URL = os.environ.get("CHIP_SERVER", "https://qiangni-tactics.fly.dev")   # 網站網址（已從 Render 搬到 Fly.io）
 
 TDCC_WEB = "https://www.tdcc.com.tw/portal/zh/smWeb/qryStock"
 THOUSAND_LOT_TIERS = {15}   # 16＝差異數調整、17＝合計（100%），2026-10-04 修正

@@ -17,7 +17,7 @@ import httpx
 from server_auth_client import auth_headers
 from treasury.fetcher import fetch_range
 
-DEFAULT_SERVER = "https://chip-tracker-tw.fly.dev"
+DEFAULT_SERVER = "https://qiangni-tactics.fly.dev"
 
 
 def main():

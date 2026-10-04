@@ -1,4 +1,4 @@
-app = "chip-tracker-tw"
+app = "qiangni-tactics"
 primary_region = "nrt"  # Tokyo, Japan
 
 [build]

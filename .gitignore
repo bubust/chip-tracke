@@ -22,3 +22,11 @@ Thumbs.db
 
 # 本機環境設定（不上傳 git）
 .env
+
+# 線上資料都在 Fly volume；本機／雲端 session 的資料庫不要進 git
+chip_data/*.db
+chip_data/*.db-shm
+chip_data/*.db-wal
+
+# 含 Fly token，只留本機
+fly_deploy.ps1
