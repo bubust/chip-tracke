@@ -131,8 +131,8 @@ def parse_tdcc(rows: list) -> tuple:
 
 
 def holder_ratios(tiers: dict, retail_lots: int = 50) -> tuple:
-    """{tier: shares} → (千張大戶 %, 散戶 %)；分母用 1~15 級加總（不含 16 差異數、17 合計）"""
-    total = sum(v for t, v in tiers.items() if 1 <= t <= 15)
+    """{tier: shares} → (千張大戶 %, 散戶 %)；分母用 17 級（合計）＝ 1~15 級加總 − 16 級（差異數調整）"""
+    total = tiers.get(17) or (sum(v for t, v in tiers.items() if 1 <= t <= 15) - tiers.get(16, 0))
     if total <= 0:
         return None, None
     big = tiers.get(15, 0) / total * 100
