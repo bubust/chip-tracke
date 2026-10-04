@@ -118,7 +118,7 @@ def _pick_tx(rows_by_date: dict) -> list[dict]:
 
 
 async def _fetch_tx_taifex(days: int) -> list[dict]:
-    """期交所「期貨每日交易行情下載」，一次查 30 天"""
+    """期交所「期貨每日交易行情下載」：查詢區間不能超過一個月（跨二月的 30 天會被拒絕、回錯誤頁），所以一次查 28 天"""
     end = date.today()
     start = end - timedelta(days=days)
     by_date: dict = {}
@@ -126,7 +126,7 @@ async def _fetch_tx_taifex(days: int) -> list[dict]:
                                  timeout=60) as client:
         cur = start
         while cur <= end:
-            to = min(cur + timedelta(days=29), end)
+            to = min(cur + timedelta(days=27), end)
             text = ""
             for attempt in range(3):                                       # 偶爾整段失敗 → 重試，避免整個月缺資料
                 try:
