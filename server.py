@@ -2492,13 +2492,7 @@ async def api_watchlist_summary():
             "S2":           (7,  "📈", "W底確認",  2),
             "S5":           (6,  "📈", "站上均線", 2),
             "S1_SHORT":     (5,  "📉", "雙MACD空", 2),
-            "S17A":         (4,  "🔍", "底部翻試", 1),
-            "S17B":         (3,  "🔍", "撈底加碼", 1),
-            "S_VOLX":       (2,  "💥", "量爆拉升", 1),
-            "S_VOLX_SHORT": (2,  "💥", "量爆下殺", 1),
-            "S_PB":         (1,  "📊", "均線拉回", 1),
             "S_FBD":        (3,  "🔻", "假跌破",  1),
-            "S_RES":        (2,  "📐", "壓力區",  1),
             "S_KD":         (2,  "📊", "KD交叉",  1),
         }
         _all_scan: dict = {}  # sid -> {strategy_key: (priority, emoji, label, level)}
@@ -2865,11 +2859,6 @@ async def api_market_scan(top: int = 50):
             "S2":           (7,  "📈", "W底確認",  2),
             "S5":           (6,  "📈", "站上均線", 2),
             "S1_SHORT":     (5,  "📉", "雙MACD空", 2),
-            "S17A":         (4,  "🔍", "底部翻試", 1),
-            "S17B":         (3,  "🔍", "撈底加碼", 1),
-            "S_VOLX":       (2,  "💥", "量爆拉升", 1),
-            "S_VOLX_SHORT": (2,  "💥", "量爆下殺", 1),
-            "S_PB":         (1,  "📊", "均線拉回", 1),
         }
         for strategy_key, results in scan_res.items():
             if strategy_key not in _SIG_MAP:

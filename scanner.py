@@ -34,15 +34,9 @@ STRATEGIES = {
 
     "S2":       "二次確認買進（W底）",
     "S5":       "站上均線做多",
-    "S17A":     "底部破底翻試單",
-    "S17B":     "突破確認加碼（撈底）",
     "S10":      "漲停",
 
-    "S_PB":     "均線拉回買點",
-    "S_RES":    "共振起點（黃金交叉）",
 
-    "S_VOLX":       "量爆拉升（成交量暴增3倍且站上20週線）",
-    "S_VOLX_SHORT": "量爆下殺（成交量暴增3倍且跌破20週線）",
     "S_WARRANT_TOP": "認購權證前十大（昨日）",
     "S_THUNDER":    "平地一聲雷（長期盤整後帶量突破）",
 }
@@ -70,31 +64,7 @@ STRATEGY_PARAMS_SCHEMA = {
         {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
         {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 0,   "min": 0,   "max": 5000, "step": 50},
     ],
-    "S17A": [
-        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "drop_pct",         "label": "距120日高點跌幅%（≥）", "type": "number", "default": 30,  "min": 10,  "max": 70,   "step": 5},
-        {"key": "wave_vol_ratio",   "label": "第二波量能比第一波%（≥）","type": "number", "default": 60,  "min": 20,  "max": 100,  "step": 5},
-        {"key": "db_lookback",      "label": "W底回溯天數",           "type": "number", "default": 60,  "min": 20,  "max": 120,  "step": 5},
-        {"key": "db_tol",           "label": "W底兩底價差容差%",      "type": "number", "default": 8,   "min": 2,   "max": 20,   "step": 1},
-        {"key": "broke_lookback",   "label": "跌破低點確認天數",       "type": "number", "default": 10,  "min": 3,   "max": 20,   "step": 1},
-    ],
-    "S17B": [
-        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "drop_pct",         "label": "距120日高點跌幅%（≥）", "type": "number", "default": 30,  "min": 10,  "max": 70,   "step": 5},
-        {"key": "neckline_pct",     "label": "頸線下方距離%（≤）",    "type": "number", "default": 10,  "min": 1,   "max": 30,   "step": 1},
-        {"key": "w2_recency",       "label": "第二谷底在近幾日內",     "type": "number", "default": 30,  "min": 5,   "max": 60,   "step": 5},
-        {"key": "db_lookback",      "label": "W底回溯天數",           "type": "number", "default": 60,  "min": 20,  "max": 120,  "step": 5},
-        {"key": "db_tol",           "label": "W底兩底價差容差%",      "type": "number", "default": 8,   "min": 2,   "max": 20,   "step": 1},
-    ],
     "S10": [],
-    "S_PB": [
-        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
-        {"key": "touch_window",     "label": "碰MA10回溯天數",        "type": "number", "default": 5,   "min": 1,   "max": 15,   "step": 1},
-        {"key": "ma_touch_pct",     "label": "碰MA10容差%",          "type": "number", "default": 2,   "min": 0,   "max": 5,    "step": 0.5},
-        {"key": "vol_shrink_pct",   "label": "量能萎縮不超過%",       "type": "number", "default": 60,  "min": 20,  "max": 100,  "step": 5},
-        {"key": "ma_slope_window",  "label": "MA10向上判斷天數",      "type": "number", "default": 5,   "min": 3,   "max": 15,   "step": 1},
-    ],
     "S_FBD": [
         {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
         {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
@@ -112,25 +82,7 @@ STRATEGY_PARAMS_SCHEMA = {
         {"key": "breakout_within", "label": "突破發生在近幾天內",         "type": "number", "default": 30,   "min": 1,   "max": 120, "step": 1},
     ],
 
-    "S_RES": [
-        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
-        {"key": "cross_window",     "label": "黃金交叉在近幾天內",    "type": "number", "default": 15,  "min": 5,   "max": 30,   "step": 1},
-        {"key": "ma10_slope_window","label": "MA10向上判斷天數",      "type": "number", "default": 5,   "min": 3,   "max": 15,   "step": 1},
-        {"key": "ma60_slope_window","label": "MA60向上判斷天數",      "type": "number", "default": 10,  "min": 5,   "max": 20,   "step": 1},
-    ],
 
-    "S_VOLX": [
-        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "vol_multiplier",   "label": "量能倍數（≥）",         "type": "number", "default": 3,   "min": 1.5, "max": 10,   "step": 0.5},
-        {"key": "ma_period",        "label": "均線週期（天）",         "type": "number", "default": 100, "min": 5,   "max": 250,  "step": 5},
-        {"key": "vol_ref_days",     "label": "比較昨日量（固定1天）",  "type": "number", "default": 1,   "min": 1,   "max": 5,    "step": 1},
-    ],
-    "S_VOLX_SHORT": [
-        {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
-        {"key": "vol_multiplier",   "label": "量能倍數（≥）",         "type": "number", "default": 3,   "min": 1.5, "max": 10,   "step": 0.5},
-        {"key": "ma_period",        "label": "均線週期（天）",         "type": "number", "default": 10,  "min": 5,   "max": 250,  "step": 5},
-    ],
 
     "S_WARRANT_TOP": [
         {"key": "limit",     "label": "取前N支",  "type": "number", "default": 10, "min": 3, "max": 30, "step": 1},
@@ -539,92 +491,6 @@ def screen_s5(prices: dict, names: dict = None, params: dict = None) -> list:
                         "strategy": "S5"})
     return results
 
-def screen_s17a(prices: dict, names: dict = None, params: dict = None) -> list:
-    """S17a 底部破底翻試單"""
-    p = params or {}
-    min_price      = p.get("min_price", 10)
-    drop_pct       = p.get("drop_pct", 30)
-    wave_vol_ratio = p.get("wave_vol_ratio", 60)
-    db_lookback    = int(p.get("db_lookback", 60))
-    db_tol         = p.get("db_tol", 8) / 100
-    broke_lookback = int(p.get("broke_lookback", 10))
-    results = []
-    for sid, df in prices.items():
-        if len(df) < 125:
-            continue
-        closes = df['close']
-        today = df.iloc[-1]
-        if float(today['close']) <= min_price:
-            continue
-        high_120 = float(closes.iloc[-121:].max())
-        if high_120 <= 0 or float(today['close']) >= high_120 * (1 - drop_pct / 100):
-            continue
-        db = find_double_bottom(df, lookback=db_lookback, tol=db_tol)
-        if db is None:
-            continue
-        w1_i, w2_i = db['wave1_idx'], db['wave2_idx']
-        df_sub = db['df_sub']
-        if 'volume' in df_sub.columns:
-            w1_vol = float(df_sub.iloc[max(0, w1_i - 4):w1_i + 5]['volume'].mean())
-            w2_vol = float(df_sub.iloc[max(0, w2_i - 4):w2_i + 5]['volume'].mean())
-            if w1_vol > 0 and w2_vol < w1_vol * (wave_vol_ratio / 100):
-                continue
-        low_n = float(closes.iloc[-(broke_lookback+1):-1].min())
-        broke = (float(closes.iloc[-1]) <= low_n or float(closes.iloc[-2]) <= low_n)
-        if not broke:
-            continue
-        if 'open' in df.columns and not pd.isna(df.iloc[-2].get('open')):
-            if float(today['close']) <= float(df.iloc[-2]['open']):
-                continue
-        results.append({"stock_id": sid, "name": _name(sid, names),
-                        "close": round(float(today['close']), 2),
-                        "change_pct": _change_pct(df),
-                        "volume": round(float(today.get('volume', 0) or 0)),
-                        "bb_score": calc_bb_score(df),
-                        "strategy": "S17A"})
-    return results
-
-def screen_s17b(prices: dict, names: dict = None, params: dict = None) -> list:
-    """S17b 突破確認加碼（撈底）"""
-    p = params or {}
-    min_price    = p.get("min_price", 10)
-    drop_pct     = p.get("drop_pct", 30)
-    neckline_pct = p.get("neckline_pct", 10)
-    w2_recency   = int(p.get("w2_recency", 30))
-    db_lookback  = int(p.get("db_lookback", 60))
-    db_tol       = p.get("db_tol", 8) / 100
-    results = []
-    for sid, df in prices.items():
-        if len(df) < 125:
-            continue
-        closes = df['close']
-        today = df.iloc[-1]
-        if float(today['close']) <= min_price:
-            continue
-        high_120 = float(closes.iloc[-121:].max())
-        if high_120 <= 0 or float(today['close']) >= high_120 * (1 - drop_pct / 100):
-            continue
-        db = find_double_bottom(df, lookback=db_lookback, tol=db_tol)
-        if db is None:
-            continue
-        df_sub = db['df_sub']
-        if len(df_sub) - 1 - db['wave2_idx'] > w2_recency:
-            continue
-        neckline = db['neckline']
-        c = float(today['close'])
-        if not (neckline * (1 - neckline_pct / 100) <= c < neckline):
-            continue
-        if 'open' in df.columns and not pd.isna(df.iloc[-2].get('open')):
-            if c <= float(df.iloc[-2]['open']):
-                continue
-        results.append({"stock_id": sid, "name": _name(sid, names),
-                        "close": round(c, 2), "strategy": "S17B",
-                        "change_pct": _change_pct(df),
-                        "neckline": round(neckline, 2),
-                        "volume": round(float(today.get('volume', 0) or 0)),
-                        "bb_score": calc_bb_score(df)})
-    return results
-
 def _is_limit_up(close: float, prev_close: float) -> bool:
     """
     判斷是否漲停：收盤 >= 漲停價（允許一個 tick 誤差，處理浮點問題）。
@@ -674,66 +540,6 @@ def screen_s10(prices: dict, names: dict = None, params: dict = None) -> list:
                         "bb_score": calc_bb_score(df),
                         "strategy": "S10"})
     results.sort(key=lambda x: x['consec_limit_up'], reverse=True)
-    return results
-
-def screen_spb(prices: dict, names: dict = None, params: dict = None) -> list:
-    """S_PB 均線拉回買點：多頭排列中，股價回測MA10後站回，出現多方K線"""
-    p = params or {}
-    min_price      = p.get("min_price", 10)
-    min_vol_lots   = p.get("min_vol_lots", 300)
-    touch_window   = int(p.get("touch_window", 5))
-    ma_touch_pct   = p.get("ma_touch_pct", 2) / 100
-    vol_shrink_pct = p.get("vol_shrink_pct", 60)
-    ma_slope_window = int(p.get("ma_slope_window", 5))
-    results = []
-    for sid, df in prices.items():
-        if len(df) < 65:
-            continue
-        closes = df['close']
-        lows   = df['low']
-        today  = df.iloc[-1]
-        tc     = float(today['close'])
-        to_    = float(today['open'])
-        if tc <= min_price:
-            continue
-        vol = float(today.get('volume', 0) or 0)
-        if vol < min_vol_lots:
-            continue
-        ma10 = calc_ma(closes, 10)
-        ma60 = calc_ma(closes, 60)
-        m10  = float(ma10.iloc[-1])
-        m60  = float(ma60.iloc[-1])
-        if pd.isna(m10) or pd.isna(m60):
-            continue
-        if not (m10 > m60):
-            continue
-        # MA10 斜率向上（近 ma_slope_window 天）
-        if pd.isna(ma10.iloc[-ma_slope_window]) or not (m10 > float(ma10.iloc[-ma_slope_window])):
-            continue
-        # 近 touch_window 天低點曾碰 MA10 (容差 ma_touch_pct)
-        touched = any(
-            not pd.isna(ma10.iloc[-(i+1)]) and float(lows.iloc[-(i+1)]) <= float(ma10.iloc[-(i+1)]) * (1 + ma_touch_pct)
-            for i in range(touch_window) if i + 1 <= len(lows)
-        )
-        if not touched:
-            continue
-        # 今日站回 MA10
-        if tc <= m10:
-            continue
-        # 多方K線：收紅 or 下引線 >= 實體 × 1.5
-        body       = abs(tc - to_)
-        low_wick   = min(tc, to_) - float(today['low'])
-        is_bullish = (tc > to_) or (body > 0 and low_wick >= body * 1.5)
-        if not is_bullish:
-            continue
-        # 量能萎縮檢查
-        vol5 = df.iloc[-5:]['volume'].astype(float).mean() if len(df) >= 5 else 0
-        if vol5 > 0 and vol < vol5 * (vol_shrink_pct / 100):
-            continue
-        results.append({"stock_id": sid, "name": _name(sid, names),
-                        "close": round(tc, 2), "change_pct": _change_pct(df),
-                        "volume": round(vol), "bb_score": calc_bb_score(df),
-                        "strategy": "S_PB"})
     return results
 
 
@@ -816,59 +622,6 @@ def screen_sfbd(prices: dict, names: dict = None, params: dict = None) -> list:
     return results
 
 
-def screen_sres(prices: dict, names: dict = None, params: dict = None) -> list:
-    """S_RES 共振起點：MA10/MA60 近期由空翻多，三線同時轉揚"""
-    p = params or {}
-    min_price         = p.get("min_price", 10)
-    min_vol_lots      = p.get("min_vol_lots", 300)
-    cross_window      = int(p.get("cross_window", 15))
-    ma10_slope_window = int(p.get("ma10_slope_window", 5))
-    ma60_slope_window = int(p.get("ma60_slope_window", 10))
-    results = []
-    for sid, df in prices.items():
-        if len(df) < 65:
-            continue
-        closes = df['close']
-        today  = df.iloc[-1]
-        tc     = float(today['close'])
-        if tc <= min_price:
-            continue
-        vol = float(today.get('volume', 0) or 0)
-        if vol < min_vol_lots:
-            continue
-        ma10 = calc_ma(closes, 10)
-        ma60 = calc_ma(closes, 60)
-        m10  = float(ma10.iloc[-1])
-        m60  = float(ma60.iloc[-1])
-        if pd.isna(m10) or pd.isna(m60):
-            continue
-        # 收盤在兩條均線上方
-        if not (tc > m10 and tc > m60):
-            continue
-        # MA10 斜率向上
-        if pd.isna(ma10.iloc[-(ma10_slope_window+1)]) or not (m10 > float(ma10.iloc[-(ma10_slope_window+1)])):
-            continue
-        # MA60 斜率向上
-        if pd.isna(ma60.iloc[-(ma60_slope_window+1)]) or not (m60 > float(ma60.iloc[-(ma60_slope_window+1)])):
-            continue
-        # 現在 MA10 > MA60（剛翻多）
-        if not (m10 > m60):
-            continue
-        # 近 cross_window 天內 MA10 曾在 MA60 下方（確認是轉折，不是長期多頭延續）
-        was_below = any(
-            not pd.isna(ma10.iloc[-(i+1)]) and not pd.isna(ma60.iloc[-(i+1)])
-            and float(ma10.iloc[-(i+1)]) < float(ma60.iloc[-(i+1)])
-            for i in range(1, cross_window + 1) if i + 1 <= len(ma10)
-        )
-        if not was_below:
-            continue
-        results.append({"stock_id": sid, "name": _name(sid, names),
-                        "close": round(tc, 2), "change_pct": _change_pct(df),
-                        "volume": round(vol), "bb_score": calc_bb_score(df),
-                        "strategy": "S_RES"})
-    return results
-
-
 def calc_kd(df: pd.DataFrame, n: int = 9) -> tuple:
     """
     計算 KD 指標（台灣標準）：
@@ -940,72 +693,6 @@ def screen_skd(prices: dict, names: dict = None, params: dict = None) -> list:
                         "volume": round(vol), "bb_score": calc_bb_score(df),
                         "kd_k": round(k_now, 1), "kd_d": round(d_now, 1),
                         "strategy": "S_KD"})
-    return results
-
-
-def screen_svolx(prices: dict, names: dict = None, params: dict = None) -> list:
-    """S_VOLX 量爆拉升（多）：今日量 >= 昨日量 × vol_multiplier 且上漲且站上 ma_period 均線"""
-    p = params or {}
-    min_price      = p.get("min_price", 10)
-    vol_multiplier = p.get("vol_multiplier", 3)
-    ma_period      = int(p.get("ma_period", 100))
-    results = []
-    for sid, df in prices.items():
-        if len(df) < ma_period + 1:
-            continue
-        today = df.iloc[-1]
-        prev  = df.iloc[-2]
-        tc  = float(today['close'])
-        pc  = float(prev['close'])
-        vol     = float(today.get('volume', 0) or 0)
-        vol_yd  = float(prev.get('volume', 0) or 0)
-        if tc <= min_price:
-            continue
-        if vol_yd <= 0 or vol < vol_yd * vol_multiplier:
-            continue
-        if tc <= pc:
-            continue
-        ma_val = float(calc_ma(df['close'], ma_period).iloc[-1])
-        if pd.isna(ma_val) or tc <= ma_val:
-            continue
-        results.append({"stock_id": sid, "name": _name(sid, names),
-                        "close": round(tc, 2), "change_pct": _change_pct(df),
-                        "volume": round(vol), "bb_score": calc_bb_score(df),
-                        "vol_ratio": round(vol / vol_yd, 1),
-                        "strategy": "S_VOLX"})
-    return results
-
-
-def screen_svolx_short(prices: dict, names: dict = None, params: dict = None) -> list:
-    """S_VOLX_SHORT 量爆下殺（空）：今日量 >= 昨日量 × vol_multiplier 且下跌且跌破 ma_period 均線"""
-    p = params or {}
-    min_price      = p.get("min_price", 10)
-    vol_multiplier = p.get("vol_multiplier", 3)
-    ma_period      = int(p.get("ma_period", 10))
-    results = []
-    for sid, df in prices.items():
-        if len(df) < ma_period + 2:
-            continue
-        today = df.iloc[-1]
-        prev  = df.iloc[-2]
-        tc  = float(today['close'])
-        pc  = float(prev['close'])
-        vol     = float(today.get('volume', 0) or 0)
-        vol_yd  = float(prev.get('volume', 0) or 0)
-        if tc <= min_price:
-            continue
-        if vol_yd <= 0 or vol < vol_yd * vol_multiplier:
-            continue
-        if tc >= pc:
-            continue
-        ma_val = float(calc_ma(df['close'], ma_period).iloc[-1])
-        if pd.isna(ma_val) or tc >= ma_val:
-            continue
-        results.append({"stock_id": sid, "name": _name(sid, names),
-                        "close": round(tc, 2), "change_pct": _change_pct(df),
-                        "volume": round(vol), "bb_score": calc_bb_score(df),
-                        "vol_ratio": round(vol / vol_yd, 1),
-                        "strategy": "S_VOLX_SHORT"})
     return results
 
 
@@ -1157,17 +844,11 @@ PRICE_STRATEGY_FNS = {
     "S1_SHORT":     screen_s1_short,
     "S2":           screen_s2,
     "S5":           screen_s5,
-    "S17A":         screen_s17a,
-    "S17B":         screen_s17b,
     "S10":          screen_s10,
-    "S_PB":         screen_spb,
     "S_FBD":        screen_sfbd,
-    "S_RES":        screen_sres,
-    "S_VOLX":       screen_svolx,
-    "S_VOLX_SHORT": screen_svolx_short,
     "S_THUNDER":    screen_sthunder,
 }
-SHORT_STRATEGIES = {"S1_SHORT", "S_VOLX_SHORT"}
+SHORT_STRATEGIES = {"S1_SHORT"}
 
 
 def _vol_prefilter_pass(df: pd.DataFrame, min_vol_ratio: float) -> bool:
