@@ -71,6 +71,13 @@ def capital_info(subject: str, text: str = "") -> dict:
             out["period_start"] = roc_to_iso(re.sub(r"[年月.]", "/", m.group(1)))
     else:
         out["deal_kind"] = "私募" if "私募" in s[:600] else "現金增資"
+        # 資金用途（上課筆記：償還債務＋營收不佳→避開；擴充產能／低點現增→長線看好）
+        if re.search(r"擴充產能|擴建|購置(?:機器)?設備|資本支出|建廠|新廠|購置廠房", s[:4000]):
+            out["consideration"] = "擴充產能"
+        elif re.search(r"償還(?:銀行)?(?:借款|債務|負債)|還款", s[:4000]):
+            out["consideration"] = "償還債務"
+        elif re.search(r"充實營運資金", s[:4000]):
+            out["consideration"] = "充實營運資金"
         m = re.search(r"(?:發行|認購|承銷)價(?:格)?[^0-9。]{0,15}([0-9]+(?:\.[0-9]+)?)\s*元", s)
         if m:
             out["offer_price"] = float(m.group(1))

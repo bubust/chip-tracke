@@ -5,6 +5,20 @@ let _mnaRows = [];
 let _mnaFilter = '進行中';
 let _mnaLoaded = false;
 let _mnaPoll = null;
+let _mnaSort = { col: null, dir: 1 };
+const _MNA_COLS = [
+  ['標的', 'target_id'], ['收購方', 'acquirer'], ['類型', 'deal_type'], ['狀態', 'status'],
+  ['訊號', 'signal', '溢價 ≥15% 可進場、100% 收購隔天掛漲停；減資 Day2/3 畫線、現增用途與繳款前拉抬'],
+  ['公告日', 'first_announce'], ['收購價', 'offer_value', '每股收購價（增資＝認購價）'], ['現價', 'price'],
+  ['公告溢價', 'premium_pre_pct', '收購價 ÷ 公告前一天收盤 − 1（15% 以上才進）'], ['現價溢價', 'premium_pct', '收購價比現價高多少（還剩多少價差）'],
+  ['數量(張)', 'max_lots', '最低～最高收購張數'], ['範圍', 'scope'], ['收購期間', 'period_end'],
+  ['年化', 'annualized_pct', '現價溢價換算成年報酬（以剩餘天數計）'], ['對價', 'consideration'],
+];
+function mnaSortBy(col) {
+  _mnaSort = _mnaSort.col === col ? { col, dir: -_mnaSort.dir }
+    : { col, dir: ['target_id', 'acquirer', 'deal_type', 'status', 'signal', 'period_end', 'scope', 'consideration'].includes(col) ? 1 : -1 };
+  mnaRender();
+}
 const _MNA_STATUS_COLOR = { '進行中': '#f59e0b', '未開始': '#58a6ff', '待補期間': '#a78bfa', '已公告': '#22c55e', '已結束': '#64748b' };
 const _mnaE = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const _mnaN = (v, dp = 0) => v == null ? '—' : Number(v).toLocaleString('zh-TW', { maximumFractionDigits: dp, minimumFractionDigits: dp });
@@ -60,14 +74,22 @@ function mnaRender() {
   const rows = _mnaRows.filter(r => (_mnaFilter === '全部' || r.status === _mnaFilter || (_mnaFilter === '🔥 可進場' && r.signal?.level === 'buy'))
     && (!type || r.deal_type === type || (type === '@mna' && _MNA_TYPES.includes(r.deal_type)))
     && (!q || r.target_id.includes(q) || (r.target_name || '').includes(q) || (r.acquirer || '').includes(q)));
+  if (_mnaSort.col) {
+    const k = _mnaSort.col, d = _mnaSort.dir, lv = { buy: 0, watch: 1, info: 2, avoid: 3 };
+    const v = r => k === 'signal' ? (r.signal ? lv[r.signal.level] : 9) : k === 'first_announce' ? (r.first_announce || r.announce_date)
+      : k === 'max_lots' ? r.max_lots : r[k];
+    rows.sort((a, b) => { const x = v(a), y = v(b);
+      if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+      return (typeof x === 'string' ? x.localeCompare(y) : x - y) * d; });
+  }
   const body = document.getElementById('mna-body');
   if (!rows.length) { body.innerHTML = `<div style="color:var(--muted);text-align:center;padding:30px">${_mnaRows.length ? '沒有符合條件的資料' : '尚無資料'}</div>`; return; }
   const td = (v, x = '') => `<td style="padding:5px 8px;white-space:nowrap;${x}">${v}</td>`;
   body.innerHTML = `<div class="tbl-wrap" style="overflow-x:auto"><table style="width:100%;font-size:.8rem;border-collapse:collapse">
-    <thead><tr style="background:#1c2128;color:var(--muted)">
-      <th style="padding:6px 4px;white-space:nowrap">自選</th><th style="padding:6px 8px;text-align:left">標的</th><th style="padding:6px 8px;text-align:left">收購方</th><th>類型</th><th>狀態</th><th title="依老王筆記：溢價≥15% 可進場、完全收購隔天掛漲停；減資／增資的提醒">訊號</th>
-      <th>公告日</th><th title="每股收購價（增資＝認購價）">收購價</th><th>現價</th><th title="收購價 ÷ 公告前一天收盤 − 1（老王：15% 以上才進）">公告溢價</th><th title="收購價比現價高多少（還剩多少價差）">現價溢價</th>
-      <th title="最低～最高收購張數">數量(張)</th><th>範圍</th><th>收購期間</th><th title="溢價換算成年報酬（以剩餘天數計）">年化</th><th>對價</th>
+    <thead><tr style="background:#1c2128;color:var(--muted)"><th style="padding:6px 4px;white-space:nowrap">自選</th>${_MNA_COLS.map(([lab, key, tip]) => {
+      const arrow = _mnaSort.col === key ? (_mnaSort.dir > 0 ? ' ▲' : ' ▼') : '';
+      return `<th title="${_mnaE(tip || '點一下排序')}" onclick="mnaSortBy('${key}')" style="cursor:pointer;user-select:none;padding:6px 8px;white-space:nowrap${key === 'target_id' || key === 'acquirer' ? ';text-align:left' : ''}">${lab}${arrow}</th>`;
+    }).join('')}
     </tr></thead><tbody>${rows.map(r => {
       const c = _MNA_STATUS_COLOR[r.status] || '#64748b';
       return `<tr style="border-top:1px solid #21262d;cursor:pointer" onclick="mnaDetail(${r.id})">
@@ -84,7 +106,7 @@ function mnaRender() {
         ${td(_mnaPct(r.premium_pre_pct), `text-align:right;font-weight:700;color:${r.premium_pre_pct == null ? 'var(--muted)' : r.premium_pre_pct >= 15 ? '#ef4444' : r.premium_pre_pct > 0 ? '#f59e0b' : '#22c55e'}`)}
         ${td(_mnaPct(r.premium_pct), `text-align:right;color:${r.premium_pct == null ? 'var(--muted)' : r.premium_pct > 0 ? '#ef4444' : '#22c55e'}`)}
         ${td(r.max_lots != null ? `${r.min_lots != null ? _mnaN(r.min_lots) + '～' : ''}${_mnaN(r.max_lots)}` : '—', 'text-align:right')}
-        ${td(_isCap(r) ? (r.offer_pct ? `減資 ${r.offer_pct}%` : '—') : _mnaE(r.scope || '—'))}
+        ${td(_isCap(r) ? (r.offer_pct ? `減資 ${r.offer_pct}%` : r.consideration ? `用途：${_mnaE(r.consideration)}` : '—') : _mnaE(r.scope || '—'))}
         ${td(_isCap(r) && r.deal_type === '減資' ? (r.period_start ? `恢復買賣 ${_mnaD(r.period_start)}` : '—') : r.period_start ? `${_mnaD(r.period_start)}～${_mnaD(r.period_end)}${r.days_left != null ? `<br><span style="font-size:.7rem;color:#f59e0b">剩 ${r.days_left} 天</span>` : ''}` : '—')}
         ${td(_mnaPct(r.annualized_pct), 'text-align:right')}
         ${td(_mnaE(r.consideration || '—'))}
@@ -106,7 +128,7 @@ function mnaDetail(id) {
       <ul style="margin:4px 0 0;padding-left:18px;font-size:.8rem">${(r.signal.tips || []).map(t => `<li>${_mnaE(t)}</li>`).join('')}</ul></div>` : ''}
     ${line('類型', _mnaE(r.deal_type || '—') + (r.deal_kind && _isCap(r) ? `（${_mnaE(r.deal_kind)}）` : ''))}${_isCap(r) ? '' : line('收購方', _mnaE(r.acquirer || '—'))}${line('狀態', _mnaE(r.status))}
     ${r.target_company ? line('被收購公司', _mnaE(r.target_company)) : ''}
-    ${_isCap(r) ? line('認購價', r.offer_value != null ? _mnaN(r.offer_value, 2) : '—') + (r.offer_pct ? line('減資比率', r.offer_pct + '%') : '') : line('每股收購價', r.offer_value != null ? `<b>${_mnaN(r.offer_value, 2)}</b>${r.offer_value_note ? `（${_mnaE(r.offer_value_note)}，以換發股票現價計）` : ''}（公告前收盤 ${_mnaN(r.pre_price, 2)}，公告溢價 ${_mnaPct(r.premium_pre_pct)}；現價 ${_mnaN(r.price, 2)}，現價溢價 ${_mnaPct(r.premium_pct)}）` : '待補')}
+    ${_isCap(r) ? line('認購價', r.offer_value != null ? _mnaN(r.offer_value, 2) : '—') + (r.offer_pct ? line('減資比率', r.offer_pct + '%') : '') + (r.consideration ? line('資金用途', _mnaE(r.consideration)) : '') : line('每股收購價', r.offer_value != null ? `<b>${_mnaN(r.offer_value, 2)}</b>${r.offer_value_note ? `（${_mnaE(r.offer_value_note)}，以換發股票現價計）` : ''}（公告前收盤 ${_mnaN(r.pre_price, 2)}，公告溢價 ${_mnaPct(r.premium_pre_pct)}；現價 ${_mnaN(r.price, 2)}，現價溢價 ${_mnaPct(r.premium_pct)}）` : '待補')}
     ${_isCap(r) ? '' : line('收購數量', r.max_shares ? `最低 ${_mnaN(r.min_lots)} 張～上限 ${_mnaN(r.max_lots)} 張${r.offer_pct ? `（約 ${r.offer_pct}%）` : ''}${r.amount_yi ? `，約 ${r.amount_yi} 億` : ''}` : '待補')}
     ${_isCap(r) ? '' : line('範圍', _mnaE(r.scope || '—')) + line('對價', _mnaE(r.consideration || '—'))}
     ${line(r.deal_type === '減資' ? '恢復買賣日' : r.deal_type === '現金增資' ? '繳款期間' : '期間', r.period_start ? `${r.period_start}${r.period_end ? ' ～ ' + r.period_end : ''}${r.days_left != null ? `（剩 ${r.days_left} 天，年化 ${_mnaPct(r.annualized_pct)}）` : ''}` : '待補')}

@@ -943,3 +943,15 @@ def run_strategy(strategy: str, prices: dict, names: dict = None,
     p = strategy_params.get(s, {}) if strategy_params else None
     fn = PRICE_STRATEGY_FNS.get(s)
     return fn(prices, names, params=p) if fn else []
+
+
+# ── 上課筆記新增的技術面策略（scanner_course.py；舊策略不動，只是登記進來）──
+from scanner_course import COURSE_FNS as _COURSE_FNS, COURSE_PARAMS as _COURSE_PARAMS, \
+    COURSE_SHORT as _COURSE_SHORT, COURSE_STRATEGIES as _COURSE_STRATEGIES  # noqa: E402
+STRATEGIES.update(_COURSE_STRATEGIES)
+STRATEGY_PARAMS_SCHEMA.update(_COURSE_PARAMS)
+PRICE_STRATEGY_FNS.update(_COURSE_FNS)
+SHORT_STRATEGIES |= _COURSE_SHORT
+from chip_course import CHIP_PARAMS as _CHIP_PARAMS, CHIP_STRATEGIES as _CHIP_STRATEGIES  # noqa: E402
+STRATEGIES.update(_CHIP_STRATEGIES)          # 籌碼型：掃描後由 chip_course.run_all 另外算（不在 PRICE_STRATEGY_FNS）
+STRATEGY_PARAMS_SCHEMA.update(_CHIP_PARAMS)

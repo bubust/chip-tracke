@@ -13,8 +13,8 @@ const _CB_COLS = [
   { key: 'cb_price', label: 'CB 價', align: 'right', title: 'CB 收市價（百元價）', v: r => r.cb_price },
   { key: 'stock_price', label: '股價', align: 'right', v: r => r.stock_price },
   { key: 'conv_price', label: '轉換價', align: 'right', title: '目前轉換價（公告調整／發行時／手動）', v: r => r.conv_price },
-  { key: 'parity', label: '合理價', align: 'right', title: '股價 ÷ 轉換價 × 100', v: r => r.parity },
-  { key: 'premium_pct', label: '轉換溢價', align: 'right', title: 'CB 價 ÷ 合理價 − 1', v: r => r.premium_pct },
+  { key: 'parity', label: '理論價', align: 'right', title: '股價 ÷ 轉換價 × 100', v: r => r.parity },
+  { key: 'premium_pct', label: '溢價', align: 'right', title: 'CB 價 ÷ 理論價 − 1；正＝溢價（大戶搶購看好現股），🔥＝搶購訊號', v: r => r.premium_pct },
   { key: 'flow', label: '六大流程', align: 'left', title: '六大流程：①低檔發債 ②營收成長 ③利多消息 ④融券大增 ⑤CB量大增 ⑥融券大減（紅＝符合，④綠＝出場警訊，虛線＝無資料）；排序依符合數', v: r => r.flow.filter(f => f.on).length },
   { key: 'rev_yoy', label: '營收年增', align: 'right', title: '單月營收年增率', v: r => r.rev_yoy },
   { key: 'short_chg5', label: '融券 5 日', align: 'right', title: '發行公司融券餘額 5 日變化', v: r => r.short_chg5 },
@@ -74,11 +74,11 @@ function _cbRecent(r) {
 
 function cbRender() {
   const stage = document.getElementById('cb-stage').value, par = document.getElementById('cb-par').checked,
-    gap = document.getElementById('cb-gap').checked, traded = document.getElementById('cb-traded').checked,
+    grab = document.getElementById('cb-grab').checked, traded = document.getElementById('cb-traded').checked,
     q = document.getElementById('cb-search').value.trim();
   const base = _cbRows.filter(r => (!traded || _cbRecent(r))
     && (!stage || (stage === 'new' ? r.stage.some(x => x.startsWith('定價')) : r.stage.some(x => !x.startsWith('定價'))))
-    && (!par || (r.cb_price != null && r.cb_price < 100)) && (!gap || (r.gap != null && r.gap >= 0))
+    && (!par || r.near_par) && (!grab || r.grab)
     && (!q || r.code.includes(q) || (r.name || '').includes(q) || (r.sid || '').includes(q) || (r.issuer || '').includes(q)));
   const counts = { all: base.length };
   base.forEach(r => { counts[r.tier] = (counts[r.tier] || 0) + 1; });
@@ -110,11 +110,11 @@ function cbRender() {
         ${td(wlRowBtn(r.sid, `cbAddWl('${_cbE(r.code)}')`), 'padding:5px 4px;text-align:center')}
         ${td(`<b style="color:var(--accent)">${_cbE(r.code)}</b> ${_cbE(r.name || '')}<br><span style="font-size:.7rem;color:var(--muted)">${_cbE(r.sid)} ${_cbE(r.issuer || '')}</span>`)}
         ${td(`<span class="sig ${t.cls}">${t.label}</span><br><span style="font-size:.66rem;color:var(--muted)">${r.score} 分</span>`)}
-        ${td(`<b>${_cbN(r.cb_price)}</b>${r.cb_price != null && r.cb_price < 100 ? '<br><span style="font-size:.66rem;color:#ef4444">低於面額</span>' : ''}`, 'text-align:right')}
+        ${td(`<b>${_cbN(r.cb_price)}</b>${r.near_par ? `<br><span style="font-size:.66rem;color:#ef4444">${r.cb_price < 100 ? '低於面額' : '貼近面額'}</span>` : ''}`, 'text-align:right')}
         ${td(_cbN(r.stock_price), 'text-align:right')}
         ${td(`${_cbN(r.conv_price)}${r.conv_src !== '發行時' ? `<br><span style="font-size:.64rem;color:var(--muted)">${r.conv_src === '手動' ? '手動' : '已調整'}</span>` : ''}`, 'text-align:right')}
-        ${td(_cbN(r.parity, 1), `text-align:right;font-weight:700;color:${r.gap == null ? 'var(--muted)' : r.gap >= 0 ? '#ef4444' : 'var(--text)'}`)}
-        ${td(_cbP(r.premium_pct), `text-align:right;color:${r.premium_pct == null ? 'var(--muted)' : r.premium_pct <= 5 ? '#ef4444' : r.premium_pct >= 30 ? '#22c55e' : 'var(--text)'}`)}
+        ${td(_cbN(r.parity, 1), 'text-align:right')}
+        ${td(_cbP(r.premium_pct) + (r.grab ? '<br><span style="font-size:.64rem;color:#ef4444">🔥搶購</span>' : r.lock ? '<br><span style="font-size:.64rem;color:#22c55e">鎖利</span>' : ''), `text-align:right;color:${r.premium_pct == null ? 'var(--muted)' : r.grab ? '#ef4444' : 'var(--text)'}`)}
         ${td(flow(r))}
         ${td(_cbP(r.rev_yoy) + (r.rev_turn ? '<br><span style="font-size:.64rem;color:#ef4444">負轉正</span>' : ''), `text-align:right;color:${r.rev_yoy == null ? 'var(--muted)' : r.rev_yoy > 0 ? '#ef4444' : '#22c55e'}`)}
         ${td(r.short_chg5 == null ? (r.short_now != null ? _cbN(r.short_now, 0) + ' 張' : '—') : `${r.short_chg5 >= 0 ? '+' : ''}${_cbN(r.short_chg5, 0)}<br><span style="font-size:.64rem;color:var(--muted)">餘 ${_cbN(r.short_now, 0)}</span>`,
@@ -146,7 +146,7 @@ function cbDetail(code) {
     ${line('CB 價', `${_cbN(r.cb_price)}（${_cbE(r.cb_date || '—')}）`)}
     ${line('股價', `${_cbN(r.stock_price)}${r.ma60 ? `（季線 ${_cbN(r.ma60)}，${r.above_ma60 ? '站上' : '跌破'}）` : ''}`)}
     ${line('轉換價', `${_cbN(r.conv_price)}（${_cbE(r.conv_src)}）　每張可換 ${_cbN(r.shares_per_bond, 0)} 股`)}
-    ${line('合理價', r.parity == null ? '沒有股價資料' : `${_cbN(r.parity, 2)} ＝ ${_cbN(r.stock_price)} ÷ ${_cbN(r.conv_price)} × 100　→ ${r.gap == null ? '—' : r.gap >= 0 ? `<b style="color:#ef4444">比 CB 價高 ${_cbN(r.gap)}，市場看好</b>` : `比 CB 價低 ${_cbN(-r.gap)}（轉換溢價 ${_cbP(r.premium_pct)}）`}`)}
+    ${line('理論價', r.parity == null ? '沒有股價資料' : `${_cbN(r.parity, 2)} ＝ ${_cbN(r.stock_price)} ÷ ${_cbN(r.conv_price)} × 100　→ CB ${r.premium_pct >= 0 ? `溢價 ${_cbP(r.premium_pct)}${r.grab ? '，<b style="color:#ef4444">搶購訊號：大戶搶 CB、看好現股</b>' : ''}` : `折價 ${_cbP(r.premium_pct)}${r.lock ? '，<b style="color:#22c55e">高檔融券鎖利</b>' : ''}`}${r.cb_5d_pct != null ? `（CB 5 日 ${_cbP(r.cb_5d_pct)}）` : ''}`)}
     ${line('發行／到期', `${_cbE(r.issue_date || '—')} ～ ${_cbE(r.maturity_date || '—')}${r.put_date ? `　賣回日 ${_cbE(r.put_date)}` : ''}`)}
     ${line('發債時股價位置', r.issue_pos == null ? '股價資料不足' : `一年區間的 ${(r.issue_pos * 100).toFixed(0)}%${r.issue_pos <= 0.4 ? '（低檔發債）' : ''}`)}
     ${line('已轉換率', r.converted_pct != null ? `${r.converted_pct}%（流通在外 ${_cbN(r.outstanding_yi)} 億）` : '—')}
