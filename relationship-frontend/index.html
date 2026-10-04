@@ -74,10 +74,20 @@ select { background: #21262d; color: var(--text); border: 1px solid var(--border
 .strategy-mini-stats span { color: var(--muted); }
 .strategy-mini-stats b { margin-left: 3px; }
 @media (max-width: 768px) {
-  html, body { overflow: hidden; }
-  .layout { grid-template-columns: 1fr; flex: 1; }
-  .side-panel { height: 300px; }
+  /* 手機：整頁可以往下滑（舊版整頁鎖住，側欄和事件清單滑不到） */
+  html, body { height: auto; overflow: auto; }
+  .layout { display: flex; flex-direction: column; overflow: visible; }
+  .charts-col { overflow: visible; }
+  .chart-section { flex: none; height: 300px; }
+  .chart-section.small { flex: none; height: 200px; }
+  .side-panel { border-left: none; border-top: 1px solid var(--border); overflow: visible; }
   .strategy-bar { flex-wrap: wrap; }
+  .strategy-bar select { max-width: none; }
+  .strategy-mini-stats { flex-wrap: wrap; }
+  .period-bar { overflow-x: auto; }
+  .top-stats { flex-wrap: wrap; }
+  .stat-cell { flex: 1 1 33%; border-bottom: 1px solid var(--border); }
+  .stats-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 </style>
 </head>
@@ -158,7 +168,7 @@ select { background: #21262d; color: var(--text); border: 1px solid var(--border
       <div id="chart-taiex"></div>
     </div>
     <div class="chart-section small">
-      <div class="chart-label">📈 台指期（連續月）</div>
+      <div class="chart-label">📈 台指期（近月、一般時段；資料來源：期交所）</div>
       <div id="chart-tx"></div>
     </div>
     <!-- Event timeline -->
@@ -380,7 +390,7 @@ function updateTopStats() {
   }
   if (last.tx_relative_return !== null && last.tx_relative_return !== undefined) {
     const v = last.tx_relative_return;
-    txRelEl.innerHTML = `<span class="${v > 0.1 ? 'pos' : v < -0.1 ? 'neg' : 'neu'}">${v > 0 ? '+' : ''}${v.toFixed(2)}%</span>`;
+    txRelEl.innerHTML = `<span class="${v > 0.8 ? 'pos' : v < -0.8 ? 'neg' : 'neu'}" title="期貨漲跌% − 現貨漲跌%；超過 ±0.8% 才算背離（期貨比現貨晚 15 分鐘收盤，平常就有零點幾 % 差距）">${v > 0 ? '+' : ''}${v.toFixed(2)}%</span>`;
   }
   const oiState = last.oi_state || '—';
   const oiColors = { PRICE_UP_OI_UP: 'pos', PRICE_UP_OI_DOWN: 'neu', PRICE_DOWN_OI_UP: 'neg', PRICE_DOWN_OI_DOWN: 'neg' };
@@ -472,9 +482,9 @@ function hideResearch() {
 let _strategyMarkers = [];  // markers from strategy overlay
 
 const _EVENT_META = {
-  PRICE_FUTURES_ALIGNED:           { desc:'現貨與台指期同向同步，趨勢方向明確一致', dir:'中性', level:1 },
-  PRICE_FUTURES_DIVERGENCE_BULL:   { desc:'現貨偏弱但期貨相對強，期貨先行暗示看多', dir:'多', level:2 },
-  PRICE_FUTURES_DIVERGENCE_BEAR:   { desc:'現貨偏強但期貨相對弱，期貨先行暗示看空', dir:'空', level:2 },
+  PRICE_FUTURES_ALIGNED:           { desc:'現貨與台指期漲跌幅相差 ≤ 0.2%，同步', dir:'中性', level:1 },
+  PRICE_FUTURES_DIVERGENCE_BULL:   { desc:'期貨漲幅比現貨多 0.8% 以上（約最極端 1 成的日子），期貨先行暗示看多', dir:'多', level:2 },
+  PRICE_FUTURES_DIVERGENCE_BEAR:   { desc:'期貨跌幅比現貨多 0.8% 以上（約最極端 1 成的日子），期貨先行暗示看空', dir:'空', level:2 },
   PRICE_OI_UP_BUILD:               { desc:'現貨上漲且 OI（未平倉）增加 → 多方主動建倉，動能強', dir:'多', level:1 },
   PRICE_OI_UP_COVERING:            { desc:'現貨上漲但 OI 減少 → 空方被迫回補推漲，屬弱多', dir:'多', level:1 },
   PRICE_OI_DOWN_BUILD:             { desc:'現貨下跌且 OI 增加 → 空方主動建倉，下跌動能強', dir:'空', level:1 },

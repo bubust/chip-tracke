@@ -32,6 +32,11 @@ EVENT_DEFINITIONS = {
 }
 
 
+# 期貨收 13:45、現貨收 13:30，兩者漲跌本來就有零點幾 % 的時間差；門檻太小會天天背離
+DIVERGENCE_PCT = 0.8   # 約最極端的 1 成交易日（修正後實測 |期現相對報酬| 中位數 0.31%、P90 0.91%）
+ALIGNED_PCT = 0.2
+
+
 def _safe(rows: list, col: str, idx: int, default=None):
     try:
         return rows[idx].get(col, default)
@@ -50,6 +55,8 @@ def run_event_engine(days: int = 120):
         (days + 10,)
     ).fetchall()
     mrows = [dict(r) for r in mrows]
+    if mrows:                                   # 重新計算的區間先清空（資料修正後，舊的錯誤事件才不會殘留）
+        conn.execute("DELETE FROM market_events WHERE observation_date >= ?", (mrows[-days:][0]["observation_date"],))
 
     # Load positioning_daily (from positioning.db, different DB)
     pos_map: dict = {}
@@ -110,17 +117,17 @@ def run_event_engine(days: int = 120):
 
         # ── Price vs Futures alignment ──
         if taiex_ret is not None and tx_rel is not None:
-            if taiex_ret > 0 and tx_rel > 0.1:
+            if taiex_ret > 0 and tx_rel > DIVERGENCE_PCT:
                 upsert_event(conn, dt, "PRICE_FUTURES_DIVERGENCE_BULL", 2,
                     "期貨相對強（多頭背離）",
                     {"taiex_ret": taiex_ret, "tx_rel": tx_rel})
                 events_generated += 1
-            elif taiex_ret < 0 and tx_rel < -0.1:
+            elif taiex_ret < 0 and tx_rel < -DIVERGENCE_PCT:
                 upsert_event(conn, dt, "PRICE_FUTURES_DIVERGENCE_BEAR", 2,
                     "期貨相對弱（空頭背離）",
                     {"taiex_ret": taiex_ret, "tx_rel": tx_rel})
                 events_generated += 1
-            elif abs(tx_rel) <= 0.1:
+            elif abs(tx_rel) <= ALIGNED_PCT:
                 upsert_event(conn, dt, "PRICE_FUTURES_ALIGNED", 1,
                     "價格與期貨方向一致",
                     {"taiex_ret": taiex_ret, "tx_rel": tx_rel})
@@ -220,7 +227,7 @@ def _update_forward_returns(conn, mrows: list[dict]):
 
     events = conn.execute(
         "SELECT id, observation_date FROM market_events "
-        "WHERE future_return_5d IS NULL"
+        "WHERE future_return_20d IS NULL"
     ).fetchall()
 
     for ev in events:
@@ -243,7 +250,7 @@ def _update_forward_returns(conn, mrows: list[dict]):
         r10 = _fwd(10)
         r20 = _fwd(20)
 
-        if r5 is not None or r10 is not None:
+        if r5 is not None or r10 is not None or r20 is not None:
             conn.execute(
                 "UPDATE market_events SET future_return_5d=?, future_return_10d=?, future_return_20d=? WHERE id=?",
                 (r5, r10, r20, ev["id"])

@@ -5,6 +5,7 @@ chip_course.py — 上課筆記的籌碼面選股（2026-10-04 新增，掃描�
   S_SHORT_UP   強勢股融券持續大增：軋空／套利熱絡，股價還有高點，拉回是買點
   S_SHORT_EBB  融券退潮：高檔強勢股的融券從高點連續減少 → 拉回不再是買點，減碼／出場
   S_BIGHOLD    千張大戶持股比率上升、散戶持股比率下降（創新低更好）＝籌碼集中
+  S_TRUST_DUMP 投信高檔連續賣超（之前有佈局、股價拉高後連續倒貨 → 出場）
 
 資料來源（2026-10 GitHub Actions 實測可用）：
 - 投信：TWSE rwd fund/T86（可指定日期）；櫃買 OpenAPI tpex_3insti_daily_trading（只有最新一天，每天累積）
@@ -29,10 +30,14 @@ CHIP_STRATEGIES = {
     "S_SHORT_UP":  "🩳 強勢股融券大增（拉回買）",
     "S_SHORT_EBB": "🌊 融券退潮（減碼／出場）",
     "S_BIGHOLD":   "🐋 大戶增、散戶減（籌碼集中）",
+    "S_TRUST_DUMP": "🏃 投信高檔連續賣超（出場）",
 }
-CHIP_SHORT = {"S_SHORT_EBB"}
+CHIP_SHORT = {"S_SHORT_EBB", "S_TRUST_DUMP"}
 _MP = {"key": "min_price", "label": "最低股價", "type": "number", "default": 10, "min": 1, "max": 500, "step": 1}
 CHIP_PARAMS = {
+    "S_TRUST_DUMP": [_MP, {"key": "sell_days", "label": "投信連續賣超天數（≥）", "type": "number", "default": 3, "min": 2, "max": 10, "step": 1},
+                     {"key": "rise_pct", "label": "距60日低點漲幅%（≥，高檔）", "type": "number", "default": 20, "min": 5, "max": 100, "step": 5},
+                     {"key": "near_high_pct", "label": "離60日高點%（≤）", "type": "number", "default": 10, "min": 2, "max": 30, "step": 1}],
     "S_TRUST5": [_MP, {"key": "trust_days", "label": "投信連續買超天數（≥）", "type": "number", "default": 3, "min": 2, "max": 10, "step": 1},
                  {"key": "flat_days", "label": "打橫天數", "type": "number", "default": 2, "min": 2, "max": 5, "step": 1},
                  {"key": "flat_pct", "label": "打橫：收盤高低差%（≤）", "type": "number", "default": 3, "min": 1, "max": 8, "step": 0.5}],
@@ -258,6 +263,35 @@ def screen_trust5(trust: dict, get_df, names, p):
     return out
 
 
+def screen_trust_dump(trust: dict, get_df, names, p):
+    """投信高檔連續賣超：原本有佈局（之前淨買）的投信，在股價拉高後連續賣超 → 知情人士獲利了結，跟著出場"""
+    need = int(p.get("sell_days", 3))
+    rise, near = float(p.get("rise_pct", 20)) / 100, float(p.get("near_high_pct", 10)) / 100
+    out = []
+    for sid, ser in trust.items():
+        streak = 0
+        for _, v in reversed(ser):
+            if v < 0:
+                streak += 1
+            else:
+                break
+        if streak < need or sum(v for _, v in ser[:-streak] if v > 0) <= 0:     # 之前要有買進佈局
+            continue
+        df = get_df(sid)
+        if df is None or len(df) < 60 or float(df.iloc[-1]["close"]) < float(p.get("min_price", 10)):
+            continue
+        c, h, lo = df["close"].astype(float), df["high"].astype(float), df["low"].astype(float)
+        hi60, lo60 = float(h.iloc[-60:].max()), float(lo.iloc[-60:].min())
+        if lo60 <= 0 or c.iloc[-1] / lo60 - 1 < rise or c.iloc[-1] < hi60 * (1 - near):
+            continue
+        out.append(_row(sid, df, names, "S_TRUST_DUMP", sell_days=streak,
+                        sell_lots=round(-sum(v for _, v in ser[-streak:]) / 1000),
+                        buy_lots=round(sum(v for _, v in ser[:-streak] if v > 0) / 1000),
+                        high60=round(hi60, 2), ma10=round(float(c.rolling(10).mean().iloc[-1]), 2),
+                        note="投信在高檔連續倒貨＝知情人士獲利了結，易大回檔：跟著賣出避險（地緣分點大賣要另外手動查）"))
+    return out
+
+
 def screen_short_up(shorts: dict, get_df, names, p):
     up, lots = float(p.get("up_pct", 30)) / 100, float(p.get("min_lots", 200))
     out = []
@@ -362,7 +396,8 @@ def run_all(names: dict = None, strategy_params: dict = None, do_refresh: bool =
     shorts = _series(c, "short_bal", "bal", since)
     out = {}
     for key, fn, arg in (("S_TRUST5", screen_trust5, trust), ("S_SHORT_UP", screen_short_up, shorts),
-                         ("S_SHORT_EBB", screen_short_ebb, shorts), ("S_BIGHOLD", screen_bighold, c)):
+                         ("S_SHORT_EBB", screen_short_ebb, shorts), ("S_BIGHOLD", screen_bighold, c),
+                         ("S_TRUST_DUMP", screen_trust_dump, trust)):
         try:
             out[key] = fn(arg, get_df, names, p(key))
         except Exception as e:

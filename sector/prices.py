@@ -26,6 +26,14 @@ _TPEX_HIST    = "https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no143
 # TWSE 批次抓取
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _roc_to_ymd(s) -> str:
+    """openapi 的 Date（民國 1151002）→ 20261002；格式不對回空字串"""
+    s = str(s or "").strip()
+    if len(s) == 7 and s.isdigit():
+        return f"{int(s[:3]) + 1911}{s[3:]}"
+    return ""
+
+
 def _fetch_twse_today() -> list[dict]:
     """抓今日 TWSE 全市場收盤資料，回傳 [{stock_id, open, high, low, close, volume}, ...]"""
     try:
@@ -48,7 +56,8 @@ def _fetch_twse_today() -> list[dict]:
                 continue
             if close <= 0:
                 continue
-            records.append({"stock_id": sid, "open": open_, "high": high, "low": low, "close": close, "volume": vol})
+            records.append({"stock_id": sid, "open": open_, "high": high, "low": low, "close": close, "volume": vol,
+                            "date": _roc_to_ymd(row.get("Date"))})
         log.info(f"[prices] TWSE today: {len(records)} stocks")
         return records
     except Exception as e:
@@ -131,7 +140,8 @@ def _fetch_tpex_today() -> list[dict]:
                 continue
             if close <= 0:
                 continue
-            records.append({"stock_id": sid, "open": open_, "high": high, "low": low, "close": close, "volume": vol})
+            records.append({"stock_id": sid, "open": open_, "high": high, "low": low, "close": close, "volume": vol,
+                            "date": _roc_to_ymd(row.get("Date"))})
         log.info(f"[prices] TPEx today: {len(records)} stocks")
         return records
     except Exception as e:
@@ -211,16 +221,66 @@ def store_prices(date_str: str, records: list[dict]) -> int:
 
 def fetch_and_store_today() -> dict:
     """
-    抓今日 TWSE + TPEx 全市場價格並存入 DB。
-    只需 2 個 HTTP 請求，不依賴 Yahoo。
+    抓 TWSE + TPEx openapi 全市場收盤並存入 DB（2 個請求）。
+    openapi 常延遲到隔天才更新 → 一律用資料裡的 Date 當日期（舊版用「今天」，結果把昨天的價格存成今天）。
     """
-    today = date.today().strftime("%Y%m%d")
     twse = _fetch_twse_today()
     tpex = _fetch_tpex_today()
-    all_rec = twse + tpex
-    n = store_prices(today, all_rec)
-    log.info(f"[prices] 今日存入 {n} 筆（TWSE={len(twse)}, TPEx={len(tpex)}）")
-    return {"date": today, "twse": len(twse), "tpex": len(tpex), "stored": n}
+    by_date: dict = {}
+    for r in twse + tpex:
+        if r.get("date"):
+            by_date.setdefault(r["date"], []).append(r)
+    n = sum(store_prices(d, recs) for d, recs in by_date.items())
+    log.info(f"[prices] openapi 存入 {n} 筆，日期 {sorted(by_date)}（TWSE={len(twse)}, TPEx={len(tpex)}）")
+    return {"dates": sorted(by_date), "twse": len(twse), "tpex": len(tpex), "stored": n}
+
+
+def sync_from_price_cache(days: int = 200) -> dict:
+    """
+    從主價格快取（cache.db 的 price_daily：全市場掃描／每日收盤更新，日期正確、有 2 年歷史）同步到 sector_stock_daily。
+    price_daily 成交量是「張」，這裡換成「股」（×1000）跟 openapi 一致。
+    某天在 price_daily 有 ≥ 1000 支（完整的一天）→ 先清掉該天舊資料再寫入（清掉以前存錯日期的列）。
+    """
+    import sqlite3
+    from datetime import timedelta as _td
+    try:
+        from chip_tracker_v2 import DB_PATH as _CACHE_DB
+    except Exception as e:
+        return {"error": f"找不到價格快取：{e}"}
+    init_db()
+    cutoff = (date.today() - _td(days=days)).strftime("%Y%m%d")
+    with db() as conn:
+        mapped = {r[0] for r in conn.execute("SELECT stock_id FROM stock_sector_map").fetchall()}
+    src = sqlite3.connect(str(_CACHE_DB), timeout=30)
+    try:
+        rows = src.execute(
+            "SELECT date, stock_id, open, high, low, close, volume FROM price_daily WHERE date >= ? AND close > 0",
+            (cutoff,)).fetchall()
+    finally:
+        src.close()
+    rows = [(d, s, o, h, l, c, (v or 0) * 1000) for d, s, o, h, l, c, v in rows if s in mapped and len(str(d)) == 8]
+    per_day: dict = {}
+    for r in rows:
+        per_day[r[0]] = per_day.get(r[0], 0) + 1
+    full_days = [d for d, n in per_day.items() if n >= 1000]
+    with db() as conn:
+        conn.executemany("DELETE FROM sector_stock_daily WHERE date = ?", [(d,) for d in full_days])
+        conn.executemany(
+            """INSERT OR REPLACE INTO sector_stock_daily (date, stock_id, open, high, low, close, volume)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""", rows)
+    stocks = len({r[1] for r in rows})
+    log.info(f"[prices] 從價格快取同步 {len(rows)} 筆、{stocks} 支、{len(per_day)} 天（完整 {len(full_days)} 天）")
+    return {"rows": len(rows), "stocks": stocks, "days": len(per_day), "full_days": len(full_days)}
+
+
+def update_prices() -> dict:
+    """每日更新：先從價格快取同步，再用 openapi 補最新一天（快取沒有的話）"""
+    out = {"cache": sync_from_price_cache(days=200)}
+    try:
+        out["openapi"] = fetch_and_store_today()
+    except Exception as e:
+        out["openapi"] = {"error": str(e)}
+    return out
 
 
 def backfill(days: int = 120) -> dict:

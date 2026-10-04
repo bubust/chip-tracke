@@ -250,7 +250,21 @@ details.guide[open]>summary::before{content:'▾ ';}
 /* 上課筆記分頁 */
 .notes h3{margin:16px 0 6px;font-size:1rem}
 .notes h4{margin:10px 0 6px;font-size:.88rem;color:var(--muted)}
-.note-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px}
+.note-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:10px}
+.notes-h3{margin:16px 0 8px;font-size:1rem}
+.notes-stats{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.8rem;color:var(--muted);margin-bottom:8px}
+.notes-stats b{color:var(--text)}
+.notes-bar{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px;scrollbar-width:none}
+.notes-bar::-webkit-scrollbar{display:none}
+.note-tag{display:inline-block;font-size:.68rem;padding:0 6px;border-radius:9px;border:1px solid;font-weight:400;white-space:nowrap}
+.note-stop{margin-top:6px;padding:4px 8px;border-radius:6px;background:#22c55e10;color:#86efac;font-size:.78rem}
+.note-go{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.notes-list{display:flex;flex-direction:column;margin-top:10px;border:1px solid #30363d;border-radius:8px;overflow:hidden}
+.notes-li{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.2fr) auto;gap:4px 10px;align-items:center;padding:7px 10px;border-top:1px solid #21262d;font-size:.8rem}
+.notes-li:first-child{border-top:none}
+.notes-li-s{color:#86efac;font-size:.76rem}
+.notes-li-g{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+@media (max-width: 700px){.notes-li{grid-template-columns:1fr}.notes-li-g{justify-content:flex-start}}
 .note-card{background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:10px 12px;font-size:.82rem;line-height:1.7}
 .note-card ul{margin:4px 0 0;padding-left:18px}
 .note-h{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
@@ -533,7 +547,7 @@ details.guide[open]>summary::before{content:'▾ ';}
       <button class="btn ghost screen-strat-btn" data-s="S_FBD"   onclick="viewStrategy('S_FBD')">🪤 假跌破 <span class="strat-cnt" id="cnt-S_FBD"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_THUNDER" onclick="viewStrategy('S_THUNDER')" title="盤整 90 天（區間 ≤15%）後帶量 2.5 倍突破；回檔 ≤0.618 時目標價＝第一段高點−突破點＋回檔低點">⚡ 平地一聲雷 <span class="strat-cnt" id="cnt-S_THUNDER"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_WARRANT_TOP" onclick="viewStrategy('S_WARRANT_TOP')">📈 認購前十大 <span class="strat-cnt" id="cnt-S_WARRANT_TOP"></span></button>
-      <div class="strat-divider" style="flex-basis:100%;font-size:.74rem;color:var(--muted);margin-top:6px">📚 上課筆記策略（做多 10 個；最後 4 個是做空／出場警訊）· 籌碼類（投信、融券、大戶）在全市場掃描最後另外抓資料計算</div>
+      <div class="strat-divider" style="flex-basis:100%;font-size:.74rem;color:var(--muted);margin-top:6px">📚 上課筆記策略（做多 14 個；⛔ 之後 7 個是做空／出場警訊）· 籌碼類（投信、融券、大戶）在全市場掃描最後另外抓資料計算</div>
       <button class="btn ghost screen-strat-btn" data-s="S_WMACD" onclick="viewStrategy('S_WMACD')" title="週 K、MACD(10,20,50)：大跌後重新站上 20 週線且週柱由綠翻紅；沒破 20 週線、MACD 沒翻綠就抱">📅 週MACD大波段 <span class="strat-cnt" id="cnt-S_WMACD"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_BIAS" onclick="viewStrategy('S_BIAS')" title="季線（60BIAS）負乖離 ≤ −20%；確認：定海神針（長下影不破低）或第一個向上跳空；分批或 10% 停損">🧲 負乖離抄底 <span class="strat-cnt" id="cnt-S_BIAS"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_RSI_OS" onclick="viewStrategy('S_RSI_OS')" title="RSI(6) 跌破 20 後第一次勾起突破 20；破前低立刻出場，不攤平">🔄 RSI6 超賣勾起 <span class="strat-cnt" id="cnt-S_RSI_OS"></span></button>
@@ -544,10 +558,17 @@ details.guide[open]>summary::before{content:'▾ ';}
       <button class="btn ghost screen-strat-btn" data-s="S_TRUST5" onclick="viewStrategy('S_TRUST5')" title="投信連續買超（中小型電子勝率高），強勢股回測 5 日線打橫 2~3 天不破介入；跌破 10／20 日線出場">🏦 投信連買＋5日線打橫 <span class="strat-cnt" id="cnt-S_TRUST5"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_SHORT_UP" onclick="viewStrategy('S_SHORT_UP')" title="強勢股上漲中融券持續大增：軋空／套利熱絡，還有高點，拉回是買點">🩳 融券大增強勢股 <span class="strat-cnt" id="cnt-S_SHORT_UP"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_BIGHOLD" onclick="viewStrategy('S_BIGHOLD')" title="千張大戶持股比率上升、散戶持股比率下降（創新低更強）＝籌碼集中">🐋 大戶增散戶減 <span class="strat-cnt" id="cnt-S_BIGHOLD"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_KDJ_LOW" onclick="viewStrategy('S_KDJ_LOW')" title="大跌修正後 K、D < 20 且 J 曾 < 0，J 往上穿越 K、D；開口小就多看一天；停損前波最低點">🪝 KDJ低檔金叉 <span class="strat-cnt" id="cnt-S_KDJ_LOW"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_BREAKBOTTOM" onclick="viewStrategy('S_BREAKBOTTOM')" title="跌深後長黑收最低，隔天守住長黑低點沒再破底；停損長黑最低點">🔻 破底翻 <span class="strat-cnt" id="cnt-S_BREAKBOTTOM"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_NBREAK" onclick="viewStrategy('S_NBREAK')" title="大漲→拉回整理→長紅帶量實體突破前波高點（頸線）；或回測頸線守住；跌回頸線下停損">📐 關鍵價突破N字 <span class="strat-cnt" id="cnt-S_NBREAK"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_VOLROLL" onclick="viewStrategy('S_VOLROLL')" title="長期跌深盤整後重新站上季線＋連續爆量（前期均量 2 倍以上）；跌破季線或爆量K低點停損">🌋 底部量滾量 <span class="strat-cnt" id="cnt-S_VOLROLL"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_W60_BREAK" onclick="viewStrategy('S_W60_BREAK')" title="週 K 跌破 60 週均線即翻空">⛔ 跌破60週線 <span class="strat-cnt" id="cnt-S_W60_BREAK"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_MA_ALLDOWN" onclick="viewStrategy('S_MA_ALLDOWN')" title="跌破 5/10/20/60 日線且均線下彎：翻空">⛔ 跌破所有均線 <span class="strat-cnt" id="cnt-S_MA_ALLDOWN"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_DANGER" onclick="viewStrategy('S_DANGER')" title="近期量觸及歷史高點量、高點不過＝預警；高檔第一個往下跳空缺口＝強烈賣訊">☠️ 危險量＋空方缺口 <span class="strat-cnt" id="cnt-S_DANGER"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_SHORT_EBB" onclick="viewStrategy('S_SHORT_EBB')" title="高檔強勢股融券從高點連續減少：拉回不再是買點，減碼／出場">🌊 融券退潮 <span class="strat-cnt" id="cnt-S_SHORT_EBB"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_KDJ_HIGH" onclick="viewStrategy('S_KDJ_HIGH')" title="大漲後 K、D > 80 且 J > 100，J 往下穿越 K、D：先賣一半，另一半破 5/10MA 或月線全賣；KD 黏 80 以上超過 3 天是鈍化別賣光">🎢 KDJ高檔死叉 <span class="strat-cnt" id="cnt-S_KDJ_HIGH"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_KDJ_DIV" onclick="viewStrategy('S_KDJ_DIV')" title="股價創前波新高、K 值高點卻比前波低，並出現死叉：逢高減碼">📉 KDJ高檔背離 <span class="strat-cnt" id="cnt-S_KDJ_DIV"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_TRUST_DUMP" onclick="viewStrategy('S_TRUST_DUMP')" title="之前有佈局的投信在股價拉高後連續賣超：跟著賣出避險">🏃 投信高檔倒貨 <span class="strat-cnt" id="cnt-S_TRUST_DUMP"></span></button>
     </div>
   </div>
 
@@ -805,34 +826,11 @@ details.guide[open]>summary::before{content:'▾ ';}
 <!-- ═══════════════════════ 上課筆記／心法 ═══════════════════════ -->
 <div id="tab-notes" class="tab">
   <div class="card notes">
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
       <strong style="font-size:1.05rem">📚 上課筆記＆交易心法</strong>
-      <span style="font-size:.78rem;color:var(--muted)">整理自上課資訊；能寫成程式的都已加進「策略篩選」（按 🔍 直接看結果），可轉債／收購／減資／現增在各自分頁</span>
+      <span style="font-size:.78rem;color:var(--muted)">能寫成程式的都已加進「策略篩選」（按 🔍 直接看結果）；✍️ 是要自己查的方法或觀念</span>
     </div>
-    <h3>一、技術面策略</h3><h4>（一）做多</h4><div class="note-grid"><div class="note-card" style="border-left:3px solid #ef4444"><div class="note-h"><b>1. 長線大波段：週 MACD 策略</b><button class="btn sm ghost" onclick="notesGo('S_WMACD')">🔍 看選股結果</button></div><ul><li>週 K 線，MACD 參數改 <b>(10, 20, 50)</b>，搭配 20 週、60 週均線。</li><li>進場：波段大跌後<b>重新站上 20 週線</b>，且週 MACD 柱<b>由綠翻紅</b>。</li><li>持有：無視日 K 波動，沒跌破 20 週線、MACD 沒翻綠就抱牢，目標數倍。</li><li>出場：跌破 20 週線或 MACD 翻綠 → 全數出場。</li></ul></div><div class="note-card" style="border-left:3px solid #ef4444"><div class="note-h"><b>2. 極端逆勢抄底：負乖離（BIAS）</b><button class="btn sm ghost" onclick="notesGo('S_BIAS')">🔍 看選股結果</button></div><ul><li>60BIAS（季線）或 20BIAS（月線）；長多趨勢股用季線負乖離。</li><li>進場：負乖離 <b>−20% 以下</b>（急跌型態勝率最高）。</li><li>確認：「定海神針」（長下影線且不破低）或第一個「向上跳空缺口」。</li><li>分批布局（每跌 3~5% 進一次）或 10% 硬停損；跌破當日最低或前低即停損。</li></ul></div><div class="note-card" style="border-left:3px solid #ef4444"><div class="note-h"><b>3. 短線跌深反彈：RSI(6) 超賣勾起</b><button class="btn sm ghost" onclick="notesGo('S_RSI_OS')">🔍 看選股結果</button></div><ul><li>RSI(6) 掉到 20 以下後，重新向上勾起突破 20。</li><li>只做<b>第一次</b>勾起，第二次以後無效。</li><li>跌破前波低點立刻出場；<b>絕不分批加碼或攤平</b>。</li></ul></div><div class="note-card" style="border-left:3px solid #ef4444"><div class="note-h"><b>4. 強勢噴出：RSI(6) 高檔鈍化</b><button class="btn sm ghost" onclick="notesGo('S_RSI_HOT')">🔍 看選股結果</button></div><ul><li>RSI(6) 在 80 以上維持 3 天以上（高檔鈍化）。</li><li>等股價<b>打橫盤整</b>、RSI 仍 ≥ 80、靠近 5 日線時介入。</li><li>跌破 5 日線出場；只做第一次高檔鈍化。</li></ul></div><div class="note-card" style="border-left:3px solid #ef4444"><div class="note-h"><b>5. 極端飆股抱牢：布林通道專屬參數</b><button class="btn sm ghost" onclick="notesGo('S_BB1')">🔍 看選股結果</button></div><ul><li>布林週期 20，標準差改為 <b>1</b>（預設 2）。</li><li>開布林大漲後股價維持在上軌之外＝極強勢飆股，持續抱牢。</li><li>收盤跌回上軌之內＝回歸區間，立即賣出。</li></ul></div><div class="note-card" style="border-left:3px solid #ef4444"><div class="note-h"><b>6. 底部轉折：急跌爆天量＋第一個向上跳空</b><button class="btn sm ghost" onclick="notesGo('S_GAP_BOTTOM')">🔍 看選股結果</button></div><ul><li>急跌後出現數年不見的波段超級大量（換手量）。</li><li>隨後第一個「往上跳空缺口」（收盤不補）。</li><li>以缺口當日低點或缺口下緣為停損。</li></ul></div><div class="note-card" style="border-left:3px solid #ef4444"><div class="note-h"><b>7. 飆股追價：爆大量打開連續跳空漲停</b><button class="btn sm ghost" onclick="notesGo('S_LIMIT_OPEN')">🔍 看選股結果</button></div><ul><li>強大基本面／財報利多（非假消息）、連續跳空漲停買不到的股票。</li><li>漲停板<b>爆大量打開</b>當天可分批掛單介入。</li><li>以爆量當日低點為停損。</li></ul></div><div class="note-card" style="border-left:3px solid #58a6ff"><div class="note-h"><b>8. 實戰心法：看線不看線（前低防守）</b></div><ul><li>均線（5 日、10 日、月線）只看方向。</li><li>實際進出以<b>均線附近的近期波段低點</b>當防守價，避免盤中破線的洗盤陷阱。</li><li>（觀察清單的「關鍵價位」停損就是用波段低點／前低）</li></ul></div></div><h4>（二）做空／高檔避險</h4><div class="note-grid"><div class="note-card" style="border-left:3px solid #22c55e"><div class="note-h"><b>1. 均線與趨勢翻空</b><button class="btn sm ghost" onclick="notesGo('S_W60_BREAK')">🔍 看選股結果</button></div><ul><li>週 K 跌破 <b>60 週均線</b>即翻空。</li><li>跌破 5／10／20／60 日所有均線且均線下彎，或大量高點破線轉弱（另見「跌破所有均線」）。</li></ul></div><div class="note-card" style="border-left:3px solid #22c55e"><div class="note-h"><b>2. 高檔反轉逃命：危險量＋空方缺口</b><button class="btn sm ghost" onclick="notesGo('S_DANGER')">🔍 看選股結果</button></div><ul><li>危險量：回溯 5~6 年波段高點的成交量水位，近期量再觸及且高點不過、爆量滯漲 → 預警。（系統以可取得的 1~2 年資料最大量計算）</li><li>空方缺口：大漲高檔或歷史高點附近出現第一個「往下跳空缺口」＝極端反轉賣訊／放空點。</li></ul></div></div><h3>二、籌碼面策略</h3><div class="note-grid"><div class="note-card" style="border-left:3px solid #ef4444"><div class="note-h"><b>1. 投信連續買超＋5 日線打橫</b><button class="btn sm ghost" onclick="notesGo('S_TRUST5')">🔍 看選股結果</button></div><ul><li>投信連續買超（中小型電子股勝率最高）。</li><li>強勢股回測 <b>5 日線</b>（不是 10 日線），出現 2~3 天打橫不破 5 日線時介入，停損極短。</li><li>跌破 10 日線或 20 日線出場。</li></ul></div><div class="note-card" style="border-left:3px solid #ef4444"><div class="note-h"><b>2. 強勢股融券鎖利與高高衝</b><button class="btn sm ghost" onclick="notesGo('S_SHORT_UP')">🔍 看選股結果</button></div><ul><li>強勢飆股上漲中融券持續大增＝軋空與高檔套利熱絡，股價還有高點，<b>拉回皆為買點</b>。</li></ul></div><div class="note-card" style="border-left:3px solid #ef4444"><div class="note-h"><b>3. 大戶與散戶籌碼逆向</b><button class="btn sm ghost" onclick="notesGo('S_BIGHOLD')">🔍 看選股結果</button></div><ul><li>集保：「千張大戶持股比率」持續上升，「散戶持股比率」創新低＝籌碼高度集中、大戶吃貨。</li><li>（系統散戶預設 50 張以下，可在設定改 10／400 張；集保每週一份，歷史會逐週累積）</li></ul></div><div class="note-card" style="border-left:3px solid #22c55e"><div class="note-h"><b>4. 出場預警：融券退潮</b><button class="btn sm ghost" onclick="notesGo('S_SHORT_EBB')">🔍 看選股結果</button></div><ul><li>強勢股在高檔，融券開始連續減少／退潮＝軋空與套利推力消失，拉回不再是買點，應減碼或出場。</li></ul></div><div class="note-card" style="border-left:3px solid #58a6ff"><div class="note-h"><b>5. 自營商與隔日沖雜訊</b></div><ul><li>自營商與隔日沖主力多是 1~2 天短線交易，無連續性，<b>不適合做波段跟隨</b>。</li></ul></div></div><h3>三、基本面、消息面與事件</h3><div class="note-grid"><div class="note-card" style="border-left:3px solid #58a6ff"><div class="note-h"><b>（一）可轉債（CB）套利與現股連動</b><button class="btn sm ghost" onclick="notesGo('@cb')">🔍 看選股結果</button></div><ul><li>理論價值＝現股股價 ÷ 轉換價格 × 100。</li><li>市價 &gt; 理論價值（溢價）＝大戶搶購 CB，強烈看好現股（CB 是現股的領先指標）。</li><li>現股高檔且融券大增＝CB 持有者用融券鎖利。</li><li>兩波：定價完成後（發行約 3 個月、開放轉換前有拉抬）、快到期前；發行前公司常壓低股價以降低轉換價。</li><li>面額 100 保底：股災時 CB 跌近 100 是極高安全邊際買點。</li></ul></div><div class="note-card" style="border-left:3px solid #58a6ff"><div class="note-h"><b>（二）財報資本支出（預測 2~3 年後營收爆發）</b></div><ul><li>看現金流量表「購買不動產、廠房及設備」（資本支出）。</li><li>資本支出較往年成倍翻增（或大規模併購）＝接到大單擴產，營收爆發通常在 2~3 年後。</li><li>市場傳接大單、但資本支出沒增加 → 多半是假消息。</li><li>（老王：好公司短時間波動、長期看好；聽到傳大單看季報確認資本支出、營收負轉正、產業往上、抱季線）</li></ul></div><div class="note-card" style="border-left:3px solid #58a6ff"><div class="note-h"><b>（三）現金增資：短空長多與繳款拉抬</b><button class="btn sm ghost" onclick="notesGo('@mna')">🔍 看選股結果</button></div><ul><li>宣布現增短線必然利空（股本稀釋、賣老股換新股）。</li><li>用途「償還債務」且營收不佳 → 避開；體質好、用途「擴充產能」，或股價在低點現增 → 長線看好。</li><li>認購繳款日前 1~2 週，公司／大戶有動機拉抬（先前修正／盤整過、有量的更明顯）。</li></ul></div><div class="note-card" style="border-left:3px solid #58a6ff"><div class="note-h"><b>（四）減資轉機股：彌補虧損＋Day 2／Day 3 畫線法</b><button class="btn sm ghost" onclick="notesGo('@mna')">🔍 看選股結果</button></div><ul><li>因彌補虧損大舉減資，之後營收與獲利由負轉正成長 → 容易翻倍大標。</li><li>恢復交易後看第 2 天或第 3 天高低點：突破高點＝買訊，跌破低點＝出場。</li></ul></div><div class="note-card" style="border-left:3px solid #58a6ff"><div class="note-h"><b>（五）企業收購套利：100% 收購＋高溢價</b><button class="btn sm ghost" onclick="notesGo('@mna')">🔍 看選股結果</button></div><ul><li>宣布 100% 股權收購且溢價 15%~30% 以上。</li><li>隔日開盤掛漲停搶購（大單拆成多筆單張掛單）。</li><li>非 100% 收購案在收購期結束後股價易回落。</li></ul></div></div>
-    <h3>四、交易心魔與風險控管</h3>
-        <div class="note-grid">
-          <div class="note-card" style="border-left:3px solid #f59e0b"><div class="note-h"><b>1. 克服心理錨點（背景價格）</b></div><ul>
-            <li>買進成本是心理錨點：上漲時怕獲利倒吐而<b>太早賣</b>；下跌時幻想彈回成本而<b>不停損</b>。</li>
-            <li>拋棄成本觀念，只依客觀規則與當下走勢決策。</li></ul></div>
-          <div class="note-card" style="border-left:3px solid #f59e0b"><div class="note-h"><b>2. 克服錯誤經驗與後見之明</b></div><ul>
-            <li>不要因為「停損後隨即反彈」的經驗就不再停損：<b>一次沒停損可能重創 70% 甚至畢業</b>。</li>
-            <li>避免「我早就知道」的後見之明，防範過度自信與頻繁交易。</li></ul></div>
-          <div class="note-card" style="border-left:3px solid #f59e0b"><div class="note-h"><b>3. 資金配置原則</b></div><ul>
-            <li><b>大壓穩，小壓快</b>：大資金放權值股／穩健標的追求穩定複利；小資金追飆股求速度。</li>
-            <li><b>組合分散</b>：約 3 檔平均分配資金，嚴禁單一標的 100% All-in。</li></ul></div>
-        </div>
-        <h3>✅ 下單前檢查清單</h3>
-        <div class="note-card" id="notes-checklist" style="border-left:3px solid #58a6ff">
-          <div class="muted" style="font-size:.74rem;margin-bottom:4px">每次下單前勾一遍（勾選只存在這台裝置；按「清空」重來）</div>
-          <label><input type="checkbox"> 進場理由是哪一條規則？不是因為「感覺」或聽消息</label>
-          <label><input type="checkbox"> 停損價（前低／缺口下緣／爆量低點）已經決定，跌破就走</label>
-          <label><input type="checkbox"> 出場條件（破 5 日線／20 週線／跌回布林上軌內…）已經寫下來</label>
-          <label><input type="checkbox"> 不看成本價做決定（沒有「等回本再賣」）</label>
-          <label><input type="checkbox"> 這筆資金比例：大資金穩、小資金快；單一標的不超過約 1/3</label>
-          <label><input type="checkbox"> 不是因為上次停損後反彈，這次就不設停損</label>
-          <div style="text-align:right;margin-top:6px"><button class="btn sm ghost" onclick="notesClearChecklist()">清空</button></div>
-        </div>
+    <div id="notes-root"><div class="muted" style="padding:20px;text-align:center">載入中...</div></div>
   </div>
 </div>
 
@@ -3742,9 +3740,16 @@ const STRATEGY_LABELS = {
   S_MA_ALLDOWN: '⛔ 跌破所有均線（跌破 5/10/20/60 日線且均線下彎：翻空）',
   S_DANGER: '☠️ 危險量＋空方缺口（近期量觸及歷史高點量、高點不過＝預警）',
   S_SHORT_EBB: '🌊 融券退潮（高檔強勢股融券從高點連續減少：拉回不再是買點，減碼／出場）',
+  S_KDJ_LOW: '🪝 KDJ低檔金叉（大跌後 K、D < 20、J < 0，J 往上穿越 K、D）',
+  S_BREAKBOTTOM: '🔻 破底翻（跌深後長黑收最低，隔天守住長黑低點不再破底）',
+  S_NBREAK: '📐 關鍵價突破N字（大漲→拉回→長紅帶量突破頸線，或回測頸線守住）',
+  S_VOLROLL: '🌋 底部量滾量（跌深盤整後重新站上季線＋連續爆量）',
+  S_KDJ_HIGH: '🎢 KDJ高檔死叉（K、D > 80、J > 100 往下穿：先賣一半）',
+  S_KDJ_DIV: '📉 KDJ高檔背離（股價創新高、K 值沒創新高＋死叉：逢高減碼）',
+  S_TRUST_DUMP: '🏃 投信高檔倒貨（之前佈局的投信在高檔連續賣超：跟著出場）',
 };
 // 上課筆記新策略的額外欄位（[標題, 欄位, 格式]；表頭可點擊排序）
-const CHIP_COURSE_KEYS = ['S_TRUST5', 'S_SHORT_UP', 'S_SHORT_EBB', 'S_BIGHOLD'];
+const CHIP_COURSE_KEYS = ['S_TRUST5', 'S_SHORT_UP', 'S_SHORT_EBB', 'S_BIGHOLD', 'S_TRUST_DUMP'];
 const _pctF = v => v == null ? '—' : `${v > 0 ? '+' : ''}${v}%`;
 const _dF = v => v ? `${String(v).replace(/-/g, '').slice(4, 6)}/${String(v).replace(/-/g, '').slice(6, 8)}` : '—';
 const COURSE_COLS = {
@@ -3761,6 +3766,13 @@ const COURSE_COLS = {
   S_TRUST5: [['投信連買', 'trust_days', v => v + '天'], ['投信買超(張)', 'trust_lots'], ['5日線', 'ma5'], ['停損', 'stop'], ['出場(10日線)', 'exit_ma10']],
   S_SHORT_UP: [['融券餘額', 'short_now'], ['5日增加', 'short_chg5'], ['增幅', 'short_chg5_pct', _pctF], ['狀態', 'pullback'], ['防守', 'stop']],
   S_SHORT_EBB: [['融券餘額', 'short_now'], ['融券高點', 'short_peak'], ['距高點', 'from_peak_pct', _pctF], ['連減天數', 'down_days']],
+  S_KDJ_LOW: [['K', 'k'], ['D', 'd'], ['J', 'j'], ['J開口', 'j_open'], ['量', 'big_vol'], ['停損(前波低)', 'stop'], ['今天低點', 'day_low']],
+  S_BREAKBOTTOM: [['長黑跌幅', 'black_pct', _pctF], ['波段跌幅', 'drop_pct', v => v + '%'], ['停損(長黑低)', 'stop']],
+  S_NBREAK: [['階段', 'stage'], ['頸線(停損)', 'neckline'], ['突破日', 'break_date', _dF], ['高於頸線', 'above_pct', _pctF]],
+  S_VOLROLL: [['季線', 'ma60'], ['量能倍數', 'vol_x', v => v + '倍'], ['爆量K低點', 'vol_low'], ['停損', 'stop']],
+  S_KDJ_HIGH: [['K', 'k'], ['D', 'd'], ['J', 'j'], ['鈍化天數', 'dull_days'], ['5MA', 'ma5'], ['10MA', 'ma10'], ['月線', 'ma20']],
+  S_KDJ_DIV: [['前波高點', 'prev_high'], ['前高日', 'prev_high_date', _dF], ['前波K', 'k_prev'], ['這次K', 'k_now']],
+  S_TRUST_DUMP: [['連賣天數', 'sell_days', v => v + '天'], ['賣超(張)', 'sell_lots'], ['之前買超(張)', 'buy_lots'], ['60日高', 'high60'], ['10日線', 'ma10']],
   S_BIGHOLD: [['千張大戶%', 'big_pct'], ['週增減', 'big_chg'], ['散戶%', 'retail_pct'], ['週增減', 'retail_chg'], ['散戶比率', 'retail_low'], ['大戶連增週', 'big_up_weeks']],
 };
 // 策略短名稱（用於「重疊策略」欄位badge）
@@ -3785,6 +3797,13 @@ const STRATEGY_SHORT = {
   S_MA_ALLDOWN: '⛔ 跌破所有均線',
   S_DANGER: '☠️ 危險量＋空方缺口',
   S_SHORT_EBB: '🌊 融券退潮',
+  S_KDJ_LOW: '🪝 KDJ低檔金叉',
+  S_BREAKBOTTOM: '🔻 破底翻',
+  S_NBREAK: '📐 關鍵價突破N字',
+  S_VOLROLL: '🌋 底部量滾量',
+  S_KDJ_HIGH: '🎢 KDJ高檔死叉',
+  S_KDJ_DIV: '📉 KDJ高檔背離',
+  S_TRUST_DUMP: '🏃 投信高檔倒貨',
 };
 
 async function runScreen() {
@@ -4318,7 +4337,7 @@ function renderScreenTable(strategy, data) {
       extraTd = `<td>${row.consec_limit_up != null ? row.consec_limit_up : '—'} 天</td>`;
     else if (strategy === 'S2')
       extraTd = `<td>${row.prev_low ?? '—'}<br><small class="muted">${String(row.prev_low_date||'').slice(4,6)}/${String(row.prev_low_date||'').slice(6)}</small></td>
-        <td>${row.fake_day ?? '—'}跌到 ${row.fake_low ?? '—'}<br><small class="muted">收回 ${row.close}</small></td>`;
+        <td>${row.fake_day ?? '—'}跌到 ${row.fake_low ?? '—'}<br><small class="muted">收回 ${row.close}${row.stop != null ? `・停損 ${row.stop}` : ''}</small></td>`;
     else if (strategy === 'S_THUNDER')
       extraTd = `<td style="font-size:.75rem;white-space:normal;min-width:140px">${_esc(row.stage || '')}${row.uptrend ? `<br><span style="color:#f59e0b">上漲模式：收盤破 ${row.exit_prev_low} 出場</span>` : ''}</td>
         <td>${row.base_top ?? '—'}<br><small class="muted">${String(row.breakout_date||'').slice(4,6)}/${String(row.breakout_date||'').slice(6)} ${row.breakout_vol_ratio ?? ''}倍量</small></td>
@@ -4355,27 +4374,6 @@ function renderScreenTable(strategy, data) {
   }).join('');
 }
 
-
-// 上課筆記：🔍 跳到對應選股結果／分頁；下單前檢查清單（存在這台裝置）
-function notesGo(k) {
-  if (k === '@cb') { switchTab('cb'); return; }
-  if (k === '@mna') { switchTab('mna'); return; }
-  switchTab('screen');
-  setTimeout(() => { viewStrategy(k); document.getElementById('screen-result-card')?.scrollIntoView({ behavior: 'smooth' }); }, 50);
-}
-function _notesInit() {
-  const boxes = document.querySelectorAll('#notes-checklist input[type=checkbox]');
-  let saved = [];
-  try { saved = JSON.parse(localStorage.getItem('notes_checklist') || '[]'); } catch (e) {}
-  boxes.forEach((b, i) => {
-    b.checked = !!saved[i];
-    b.onchange = () => { try { localStorage.setItem('notes_checklist', JSON.stringify([...boxes].map(x => x.checked))); } catch (e) {} };
-  });
-}
-function notesClearChecklist() {
-  document.querySelectorAll('#notes-checklist input[type=checkbox]').forEach(b => { b.checked = false; });
-  try { localStorage.removeItem('notes_checklist'); } catch (e) {}
-}
 
 // ═════════════════════════════ UTILS ═════════════════════════════
 function fmtNum(n) {
@@ -5627,5 +5625,6 @@ async function saveAllStratParams() {
 <script src="/treasury/static/treasury.js"></script>
 <script src="/mna/static/mna.js"></script>
 <script src="/cb/static/cb.js"></script>
+<script src="/notes/static/notes.js"></script>
 </body>
 </html>

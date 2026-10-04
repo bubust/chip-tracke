@@ -59,6 +59,7 @@ STRATEGY_PARAMS_SCHEMA = {
         {"key": "db_lookback",      "label": "前低回溯天數",          "type": "number", "default": 60,  "min": 20,  "max": 120,  "step": 5},
         {"key": "min_gap",          "label": "前低距今至少幾天",       "type": "number", "default": 5,   "min": 3,   "max": 30,   "step": 1},
         {"key": "bounce_pct",       "label": "前低後反彈至少%",        "type": "number", "default": 5,   "min": 2,   "max": 30,   "step": 1},
+        {"key": "gap_pct",          "label": "回測途中向下跳空缺口%（≥ 就不抄底，0＝不檢查）", "type": "number", "default": 2, "min": 0, "max": 10, "step": 0.5},
     ],
     "S5": [
         {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
@@ -410,6 +411,7 @@ def screen_s2(prices: dict, names: dict = None, params: dict = None) -> list:
     1. 前低 = 近 db_lookback 天（不含昨天、今天）的最低價，且距今至少 min_gap 天
     2. 前低之後有反彈 ≥ bounce_pct%（形成 W 的左半邊，不是一路破底）
     3. 今天盤中跌破前低、收盤收回前低之上；或昨天跌破前低、今天收盤收回前低之上
+    4. （上課筆記「短線兩隻腳」）回測前低途中出現大幅向下跳空缺口 → 不抄底；停損＝第二隻腳最低點
     """
     p = params or {}
     min_price    = p.get("min_price", 10)
@@ -417,6 +419,7 @@ def screen_s2(prices: dict, names: dict = None, params: dict = None) -> list:
     db_lookback  = int(p.get("db_lookback", 60))
     min_gap      = int(p.get("min_gap", 5))
     bounce_pct   = float(p.get("bounce_pct", 5))
+    gap_pct      = float(p.get("gap_pct", 2))
     results = []
     for sid, df in prices.items():
         if len(df) < db_lookback + 3:
@@ -444,6 +447,10 @@ def screen_s2(prices: dict, names: dict = None, params: dict = None) -> list:
             continue
         if c <= prev_low:
             continue                      # 收盤沒收回前低：真跌破，不是騙線
+        if gap_pct > 0:                   # 從反彈高點回測到今天，有大幅向下跳空缺口就不抄底
+            pk = lo_i + 1 + int(highs[lo_i + 1:n - 2].argmax())
+            if any(highs[i] < lows[i - 1] * (1 - gap_pct / 100) for i in range(pk + 1, n)):
+                continue
         if lows[-1] < prev_low:
             fake_day, fake_low = "今天", float(lows[-1])
         elif lows[-2] < prev_low:
@@ -459,6 +466,7 @@ def screen_s2(prices: dict, names: dict = None, params: dict = None) -> list:
                         "prev_low_date": str(df.iloc[lo_i].get('date', '')),
                         "fake_day": fake_day,
                         "fake_low": round(fake_low, 2),
+                        "stop": round(min(fake_low, float(lows[-1])), 2),
                         "strategy": "S2"})
     return results
 

@@ -373,8 +373,9 @@ async def lifespan(app: FastAPI):
                     cnt = _sc.execute("SELECT COUNT(*) FROM sector_daily").fetchone()[0]
                 if cnt == 0:
                     import logging; logging.getLogger(__name__).info("[sector] sector_daily 空，自動觸發計算...")
-                    from sector.prices import backfill
+                    from sector.prices import backfill, update_prices
                     from sector.engine import run_sector_engine
+                    update_prices()
                     backfill(days=130)
                     run_sector_engine(days_back=60)
             except Exception as _e:
@@ -856,6 +857,7 @@ app.include_router(mna_router)
 app.mount("/mna/static", StaticFiles(directory=str(BASE_DIR / "mna-frontend")), name="mna_static")
 app.include_router(cb_router)
 app.mount("/cb/static", StaticFiles(directory=str(BASE_DIR / "cb-frontend")), name="cb_static")
+app.mount("/notes/static", StaticFiles(directory=str(BASE_DIR / "notes-frontend")), name="notes_static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -2685,17 +2687,16 @@ def _do_system_refresh():
         # 4. Sector（先抓今日全市場價格存入DB，再執行引擎計算）
         try:
             _set_step("sector", "running")
-            from sector.prices import fetch_and_store_today, backfill
+            from sector.prices import update_prices, backfill
             from sector.engine import run_sector_engine
             from sector.db import db as _sdb, init_db as _sector_init_db
             _sector_init_db()
+            update_prices()                      # 從價格快取同步（日期正確、歷史完整）＋ openapi 補最新一天
             with _sdb() as _sc:
                 _cnt = _sc.execute("SELECT COUNT(DISTINCT date) FROM sector_stock_daily").fetchone()[0]
             if _cnt < 60:
                 lg.info(f"[sector] sector_stock_daily 只有 {_cnt} 天，開始補抓歷史...")
                 backfill(days=130)
-            else:
-                fetch_and_store_today()
             run_sector_engine(days_back=5)
             _set_step("sector", "done")
         except Exception as e:
