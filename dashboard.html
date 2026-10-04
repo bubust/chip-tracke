@@ -516,7 +516,7 @@ details.guide[open]>summary::before{content:'▾ ';}
     <div id="screen-strat-bar" style="display:flex;flex-wrap:wrap;gap:6px">
       <button class="btn ghost screen-strat-btn" data-s="S1"       onclick="viewStrategy('S1')">S1 雙MACD多 <span class="strat-cnt" id="cnt-S1"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S1_SHORT" onclick="viewStrategy('S1_SHORT')">S1空 雙MACD空 <span class="strat-cnt" id="cnt-S1_SHORT"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="S2"       onclick="viewStrategy('S2')">S2 W底 <span class="strat-cnt" id="cnt-S2"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S2"       onclick="viewStrategy('S2')">S2 W底騙線 <span class="strat-cnt" id="cnt-S2"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S5"       onclick="viewStrategy('S5')">S5 站上均線 <span class="strat-cnt" id="cnt-S5"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S10"      onclick="viewStrategy('S10')">S10 漲停 <span class="strat-cnt" id="cnt-S10"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_FBD"   onclick="viewStrategy('S_FBD')">🪤 假跌破 <span class="strat-cnt" id="cnt-S_FBD"></span></button>
@@ -3658,8 +3658,8 @@ let _screenStartTime  = null;  // 掃描開始時間（Date.now()）
 
 const STRATEGY_LABELS = {
   S1: 'S1 雙MACD選股（多）', S1_SHORT: 'S1空 雙MACD選股（空）',
-  S2: 'S2 二次確認買進（W底）',
-  S5: 'S5 站上均線做多', S10: 'S10 漲停',
+  S2: 'S2 W底騙線（跌破前低後收回，下去是假的、上去才是真的）',
+  S5: 'S5 站上均線做多（今日量 ≥ 昨日3倍）', S10: 'S10 漲停',
   S_FBD: '🪤 假跌破買進（跌破MA10後快速收復，洗盤完成）',
   S_WARRANT_TOP: '📈 認購權證前十大（最近交易日認購成交額最高的標的股）',
   S_THUNDER: '⚡ 平地一聲雷（長期盤整後帶量突破，回檔不破才買）',
@@ -3667,7 +3667,7 @@ const STRATEGY_LABELS = {
 // 策略短名稱（用於「重疊策略」欄位badge）
 const STRATEGY_SHORT = {
   S1: 'S1 雙MACD多', S1_SHORT: 'S1空 雙MACD空',
-  S2: 'S2 W底',
+  S2: 'S2 W底騙線',
   S5: 'S5 站上均線', S10: 'S10 漲停',
   S_FBD: '🪤 假跌破',
   S_WARRANT_TOP: '📈 認購前十大',
@@ -4181,6 +4181,7 @@ function renderScreenTable(strategy, data) {
   }
   let headRow = `<tr><th>#</th>${th('代號','stock_id')}${th('股名','name')}${th('股價','close')}${th('漲跌%','change_pct')}`;
   if (strategy === 'S10')  headRow += `${th('連續漲停','consec_limit_up')}`;
+  if (strategy === 'S2')   headRow += `${th('前低','prev_low')}${th('騙線','fake_low')}`;
   if (strategy === 'S_WARRANT_TOP') headRow += `${th('認購額(萬)','call_turnover_wan')}${th('認購/認售比','cp_ratio')}`;
   if (strategy === 'S_THUNDER') headRow += `${th('階段','stage')}${th('突破點','base_top')}${th('第一段高','first_high')}${th('回檔低','pullback_low')}${th('目標價','target')}`;
   headRow += `${th('成交量(張)','volume')}${th('成交金額','turnover','hide-mobile')}${th('BB位置','bb_score','hide-mobile')}${th('重疊策略','overlap','hide-mobile','此股票同時符合的其他策略，點擊依重疊數量排序')}<th>操作</th></tr>`;
@@ -4201,6 +4202,9 @@ function renderScreenTable(strategy, data) {
     let extraTd = '';
     if (strategy === 'S10')
       extraTd = `<td>${row.consec_limit_up != null ? row.consec_limit_up : '—'} 天</td>`;
+    else if (strategy === 'S2')
+      extraTd = `<td>${row.prev_low ?? '—'}<br><small class="muted">${String(row.prev_low_date||'').slice(4,6)}/${String(row.prev_low_date||'').slice(6)}</small></td>
+        <td>${row.fake_day ?? '—'}跌到 ${row.fake_low ?? '—'}<br><small class="muted">收回 ${row.close}</small></td>`;
     else if (strategy === 'S_THUNDER')
       extraTd = `<td style="font-size:.75rem;white-space:normal;min-width:140px">${_esc(row.stage || '')}${row.uptrend ? `<br><span style="color:#f59e0b">上漲模式：收盤破 ${row.exit_prev_low} 出場</span>` : ''}</td>
         <td>${row.base_top ?? '—'}<br><small class="muted">${String(row.breakout_date||'').slice(4,6)}/${String(row.breakout_date||'').slice(6)} ${row.breakout_vol_ratio ?? ''}倍量</small></td>

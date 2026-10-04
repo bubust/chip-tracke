@@ -32,7 +32,7 @@ STRATEGIES = {
     "S_FBD":    "假跌破買進",           # 移至第 2 — 用戶常在 K 線看到此標記
     "S1_SHORT": "雙MACD選股（空）",
 
-    "S2":       "二次確認買進（W底）",
+    "S2":       "W底騙線（跌破前低後收回）",
     "S5":       "站上均線做多",
     "S10":      "漲停",
 
@@ -56,13 +56,14 @@ STRATEGY_PARAMS_SCHEMA = {
     "S2": [
         {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
         {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
-        {"key": "days_high_min",    "label": "距高點最少天數",         "type": "number", "default": 5,   "min": 1,   "max": 30,   "step": 1},
-        {"key": "days_high_max",    "label": "距高點最多天數",         "type": "number", "default": 40,  "min": 10,  "max": 100,  "step": 5},
-        {"key": "db_lookback",      "label": "W底回溯天數",           "type": "number", "default": 40,  "min": 20,  "max": 80,   "step": 5},
+        {"key": "db_lookback",      "label": "前低回溯天數",          "type": "number", "default": 60,  "min": 20,  "max": 120,  "step": 5},
+        {"key": "min_gap",          "label": "前低距今至少幾天",       "type": "number", "default": 5,   "min": 3,   "max": 30,   "step": 1},
+        {"key": "bounce_pct",       "label": "前低後反彈至少%",        "type": "number", "default": 5,   "min": 2,   "max": 30,   "step": 1},
     ],
     "S5": [
         {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
         {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 0,   "min": 0,   "max": 5000, "step": 50},
+        {"key": "vol_mult",         "label": "今日量 ≥ 昨日量×幾倍",   "type": "number", "default": 3,   "min": 0,   "max": 10,   "step": 0.5},
     ],
     "S10": [],
     "S_FBD": [
@@ -404,57 +405,69 @@ def screen_s1_2(prices: dict, names: dict = None, params: dict = None) -> list:
     return results
 
 def screen_s2(prices: dict, names: dict = None, params: dict = None) -> list:
-    """S2 二次確認買進（W底）"""
+    """
+    S2 W底騙線：底不破前低，跌破前低又收回＝騙線＝訊號（下去不是真的，上去才是真的）
+    1. 前低 = 近 db_lookback 天（不含昨天、今天）的最低價，且距今至少 min_gap 天
+    2. 前低之後有反彈 ≥ bounce_pct%（形成 W 的左半邊，不是一路破底）
+    3. 今天盤中跌破前低、收盤收回前低之上；或昨天跌破前低、今天收盤收回前低之上
+    """
     p = params or {}
     min_price    = p.get("min_price", 10)
     min_vol_lots = p.get("min_vol_lots", 300)
-    days_high_min = int(p.get("days_high_min", 5))
-    days_high_max = int(p.get("days_high_max", 40))
-    db_lookback  = int(p.get("db_lookback", 40))
+    db_lookback  = int(p.get("db_lookback", 60))
+    min_gap      = int(p.get("min_gap", 5))
+    bounce_pct   = float(p.get("bounce_pct", 5))
     results = []
     for sid, df in prices.items():
-        if len(df) < 205:
+        if len(df) < db_lookback + 3:
             continue
-        closes = df['close']
         today = df.iloc[-1]
-        if float(today['close']) <= min_price:
+        c = float(today['close'])
+        if c <= min_price:
             continue
-        vol = today.get('volume', 0) or 0
-        if float(vol) < min_vol_lots:
+        vol = float(today.get('volume', 0) or 0)
+        if vol < min_vol_lots:
             continue
-        ma10  = calc_ma(closes, 10)
-        ma60  = calc_ma(closes, 60)
-        ma200 = calc_ma(closes, 200)
-        if any(pd.isna(x.iloc[-1]) for x in [ma10, ma60, ma200]):
+        lows  = df['low'].astype(float).values
+        highs = df['high'].astype(float).values
+        n = len(df)
+        win_start = n - 2 - db_lookback
+        win = lows[win_start:n - 2]
+        if len(win) == 0 or pd.isna(win).any():
             continue
-        if not (ma10.iloc[-1] > ma60.iloc[-1] > ma200.iloc[-1]):
+        lo_i = win_start + int(win.argmin())
+        prev_low = float(lows[lo_i])
+        if prev_low <= 0 or (n - 1) - lo_i < min_gap:
             continue
-        # MA10/MA60 持續向上；MA200 不下彎即可（不要求嚴格上揚）
-        if not (ma10.iloc[-1] > ma10.iloc[-2] and
-                ma60.iloc[-1] > ma60.iloc[-2] and
-                ma200.iloc[-1] >= float(ma200.iloc[-5]) if len(ma200) >= 5 and not pd.isna(ma200.iloc[-5]) else True):
+        # 前低後到前天的最高點：要有反彈才算 W 底
+        if lo_i + 1 >= n - 2 or highs[lo_i + 1:n - 2].max() < prev_low * (1 + bounce_pct / 100):
             continue
-        sub60 = closes.iloc[-61:]
-        high_idx_in_sub = sub60.idxmax()
-        days_from_high = len(closes) - 1 - high_idx_in_sub
-        if not (days_high_min <= days_from_high <= days_high_max):
-            continue
-        db = find_double_bottom(df, lookback=db_lookback)
-        if db is None:
-            continue
+        if c <= prev_low:
+            continue                      # 收盤沒收回前低：真跌破，不是騙線
+        if lows[-1] < prev_low:
+            fake_day, fake_low = "今天", float(lows[-1])
+        elif lows[-2] < prev_low:
+            fake_day, fake_low = "昨天", float(lows[-2])
+        else:
+            continue                      # 沒跌破前低：還不是騙線
         results.append({"stock_id": sid, "name": _name(sid, names),
-                        "close": round(float(today['close']), 2),
+                        "close": round(c, 2),
                         "change_pct": _change_pct(df),
-                        "volume": round(float(today.get('volume', 0) or 0)),
+                        "volume": round(vol),
                         "bb_score": calc_bb_score(df),
+                        "prev_low": round(prev_low, 2),
+                        "prev_low_date": str(df.iloc[lo_i].get('date', '')),
+                        "fake_day": fake_day,
+                        "fake_low": round(fake_low, 2),
                         "strategy": "S2"})
     return results
 
 def screen_s5(prices: dict, names: dict = None, params: dict = None) -> list:
-    """S5 站上均線做多（今日才剛全部突破5/10/20/60/200MA）"""
+    """S5 站上均線做多（今日才剛全部突破5/10/20/60/200MA，且今日量 ≥ 昨日量 × vol_mult）"""
     p = params or {}
     min_price    = p.get("min_price", 10)
     min_vol_lots = p.get("min_vol_lots", 0)
+    vol_mult     = float(p.get("vol_mult", 3))
     results = []
     for sid, df in prices.items():
         if len(df) < 205:
@@ -465,6 +478,9 @@ def screen_s5(prices: dict, names: dict = None, params: dict = None) -> list:
             continue
         vol = float(today.get('volume', 0) or 0)
         if min_vol_lots > 0 and vol < min_vol_lots:
+            continue
+        vol_prev = float(df.iloc[-2].get('volume', 0) or 0)
+        if vol_mult > 0 and (vol_prev <= 0 or vol < vol_prev * vol_mult):
             continue
         ma5   = calc_ma(closes, 5)
         ma10  = calc_ma(closes, 10)
