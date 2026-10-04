@@ -127,11 +127,20 @@ async def _fetch_tx_taifex(days: int) -> list[dict]:
         cur = start
         while cur <= end:
             to = min(cur + timedelta(days=29), end)
+            text = ""
+            for attempt in range(3):                                       # 偶爾整段失敗 → 重試，避免整個月缺資料
+                try:
+                    r = await client.post("https://www.taifex.com.tw/cht/3/futDataDown", data={
+                        "down_type": "1", "commodity_id": "TX", "commodity_id2": "",
+                        "queryStartDate": cur.strftime("%Y/%m/%d"), "queryEndDate": to.strftime("%Y/%m/%d")})
+                    text = r.content.decode("ms950", errors="replace")
+                    if r.status_code == 200 and text.startswith("交易日期"):
+                        break
+                except Exception as e:
+                    log.warning(f"[relationship] 期交所 TX {cur}~{to} 第 {attempt + 1} 次: {e}")
+                text = ""
+                await asyncio.sleep(2 * (attempt + 1))
             try:
-                r = await client.post("https://www.taifex.com.tw/cht/3/futDataDown", data={
-                    "down_type": "1", "commodity_id": "TX", "commodity_id2": "",
-                    "queryStartDate": cur.strftime("%Y/%m/%d"), "queryEndDate": to.strftime("%Y/%m/%d")})
-                text = r.content.decode("ms950", errors="replace")
                 for line in text.splitlines()[1:]:
                     c = line.split(",")
                     if len(c) < 18 or c[1].strip() != "TX" or c[17].strip() != "一般":
