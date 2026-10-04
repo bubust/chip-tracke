@@ -6,7 +6,7 @@ tdcc_local.py — 本機執行的 TDCC 千張大戶資料爬蟲
     python tdcc_local.py
 
 功能：
-    1. 爬 TDCC 最近兩週資料（級距 15~17 加總）
+    1. 爬 TDCC 最近兩週資料（級距 15＝1,000 張以上的 % 欄；16 是差異數調整、17 是合計，不能加）
     2. 自動讀取 watchlist.json 或手動指定股票清單
     3. 上傳至 Render 的 /api/chip/import 端點
 """
@@ -27,7 +27,7 @@ import httpx
 RENDER_URL = os.environ.get("CHIP_SERVER", "https://chip-tracker-tw.fly.dev")   # 網站網址（已從 Render 搬到 Fly.io）
 
 TDCC_WEB = "https://www.tdcc.com.tw/portal/zh/smWeb/qryStock"
-THOUSAND_LOT_TIERS = {15, 16, 17}
+THOUSAND_LOT_TIERS = {15}   # 16＝差異數調整、17＝合計（100%），2026-10-04 修正
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"
 
 # 若 watchlist.json 不在同目錄，也可直接在這裡指定股票清單：
