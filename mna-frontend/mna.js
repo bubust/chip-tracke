@@ -65,12 +65,13 @@ function mnaRender() {
   const td = (v, x = '') => `<td style="padding:5px 8px;white-space:nowrap;${x}">${v}</td>`;
   body.innerHTML = `<div class="tbl-wrap" style="overflow-x:auto"><table style="width:100%;font-size:.8rem;border-collapse:collapse">
     <thead><tr style="background:#1c2128;color:var(--muted)">
-      <th style="padding:6px 8px;text-align:left">標的</th><th style="padding:6px 8px;text-align:left">收購方</th><th>類型</th><th>狀態</th><th title="依老王筆記：溢價≥15% 可進場、完全收購隔天掛漲停；減資／增資的提醒">訊號</th>
+      <th style="padding:6px 4px;white-space:nowrap">自選</th><th style="padding:6px 8px;text-align:left">標的</th><th style="padding:6px 8px;text-align:left">收購方</th><th>類型</th><th>狀態</th><th title="依老王筆記：溢價≥15% 可進場、完全收購隔天掛漲停；減資／增資的提醒">訊號</th>
       <th>公告日</th><th title="每股收購價（增資＝認購價）">收購價</th><th>現價</th><th title="收購價 ÷ 公告前一天收盤 − 1（老王：15% 以上才進）">公告溢價</th><th title="收購價比現價高多少（還剩多少價差）">現價溢價</th>
       <th title="最低～最高收購張數">數量(張)</th><th>範圍</th><th>收購期間</th><th title="溢價換算成年報酬（以剩餘天數計）">年化</th><th>對價</th>
     </tr></thead><tbody>${rows.map(r => {
       const c = _MNA_STATUS_COLOR[r.status] || '#64748b';
       return `<tr style="border-top:1px solid #21262d;cursor:pointer" onclick="mnaDetail(${r.id})">
+        ${td(wlRowBtn(r.target_id, `mnaAddWl(${r.id})`), 'padding:5px 4px;text-align:center')}
         ${td(`<b style="color:var(--accent)">${_mnaE(r.target_id)}</b> ${_mnaE(r.target_name || '')}${r.target_company && r.target_id === r.announcer_id
             ? `<br><span style="font-size:.7rem;color:var(--muted)">收購 ${_mnaE(r.target_company.replace('股份有限公司', ''))}（未上市櫃）</span>` : ''}`)}
         ${td(_mnaE(r.acquirer || '—'), 'max-width:160px;overflow:hidden;text-overflow:ellipsis')}
@@ -143,6 +144,7 @@ async function mnaAddWl(id) {
     if (!ls.find(x => x.stock_id === r.target_id)) { ls.push({ stock_id: r.target_id, name: r.target_name || '', memo: '', note: '收購併購' }); lsSaveWatchlist(ls); }
     renderWatchlist();
     toast(`已加入觀察清單：${r.target_id} ${r.target_name || ''}`);
+    mnaRender();
   } catch (e) { toast(e.message, true); }
 }
 

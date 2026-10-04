@@ -103,10 +103,11 @@ function cbRender() {
     f.on ? (f.n === 4 ? 'background:#22c55e;color:#000' : 'background:#ef4444;color:#fff') : f.unknown ? 'border:1px dashed #30363d;color:#484f58' : 'border:1px solid #30363d;color:var(--muted)'}">${f.n}</span>`).join('');
   body.innerHTML = `<div class="tbl-wrap" style="overflow-x:auto"><table style="width:100%;font-size:.8rem;border-collapse:collapse">
     <thead><tr style="background:#1c2128;color:var(--muted)">
-      ${_CB_COLS.map(c => `<th onclick="cbSortBy('${c.key}')"${c.title ? ` title="${_cbE(c.title)}"` : ''} style="padding:6px 8px;white-space:nowrap;text-align:${c.align};cursor:pointer;user-select:none;${_cbSort.key === c.key ? 'color:var(--accent)' : ''}">${c.label}${_cbSort.key === c.key ? (_cbSort.dir === 1 ? ' ▲' : ' ▼') : ''}</th>`).join('')}
+      <th style="padding:6px 4px;white-space:nowrap">自選</th>${_CB_COLS.map(c => `<th onclick="cbSortBy('${c.key}')"${c.title ? ` title="${_cbE(c.title)}"` : ''} style="padding:6px 8px;white-space:nowrap;text-align:${c.align};cursor:pointer;user-select:none;${_cbSort.key === c.key ? 'color:var(--accent)' : ''}">${c.label}${_cbSort.key === c.key ? (_cbSort.dir === 1 ? ' ▲' : ' ▼') : ''}</th>`).join('')}
     </tr></thead><tbody>${rows.map(r => {
       const t = _CB_TIER[r.tier];
       return `<tr style="border-top:1px solid #21262d;cursor:pointer" onclick="cbDetail('${_cbE(r.code)}')">
+        ${td(wlRowBtn(r.sid, `cbAddWl('${_cbE(r.code)}')`), 'padding:5px 4px;text-align:center')}
         ${td(`<b style="color:var(--accent)">${_cbE(r.code)}</b> ${_cbE(r.name || '')}<br><span style="font-size:.7rem;color:var(--muted)">${_cbE(r.sid)} ${_cbE(r.issuer || '')}</span>`)}
         ${td(`<span class="sig ${t.cls}">${t.label}</span><br><span style="font-size:.66rem;color:var(--muted)">${r.score} 分</span>`)}
         ${td(`<b>${_cbN(r.cb_price)}</b>${r.cb_price != null && r.cb_price < 100 ? '<br><span style="font-size:.66rem;color:#ef4444">低於面額</span>' : ''}`, 'text-align:right')}
@@ -201,6 +202,7 @@ async function cbAddWl(code) {
     if (!ls.find(x => x.stock_id === r.sid)) { ls.push({ stock_id: r.sid, name: r.issuer || '', memo: '', note }); lsSaveWatchlist(ls); }
     renderWatchlist();
     toast(`已加入觀察清單：${r.sid} ${r.issuer || ''}`);
+    cbRender();
   } catch (e) { toast(e.message, true); }
 }
 

@@ -1358,6 +1358,11 @@ async function loadPill() {
 // ═════════════════════════════ WATCHLIST ═════════════════════════════
 let _detailSid = '';
 let _wlData    = [];  // cached summary
+// 庫藏股／收購併購／可轉債表格每列的「加入觀察清單」按鈕；已在清單顯示 ✓
+function wlRowBtn(sid, call) {
+  const has = _wlData.some(x => x.stock_id === sid);
+  return `<button class="btn sm ghost" ${has ? 'disabled title="已在觀察清單"' : 'title="加入觀察清單"'} style="padding:1px 8px;color:${has ? 'var(--muted)' : '#22c55e'}" onclick="event.stopPropagation();${call}">${has ? '✓' : '＋'}</button>`;
+}
 
 // ── localStorage 自選清單備份 ──
 const WL_LS_KEY      = 'chip_tracker_watchlist_v1';

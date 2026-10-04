@@ -147,7 +147,7 @@ function tbRender() {
   _tbRenderSummary(rows);
   const th = ([k, label]) => `<th onclick="tbSortBy('${k}')" title="${_TB_HINT[k] || ''}" style="cursor:pointer;white-space:nowrap;padding:6px 8px;text-align:${['stock_id', 'name', 'purpose'].includes(k) ? 'left' : 'right'}">${label}${_tbSort.col === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`;
   body.innerHTML = `<div class="tbl-wrap" style="overflow-x:auto"><table style="width:100%;font-size:.8rem;border-collapse:collapse">
-    <thead><tr style="background:#1c2128;color:var(--muted)">${_TB_COLS.map(th).join('')}</tr></thead>
+    <thead><tr style="background:#1c2128;color:var(--muted)"><th style="padding:6px 4px;white-space:nowrap">自選</th>${_TB_COLS.map(th).join('')}</tr></thead>
     <tbody>${rows.map(_tbRow).join('')}</tbody></table></div>`;
 }
 
@@ -157,6 +157,7 @@ function _tbRow(r) {
   const td = (v, extra = '') => `<td style="padding:5px 8px;text-align:right;white-space:nowrap;${extra}">${v}</td>`;
   const key = `${r.stock_id}_${r.board_date}`;
   return `<tr data-key="${key}" style="border-top:1px solid #21262d;cursor:pointer" onclick="tbToggle('${r.stock_id}','${key}')">
+    <td style="padding:5px 4px;text-align:center">${wlRowBtn(r.stock_id, `tbAddWl('${_tbEsc(r.stock_id)}','${_tbEsc(r.name).replace(/'/g, '')}')`)}</td>
     <td style="padding:5px 8px;color:var(--muted)">${_tbEsc(r.stock_id)}</td>
     <td style="padding:5px 8px;white-space:nowrap">${_tbEsc(r.name)}${r.market === 'tpex' ? '<span style="color:var(--muted);font-size:.68rem"> 櫃</span>' : ''}</td>
     ${td(`<span style="font-size:.72rem;padding:1px 7px;border-radius:10px;background:${c}22;color:${c};border:1px solid ${c}55">${r.status}</span>`)}
@@ -200,7 +201,7 @@ async function tbToggle(sid, key) {
   if (!tr) return;
   const det = document.createElement('tr');
   det.id = 'tb-detail';
-  det.innerHTML = `<td colspan="${_TB_COLS.length}" style="background:#0d1117;padding:10px 14px">載入中...</td>`;
+  det.innerHTML = `<td colspan="${_TB_COLS.length + 1}" style="background:#0d1117;padding:10px 14px">載入中...</td>`;
   tr.after(det);
   try {
     const h = await api('GET', `/api/treasury/stock/${encodeURIComponent(sid)}`);
@@ -266,6 +267,7 @@ async function tbAddWl(sid, name) {
       toast(`${sid} 已在觀察清單`);
     }
     renderWatchlist();
+    tbRender();
   } catch (e) { toast(e.message, true); }
 }
 
