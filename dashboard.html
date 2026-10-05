@@ -5361,12 +5361,12 @@ async function openChart(stockId, savedRange = null) {
       });
     });
 
-    // ── 時間軸範圍：刷新時還原，首次開啟顯示六個月 ──
-    const sixMo = Math.min(126, n);
+    // ── 時間軸範圍：刷新時還原；首次開啟只看最近約三個月（手機 40 根、電腦 60 根），右邊留幾根空白 ──
+    const _vis = Math.min(window.innerWidth < 700 ? 40 : 60, n);
     if (savedRange) {
       cChart.timeScale().setVisibleLogicalRange(savedRange);
     } else {
-      cChart.timeScale().setVisibleLogicalRange({ from: n - sixMo, to: n - 1 });
+      cChart.timeScale().setVisibleLogicalRange({ from: n - _vis, to: n - 1 + 4 });
       if (_isTWTradingHours()) _startChartAutoRefresh();
     }
 
