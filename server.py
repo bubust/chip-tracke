@@ -769,6 +769,16 @@ async def _auth_guard(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def _no_stale_frontend(request: Request, call_next):
+    """HTML／JS／CSS 要求瀏覽器每次回來確認（檔案沒變只回 304）：部署後不會卡在快取的舊版 JS"""
+    resp = await call_next(request)
+    ct = resp.headers.get("content-type", "")
+    if "cache-control" not in resp.headers and any(t in ct for t in ("text/html", "javascript", "text/css")):
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 class _LoginBody(BaseModel):
     password: str = ""
 
