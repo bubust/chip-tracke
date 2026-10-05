@@ -69,3 +69,12 @@
 - Groq gpt-oss-120b（diff；第一次 503 over capacity，重試成功）：REVISE F1「拿掉 _r(m5) > _r(m10)」→ 駁回：這是刻意的，兩線四捨五入相同時畫面上支撐＝停損會破壞「停損 < 支撐」，此時走一般規則；已在程式加註解說明（不改邏輯）。
 - 測試 85 passed。
 - 之後一行小修：明細參考低點去掉跟 struct_support 同價的重複列（未送檢，純顯示）
+
+## 第三階段（用戶：「擬修改成目前覺得最好的方式」）
+- 改採研究推薦：強勢延伸 撐＝10 日線、損＝20 日線−1ATR（移動）；拉回延伸 撐「—」、損＝現價−3.5ATR（風險上限）；部位建議 2% 風險。
+- 補研究：10% 上限變化（trailing.py）。第一次跑結果四種完全相同 → 發現規則名稱 'ma20b1_cap…' 被 startswith('ma20b') 分支先吃掉，改名後重跑才正確。
+- 計畫審查已達上限（5 輪），PLAN 第 8 節採用第 7.1 節已審過的推薦方案；以 fresh 程式檢查把關。
+- 第 8 節程式檢查（fresh）：Gemini gemini-2.5-flash APPROVED（備註：MA5 參考只在 trail 顯示＝PLAN 8.2 設計）。Groq：全量 diff 連 3 次 json_validate_failed，改拆 py／js 兩份：
+  - py F1（非 far 且沒支撐時沒設停損）→ 駁回：`elif stop is None:` 下的 else 分支設 現價−2.5ATR（basis atr），test_flat_prices_zero_atr_no_crash 覆蓋；Groq 只看 diff 漏看。
+  - js F1/F2（lv.ma5、downside_pct 沒 _esc）→ 駁回：API 回傳的是數字（_r 浮點），與其他數字欄位同樣處理。
+  - js F3/F4/F5（說明／線名與 5／10 日線規則不一致）→ 駁回：第 8 節刻意改成 10 日線＋20 日線−1ATR，Groq 拿舊規則比。

@@ -1773,7 +1773,8 @@ function _levelsCell(s) {
         return `<span style="font-size:.74rem;line-height:1.45;display:inline-block;white-space:nowrap">
           ${lv.target != null ? `<span style="color:#ef4444;font-weight:700">標 ${lv.target}</span>` : '<span class="muted">標 —</span>'}${icon}
           <br>${p1 != null ? `<span style="color:#f59e0b">壓 ${p1}${p2 != null ? ' · ' + p2 : ''}</span>` : '<span class="muted">無前高</span>'}
-          <br><span style="color:#4ade80">撐 ${sup ?? '—'}</span> · <span style="color:#22c55e;font-weight:700">損 ${stop ? stop.price : '—'}</span>${lv.stop && lv.stop.basis === 'trail' ? '<span style="font-size:.66rem;color:#a78bfa" title="強勢股離前低太遠：5 日線減碼、10 日線出場、站回 5 日線買回"> 移動</span>' : ''}</span>`;
+          <br><span style="color:#4ade80">撐 ${sup ?? '—'}</span> · <span style="color:#22c55e;font-weight:700">損 ${stop ? stop.price : '—'}</span>${lv.stop && lv.stop.basis === 'trail' ? '<span style="font-size:.66rem;color:#a78bfa" title="強勢股離前低太遠：撐看 10 日線，停損＝20 日線 − 1 ATR，跟著月線上移"> 移動</span>'
+            : lv.stop && lv.stop.basis === 'risk' ? '<span class="muted" style="font-size:.66rem" title="前低太遠、又不是強勢：附近沒有可靠支撐，停損用現價 − 3.5 ATR"> 風險上限</span>' : ''}</span>`;
       })();
   return `<td id="levels-${s.stock_id}" onclick="event.stopPropagation();showLevels('${_jsq(s.stock_id)}')" style="cursor:pointer" title="點開看關鍵價位">${inner}</td>`;
 }
@@ -1809,11 +1810,15 @@ async function showLevels(sid) {
   const fivesHtml = item('🔴', '目標價', `${lv.target ?? '—'}${lv.upside_pct != null ? ` <span class="muted" style="font-weight:400">（還有 ${lv.upside_pct}%）</span>` : ''}`, '#ef4444', _esc(lv.target_method || ''))
     + item('🟠', '壓力區一', zone(lv.pressure1), '#f59e0b', lv.pressure1 ? '現價上方最近的前高' : '上方沒有前高')
     + item('🟠', '壓力區二', zone(lv.pressure2), '#f59e0b', lv.pressure2 ? '再上去的前高' : '')
-    + item('🟢', '支撐價', sup ? sup.price : '—', '#4ade80', sup ? `${_esc(sup.label)}${sup.kind === 'ma5' ? '' : ' ' + fmtD(sup.date)}` : '近一年找不到低於現價的低點')
+    + item('🟢', '支撐價', sup ? sup.price : '—', '#4ade80', sup ? `${_esc(sup.label)}${sup.kind === 'ma5' || sup.kind === 'ma10' ? '' : ' ' + fmtD(sup.date)}`
+        : lv.struct_support ? '前低離現價超過 3 倍 ATR、又不是強勢，附近沒有可靠支撐（前低見下方參考）' : '近一年找不到低於現價的低點')
     + item('🛑', '停損價', stp ? stp.price : '—', '#22c55e', stp ? _esc(stp.label || '') : '')
     + (lv.rr != null ? `<div style="margin-top:6px">⚖️ 報酬風險比 <b style="color:${lv.rr >= 2 ? '#ef4444' : lv.rr >= 1 ? '#f59e0b' : '#94a3b8'}">${lv.rr}</b> <span class="muted" style="font-size:.76rem">（目標 ${lv.upside_pct != null ? '+' + lv.upside_pct + '%' : '—'} ／ 停損 ${lv.downside_pct != null ? lv.downside_pct + '%' : '—'}）</span></div>` : '');
   const ss = lv.struct_support;
-  const structRow = ss ? `<div>· <b>${ss.price}</b> <span class="muted">${_esc(ss.label)} ${fmtD(ss.date)}（離現價超過 3 倍 ATR，強勢中改用 5／10 日線移動停損）</span></div>` : '';
+  const structRow = ss ? `<div>· <b>${ss.price}</b> <span class="muted">${_esc(ss.label)} ${fmtD(ss.date)}（離現價超過 3 倍 ATR）</span></div>` : '';
+  const ma5Row = lv.stop && lv.stop.basis === 'trail' && lv.ma5 != null ? `<div>· <b>${lv.ma5}</b> <span class="muted">5 日線：短線參考（回測顯示用 5／10 日線頻繁進出容易被洗，停損以移動停損為準）</span></div>` : '';
+  const sizePct = lv.downside_pct != null && lv.downside_pct < 0 ? Math.min(100, 2 / -lv.downside_pct * 100) : null;
+  const sizeRow = sizePct != null ? `<div class="muted" style="margin-top:4px;font-size:.76rem">📏 部位建議：若每筆最多虧總資金 2%，這檔最多放總資金的 <b style="color:var(--text)">${sizePct.toFixed(0)}%</b>（停損 ${lv.downside_pct}%；停損寬就買少一點，不要把停損縮緊）</div>` : '';
   const upExit = st.uptrend_exit ? `<div style="margin-top:8px;color:#a78bfa">⚡ 上漲模式出場：收盤跌破 <b>${st.uptrend_exit.price}</b>（今天低點）就出場</div>` : '';
   const th = lv.thunder;
   const thHtml = th ? `<div style="margin-top:10px;padding:8px 10px;border:1px solid #a78bfa55;border-radius:6px;font-size:.8rem;line-height:1.7">
@@ -1830,11 +1835,11 @@ async function showLevels(sid) {
       <b style="font-size:1rem">${_esc(sid)} ${_esc(name)}</b><button class="btn sm ghost" onclick="this.closest('div[style*=fixed]').remove()">✕</button></div>
     ${lv.error ? `<div class="muted">${_esc(lv.error)}</div>` : `
     <div class="muted" style="margin-bottom:8px">現價 <b style="color:var(--text)">${lv.price}</b>（${fmtD(lv.date)}）· 型態：<b style="color:#a78bfa">${_esc(lv.mode)}</b></div>
-    <div style="line-height:1.7">${fivesHtml}</div>${upExit}
-    ${refRows || structRow ? `<div style="margin-top:10px;font-size:.8rem"><b>參考低點</b>（你的規則：跌破爆量低點出場、站回是假跌破）${structRow}${refRows}</div>` : ''}${thHtml}
+    <div style="line-height:1.7">${fivesHtml}</div>${sizeRow}${upExit}
+    ${refRows || structRow || ma5Row ? `<div style="margin-top:10px;font-size:.8rem"><b>參考低點</b>（你的規則：跌破爆量低點出場、站回是假跌破）${structRow}${ma5Row}${refRows}</div>` : ''}${thHtml}
     ${(lv.notes || []).length ? `<div style="margin-top:8px;font-size:.78rem;color:#f59e0b">${lv.notes.map(_esc).join('<br>')}</div>` : ''}
     <div style="margin-top:12px;display:flex;gap:8px"><button class="btn sm" onclick="this.closest('div[style*=fixed]').remove();openWlChart('${_jsq(sid)}')">📈 K 線（畫出價位線）</button></div>
-    <div class="muted" style="margin-top:10px;font-size:.72rem;line-height:1.6">依 1,810 檔兩年日 K 回測（跟同樣距離的隨機價位比）：前低是最穩定的支撐；舊停損太貼（約 1 ATR、三分之二會被打到），改成支撐下方留 0.5 倍 ATR 緩衝；強勢股離前低太遠時用你的 5／10 日線移動停損；壓力線和目標價的各種算法都沒有比隨機準，依你的規則（前高、等幅）排，另外看報酬風險比。ATR＝14 日平均真實波幅${lv.atr ? `（${lv.atr}）` : ''}。只是依線圖規則計算，不是投資建議。</div>`}
+    <div class="muted" style="margin-top:10px;font-size:.72rem;line-height:1.6">依 1,810 檔兩年日 K 回測（跟同樣距離的隨機價位比）：前低是最穩定的支撐；舊停損太貼（約 1 ATR、三分之二會被打到），改成支撐下方留 0.5 倍 ATR 緩衝；強勢股離前低太遠時，撐看 10 日線、停損用 20 日線 − 1 ATR 的移動停損（比 5／10 日線進出少被洗、回撤也比固定停損小）；壓力線和目標價的各種算法都沒有比隨機準，依你的規則（前高、等幅）排，另外看報酬風險比。ATR＝14 日平均真實波幅${lv.atr ? `（${lv.atr}）` : ''}。只是依線圖規則計算，不是投資建議。</div>`}
   </div>`;
   document.body.appendChild(m);
 }
@@ -1848,10 +1853,10 @@ async function _drawLevelLines(series, sid) {
   add(lv.target, '#ef4444', '目標', 0);
   if (lv.pressure1) add(lv.pressure1.low, '#f59e0b', '壓1');
   if (lv.pressure2) add(lv.pressure2.low, '#f59e0b', '壓2', 3);
-  const trail = lv.stop && lv.stop.basis === 'trail';
-  if (lv.support) add(lv.support.price, '#4ade80', trail ? '5日減碼' : '支撐');
+  const basis = lv.stop && lv.stop.basis;
+  if (lv.support) add(lv.support.price, '#4ade80', basis === 'trail' ? '10日線' : '支撐');
   const sp = _levelsPrimaryStop(lv);
-  if (sp) add(sp.price, '#22c55e', trail ? '10日出場' : '停損', 0, 2);
+  if (sp) add(sp.price, '#22c55e', basis === 'trail' ? '移動停損' : basis === 'risk' ? '風險上限' : '停損', 0, 2);
   const st = lv.stops || {};
   if (st.uptrend_exit) add(st.uptrend_exit.price, '#a78bfa', '破此出場', 1);
 }
@@ -5649,9 +5654,9 @@ async function saveAllStratParams() {
   </div>
 </div>
 
-<script src="/treasury/static/treasury.js?v=20261005d"></script>
-<script src="/mna/static/mna.js?v=20261005d"></script>
-<script src="/cb/static/cb.js?v=20261005d"></script>
-<script src="/notes/static/notes.js?v=20261005d"></script>
+<script src="/treasury/static/treasury.js?v=20261005e"></script>
+<script src="/mna/static/mna.js?v=20261005e"></script>
+<script src="/cb/static/cb.js?v=20261005e"></script>
+<script src="/notes/static/notes.js?v=20261005e"></script>
 </body>
 </html>

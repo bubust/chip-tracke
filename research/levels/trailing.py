@@ -1,4 +1,4 @@
-"""移動停損研究（PLAN-LEVELS.md 第 7 節）。RULES 清單可換成檔內任何規則名稱重跑。"""
+"""移動停損研究（PLAN-LEVELS.md 第 7、8 節）。RULES 清單可換成檔內任何規則名稱重跑。"""
 """移動停損研究：用戶規則「收盤跌破 5 日線減碼一半、跌破 10 日線全部出場、收盤站回 5 日線再買回」
 跟其他出場方式比較。t 收盤滿倉進場，持有 H=40 天（期末收盤結算），每天收盤決策、當天收盤成交。
 成本：買進 0.1425%、賣出 0.1425%＋證交稅 0.3%（依成交部位比例）。
@@ -89,6 +89,12 @@ def run(s, rule):
         elif rule.startswith('ma20b'):
             k = float(rule[5:].split('_')[0])
             if pos > 0 and c[j] < ma20 - k * a: new = 0.0
+        elif rule == 'cap10hi':             # 20 日線 −1ATR，但不低於最高收盤 ×0.9（10% 移動上限）
+            if pos > 0 and c[j] < max(ma20 - a, hi * 0.9): new = 0.0
+        elif rule == 'cap10in':             # 20 日線 −1ATR，但不低於進場價 ×0.9
+            if pos > 0 and c[j] < max(ma20 - a, p * 0.9): new = 0.0
+        elif rule == 'cap15hi':
+            if pos > 0 and c[j] < max(ma20 - a, hi * 0.85): new = 0.0
         elif rule == 'user_cross':                 # 跌破 5 日線減碼、5 日線跌破 10 日線（死叉）出場；黃金交叉且站上 5 日線買回
             if ma5 < ma10: new = 0.0
             elif c[j] < ma5: new = min(pos, 0.5)
@@ -103,7 +109,7 @@ def run(s, rule):
     return val - 1, trades, mdd, held / H
 
 
-RULES = ['hold', 'fixed', 'ratchet3.5', 'ma10b0', 'ma10b0.5', 'ma10b1', 'ma10b0.5_rebuy', 'ma10b1_rebuy', 'ma20b0.5', 'ma20b1']
+RULES = ['hold', 'fixed', 'ma20b1', 'cap10hi', 'cap10in', 'cap15hi', 'chand3']
 
 
 def trend(s):
@@ -111,7 +117,7 @@ def trend(s):
     return x['c'][t] > x['ma5'][t] > x['ma10'][t]
 
 
-SUBS = {'趨勢模式(收>5日>10日)': trend,
+SUBS = {'全部': lambda s: True, '趨勢模式(收>5日>10日)': trend,
         '趨勢＋支撐>3.5ATR遠': lambda s: trend(s) and far(s), '非趨勢＋支撐>3.5ATR遠': lambda s: (not trend(s)) and far(s),
         '趨勢・前段': lambda s: trend(s) and s['date'] < '20260101', '趨勢・後段': lambda s: trend(s) and s['date'] >= '20260101'}
 

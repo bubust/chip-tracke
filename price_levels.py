@@ -15,8 +15,8 @@ price_levels.py — 依使用者的看盤邏輯算關鍵價位（觀察清單、
 - 支撐價：k=5 波段低點（沒有就 60 日低）——前低是唯一穩定有效的支撐（撐住 +3.4 個百分點）
 - 停損價：支撐 −0.5 ATR、至少離現價 1.5 ATR，收盤跌破出場（舊版約 1 ATR、67% 會被打到；
   改善來自留足空間，前低錨定跟同距離純 ATR 一樣好，選它是因為符合用戶「停損看波段低點」）
-  前低離現價 > 3 ATR 且強勢（收盤 > 5 日線 > 10 日線）→ 用戶的移動停損：撐＝5 日線（跌破減碼一半）、
-  損＝10 日線（跌破出場）、站回 5 日線買回（用戶看過回測後選的，見 PLAN 第 7 節）
+  前低離現價 > 3 ATR 且強勢（收盤 > 5 日線 > 10 日線）→ 撐＝10 日線、損＝20 日線 −1 ATR（移動停損）；
+  前低 > 3 ATR 但不強勢 → 不顯示支撐、損＝現價 −3.5 ATR（風險上限）（PLAN 第 7、8 節）
 - 目標價：平地一聲雷等幅 → 一般等幅（回檔低＋前高−起漲低）→ 壓力區二 → 現價＋3 ATR（不再拿壓力區一當目標）；
   各種目標算法都沒有比隨機準，所以照用戶規則排，另給報酬風險比 rr
 - 壓力區：9 種算法都沒有比隨機準，維持「前高」定義
@@ -261,22 +261,35 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
         if l[i] < price * 0.995:
             support = {"price": _r(l[i]), "date": fmtd(i), "label": "60 日低點", "kind": "low60"}
 
-    # 停損價（PLAN-LEVELS.md 第 7 節）：
-    # - 前低離現價 > 3 ATR 且強勢（收盤 > 5 日線 > 10 日線）→ 用戶的移動停損：5 日線減碼、10 日線出場、站回 5 日線買回
-    # - 其他：支撐 −0.5 ATR，至少離現價 1.5 ATR（不設上限）；沒有支撐用現價 −2.5 ATR
+    # 停損價（PLAN-LEVELS.md 第 8 節，研究最佳做法）：
+    # - 前低離現價 > 3 ATR 且強勢（收盤 > 5 日線 > 10 日線）→ 撐＝10 日線、損＝20 日線 −1 ATR（移動停損，跟著月線上移）
+    #   （研究：強勢延伸股 40 天 +3.98%、最大回撤 12.7%；用戶原本的 5／10 日線進出 +1.12%、會被洗）
+    # - 前低離現價 > 3 ATR 但不是強勢 → 不顯示支撐（前低太遠、附近沒有可靠支撐），停損用風險上限 現價 −3.5 ATR
+    # - 其他：支撐 −0.5 ATR，至少離現價 1.5 ATR；沒有支撐用現價 −2.5 ATR
     # 每次都用當下的均線重算（無狀態），所以只要有支撐，停損一定低於支撐
     struct_support = None
-    m5, m10 = ma[5][last], ma[10][last]
+    stop = None
+    m5, m10, m20 = ma[5][last], ma[10][last], ma[20][last]
     far = support is not None and price - support["price"] > 3 * a
-    # _r(m5) > _r(m10)：兩條線四捨五入後一樣時，畫面上支撐＝停損，不成立「停損 < 支撐」→ 走一般規則
-    trend = not np.isnan(m5) and not np.isnan(m10) and price > m5 > m10 and _r(m5) > _r(m10)
+    trend = not any(np.isnan(x) for x in (m5, m10, m20)) and price > m5 > m10
     if far and trend:
+        # 後兩項只在 20 日線偏高的少數情況生效：保證停損 < 10 日線支撐、且離現價至少 1.5 ATR
+        trail_p = min(m20 - a, m10 - 0.5 * a, price - 1.5 * a)
+        if trail_p > 0 and _r(trail_p) < _r(m10):
+            struct_support = support
+            support = {"price": _r(m10), "date": fmtd(last), "label": "10 日線（強勢股的支撐）", "kind": "ma10"}
+            note = "" if trail_p == m20 - a else "（20 日線偏高，往下放到離 10 日線 0.5 ATR／離現價 1.5 ATR）"
+            stop = {"price": _r(trail_p), "basis": "trail",
+                    "label": f"移動停損：20 日線 {m20:.2f} − 1×ATR（{a:.2f}）{note}，跟著 20 日線每天上移，收盤跌破出場；"
+                             f"前低 {struct_support['price']} 離現價超過 3 倍 ATR"}
+    if stop is None and far:
         struct_support = support
-        support = {"price": _r(m5), "date": fmtd(last), "label": "5 日線：收盤跌破先減碼一半", "kind": "ma5"}
-        stop = {"price": _r(m10), "basis": "trail",
-                "label": f"10 日線：收盤跌破全部出場；之後收盤站回 5 日線再買回（移動停損，跟著 10 日線每天上移；"
-                         f"前低 {struct_support['price']} 離現價超過 3 倍 ATR）"}
-    else:
+        support = None
+        stop_p = price - 3.5 * a
+        stop = {"price": _r(stop_p), "basis": "risk",
+                "label": f"前低 {struct_support['price']} 離現價超過 3 倍 ATR、又不是強勢：停損用風險上限 現價 − 3.5×ATR，"
+                         f"收盤跌破出場"} if stop_p > 0 else None
+    elif stop is None:
         if support:
             sp = support["price"]
             raw = sp - 0.5 * a
@@ -324,6 +337,7 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
         "target": _r(target), "target_method": method, "target_kind": target_kind,
         "upside_pct": _r((target / price - 1) * 100, 1) if target else None,
         "support": support, "stop": stop, "struct_support": struct_support, "atr": _r(a, 3), "rr": rr,
+        "ma5": _r(m5) if not np.isnan(m5) else None,
         "downside_pct": _r((stop["price"] / price - 1) * 100, 1) if stop else None,
         "measured": {k: (_r(x, 3) if isinstance(x, float) else x) for k, x in mm.items()} if mm else None,
         "stops": stops, "thunder": th, "ma_near": ma_near, "notes": notes,
