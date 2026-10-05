@@ -4974,11 +4974,19 @@ async function openChart(stockId, savedRange = null) {
     await _loadLWC();
     const _ohlcvBase = _chartOhlcvUrl || `/api/stock/${stockId}/ohlcv`;
     // 同時取 OHLCV + 籌碼歷史（chip history），不等待 chip 失敗
-    const [ohlcv, chipResp] = await Promise.all([
+    const [ohlcv, chipResp, nameHits] = await Promise.all([
       api('GET', `${_ohlcvBase}?interval=${_chartInterval}`),
       (stockId.startsWith('__idx_') ? Promise.resolve(null) :
         api('GET', `/api/stock/${stockId}?days=500`).catch(() => null)),
+      // 開 K 線的地方沒帶股名（上一檔／下一檔、可轉債、庫藏股…）→ 用代號查股名
+      (_chartStockName || stockId.startsWith('__idx_') ? Promise.resolve(null) :
+        api('GET', `/api/search?q=${encodeURIComponent(stockId)}`).catch(() => null)),
     ]);
+    const _nameHit = (nameHits || []).find(x => x.stock_id === stockId);
+    if (_nameHit && _nameHit.name && _chartStockId === stockId) {
+      _chartNames[stockId] = _nameHit.name;
+      _chartStockName = _nameHit.name;
+    }
     // chipDateMap: YYYYMMDD → {signal_level, signal_emoji, signal_title, whale_flow_lots}
     const chipDateMap = {};
     if (chipResp && chipResp.data) {
@@ -5629,9 +5637,9 @@ async function saveAllStratParams() {
   </div>
 </div>
 
-<script src="/treasury/static/treasury.js?v=20261005"></script>
-<script src="/mna/static/mna.js?v=20261005"></script>
-<script src="/cb/static/cb.js?v=20261005"></script>
-<script src="/notes/static/notes.js?v=20261005"></script>
+<script src="/treasury/static/treasury.js?v=20261005b"></script>
+<script src="/mna/static/mna.js?v=20261005b"></script>
+<script src="/cb/static/cb.js?v=20261005b"></script>
+<script src="/notes/static/notes.js?v=20261005b"></script>
 </body>
 </html>
