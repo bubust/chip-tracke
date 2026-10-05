@@ -914,9 +914,14 @@ def settings_set(key: str, value: str):
 # Telegram helpers
 # ════════════════════════════════════════════════════════════════════════════
 
+def tg_creds() -> tuple[str, str]:
+    """設定分頁有填就用設定的，沒填改用 Fly secrets（TELEGRAM_TOKEN / TELEGRAM_CHAT_ID）"""
+    token   = settings_get("telegram_token") or os.getenv("TELEGRAM_TOKEN", "")
+    chat_id = settings_get("telegram_chat_id") or os.getenv("TELEGRAM_CHAT_ID", "")
+    return token.strip(), chat_id.strip()
+
 async def tg_send(text: str) -> bool:
-    token   = settings_get("telegram_token")
-    chat_id = settings_get("telegram_chat_id")
+    token, chat_id = tg_creds()
     if not token or not chat_id:
         return False
     url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -3891,8 +3896,7 @@ async def put_strategy_params(strategy_key: str, request: Request):
 
 @app.get("/api/settings")
 def api_get_settings():
-    token   = settings_get("telegram_token") or ""
-    chat_id = settings_get("telegram_chat_id") or ""
+    token, chat_id = tg_creds()
     masked  = (token[:10] + "...") if len(token) > 10 else token
     return {
         "telegram_token_masked": masked,

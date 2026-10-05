@@ -19,7 +19,7 @@ from .calculator import compute_positioning
 log = logging.getLogger(__name__)
 router = APIRouter()
 
-_TELEGRAM_BOT = os.getenv("TELEGRAM_BOT_TOKEN", "")
+_TELEGRAM_BOT = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN", "")
 _TELEGRAM_CHAT = os.getenv("TELEGRAM_CHAT_ID", "")
 
 
