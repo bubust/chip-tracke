@@ -10,6 +10,14 @@ price_levels.py — 依使用者的看盤邏輯算關鍵價位（觀察清單、
 - 停損一般看：爆量 K 棒低點、波段低點、前低；附近有均線（如 60 日線）一起看
 - 跌破爆量低點出場，之後站回就是假跌破
 - 區間整理：5 日 > 10 日 > 20 日、底部一直墊高、但還沒過區間高 → 加入自選觀察
+
+2026-10-05 改版（PLAN-LEVELS.md、research/levels/）：用 1,810 檔兩年日 K walk-forward 回測、跟「同樣 ATR 距離的隨機價位」比
+- 支撐價：k=5 波段低點（沒有就 60 日低）——前低是唯一穩定有效的支撐（撐住 +3.4 個百分點）
+- 停損價：支撐 −0.5 ATR、夾在現價 −1.5～−3.5 ATR，收盤跌破出場（舊版約 1 ATR、67% 會被打到；
+  改善來自留足空間，前低錨定跟同距離純 ATR 一樣好，選它是因為符合用戶「停損看波段低點」）
+- 目標價：平地一聲雷等幅 → 一般等幅（回檔低＋前高−起漲低）→ 壓力區二 → 現價＋3 ATR（不再拿壓力區一當目標）；
+  各種目標算法都沒有比隨機準，所以照用戶規則排，另給報酬風險比 rr
+- 壓力區：9 種算法都沒有比隨機準，維持「前高」定義
 """
 from __future__ import annotations
 
@@ -93,7 +101,9 @@ def detect_thunder(df: pd.DataFrame, params: dict = None) -> Optional[dict]:
     uptrend = bool(c[last] > ma5[last] > ma10[last] > ma20[last]) if not np.isnan(ma20[last]) else False
     if pull_low is None:
         stage = "攻擊中（突破後還沒回檔）"
-    elif retrace is not None and retrace > p["max_retrace"]:
+    elif retrace is None:                # 突破後第一個波段高點沒高過突破點（leg ≤ 0），量不出回檔比例
+        stage = "突破後第一段沒拉開，等幅量不出來"
+    elif retrace > p["max_retrace"]:
         stage = f"回檔過深（回檔 {retrace:.0%} > {p['max_retrace']:.1%}）"
     elif reclaimed:
         stage = f"回檔 {retrace:.0%} 不破、已越過第一段高點，往目標價前進"
@@ -110,6 +120,36 @@ def detect_thunder(df: pd.DataFrame, params: dict = None) -> Optional[dict]:
     }
 
 
+def atr_series(h, l, c, n: int = 14):
+    """14 日真實波幅（TR＝max(高−低, |高−昨收|, |低−昨收|)）簡單平均"""
+    pc = np.r_[c[0], c[:-1]]
+    tr = np.maximum(h - l, np.maximum(np.abs(h - pc), np.abs(l - pc)))
+    return pd.Series(tr).rolling(n).mean().values
+
+
+def measured_move(h, l, look: int, last: int, price: float) -> Optional[dict]:
+    """一般等幅（用戶等幅規則推廣）：最近一個已確認 k=5 波段高點 H1、它之前最近的 k=5 波段低點 L0（起漲）、
+    H1 之後到現在的最低點 L1（回檔低）；L1 > L0、回檔 ≤ 0.618、現價 > L1 → 目標 ＝ L1 ＋（H1 − L0）"""
+    hs = [i for i in pivots(h, 5, "high") if i >= look]
+    if not hs:
+        return None
+    i1 = hs[-1]
+    los = [i for i in pivots(l, 5, "low") if look <= i < i1]
+    if not los or i1 >= last:
+        return None
+    i0 = los[-1]
+    L0, H1 = float(l[i0]), float(h[i1])
+    leg = H1 - L0
+    if leg <= 0:
+        return None
+    seg = l[i1 + 1:last + 1]
+    L1 = float(seg.min())
+    if L1 <= L0 or (H1 - L1) / leg > 0.618 or price <= L1:
+        return None
+    return {"target": L1 + leg, "start_low": L0, "start_idx": int(i0), "high": H1, "high_idx": int(i1),
+            "pullback_low": L1, "pullback_idx": int(i1 + 1 + int(seg.argmin())), "retrace": (H1 - L1) / leg}
+
+
 def _zones(highs_idx, h, price, tol=0.02):
     """把現價上方的波段高點合併成壓力區（相差 2% 內算同一區），由近到遠"""
     above = sorted(float(h[i]) for i in highs_idx if h[i] > price * 1.005)
@@ -124,7 +164,8 @@ def _zones(highs_idx, h, price, tol=0.02):
 
 
 def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
-    """回傳 {price, mode, pressure1, pressure2, target, target_method, stops, thunder, ma_near, notes}"""
+    """回傳 {price, mode, pressure1, pressure2, target, target_method, target_kind, support, stop, atr, rr, downside_pct,
+    stops（參考：爆量低點／k=3 波段低點／前低／上漲模式出場）, thunder, measured, ma_near, notes}"""
     df = df.dropna(subset=["close"]).reset_index(drop=True)
     n = len(df)
     if n < 30:
@@ -148,7 +189,7 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
     th = detect_thunder(df, thunder_params)
 
     # 區間整理（5>10>20、底部墊高、還沒過區間高）
-    ma = {k: pd.Series(c).rolling(k).mean().values for k in (5, 10, 20, 60)}
+    ma = {k: pd.Series(c).rolling(k).mean().values for k in (5, 10, 20, 60, 120, 240)}
     pl3 = [i for i in pivots(l, 3, "low") if i >= n - 60]
     box_high = float(h[max(0, n - 20):].max())
     rising = len(pl3) >= 2 and all(l[pl3[j]] < l[pl3[j + 1]] for j in range(len(pl3) - 1))
@@ -167,26 +208,24 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
     else:
         mode = "一般"
 
-    # 目標價
-    target, method = None, ""
+    # ATR（下限 現價×0.5%：停牌／零波動／資料異常時不會是 0 或 NaN）
+    atr_v = atr_series(h, l, c)[last]
+    a = max(float(atr_v) if np.isfinite(atr_v) else 0.0, price * 0.005)
+    fmtd = lambda i: str(df["date"].iloc[i])
+
+    # 目標價：依序取第一個 > 現價 + 0.5 ATR 的（研究：沒有目標算法比隨機準 → 照用戶規則：等幅、前高）
+    mm = measured_move(h, l, look, last, price)
+    cands = []
     if th and th["target"]:
-        target, method = th["target"], f"等幅：高點 {th['high']} − 突破點 {th['base_top']} ＋ 回檔低點 {th['pullback_low']}"
-    elif p2:
-        target, method = p2["low"], "第二壓力區"
-    elif p1:
-        target, method = p1["low"], "第一壓力區（上方只有一個前高）"
-    else:
-        # 上方沒有前高：用最近一段的等幅（高點 − 起漲低點 ＋ 回檔低點）
-        hi_idx = max(range(look, n), key=lambda i: h[i])
-        if hi_idx < last:
-            start = float(l[max(0, hi_idx - 60):hi_idx + 1].min())
-            pull = float(l[hi_idx + 1:].min())
-            leg = h[hi_idx] - start
-            if leg > 0 and (h[hi_idx] - pull) / leg <= 0.618:
-                target = _r(h[hi_idx] - start + pull)
-                method = f"無前高等幅：高點 {h[hi_idx]:.2f} − 起漲 {start:.2f} ＋ 回檔低點 {pull:.2f}"
-        if target is None:
-            method = "上方無前高、也還沒有回檔可量測"
+        cands.append((th["target"], "thunder",
+                      f"平地一聲雷等幅：高點 {th['high']} − 突破點 {th['base_top']} ＋ 回檔低點 {th['pullback_low']}"))
+    if mm:
+        cands.append((mm["target"], "measured",
+                      f"等幅：回檔低點 {mm['pullback_low']:.2f} ＋（前高 {mm['high']:.2f} − 起漲低點 {mm['start_low']:.2f}）"))
+    if p2:
+        cands.append((p2["low"], "pressure2", "壓力區二（前高）"))
+    cands.append((price + 3 * a, "atr", f"上方沒有前高、也沒有等幅可量：現價 ＋ 3×ATR（約 {3 * a / price * 100:.0f}%）"))
+    target, target_kind, method = next((x for x in cands if x[0] is not None and x[0] > price + 0.5 * a), (None, None, ""))
 
     # 停損：爆量低點、波段低點、前低
     stops = {}
@@ -208,6 +247,37 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
         stops["uptrend_exit"] = {"price": th["exit_prev_low"], "date": str(df["date"].iloc[last]),
                                  "label": "上漲模式：收盤跌破這天低點出場"}
 
+    # 支撐價：已確認的 k=5 波段低點（近一年、低於現價、最近一個）；沒有就 60 日低點
+    support = None
+    lows5 = [i for i in pivots(l, 5, "low") if i >= look and l[i] < price]
+    if lows5:
+        i = lows5[-1]
+        support = {"price": _r(l[i]), "date": fmtd(i), "label": "波段低點", "kind": "swing"}
+    else:
+        s60 = max(0, n - 60)
+        i = s60 + int(l[s60:].argmin())
+        if l[i] < price * 0.995:
+            support = {"price": _r(l[i]), "date": fmtd(i), "label": "60 日低點", "kind": "low60"}
+
+    # 停損價：支撐 −0.5 ATR，夾在 [現價 −3.5 ATR, 現價 −1.5 ATR]；收盤跌破出場
+    lo_cap, hi_cap = price - 3.5 * a, price - 1.5 * a
+    if support:
+        sp = support["price"]
+        raw = sp - 0.5 * a
+        if raw < lo_cap:
+            stop_p, basis = lo_cap, "cap"
+            label = f"支撐 {sp} 離現價超過 3.5 倍 ATR，停損用上限（現價 − 3.5×ATR），會高於支撐"
+        elif raw > hi_cap:
+            stop_p, basis = hi_cap, "floor"
+            label = f"支撐 {sp} 離現價太近，停損放在現價 − 1.5×ATR，避免盤中雜訊洗出場"
+        else:
+            stop_p, basis = raw, "support"
+            label = f"支撐 {sp} − 0.5×ATR（{a:.2f}）"
+    else:
+        stop_p, basis = price - 2.5 * a, "atr"
+        label = "近一年沒有低於現價的低點可當支撐，停損用現價 − 2.5×ATR"
+    stop = {"price": _r(stop_p), "basis": basis, "label": label + "，收盤跌破出場"} if stop_p > 0 else None
+
     # 附近均線（±3% 內）
     ma_near = []
     for k, name in ((20, "20 日線"), (60, "60 日線")):
@@ -217,6 +287,19 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
     if ma_near:
         notes.append("附近有 " + "、".join(f"{x['name']} {x['price']}" for x in ma_near) + "，停損一起看")
 
+    # 壓力區裡有半年線／年線（參考；研究中均線壓力沒有比隨機準，只提示）
+    for zname, z in (("一", p1), ("二", p2)):
+        if not z:
+            continue
+        for k, nm in ((120, "半年線"), (240, "年線")):
+            m = ma[k][last]
+            if not np.isnan(m) and z["low"] - 0.5 * a <= m <= z["high"] + 0.5 * a:
+                notes.append(f"壓力區{zname}附近有{nm} {m:.2f}")
+
+    # 報酬風險比：到目標的漲幅 ÷ 到停損的跌幅（用畫面上顯示的四捨五入價格算，手算對得起來）
+    pr = _r(price)
+    rr = _r((_r(target) - pr) / (pr - stop["price"]), 1) if (target and stop and pr > stop["price"]) else None
+
     # 假跌破：昨天收盤跌破爆量低點、今天站回
     vl = stops.get("volume_low")
     if vl and vl["idx"] < last - 1 and c[last - 1] < vl["price"] <= c[last]:
@@ -225,7 +308,10 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
     return {
         "price": _r(price), "date": str(df["date"].iloc[last]), "mode": mode,
         "pressure1": p1, "pressure2": p2, "zones": zones[:4],
-        "target": _r(target), "target_method": method,
+        "target": _r(target), "target_method": method, "target_kind": target_kind,
         "upside_pct": _r((target / price - 1) * 100, 1) if target else None,
+        "support": support, "stop": stop, "atr": _r(a, 3), "rr": rr,
+        "downside_pct": _r((stop["price"] / price - 1) * 100, 1) if stop else None,
+        "measured": {k: (_r(x, 3) if isinstance(x, float) else x) for k, x in mm.items()} if mm else None,
         "stops": stops, "thunder": th, "ma_near": ma_near, "notes": notes,
     }

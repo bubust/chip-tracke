@@ -57,7 +57,7 @@ def test_levels_pressure_zones_ordered_above_price():
     lv = compute_levels(make(closes))
     assert lv["pressure1"]["low"] < lv["pressure2"]["low"]
     assert 14.5 < lv["pressure1"]["low"] < 15.5 and 16.5 < lv["pressure2"]["low"] < 17.5
-    assert lv["target"] == lv["pressure2"]["low"] and "第二壓力" in lv["target_method"]
+    assert lv["target"] == lv["pressure2"]["low"] and lv["target_kind"] == "pressure2" and "壓力區二" in lv["target_method"]
     assert "swing_low" in lv["stops"]
 
 
@@ -67,5 +67,92 @@ def test_levels_uses_thunder_target_and_uptrend_exit():
     vols = vols + [3000] * 4
     lv = compute_levels(make(closes, vols, 0.0))
     assert lv["thunder"]["target"] is not None
+    assert lv["target"] == lv["thunder"]["target"] and lv["target_kind"] == "thunder"
     assert lv["mode"].startswith("平地一聲雷")
     assert "volume_low" in lv["stops"]
+
+
+# ── 2026-10-05 改版：支撐價／停損價／目標價（PLAN-LEVELS.md）───────────────────
+from price_levels import measured_move
+
+seg = lambda a, b, k: list(np.linspace(a, b, k))
+
+
+def test_support_is_latest_confirmed_k5_swing_low_and_old_fields_kept():
+    closes = seg(20, 10, 20) + seg(10, 16, 12) + seg(16, 12, 10) + seg(12, 15, 10)
+    lv = compute_levels(make(closes))
+    assert lv["support"]["kind"] == "swing" and abs(lv["support"]["price"] - 12 * 0.99) < 0.05
+    for k in ("pressure1", "pressure2", "zones", "target", "target_method", "upside_pct", "stops", "thunder", "ma_near", "notes", "mode"):
+        assert k in lv
+
+
+def test_support_falls_back_to_60_day_low_on_short_history():
+    closes = seg(10, 20, 35)                      # 一路漲：沒有波段低點；只有 35 根 → 用全部資料的最低點
+    lv = compute_levels(make(closes))
+    assert lv["support"]["kind"] == "low60" and abs(lv["support"]["price"] - 10 * 0.99) < 0.01
+
+
+def test_stop_formula_and_all_bases():
+    seen = set()
+    for seed in range(60):
+        rng = np.random.default_rng(seed)
+        vol = 0.01 + 0.03 * (seed % 4)
+        closes = list(50 * np.exp(np.cumsum(rng.normal(0.002 * (seed % 3), vol, 160))))
+        lv = compute_levels(make(closes, spread=vol / 2))
+        p, a, st = lv["price"], lv["atr"], lv["stop"]
+        assert st and st["price"] < p and "收盤跌破" in st["label"]
+        if lv["support"] is None:
+            assert st["basis"] == "atr" and abs(st["price"] - (p - 2.5 * a)) < 0.02
+        else:
+            raw = lv["support"]["price"] - 0.5 * a
+            want = min(max(raw, p - 3.5 * a), p - 1.5 * a)
+            assert abs(st["price"] - want) < 0.02
+            basis = "cap" if raw < p - 3.5 * a else "floor" if raw > p - 1.5 * a else "support"
+            assert st["basis"] == basis
+            if basis == "cap":
+                assert "上限" in st["label"]
+        seen.add(st["basis"])
+        if lv["target"]:
+            assert lv["rr"] == round((lv["target"] - p) / (p - st["price"]), 1)
+    assert {"cap", "floor", "support"} <= seen
+
+
+def test_target_measured_move_and_never_pressure1_only():
+    closes = seg(20, 10, 20) + seg(10, 20, 15) + seg(20, 15, 8) + seg(15, 17, 6)
+    lv = compute_levels(make(closes))
+    assert lv["target_kind"] == "measured" and lv["measured"]
+    m = lv["measured"]
+    assert abs(lv["target"] - (m["pullback_low"] + m["high"] - m["start_low"])) < 0.02 and lv["target"] > lv["price"]
+    # 只有一個前高、回檔太深沒有等幅 → 不拿壓力區一當目標，改用 3 ATR
+    closes = seg(15, 10, 10) + seg(10, 20, 15) + seg(20, 12, 15) + seg(12, 14, 8)
+    lv = compute_levels(make(closes))
+    assert lv["pressure1"] and not lv["pressure2"] and lv["measured"] is None
+    assert lv["target_kind"] == "atr" and lv["target"] != lv["pressure1"]["low"]
+    assert abs(lv["target"] - (lv["price"] + 3 * lv["atr"])) < 0.02
+
+
+def test_flat_prices_zero_atr_no_crash():
+    lv = compute_levels(make([10.0] * 40, spread=0.0))
+    assert lv["atr"] == 0.05                      # 下限 現價 × 0.5%
+    assert lv["support"] is None and lv["stop"]["basis"] == "atr" and lv["stop"]["price"] == 9.88
+    assert lv["target_kind"] == "atr" and lv["target"] == 10.15
+
+
+def test_measured_move_guards():
+    h = np.array([10.0] * 40); l = np.array([9.0] * 40)
+    assert measured_move(h, l, 0, 39, 10.0) is None            # 沒有波段點
+    c = seg(10, 20, 15) + seg(20, 12, 15)                      # 有高點、但高點前沒有波段低點
+    assert measured_move(np.array(c) * 1.01, np.array(c) * 0.99, 0, len(c) - 1, c[-1]) is None
+
+
+def test_thunder_first_high_below_breakout_no_crash():
+    # 突破後第一個波段高點（9.95）沒高過突破點 10：回檔比例算不出來，以前格式化 None 會例外
+    rng = np.random.default_rng(1)
+    base = list(9.6 + rng.uniform(0, 0.4, 100)); base[-1] = 10.0
+    after = [10.5, 9.7, 9.6, 9.7, 9.8, 9.95, 9.9, 9.85, 9.8, 10.1, 10.3, 10.6]
+    vols = [1000] * len(base) + [4000] + [1000] * (len(after) - 1)
+    df = make(base + after, vols, spread=0.0)
+    th = detect_thunder(df)
+    assert th is not None and th["retrace"] is None and th["target"] is None and "量不出來" in th["stage"]
+    lv = compute_levels(df)
+    assert lv["target_kind"] != "thunder" and lv["stop"]

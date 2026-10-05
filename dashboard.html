@@ -412,7 +412,7 @@ details.guide[open]>summary::before{content:'▾ ';}
             <th title="從哪個策略或市場排行加入">來源</th>
             <th title="自由填寫：進場價、停損、目標等">📝 備註</th>
             <th>股價</th>
-            <th title="依你的看盤邏輯：第一壓力、目標價、停損（點開看全部）">關鍵價位</th>
+            <th title="目標價／壓力區一·二／支撐價·停損價（點開看算法與研究依據）">關鍵價位</th>
             <th>最新訊號</th>
             <th>大戶今日 (張)</th>
             <th>7日累計 (張)</th>
@@ -1754,11 +1754,12 @@ function renderWatchlist() {
   enrichTdccTrends().catch(() => {});
 }
 
-// ── 關鍵價位（price_levels.py）：第一／第二壓力、目標價、停損 ─────────────────
+// ── 關鍵價位（price_levels.py）：目標價、壓力區一／二、支撐價、停損價（PLAN-LEVELS.md）──────
 let _levelsData = {};
 let _levelsLoading = false;
 function _levelsPrimaryStop(lv) {
-  const st = (lv && lv.stops) || {};
+  if (lv && lv.stop && lv.stop.price != null) return lv.stop;
+  const st = (lv && lv.stops) || {};      // 舊版回應（部署交接時的快取）
   return st.uptrend_exit || st.volume_low || st.swing_low || st.prev_low || null;
 }
 function _levelsCell(s) {
@@ -1766,12 +1767,13 @@ function _levelsCell(s) {
   const inner = !lv ? '<span class="muted">…</span>'
     : lv.error ? '<span class="muted" title="' + _esc(lv.error) + '">—</span>'
     : (() => {
-        const p1 = lv.pressure1 ? lv.pressure1.low : null, stop = _levelsPrimaryStop(lv);
-        return `<span style="font-size:.74rem;line-height:1.45;display:inline-block">
-          ${p1 != null ? `<span style="color:#f59e0b">壓 ${p1}</span>` : '<span class="muted">無前高</span>'}
-          ${lv.target != null ? ` / <span style="color:#ef4444;font-weight:700">標 ${lv.target}</span>` : ''}
-          <br>${stop ? `<span style="color:#22c55e">損 ${stop.price}</span>` : ''}
-          ${lv.mode && lv.mode !== '一般' ? `<span style="color:#a78bfa"> ${lv.mode.startsWith('平地') ? '⚡' : '▭'}</span>` : ''}</span>`;
+        const p1 = lv.pressure1 ? lv.pressure1.low : null, p2 = lv.pressure2 ? lv.pressure2.low : null;
+        const sup = lv.support ? lv.support.price : null, stop = _levelsPrimaryStop(lv);
+        const icon = lv.mode && lv.mode !== '一般' ? `<span style="color:#a78bfa"> ${lv.mode.startsWith('平地') ? '⚡' : '▭'}</span>` : '';
+        return `<span style="font-size:.74rem;line-height:1.45;display:inline-block;white-space:nowrap">
+          ${lv.target != null ? `<span style="color:#ef4444;font-weight:700">標 ${lv.target}</span>` : '<span class="muted">標 —</span>'}${icon}
+          <br>${p1 != null ? `<span style="color:#f59e0b">壓 ${p1}${p2 != null ? ' · ' + p2 : ''}</span>` : '<span class="muted">無前高</span>'}
+          <br><span style="color:#4ade80">撐 ${sup ?? '—'}</span> · <span style="color:#22c55e;font-weight:700">損 ${stop ? stop.price : '—'}</span>${lv.stop && lv.stop.basis === 'cap' ? '<span class="muted" style="font-size:.66rem" title="支撐太遠，停損用 3.5 倍 ATR 上限"> 上限</span>' : ''}</span>`;
       })();
   return `<td id="levels-${s.stock_id}" onclick="event.stopPropagation();showLevels('${_jsq(s.stock_id)}')" style="cursor:pointer" title="點開看關鍵價位">${inner}</td>`;
 }
@@ -1782,7 +1784,7 @@ async function _loadLevels() {
   _levelsLoading = true;
   try {
     for (let i = 0; i < ids.length; i += 20) {
-      const r = await api('GET', `/api/levels?ids=${ids.slice(i, i + 20).join(',')}`);
+      const r = await api('GET', `/api/levels?ids=${ids.slice(i, i + 20).map(encodeURIComponent).join(',')}`);
       Object.assign(_levelsData, r || {});
       Object.keys(r || {}).forEach(sid => {
         const td = document.getElementById(`levels-${sid}`);
@@ -1799,13 +1801,23 @@ async function showLevels(sid) {
   const fmtD = d => (d && String(d).length === 8) ? `${String(d).slice(4, 6)}/${String(d).slice(6)}` : '';
   const zone = z => z ? (z.low === z.high ? `${z.low}` : `${z.low}～${z.high}`) + (z.touches > 1 ? `（碰過 ${z.touches} 次）` : '') : '—';
   const st = lv.stops || {};
-  const stopRows = ['uptrend_exit', 'volume_low', 'swing_low', 'prev_low'].filter(k => st[k]).map(k =>
-    `<div>🟢 <b>${st[k].price}</b> <span class="muted">${_esc(st[k].label)} ${fmtD(st[k].date)}</span></div>`).join('') || '<div class="muted">現價下方找不到支撐</div>';
+  const refRows = ['volume_low', 'swing_low', 'prev_low'].filter(k => st[k]).map(k =>
+    `<div>· <b>${st[k].price}</b> <span class="muted">${_esc(st[k].label)} ${fmtD(st[k].date)}</span></div>`).join('');
+  const sup = lv.support, stp = _levelsPrimaryStop(lv);
+  const item = (dot, label, val, color, note) => `<div style="margin-top:4px">${dot} ${label} <b style="color:${color}">${val}</b></div>`
+    + (note ? `<div class="muted" style="font-size:.74rem;margin-left:22px;line-height:1.5">${note}</div>` : '');
+  const fivesHtml = item('🔴', '目標價', `${lv.target ?? '—'}${lv.upside_pct != null ? ` <span class="muted" style="font-weight:400">（還有 ${lv.upside_pct}%）</span>` : ''}`, '#ef4444', _esc(lv.target_method || ''))
+    + item('🟠', '壓力區一', zone(lv.pressure1), '#f59e0b', lv.pressure1 ? '現價上方最近的前高' : '上方沒有前高')
+    + item('🟠', '壓力區二', zone(lv.pressure2), '#f59e0b', lv.pressure2 ? '再上去的前高' : '')
+    + item('🟢', '支撐價', sup ? sup.price : '—', '#4ade80', sup ? `${_esc(sup.label)} ${fmtD(sup.date)}` : '近一年找不到低於現價的低點')
+    + item('🛑', '停損價', stp ? stp.price : '—', '#22c55e', stp ? _esc(stp.label || '') : '')
+    + (lv.rr != null ? `<div style="margin-top:6px">⚖️ 報酬風險比 <b style="color:${lv.rr >= 2 ? '#ef4444' : lv.rr >= 1 ? '#f59e0b' : '#94a3b8'}">${lv.rr}</b> <span class="muted" style="font-size:.76rem">（目標 ${lv.upside_pct != null ? '+' + lv.upside_pct + '%' : '—'} ／ 停損 ${lv.downside_pct != null ? lv.downside_pct + '%' : '—'}）</span></div>` : '');
+  const upExit = st.uptrend_exit ? `<div style="margin-top:8px;color:#a78bfa">⚡ 上漲模式出場：收盤跌破 <b>${st.uptrend_exit.price}</b>（今天低點）就出場</div>` : '';
   const th = lv.thunder;
   const thHtml = th ? `<div style="margin-top:10px;padding:8px 10px;border:1px solid #a78bfa55;border-radius:6px;font-size:.8rem;line-height:1.7">
       ⚡ <b>平地一聲雷</b>：${_esc(th.stage)}<br>
       盤整 ${th.base_days} 天、上緣（突破點）<b>${th.base_top}</b>，${fmtD(th.breakout_date)} 帶 ${th.breakout_vol_ratio} 倍量突破<br>
-      第一段高點 <b>${th.high}</b>${th.pullback_low != null ? `，回檔低點 <b>${th.pullback_low}</b>（回檔 ${(th.retrace * 100).toFixed(0)}%）` : ''}
+      第一段高點 <b>${th.high}</b>${th.pullback_low != null ? `，回檔低點 <b>${th.pullback_low}</b>${th.retrace != null ? `（回檔 ${(th.retrace * 100).toFixed(0)}%）` : ''}` : ''}
       ${th.target != null ? `<br>目標價 ${th.high} − ${th.base_top} ＋ ${th.pullback_low} ＝ <b style="color:#ef4444">${th.target}</b>` : ''}
       ${th.uptrend ? `<br><span style="color:#f59e0b">上漲模式：收盤跌破 ${th.exit_prev_low}（今天低點）就出場</span>` : ''}</div>` : '';
   const m = document.createElement('div');
@@ -1816,15 +1828,11 @@ async function showLevels(sid) {
       <b style="font-size:1rem">${_esc(sid)} ${_esc(name)}</b><button class="btn sm ghost" onclick="this.closest('div[style*=fixed]').remove()">✕</button></div>
     ${lv.error ? `<div class="muted">${_esc(lv.error)}</div>` : `
     <div class="muted" style="margin-bottom:8px">現價 <b style="color:var(--text)">${lv.price}</b>（${fmtD(lv.date)}）· 型態：<b style="color:#a78bfa">${_esc(lv.mode)}</b></div>
-    <div style="line-height:1.9">
-      <div>🟠 第一壓力區 <b>${zone(lv.pressure1)}</b></div>
-      <div>🟠 第二壓力區 <b>${zone(lv.pressure2)}</b></div>
-      <div>🔴 目標價 <b style="color:#ef4444">${lv.target ?? '—'}</b>${lv.upside_pct != null ? ` <span class="muted">（還有 ${lv.upside_pct}%）</span>` : ''}<br><span class="muted" style="font-size:.76rem">${_esc(lv.target_method || '')}</span></div>
-      <div style="margin-top:6px"><b>停損參考</b></div>${stopRows}
-    </div>${thHtml}
+    <div style="line-height:1.7">${fivesHtml}</div>${upExit}
+    ${refRows ? `<div style="margin-top:10px;font-size:.8rem"><b>參考低點</b>（你的規則：跌破爆量低點出場、站回是假跌破）${refRows}</div>` : ''}${thHtml}
     ${(lv.notes || []).length ? `<div style="margin-top:8px;font-size:.78rem;color:#f59e0b">${lv.notes.map(_esc).join('<br>')}</div>` : ''}
     <div style="margin-top:12px;display:flex;gap:8px"><button class="btn sm" onclick="this.closest('div[style*=fixed]').remove();openWlChart('${_jsq(sid)}')">📈 K 線（畫出價位線）</button></div>
-    <div class="muted" style="margin-top:10px;font-size:.72rem">壓力區＝現價上方的前高；停損看爆量低點、波段低點、前低，跌破出場、站回是假跌破。只是依線圖規則計算，不是投資建議。</div>`}
+    <div class="muted" style="margin-top:10px;font-size:.72rem;line-height:1.6">依 1,810 檔兩年日 K 回測（跟同樣距離的隨機價位比）：前低是最穩定的支撐；舊停損太貼（約 1 ATR、三分之二會被打到），改成支撐下方留緩衝、約 2～3 ATR；壓力線和目標價的各種算法都沒有比隨機準，依你的規則（前高、等幅）排，另外看報酬風險比。ATR＝14 日平均真實波幅${lv.atr ? `（${lv.atr}）` : ''}。只是依線圖規則計算，不是投資建議。</div>`}
   </div>`;
   document.body.appendChild(m);
 }
@@ -1834,13 +1842,14 @@ async function _drawLevelLines(series, sid) {
   let lv = _levelsData[sid];
   if (!lv) { try { lv = await api('GET', `/api/levels/${encodeURIComponent(sid)}`); _levelsData[sid] = lv; } catch (e) { return; } }
   if (!lv || lv.error || _chartStockId !== sid) return;
-  const add = (price, color, title, style = 2) => { if (price != null) try { series.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }); } catch (e) {} };
+  const add = (price, color, title, style = 2, width = 1) => { if (price != null) try { series.createPriceLine({ price, color, lineWidth: width, lineStyle: style, axisLabelVisible: true, title }); } catch (e) {} };
+  add(lv.target, '#ef4444', '目標', 0);
   if (lv.pressure1) add(lv.pressure1.low, '#f59e0b', '壓1');
   if (lv.pressure2) add(lv.pressure2.low, '#f59e0b', '壓2', 3);
-  add(lv.target, '#ef4444', '目標', 0);
+  if (lv.support) add(lv.support.price, '#4ade80', '支撐');
+  const sp = _levelsPrimaryStop(lv);
+  if (sp) add(sp.price, '#22c55e', '停損', 0, 2);
   const st = lv.stops || {};
-  if (st.volume_low) add(st.volume_low.price, '#22c55e', '爆量低');
-  if (st.swing_low) add(st.swing_low.price, '#16a34a', '波段低', 3);
   if (st.uptrend_exit) add(st.uptrend_exit.price, '#a78bfa', '破此出場', 1);
 }
 
@@ -5637,9 +5646,9 @@ async function saveAllStratParams() {
   </div>
 </div>
 
-<script src="/treasury/static/treasury.js?v=20261005b"></script>
-<script src="/mna/static/mna.js?v=20261005b"></script>
-<script src="/cb/static/cb.js?v=20261005b"></script>
-<script src="/notes/static/notes.js?v=20261005b"></script>
+<script src="/treasury/static/treasury.js?v=20261005c"></script>
+<script src="/mna/static/mna.js?v=20261005c"></script>
+<script src="/cb/static/cb.js?v=20261005c"></script>
+<script src="/notes/static/notes.js?v=20261005c"></script>
 </body>
 </html>
