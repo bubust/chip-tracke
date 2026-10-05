@@ -13,8 +13,10 @@ price_levels.py — 依使用者的看盤邏輯算關鍵價位（觀察清單、
 
 2026-10-05 改版（PLAN-LEVELS.md、research/levels/）：用 1,810 檔兩年日 K walk-forward 回測、跟「同樣 ATR 距離的隨機價位」比
 - 支撐價：k=5 波段低點（沒有就 60 日低）——前低是唯一穩定有效的支撐（撐住 +3.4 個百分點）
-- 停損價：支撐 −0.5 ATR、夾在現價 −1.5～−3.5 ATR，收盤跌破出場（舊版約 1 ATR、67% 會被打到；
+- 停損價：支撐 −0.5 ATR、至少離現價 1.5 ATR，收盤跌破出場（舊版約 1 ATR、67% 會被打到；
   改善來自留足空間，前低錨定跟同距離純 ATR 一樣好，選它是因為符合用戶「停損看波段低點」）
+  前低離現價 > 3 ATR 且強勢（收盤 > 5 日線 > 10 日線）→ 用戶的移動停損：撐＝5 日線（跌破減碼一半）、
+  損＝10 日線（跌破出場）、站回 5 日線買回（用戶看過回測後選的，見 PLAN 第 7 節）
 - 目標價：平地一聲雷等幅 → 一般等幅（回檔低＋前高−起漲低）→ 壓力區二 → 現價＋3 ATR（不再拿壓力區一當目標）；
   各種目標算法都沒有比隨機準，所以照用戶規則排，另給報酬風險比 rr
 - 壓力區：9 種算法都沒有比隨機準，維持「前高」定義
@@ -259,24 +261,35 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
         if l[i] < price * 0.995:
             support = {"price": _r(l[i]), "date": fmtd(i), "label": "60 日低點", "kind": "low60"}
 
-    # 停損價：支撐 −0.5 ATR，夾在 [現價 −3.5 ATR, 現價 −1.5 ATR]；收盤跌破出場
-    lo_cap, hi_cap = price - 3.5 * a, price - 1.5 * a
-    if support:
-        sp = support["price"]
-        raw = sp - 0.5 * a
-        if raw < lo_cap:
-            stop_p, basis = lo_cap, "cap"
-            label = f"支撐 {sp} 離現價超過 3.5 倍 ATR，停損用上限（現價 − 3.5×ATR），會高於支撐"
-        elif raw > hi_cap:
-            stop_p, basis = hi_cap, "floor"
-            label = f"支撐 {sp} 離現價太近，停損放在現價 − 1.5×ATR，避免盤中雜訊洗出場"
-        else:
-            stop_p, basis = raw, "support"
-            label = f"支撐 {sp} − 0.5×ATR（{a:.2f}）"
+    # 停損價（PLAN-LEVELS.md 第 7 節）：
+    # - 前低離現價 > 3 ATR 且強勢（收盤 > 5 日線 > 10 日線）→ 用戶的移動停損：5 日線減碼、10 日線出場、站回 5 日線買回
+    # - 其他：支撐 −0.5 ATR，至少離現價 1.5 ATR（不設上限）；沒有支撐用現價 −2.5 ATR
+    # 每次都用當下的均線重算（無狀態），所以只要有支撐，停損一定低於支撐
+    struct_support = None
+    m5, m10 = ma[5][last], ma[10][last]
+    far = support is not None and price - support["price"] > 3 * a
+    # _r(m5) > _r(m10)：兩條線四捨五入後一樣時，畫面上支撐＝停損，不成立「停損 < 支撐」→ 走一般規則
+    trend = not np.isnan(m5) and not np.isnan(m10) and price > m5 > m10 and _r(m5) > _r(m10)
+    if far and trend:
+        struct_support = support
+        support = {"price": _r(m5), "date": fmtd(last), "label": "5 日線：收盤跌破先減碼一半", "kind": "ma5"}
+        stop = {"price": _r(m10), "basis": "trail",
+                "label": f"10 日線：收盤跌破全部出場；之後收盤站回 5 日線再買回（移動停損，跟著 10 日線每天上移；"
+                         f"前低 {struct_support['price']} 離現價超過 3 倍 ATR）"}
     else:
-        stop_p, basis = price - 2.5 * a, "atr"
-        label = "近一年沒有低於現價的低點可當支撐，停損用現價 − 2.5×ATR"
-    stop = {"price": _r(stop_p), "basis": basis, "label": label + "，收盤跌破出場"} if stop_p > 0 else None
+        if support:
+            sp = support["price"]
+            raw = sp - 0.5 * a
+            if raw > price - 1.5 * a:
+                stop_p, basis = price - 1.5 * a, "floor"
+                label = f"支撐 {sp} 離現價太近，停損放在現價 − 1.5×ATR，避免盤中雜訊洗出場"
+            else:
+                stop_p, basis = raw, "support"
+                label = f"支撐 {sp} − 0.5×ATR（{a:.2f}）"
+        else:
+            stop_p, basis = price - 2.5 * a, "atr"
+            label = "近一年沒有低於現價的低點可當支撐，停損用現價 − 2.5×ATR"
+        stop = {"price": _r(stop_p), "basis": basis, "label": label + "，收盤跌破出場"} if stop_p > 0 else None
 
     # 附近均線（±3% 內）
     ma_near = []
@@ -310,7 +323,7 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
         "pressure1": p1, "pressure2": p2, "zones": zones[:4],
         "target": _r(target), "target_method": method, "target_kind": target_kind,
         "upside_pct": _r((target / price - 1) * 100, 1) if target else None,
-        "support": support, "stop": stop, "atr": _r(a, 3), "rr": rr,
+        "support": support, "stop": stop, "struct_support": struct_support, "atr": _r(a, 3), "rr": rr,
         "downside_pct": _r((stop["price"] / price - 1) * 100, 1) if stop else None,
         "measured": {k: (_r(x, 3) if isinstance(x, float) else x) for k, x in mm.items()} if mm else None,
         "stops": stops, "thunder": th, "ma_near": ma_near, "notes": notes,

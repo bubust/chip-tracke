@@ -81,7 +81,8 @@ seg = lambda a, b, k: list(np.linspace(a, b, k))
 def test_support_is_latest_confirmed_k5_swing_low_and_old_fields_kept():
     closes = seg(20, 10, 20) + seg(10, 16, 12) + seg(16, 12, 10) + seg(12, 15, 10)
     lv = compute_levels(make(closes))
-    assert lv["support"]["kind"] == "swing" and abs(lv["support"]["price"] - 12 * 0.99) < 0.05
+    ss = lv["struct_support"] or lv["support"]              # 強勢延伸時前低移到 struct_support
+    assert ss["kind"] == "swing" and abs(ss["price"] - 12 * 0.99) < 0.05
     for k in ("pressure1", "pressure2", "zones", "target", "target_method", "upside_pct", "stops", "thunder", "ma_near", "notes", "mode"):
         assert k in lv
 
@@ -89,32 +90,70 @@ def test_support_is_latest_confirmed_k5_swing_low_and_old_fields_kept():
 def test_support_falls_back_to_60_day_low_on_short_history():
     closes = seg(10, 20, 35)                      # 一路漲：沒有波段低點；只有 35 根 → 用全部資料的最低點
     lv = compute_levels(make(closes))
-    assert lv["support"]["kind"] == "low60" and abs(lv["support"]["price"] - 10 * 0.99) < 0.01
+    ss = lv["struct_support"] or lv["support"]
+    assert ss["kind"] == "low60" and abs(ss["price"] - 10 * 0.99) < 0.01
 
 
 def test_stop_formula_and_all_bases():
+    """PLAN 第 7 節：強勢延伸用 5／10 日線移動停損；其他支撐 −0.5ATR、至少 1.5ATR、不設上限；任何情況停損 < 支撐"""
     seen = set()
-    for seed in range(60):
+    for seed in range(80):
         rng = np.random.default_rng(seed)
         vol = 0.01 + 0.03 * (seed % 4)
-        closes = list(50 * np.exp(np.cumsum(rng.normal(0.002 * (seed % 3), vol, 160))))
+        n = 30 if seed % 7 == 0 else 160                     # 也測 30 根的短歷史
+        closes = list(50 * np.exp(np.cumsum(rng.normal(0.004 * (seed % 3), vol, n))))
         lv = compute_levels(make(closes, spread=vol / 2))
-        p, a, st = lv["price"], lv["atr"], lv["stop"]
+        p, a, st, sup = lv["price"], lv["atr"], lv["stop"], lv["support"]
         assert st and st["price"] < p and "收盤跌破" in st["label"]
-        if lv["support"] is None:
+        assert st["basis"] in {"support", "floor", "atr", "trail"}
+        if sup is not None:
+            assert st["price"] < sup["price"]                # 停損一定在支撐下面
+        c = pd.Series(closes)
+        m5, m10 = c.rolling(5).mean().iloc[-1], c.rolling(10).mean().iloc[-1]
+        if st["basis"] == "trail":
+            ss = lv["struct_support"]
+            assert ss and p - ss["price"] > 3 * a and p > m5 > m10
+            assert abs(sup["price"] - m5) < 0.01 and abs(st["price"] - m10) < 0.01 and sup["kind"] == "ma5"
+        elif sup is None:
             assert st["basis"] == "atr" and abs(st["price"] - (p - 2.5 * a)) < 0.02
         else:
-            raw = lv["support"]["price"] - 0.5 * a
-            want = min(max(raw, p - 3.5 * a), p - 1.5 * a)
-            assert abs(st["price"] - want) < 0.02
-            basis = "cap" if raw < p - 3.5 * a else "floor" if raw > p - 1.5 * a else "support"
-            assert st["basis"] == basis
-            if basis == "cap":
-                assert "上限" in st["label"]
+            assert lv["struct_support"] is None
+            far_trend = p - sup["price"] > 3 * a and p > m5 > m10 and round(m5, 2) > round(m10, 2)
+            assert not far_trend                              # 該進移動停損卻沒進
+            raw = sup["price"] - 0.5 * a
+            assert abs(st["price"] - min(raw, p - 1.5 * a)) < 0.02
+            assert st["basis"] == ("floor" if raw > p - 1.5 * a else "support")
         seen.add(st["basis"])
         if lv["target"]:
             assert lv["rr"] == round((lv["target"] - p) / (p - st["price"]), 1)
-    assert {"cap", "floor", "support"} <= seen
+    assert {"floor", "support", "trail"} <= seen
+
+
+def test_trailing_stop_for_extended_uptrend():
+    closes = seg(20, 10, 20) + seg(10, 30, 40)                # 前低 10 之後一路漲到 30：前低遠＋強勢
+    lv = compute_levels(make(closes))
+    c = pd.Series(closes)
+    assert lv["stop"]["basis"] == "trail" and lv["support"]["kind"] == "ma5"
+    assert abs(lv["support"]["price"] - c.rolling(5).mean().iloc[-1]) < 0.01
+    assert abs(lv["stop"]["price"] - c.rolling(10).mean().iloc[-1]) < 0.01
+    assert lv["stop"]["price"] < lv["support"]["price"] < lv["price"]
+    assert abs(lv["struct_support"]["price"] - 10 * 0.99) < 0.05 and "買回" in lv["stop"]["label"]
+
+
+def test_pullback_far_support_uses_struct_support_without_cap():
+    closes = seg(20, 10, 20) + seg(10, 30, 40) + seg(30, 27, 5)   # 漲完拉回到 5 日線下：不是強勢
+    lv = compute_levels(make(closes))
+    a, sup, st = lv["atr"], lv["support"], lv["stop"]
+    assert sup["kind"] == "swing" and lv["struct_support"] is None and lv["price"] - sup["price"] > 3.5 * a
+    assert st["basis"] == "support" and abs(st["price"] - (sup["price"] - 0.5 * a)) < 0.02   # 沒有 3.5ATR 上限
+
+
+def test_floor_keeps_stop_below_near_support():
+    closes = seg(20, 12, 20) + seg(12, 11, 6) + seg(11, 11.3, 6)   # 波段低點 11 就在現價下方不到 1 ATR
+    lv = compute_levels(make(closes, spread=0.05))
+    p, a, sup, st = lv["price"], lv["atr"], lv["support"], lv["stop"]
+    assert p - sup["price"] < a and st["basis"] == "floor"
+    assert abs(st["price"] - (p - 1.5 * a)) < 0.02 and st["price"] < sup["price"]
 
 
 def test_target_measured_move_and_never_pressure1_only():

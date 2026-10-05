@@ -47,3 +47,24 @@
   - dashboard 片段：REVISE F1（批次 ids 沒 encodeURIComponent）→ 接受（原有程式，一行強化）；F2（thunder 欄位沒 escape）→ 駁回：都是數字，唯一字串 stage 有 _esc；F3（stop.price null 顯示）→ 駁回：_levelsPrimaryStop 只在 price != null 時回傳 lv.stop。
   - 修正後 fresh 再檢查：REVISE F1（th.retrace 為 null 時顯示「回檔 0%」）→ 接受（後端修 thunder bug 後才會出現的狀態）：加 th.retrace != null 判斷。
 - 檢查輪數已用 2（初檢＋修正後複檢）；最後一個一行修正（retrace 判斷）未再送檢，如實記錄。
+
+## 第二階段（2026-10-05 用戶回饋：移動停損＋停損高於支撐很怪）
+- 研究：trailing.py（9＋10 種出場方式）、sup_trend.py（強勢／拉回延伸的支撐）。用戶 5／10 日線規則在強勢延伸 +1.12%（40 天 11 次進出），推薦的 20 日線−1ATR +3.98%、舊上限 +4.75%。子集合支撐 edge 單次洗牌雜訊 ±2～3（10 日線 +4.2 → 20 組平均 +1.9），已改用 20 組平均。
+- AskUserQuestion：用戶選「照我的 5／10 日線規則」「撐用前低、損放前低下方（不設上限）」。依用戶決定設計，PLAN 第 7 節。送第 4 輪計畫審查。
+
+## Round 4（plan_r4.json）— Gemini gemini-2.5-flash：APPROVED（1 low）；Groq gpt-oss-120b：REVISE（只送第 7 節）
+- Gemini F1 + Groq F1（MA NaN）→ 接受：明確 NaN 檢查，NaN 走一般規則（≥30 根門檻下實際不會發生）。
+- Groq F2（移除 basis=cap 破壞下游）→ 駁回：唯一使用者 dashboard，前端對未知 basis 無依賴。
+- Groq F3（價格跳動讓 MA5≤MA10 時 stop≥support）→ 駁回：無狀態、每次用當下 MA 重算，trail 進入條件即 MA5>MA10；floor 分支也必然 stop<support。改在 7.5 寫明不變式並用隨機走勢測試驗證。
+- Groq F4（測試只有正常路徑）→ 接受：60 組隨機走勢（含 30 根短歷史）驗證不變式與 basis 集合。
+
+## Round 5（Groq only，plan_r5_groq.json）— REVISE；已達計畫審查上限 5 輪，停止並記錄主持人立場
+- Groq F5（floor 會讓 stop > support）→ 駁回：floor 是「取較低者」stop＝min(support−0.5ATR, p−1.5ATR)，只在 support > p−ATR 時生效，此時 stop＝p−1.5ATR < p−ATR < support。Groq 例子（support＝p−2.5ATR）不會觸發 floor。仍依 F7 加一個固定案例測試。
+- Groq F6（cap 移除影響下游服務）→ 駁回：全 repo grep `basis`，stop.basis 只有 dashboard.html:1776 與 tests 使用（warrant/futures 的 basis 是期貨基差，無關）。
+- Groq F7（固定案例測 floor）→ 接受。
+- Gemini 第 4 輪已 APPROVED 第 7 節（含 NaN 檢查建議，已採納）。依用戶授權進入實作。
+
+## 第 7 節程式檢查（fresh）
+- Gemini gemini-2.5-flash（price_levels.py、tests 全檔＋dashboard 關鍵價位片段＋diff）：APPROVED，無 findings。
+- Groq gpt-oss-120b（diff；第一次 503 over capacity，重試成功）：REVISE F1「拿掉 _r(m5) > _r(m10)」→ 駁回：這是刻意的，兩線四捨五入相同時畫面上支撐＝停損會破壞「停損 < 支撐」，此時走一般規則；已在程式加註解說明（不改邏輯）。
+- 測試 85 passed。
