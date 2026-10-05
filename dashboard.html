@@ -1801,7 +1801,7 @@ async function showLevels(sid) {
   const fmtD = d => (d && String(d).length === 8) ? `${String(d).slice(4, 6)}/${String(d).slice(6)}` : '';
   const zone = z => z ? (z.low === z.high ? `${z.low}` : `${z.low}～${z.high}`) + (z.touches > 1 ? `（碰過 ${z.touches} 次）` : '') : '—';
   const st = lv.stops || {};
-  const refRows = ['volume_low', 'swing_low', 'prev_low'].filter(k => st[k]).map(k =>
+  const refRows = ['volume_low', 'swing_low', 'prev_low'].filter(k => st[k] && !(lv.struct_support && st[k].price === lv.struct_support.price)).map(k =>   // 跟前低同價的不重複列
     `<div>· <b>${st[k].price}</b> <span class="muted">${_esc(st[k].label)} ${fmtD(st[k].date)}</span></div>`).join('');
   const sup = lv.support, stp = _levelsPrimaryStop(lv);
   const item = (dot, label, val, color, note) => `<div style="margin-top:4px">${dot} ${label} <b style="color:${color}">${val}</b></div>`
