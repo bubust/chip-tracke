@@ -68,3 +68,4 @@
 - Gemini gemini-2.5-flash（price_levels.py、tests 全檔＋dashboard 關鍵價位片段＋diff）：APPROVED，無 findings。
 - Groq gpt-oss-120b（diff；第一次 503 over capacity，重試成功）：REVISE F1「拿掉 _r(m5) > _r(m10)」→ 駁回：這是刻意的，兩線四捨五入相同時畫面上支撐＝停損會破壞「停損 < 支撐」，此時走一般規則；已在程式加註解說明（不改邏輯）。
 - 測試 85 passed。
+- 之後一行小修：明細參考低點去掉跟 struct_support 同價的重複列（未送檢，純顯示）
