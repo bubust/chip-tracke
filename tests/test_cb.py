@@ -70,7 +70,7 @@ def test_evaluate_tiers():
     quotes = [{"date": "2026-10-02", "close": 98.0, "volume": 20, "chg": 0.5}]
     closes = [("20261002", 40.0)]
     r = evaluate(_bond(), 36.5, "發行時", quotes, closes, [], {"ym": "11508", "yoy": 12.0, "cum_yoy": -3.0}, today)
-    assert r["parity"] == round(40 / 36.5 * 100, 2) and r["gap"] > 0 and r["tier"] == "buy"
+    assert r["parity"] == round(40 / 36.5 * 100, 2) and r["gap"] > 0 and r["tier"] == "buy_cb" and r["buy_what"] == "cb"
     assert r["rev_turn"] and "定價後・開放轉換前" in r["stage"] and r["near_par"] and r["shares_per_bond"] == 2740
     shorts = [(f"2026-09-{i:02d}", v) for i, v in enumerate([100, 100, 100, 100, 200, 500], 20)]
     assert evaluate(_bond(), 36.5, "發行時", quotes, closes, shorts, None, today)["tier"] == "exit"
@@ -81,7 +81,7 @@ def test_evaluate_tiers():
     qs = [{"date": f"2026-09-{i:02d}", "close": 105.0, "volume": 10} for i in range(1, 22)] + \
          [{"date": "2026-10-02", "close": 112.0, "volume": 200}]
     r3 = evaluate(_bond(issue_date="2025-01-01"), 40, "發行時", qs, closes, [], {"yoy": 5.0, "cum_yoy": 3.0}, today)
-    assert r3["grab"] and r3["tier"] == "buy"
+    assert r3["grab"] and r3["tier"] == "buy_stock" and r3["buy_what"] == "stock"
 
 
 def test_build_list(tmp_path):

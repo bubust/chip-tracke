@@ -2,7 +2,7 @@
 'use strict';
 
 let _cbRows = [];
-let _cbFilter = 'buy';
+let _cbFilter = null;   // 第一次顯示：有「買股票」就先看它，沒有就看「買債」
 let _cbLoaded = false;
 let _cbPoll = null;
 let _cbSort = { key: null, dir: -1 };   // 表頭點擊排序
@@ -30,11 +30,38 @@ function cbSortBy(key) {
   cbRender();
 }
 const _CB_TIER = {
-  buy: { label: '可以買', cls: 'sig-buy', color: '#ef4444' },
+  buy_stock: { label: '📈 買股票', cls: 'sig-buy', color: '#ef4444', title: '大戶溢價搶 CB＝看好現股 → 要買的是發行公司的股票' },
+  buy_cb: { label: '💵 買債', cls: 'sig-bond', color: '#58a6ff', title: 'CB 貼近面額 100 保底 → 要買的是這張可轉債' },
   chance: { label: '有機會', cls: 'sig-watch', color: '#f59e0b' },
   exit: { label: '該出場', cls: 'sig-avoid', color: '#22c55e' },
   watch: { label: '觀察', cls: 'sig-info', color: '#94a3b8' },
 };
+const _cbFmtTwd = v => Math.round(v * 1000).toLocaleString('zh-TW');   // 百元價 → 一張（面額 10 萬）金額
+
+// 這張 CB 的訊號要買什麼：表格分類欄下面的小字
+function _cbWhatShort(r) {
+  if (r.tier === 'buy_stock') return `買現股 ${_cbE(r.sid)} · `;
+  if (r.tier === 'buy_cb') return '買這張 CB · ';
+  if (r.tier === 'chance' && r.buy_what) return r.buy_what === 'stock' ? '偏買股票 · ' : '偏買債 · ';
+  return '';
+}
+
+// 明細最上面：講清楚要買的是股票還是債、為什麼
+function _cbWhatBox(r) {
+  if (!r.buy_what || !['buy_stock', 'buy_cb', 'chance'].includes(r.tier)) return '';
+  const sure = r.tier !== 'chance', p = r.premium_pct;
+  const head = sure ? '👉 要買的是：' : '👀 還沒符合全部條件；如果要進，看的是：';
+  const box = (c, title, lines) => `<div style="margin-top:8px;padding:8px 10px;border:1px solid ${c}66;background:${c}11;border-radius:8px">
+    <b style="color:${c}">${head}${title}</b>${lines.map(x => `<div>${x}</div>`).join('')}</div>`;
+  if (r.buy_what === 'stock') return box('#ef4444', `現股 ${_cbE(r.sid)} ${_cbE(r.issuer || '')}（股價 ${_cbN(r.stock_price)}）`, [
+    `大戶用溢價 ${_cbP(p)} 搶這張 CB，代表強烈看好現股（CB 是現股的領先指標）。`,
+    `CB 本身已經比理論價貴 ${_cbP(p).replace('+', '')}，買 CB 等於多付這段溢價。`]);
+  const lines = [`面額 100 保底：公司不倒閉，到期至少拿回 100${r.cb_price < 100 ? `；現在低於面額，持有到期每張多拿約 ${_cbFmtTwd(100 - r.cb_price)} 元` : ''}。`];
+  if (p != null) lines.push(p <= 10 ? `溢價 ${_cbP(p)}：股價漲，CB 會跟著漲（保底又能跟漲）。`
+    : p <= 30 ? `溢價 ${_cbP(p)}：股價要先漲約 ${p.toFixed(0)}%，CB 才會明顯跟漲。`
+    : `溢價 ${_cbP(p)}：股價要漲 ${p.toFixed(0)}% 以上 CB 才會動，現在幾乎是純債，安全但賺頭小。`);
+  return box('#58a6ff', `可轉債 ${_cbE(r.code)} ${_cbE(r.name || '')}（CB 價 ${_cbN(r.cb_price)}，一張約 ${_cbFmtTwd(r.cb_price)} 元）`, lines);
+}
 const _cbE = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const _cbN = (v, dp = 2) => v == null ? '—' : Number(v).toLocaleString('zh-TW', { maximumFractionDigits: dp, minimumFractionDigits: dp });
 const _cbD = d => d ? String(d).slice(2).replace(/-/g, '/') : '—';
@@ -82,9 +109,10 @@ function cbRender() {
     && (!q || r.code.includes(q) || (r.name || '').includes(q) || (r.sid || '').includes(q) || (r.issuer || '').includes(q)));
   const counts = { all: base.length };
   base.forEach(r => { counts[r.tier] = (counts[r.tier] || 0) + 1; });
-  document.getElementById('cb-chips').innerHTML = ['buy', 'chance', 'exit', 'watch', 'all'].map(k => {
+  if (!_cbFilter) _cbFilter = counts.buy_stock ? 'buy_stock' : 'buy_cb';
+  document.getElementById('cb-chips').innerHTML = ['buy_stock', 'buy_cb', 'chance', 'exit', 'watch', 'all'].map(k => {
     const t = _CB_TIER[k] || { label: '全部', color: 'var(--accent)' }, on = _cbFilter === k;
-    return `<button onclick="_cbFilter='${k}';cbRender()" style="cursor:pointer;border-radius:14px;padding:3px 12px;font-size:.8rem;border:1px solid ${on ? t.color : '#30363d'};background:${on ? t.color + '22' : 'transparent'};color:${on ? t.color : 'var(--muted)'}">${t.label} <b>${counts[k] || 0}</b></button>`;
+    return `<button onclick="_cbFilter='${k}';cbRender()"${t.title ? ` title="${t.title}"` : ''} style="cursor:pointer;border-radius:14px;padding:3px 12px;font-size:.8rem;border:1px solid ${on ? t.color : '#30363d'};background:${on ? t.color + '22' : 'transparent'};color:${on ? t.color : 'var(--muted)'}">${t.label} <b>${counts[k] || 0}</b></button>`;
   }).join('');
   let rows = base.filter(r => _cbFilter === 'all' || r.tier === _cbFilter);
   const sc = _CB_COLS.find(c => c.key === _cbSort.key);
@@ -109,12 +137,13 @@ function cbRender() {
       return `<tr style="border-top:1px solid #21262d;cursor:pointer" onclick="cbDetail('${_cbE(r.code)}')">
         ${td(wlRowBtn(r.sid, `cbAddWl('${_cbE(r.code)}')`), 'padding:5px 4px;text-align:center')}
         ${td(`<b style="color:var(--accent)">${_cbE(r.code)}</b> ${_cbE(r.name || '')}<br><span style="font-size:.7rem;color:var(--muted)">${_cbE(r.sid)} ${_cbE(r.issuer || '')}</span>`)}
-        ${td(`<span class="sig ${t.cls}">${t.label}</span><br><span style="font-size:.66rem;color:var(--muted)">${r.score} 分</span>`)}
+        ${td(`<span class="sig ${t.cls}">${t.label}</span><br><span style="font-size:.66rem;color:var(--muted)">${_cbWhatShort(r)}${r.score} 分</span>`)}
         ${td(`<b>${_cbN(r.cb_price)}</b>${r.near_par ? `<br><span style="font-size:.66rem;color:#ef4444">${r.cb_price < 100 ? '低於面額' : '貼近面額'}</span>` : ''}`, 'text-align:right')}
         ${td(_cbN(r.stock_price), 'text-align:right')}
         ${td(`${_cbN(r.conv_price)}${r.conv_src !== '發行時' ? `<br><span style="font-size:.64rem;color:var(--muted)">${r.conv_src === '手動' ? '手動' : '已調整'}</span>` : ''}`, 'text-align:right')}
         ${td(_cbN(r.parity, 1), 'text-align:right')}
-        ${td(_cbP(r.premium_pct) + (r.grab ? '<br><span style="font-size:.64rem;color:#ef4444">🔥搶購</span>' : r.lock ? '<br><span style="font-size:.64rem;color:#22c55e">鎖利</span>' : ''), `text-align:right;color:${r.premium_pct == null ? 'var(--muted)' : r.grab ? '#ef4444' : 'var(--text)'}`)}
+        ${td(_cbP(r.premium_pct) + (r.grab ? '<br><span style="font-size:.64rem;color:#ef4444">🔥搶購</span>' : r.lock ? '<br><span style="font-size:.64rem;color:#22c55e">鎖利</span>'
+          : r.near_par && r.premium_pct > 30 ? '<br><span style="font-size:.64rem;color:var(--muted)" title="股價要漲這麼多 CB 才會跟漲">純債型</span>' : ''), `text-align:right;color:${r.premium_pct == null ? 'var(--muted)' : r.grab ? '#ef4444' : 'var(--text)'}`)}
         ${td(flow(r))}
         ${td(_cbP(r.rev_yoy) + (r.rev_turn ? '<br><span style="font-size:.64rem;color:#ef4444">負轉正</span>' : ''), `text-align:right;color:${r.rev_yoy == null ? 'var(--muted)' : r.rev_yoy > 0 ? '#ef4444' : '#22c55e'}`)}
         ${td(r.short_chg5 == null ? (r.short_now != null ? _cbN(r.short_now, 0) + ' 張' : '—') : `${r.short_chg5 >= 0 ? '+' : ''}${_cbN(r.short_chg5, 0)}<br><span style="font-size:.64rem;color:var(--muted)">餘 ${_cbN(r.short_now, 0)}</span>`,
@@ -140,6 +169,7 @@ function cbDetail(code) {
     <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:1rem">${_cbE(r.code)} ${_cbE(r.name || '')}　<span class="sig ${t.cls}">${t.label}</span></b>
       <button class="btn sm ghost" onclick="this.closest('div[style*=fixed]').remove()">✕</button></div>
     <div class="muted" style="font-size:.76rem">發行公司 ${_cbE(r.sid)} ${_cbE(r.issuer || '')}　評分 ${r.score}</div>
+    ${_cbWhatBox(r)}
     ${r.good.length ? `<div style="margin-top:6px"><b style="color:#ef4444">👍 加分</b>${li(r.good, 'var(--text)')}</div>` : ''}
     ${r.warn.length ? `<div><b style="color:#22c55e">⚠️ 注意</b>${li(r.warn, 'var(--text)')}</div>` : ''}
     <div style="margin:4px 0 8px"><b>六大流程</b>　${r.flow.map(f => `<span style="margin-right:8px;${f.on ? (f.n === 4 ? 'color:#22c55e;font-weight:700' : 'color:#ef4444;font-weight:700') : 'color:var(--muted)'}">${f.on ? '●' : f.unknown ? '◌' : '○'} ${f.n}.${_cbE(f.name)}</span>`).join('')}</div>
@@ -194,7 +224,7 @@ function cbChart(code) {
 async function cbAddWl(code) {
   const r = _cbRows.find(x => x.code === code);
   if (!r) return;
-  const note = `可轉債 ${r.code}`;
+  const note = r.tier === 'buy_stock' ? `買股票（可轉債 ${r.code} 搶購）` : r.tier === 'buy_cb' ? `買債：可轉債 ${r.code}` : `可轉債 ${r.code}`;
   try {
     await api('POST', '/api/watchlist', { stock_id: r.sid, name: r.issuer || '', note });
     if (!_wlData.find(x => x.stock_id === r.sid)) _wlData.push({ stock_id: r.sid, name: r.issuer || '', memo: '', note, has_data: false });

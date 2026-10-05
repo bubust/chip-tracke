@@ -247,6 +247,7 @@ details.guide[open]>summary::before{content:'▾ ';}
 .sig-watch{color:#f59e0b;background:#f59e0b22;border-color:#f59e0b66}
 .sig-avoid{color:#22c55e;background:#22c55e1a;border-color:#22c55e55}
 .sig-info{color:#94a3b8;background:#94a3b81a;border-color:#94a3b855}
+.sig-bond{color:#58a6ff;background:#58a6ff22;border-color:#58a6ff66}
 /* 上課筆記分頁 */
 .notes h3{margin:16px 0 6px;font-size:1rem}
 .notes h4{margin:10px 0 6px;font-size:.88rem;color:var(--muted)}
@@ -770,8 +771,14 @@ details.guide[open]>summary::before{content:'▾ ';}
       <summary>📖 使用說明（老王筆記＋上課筆記，有出入以上課筆記為主）</summary>
       <div class="guide-body">
         <b>這頁做什麼：</b>每個交易日 19:05 自動抓櫃買中心的可轉債（發行資料＋每日行情）、轉換價格調整公告、發行公司的融券餘額和月營收，
-        逐檔套用筆記規則分成四類：<span class="sig sig-buy">可以買</span> <span class="sig sig-watch">有機會</span>
+        逐檔套用筆記規則分類：<span class="sig sig-buy">📈 買股票</span> <span class="sig sig-bond">💵 買債</span> <span class="sig sig-watch">有機會</span>
         <span class="sig sig-avoid">該出場</span> <span class="sig sig-info">觀察</span>。表頭都可以點來排序；點任一列看完整理由、六大流程、K 線、加入觀察清單。
+        <div style="margin:6px 0;padding:6px 10px;border-left:3px solid var(--accent);background:#58a6ff0d;line-height:1.8">
+          <b>兩種買法要分清楚：</b><br>
+          <span class="sig sig-buy">📈 買股票</span>　🔥搶購訊號：大戶用溢價搶 CB＝強烈看好現股 → <b>買的是發行公司的股票</b>（CB 本身已經溢價，追 CB 不划算）<br>
+          <span class="sig sig-bond">💵 買債</span>　CB ≤ 102 貼近面額：面額 100 保底 → <b>買的是這張可轉債</b>（價格 × 1000＝一張多少錢）。
+          看「溢價」：10% 以內＝保底又能跟漲；超過 30% 標「純債型」＝股價要漲那麼多 CB 才會動，安全但賺頭小
+        </div>
         <div class="guide-grid">
           <div><b>🧮 神奇公式與折溢價（重點）</b><ul>
             <li><b>理論價值＝股價 ÷ 轉換價 × 100</b>。</li>
@@ -792,7 +799,7 @@ details.guide[open]>summary::before{content:'▾ ';}
           </ul></div>
         </div>
         <div class="muted">
-          分類規則：<b>可以買</b>＝（搶購訊號 或 CB ≤ 102 貼近面額）＋（營收成長 或 低檔發債）＋已轉換 &lt; 50%＋沒有融券大增 ·
+          分類規則：<b>買股票</b>＝搶購訊號、<b>買債</b>＝CB ≤ 102 貼近面額，兩者都要再加（營收成長 或 低檔發債）＋已轉換 &lt; 50%＋CB ≤ 115＋沒有融券大增 ·
           <b>有機會</b>＝符合多項加分（搶購、貼近面額、低檔發債、營收負轉正、CB 量大增、融券大減、兩波時機、已轉換低、站上季線）·
           <b>該出場</b>＝發行公司融券 5 日大增（≥30% 且 ≥100 張）· 低檔發債＝發債日股價在前一年區間 40% 以下 ·
           轉換價用最新「轉換價格調整」公告，沒有就用發行時轉換價（可手動修正）· 僅供參考

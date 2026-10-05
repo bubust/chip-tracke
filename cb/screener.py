@@ -79,7 +79,7 @@ def vol_surge(quotes: list) -> tuple:
 
 def evaluate(b: dict, conv: Optional[float], conv_src: str, quotes: list, closes: list, shorts: list,
              rev: Optional[dict], today: date, ma60: Optional[float] = None, holders: Optional[int] = None) -> dict:
-    """單一可轉債 → 指標＋分類（buy 可以買 / chance 有機會 / exit 該出場 / watch 觀察）"""
+    """單一可轉債 → 指標＋分類（buy_stock 買股票 / buy_cb 買債 / chance 有機會 / exit 該出場 / watch 觀察）"""
     traded = [q for q in quotes if q.get("close")]
     cb_5d = ((traded[-1]["close"] / traded[-6]["close"] - 1) * 100) if len(traded) >= 6 and traded[-6]["close"] else None
     lastq = quotes[-1] if quotes else {}
@@ -163,10 +163,12 @@ def evaluate(b: dict, conv: Optional[float], conv_src: str, quotes: list, closes
         + (2 if rev_turn else 1 if rev_up else 0) + (1 if vsurge and not grab else 0) + (1 if sh["drop"] else 0) \
         + (1 if stage else 0) + (1 if done is not None and done <= 0.2 else 0) + (1 if above_ma60 else 0) \
         - (3 if sh["surge"] else 0) - (1 if done is not None and done >= 0.5 else 0)
+    # 兩種買法分開：搶購＝大戶搶 CB、看好現股 → 買股票；貼近面額＝100 保底 → 買債（CB 本身）
+    buy_what = "stock" if grab else "cb" if near_par else None
     if sh["surge"]:
         tier = "exit"
-    elif (grab or near_par) and (rev_up or is_low) and (done is None or done < 0.5) and (cb_px is None or cb_px <= 115):
-        tier = "buy"
+    elif buy_what and (rev_up or is_low) and (done is None or done < 0.5) and (cb_px is None or cb_px <= 115):
+        tier = "buy_stock" if buy_what == "stock" else "buy_cb"
     elif pts >= 3:
         tier = "chance"
     else:
@@ -192,5 +194,5 @@ def evaluate(b: dict, conv: Optional[float], conv_src: str, quotes: list, closes
         "short_surge": sh["surge"], "short_drop": sh["drop"],
         "cb_vol": vlast, "cb_vol_avg20": vavg, "cb_vol_surge": vsurge,
         "ma60": _r(ma60), "above_ma60": above_ma60, "holders": holders,
-        "flow": flow, "good": good, "warn": warn, "score": pts, "tier": tier,
+        "flow": flow, "good": good, "warn": warn, "score": pts, "tier": tier, "buy_what": buy_what,
     }

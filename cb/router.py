@@ -1,7 +1,7 @@
 """
 可轉債 API
 
-GET  /api/cb/list           篩選結果（tier：buy 可以買 / chance 有機會 / exit 該出場 / watch 觀察）
+GET  /api/cb/list           篩選結果（tier：buy_stock 買股票 / buy_cb 買債 / chance 有機會 / exit 該出場 / watch 觀察）
 GET  /api/cb/status         資料狀態＋更新進度
 POST /api/cb/refresh        背景更新（發行資料、行情、融券、營收、轉換價調整）
 PUT  /api/cb/manual/{code}  手動補目前轉換價、CB 股東人數、備註
@@ -218,7 +218,7 @@ def build_list(conn=None, today: date = None, prices: dict = None) -> list:
                      revs.get(b["sid"]), today, ma60=ma60, holders=m.get("holders"))
         r["note"] = m.get("note")
         out.append(r)
-    order = {"buy": 0, "chance": 1, "exit": 2, "watch": 3}
+    order = {"buy_stock": 0, "buy_cb": 1, "chance": 2, "exit": 3, "watch": 4}
     out.sort(key=lambda r: (order[r["tier"]], -r["score"], r["code"]))
     return out
 
