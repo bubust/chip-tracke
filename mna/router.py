@@ -154,6 +154,10 @@ def deal_signal(r: dict, today: date) -> Optional[dict]:
     if t in MNA_TYPES:
         if r["status"] == "已結束":
             return None
+        if r.get("listed_target") is False:
+            tc = (r.get("target_company") or "").replace("股份有限公司", "")
+            return {"level": "info", "label": f"本公司是收購方（{tc}未上市櫃）",
+                    "tips": [f"收購價是{tc}的每股價格，不是這檔股票的價格，買這檔股票拿不到這個價差", "收購方要出錢，不是公開收購套利的標的"]}
         pre, cur = r.get("premium_pre_pct"), r.get("premium_pct")
         base = pre if pre is not None else cur
         full = r.get("scope") == "完全收購"
@@ -242,7 +246,9 @@ def enrich(rows: list, today: date = None) -> list:
         pp = pre.get((r["target_id"], r.get("first_announce") or r.get("announce_date")))
         r["pre_price"] = pp
         r["premium_pre_pct"] = round((op / pp - 1) * 100, 2) if op and pp else None
-        if r.get("deal_type") in ("減資", "現金增資"):     # 增資的價格是認購價，不是收購價
+        # 公告公司自己是收購方、被收購的是未上市櫃公司（例：嘉泥收購嘉新國際）→ 收購價不是這檔股票的價格
+        r["listed_target"] = r.get("target_id") != r.get("announcer_id") or not r.get("target_company")
+        if r.get("deal_type") in ("減資", "現金增資") or not r["listed_target"]:   # 增資的價格是認購價，不是收購價
             r["premium_pct"] = r["premium_pre_pct"] = None
         pe = r.get("period_end")
         r["days_left"] = (date.fromisoformat(pe) - today).days if pe and r["status"] in ("進行中", "未開始") else None
@@ -254,7 +260,6 @@ def enrich(rows: list, today: date = None) -> list:
         if r.get("deal_type") == "減資" and r.get("period_start") and r["period_start"] <= today.isoformat():
             r["day23"] = _day23(r["target_id"], r["period_start"])
         r["signal"] = deal_signal(r, today)
-        r["listed_target"] = r.get("target_id") != r.get("announcer_id") or not r.get("target_company")
         out.append(r)
     return out
 

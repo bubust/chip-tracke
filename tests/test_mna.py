@@ -129,3 +129,17 @@ def test_signals():
     assert deal_signal({**base, "premium_pre_pct": 20, "premium_pct": 1}, today)["label"] == "價差已收斂"
     assert deal_signal({"deal_type": "現金增資", "deal_kind": "現金增資", "status": "已公告"}, today)["level"] == "avoid"
     assert deal_signal({"deal_type": "減資", "deal_kind": "虧損減資", "status": "未開始", "period_start": "2026-10-20"}, today)["level"] == "watch"
+    # 嘉泥收購未上市的嘉新國際：收購價不是嘉泥的價格，不能給進場訊號
+    unl = deal_signal({**base, "deal_type": "股份轉換", "premium_pre_pct": 21.6, "premium_pct": 21.6, "scope": "完全收購",
+                       "listed_target": False, "target_company": "嘉新國際股份有限公司"}, today)
+    assert unl["level"] == "info" and "收購方" in unl["label"]
+
+
+def test_enrich_unlisted_target_no_premium():
+    r = {"id": 1, "target_id": "1103", "announcer_id": "1103", "target_company": "嘉新國際股份有限公司",
+         "deal_type": "股份轉換", "scope": "完全收購", "offer_price": 15.87, "period_end": "2026-12-01",
+         "first_announce": "2026-09-29", "announce_date": "2026-09-29"}
+    out = enrich([r], date(2026, 10, 5))[0]
+    assert out["listed_target"] is False
+    assert out["premium_pct"] is None and out["annualized_pct"] is None
+    assert out["signal"]["level"] == "info"
