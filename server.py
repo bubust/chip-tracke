@@ -576,6 +576,25 @@ async def lifespan(app: FastAPI):
         _price_sched.start()
     except Exception as _pce:
         import logging; logging.getLogger(__name__).warning(f"[price_cache_scheduler] {_pce}")
+    # 持股盯盤（PLAN-POSITIONS.md）：盤中 9～13 點每小時第 5 分、收盤後 14:40（price_cache 14:30 之後）
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler as _PosSched
+        import pytz as _pospytz
+        _pos_watch = _PosSched(timezone=_pospytz.timezone("Asia/Taipei"))
+        def _pos_job(phase):
+            import logging as _lg
+            try:
+                items = check_positions(phase)
+                _lg.getLogger(__name__).info(f"[positions] {phase} 檢查完成，通知 {len(items)} 則")
+            except Exception as _pe:
+                _lg.getLogger(__name__).error(f"[positions] {phase}: {_pe}")
+        _pos_watch.add_job(lambda: _pos_job("intraday"), "cron", day_of_week="mon-fri", hour="9-13", minute=5,
+                           id="positions_intraday", replace_existing=True)
+        _pos_watch.add_job(lambda: _pos_job("close"), "cron", day_of_week="mon-fri", hour=14, minute=40,
+                           id="positions_close", replace_existing=True)
+        _pos_watch.start()
+    except Exception as _pwe:
+        import logging; logging.getLogger(__name__).warning(f"[positions_scheduler] {_pwe}")
     # ── 全市場掃描排程：每個交易日 18:00 自動執行（備援：GitHub Actions）──
     _scan_sched = None
     try:
@@ -754,7 +773,7 @@ app = FastAPI(title="籌碼追蹤系統", lifespan=lifespan)
 _AUTH_EXEMPT = {"/api/auth/login"}
 # 讀取也要登入的診斷端點（會露出觀察清單、推播紀錄、資料源原始回應）
 _AUTH_READ_PREFIXES = ("/api/debug", "/api/watchlist/debug", "/api/ingest/debug", "/api/ingest/log",
-                       "/warrant/api/ingest/debug", "/warrant/api/ingest/log", "/api/push-log")
+                       "/warrant/api/ingest/debug", "/warrant/api/ingest/log", "/api/push-log", "/api/positions")
 
 
 @app.middleware("http")
@@ -2387,7 +2406,7 @@ async def api_watchlist_summary():
     mkt_map    = dict(zip(stocks_df["stock_id"], stocks_df["type"]))
 
     conn = get_conn()
-    rows = conn.execute("SELECT stock_id, name, note, memo, added_at FROM watchlist ORDER BY added_at").fetchall()
+    rows = conn.execute("SELECT stock_id, name, note, memo, added_at, cost, cost_at FROM watchlist ORDER BY added_at").fetchall()
     conn.close()
 
     stock_ids = [r["stock_id"] for r in rows]
@@ -2442,6 +2461,8 @@ async def api_watchlist_summary():
             "added_at":   (r["added_at"] or "") if "added_at" in r.keys() else "",
             "added_price":      (added_px.get(sid) or (None, None))[0],
             "added_price_date": (added_px.get(sid) or (None, None))[1],
+            "cost":       r["cost"] if "cost" in r.keys() else None,
+            "cost_at":    r["cost_at"] if "cost_at" in r.keys() else None,
             "close":      price_info.get("close"),
             "change_pct": price_info.get("change_pct"),
             "bb_score":   price_info.get("bb_score"),  # None → 前端顯示 "—"（MIS/FinMind fallback 無OHLCV無法計算BB）
@@ -3687,11 +3708,15 @@ def api_screen_status():
 _levels_cache: dict = {}
 
 
-def _levels_for(sid: str) -> dict:
-    """單支股票關鍵價位（price_levels.compute_levels），10 分鐘快取"""
+def _levels_for(sid: str, fresh: bool = False) -> dict:
+    """單支股票關鍵價位（price_levels.compute_levels），10 分鐘快取；fresh=True 先丟掉快取（盯盤要用即時價）
+    另外算「到前一根 K 棒為止」的停損／目標存在 prev：價位是用當下價格重算的（跌下去停損也跟著往下找），
+    要判斷「今天跌破停損」必須跟昨天算出的那條線比（PLAN-POSITIONS.md 4.2）"""
     import time as _t
     from yahoo_price import _fetch_for_scan, get_stock_list
     from price_levels import compute_levels
+    if fresh:
+        _levels_cache.pop(sid, None)
     hit = _levels_cache.get(sid)
     if hit and _t.time() - hit[0] < 600:
         return hit[1]
@@ -3712,15 +3737,46 @@ def _levels_for(sid: str) -> dict:
         except Exception:
             pass
         res = {"stock_id": sid, "name": name, **compute_levels(df, tp)}
+        if len(df) >= 31 and not res.get("error"):
+            pv = compute_levels(df.iloc[:-1], tp)
+            if not pv.get("error"):
+                res["prev"] = {"date": pv.get("date"), "stop": (pv.get("stop") or {}).get("price"), "target": pv.get("target")}
     _levels_cache[sid] = (_t.time(), res)
     return res
+
+
+def _watch_refs(sids) -> dict:
+    """{sid: (參考價, kind)}：觀察清單裡有成本價 → ("cost")；沒有 → 加入日收盤 ("added")；不在清單 → 沒有"""
+    sids = list(sids)
+    if not sids:
+        return {}
+    conn = get_conn()
+    q = ",".join("?" * len(sids))
+    rows = conn.execute(f"SELECT stock_id, added_at, cost FROM watchlist WHERE stock_id IN ({q})", sids).fetchall()
+    conn.close()
+    out, need_added = {}, []
+    for r in rows:
+        if r["cost"] is not None and float(r["cost"]) > 0:
+            out[r["stock_id"]] = (float(r["cost"]), "cost")
+        else:
+            need_added.append(r)
+    for sid, (px, _d) in _added_prices(need_added).items():
+        out[sid] = (px, "added")
+    return out
+
+
+def _levels_with_ref(sid: str, refs: dict, fresh: bool = False) -> dict:
+    from price_levels import apply_entry_floor
+    lv = _levels_for(sid, fresh)
+    entry, kind = refs.get(sid, (None, "added"))
+    return apply_entry_floor(lv, entry, kind, lv.get("prev"))
 
 
 @app.get("/api/levels/{stock_id}")
 def api_levels(stock_id: str):
     """關鍵價位：第一／第二壓力區、目標價、停損（爆量低點／波段低點／前低／上漲模式出場）"""
     sid = _check_sid(stock_id)
-    return JSONResponse(content=_sanitize_for_json(_levels_for(sid)))
+    return JSONResponse(content=_sanitize_for_json(_levels_with_ref(sid, _watch_refs([sid]))))
 
 
 @app.get("/api/levels")
@@ -3729,10 +3785,137 @@ def api_levels_batch(ids: str = ""):
     from concurrent.futures import ThreadPoolExecutor
     sids = [x for x in (i.strip() for i in ids.split(",")) if _SID_OK.match(x)][:40]
     out = {}
+    refs = _watch_refs(sids)
     with ThreadPoolExecutor(max_workers=4) as ex:
-        for sid, res in zip(sids, ex.map(lambda x: _levels_for(x), sids)):
+        for sid, res in zip(sids, ex.map(lambda x: _levels_with_ref(x, refs), sids)):
             out[sid] = res
     return JSONResponse(content=_sanitize_for_json(out))
+
+
+# ── 持有模式：成本價＋盯盤推播（PLAN-POSITIONS.md）────────────────────────────
+_TW_TZ = timezone(timedelta(hours=8))
+_POS_HEAD = {
+    "stop_warn":  ("⚠️", "盤中跌破停損（收盤確認才算）"),
+    "stop_close": ("🛑", "收盤跌破停損，依規則出場"),
+    "stop_clear": ("✅", "收盤站回停損之上，盤中預警解除"),
+    "target":     ("🎯", "碰到目標價"),
+}
+
+
+@app.post("/api/watchlist/{stock_id}/cost")
+async def api_update_cost(stock_id: str, request: Request):
+    """設定／清除成本價：有成本＝持有模式（停損不低於成本 −10%、盯盤推播）；清除＝觀察模式"""
+    stock_id = _check_sid(stock_id)
+    body = await request.json()
+    raw = body.get("cost")
+    conn = get_conn()
+    found = conn.execute("SELECT 1 FROM watchlist WHERE stock_id=?", (stock_id,)).fetchone()
+    conn.close()
+    if not found:
+        raise HTTPException(status_code=404, detail="這檔不在觀察清單")
+    if raw in (None, "", 0, "0"):
+        conn = get_conn()
+        conn.execute("UPDATE watchlist SET cost=NULL, cost_at=NULL WHERE stock_id=?", (stock_id,))
+        conn.commit()
+        conn.close()
+        return {"ok": True, "cost": None, "cost_at": None}
+    try:
+        cost = float(raw)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="成本價要是數字")
+    import math as _m
+    if not _m.isfinite(cost) or not (0 < cost < 100000):
+        raise HTTPException(status_code=400, detail="成本價不合理")
+    try:
+        price = (await asyncio.to_thread(_levels_for, stock_id)).get("price")
+    except Exception:
+        price = None
+    if price and not (0.2 * price <= cost <= 5 * price):
+        raise HTTPException(status_code=400, detail=f"成本價 {cost} 跟現價 {price} 差太多，請確認小數點")
+    cost = round(cost, 2)
+    cost_at = datetime.now(_TW_TZ).strftime("%Y-%m-%d %H:%M")
+    conn = get_conn()
+    conn.execute("UPDATE watchlist SET cost=?, cost_at=? WHERE stock_id=?", (cost, cost_at, stock_id))
+    conn.commit()
+    conn.close()
+    return {"ok": True, "cost": cost, "cost_at": cost_at}
+
+
+def _pos_sent(sid: str, key: str) -> bool:
+    conn = get_conn()
+    hit = conn.execute("SELECT 1 FROM push_log WHERE stock_id=? AND signal_title=? AND ok=1 LIMIT 1", (sid, key)).fetchone()
+    conn.close()
+    return hit is not None
+
+
+def _pos_message(typ: str, sid: str, name: str, lv: dict, cost: float) -> str:
+    import html as _h
+    emoji, head = _POS_HEAD[typ]
+    al, e, st = lv.get("alerts") or {}, lv.get("entry") or {}, lv.get("stop") or {}
+    lines = [f"{emoji} <b>{_h.escape(sid)} {_h.escape(name or '')}</b>　{head}",
+             f"現價 {lv.get('price')}（成本 {cost}，{(e.get('pnl_pct') or 0):+.1f}%）"]
+    if typ.startswith("stop"):
+        lines.append(f"昨天算出的停損線 {al.get('stop_ref')}（含成本 −10% 底線 {e.get('floor')}）")
+    if typ == "target":
+        lines.append(f"目標價 {al.get('target_ref')}，今天最高 {lv.get('high')}")
+    if st:
+        lines.append(f"目前停損 {st.get('price')}：{_h.escape(st.get('label') or '')}")
+    lines.append("— 牆泥袋溥的戰術中心")
+    return "\n".join(lines)
+
+
+def check_positions(phase: str, dry: bool = False) -> list:
+    """持有股（有成本價）盯盤：phase＝intraday／close。只在「最新 K 棒是今天」時檢查（國定假日不會把上一個交易日的事件再發一次）；
+    同股、同種通知、同一個交易日只發一次（push_log 有 ok=1 紀錄就不發；失敗下次排程自動重試）"""
+    import logging as _lg
+    log = _lg.getLogger(__name__)
+    today = datetime.now(_TW_TZ).strftime("%Y%m%d")
+    conn = get_conn()
+    rows = conn.execute("SELECT stock_id, name, cost FROM watchlist WHERE cost IS NOT NULL AND cost > 0").fetchall()
+    conn.close()
+    token, chat = tg_creds()
+    out = []
+    for r in rows:
+        sid, cost = r["stock_id"], float(r["cost"])
+        try:
+            lv = _levels_with_ref(sid, {sid: (cost, "cost")}, fresh=True)
+        except Exception as ex:
+            log.warning(f"[positions] {sid}: {ex}")
+            continue
+        if lv.get("error") or str(lv.get("date") or "").replace("-", "") != today:
+            continue
+        al = lv.get("alerts") or {}
+        types = []
+        if al.get("stop_hit"):
+            types.append("stop_warn" if phase == "intraday" else "stop_close")
+        elif phase == "close" and _pos_sent(sid, f"pos:stop_warn:{today}"):
+            types.append("stop_clear")
+        if al.get("target_hit"):
+            types.append("target")
+        for typ in types:
+            key = f"pos:{typ}:{today}"
+            if _pos_sent(sid, key):
+                continue
+            text = _pos_message(typ, sid, r["name"] or lv.get("name") or "", lv, cost)
+            item = {"stock_id": sid, "type": typ, "key": key, "text": text, "sent": False}
+            if not dry:
+                if token and chat:
+                    ok = asyncio.run(tg_send(text))
+                    log_push(sid, _POS_HEAD[typ][0], key, ok)
+                    item["sent"] = ok
+                else:
+                    log.info(f"[positions] Telegram 沒設定，略過 {sid} {typ}")
+            out.append(item)
+    return out
+
+
+@app.get("/api/positions/check")
+async def api_positions_check(phase: str = "close"):
+    """只試算、不發送：回傳現在檢查會發哪些持股通知（驗證／除錯用）"""
+    if phase not in ("intraday", "close"):
+        raise HTTPException(status_code=400, detail="phase 只能是 intraday 或 close")
+    items = await asyncio.to_thread(check_positions, phase, True)
+    return JSONResponse(content=_sanitize_for_json({"phase": phase, "dry": True, "items": items}))
 
 
 @app.get("/api/screen/warrant-top")

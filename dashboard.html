@@ -1770,11 +1770,16 @@ function _levelsCell(s) {
         const p1 = lv.pressure1 ? lv.pressure1.low : null, p2 = lv.pressure2 ? lv.pressure2.low : null;
         const sup = lv.support ? lv.support.price : null, stop = _levelsPrimaryStop(lv);
         const icon = lv.mode && lv.mode !== '一般' ? `<span style="color:#a78bfa"> ${lv.mode.startsWith('平地') ? '⚡' : '▭'}</span>` : '';
+        const held = lv.entry && lv.entry.kind === 'cost';
+        const al = lv.alerts || {};
+        const flag = al.stop_hit ? `<br><b style="color:#fff;background:#dc2626;border-radius:4px;padding:0 4px;font-size:.68rem" title="今天價格跌破昨天的停損線 ${al.stop_ref}">已跌破停損</b>`
+          : al.target_hit ? `<br><b style="color:#fff;background:#ea580c;border-radius:4px;padding:0 4px;font-size:.68rem" title="今天最高碰到昨天的目標價 ${al.target_ref}">已到目標</b>` : '';
         return `<span style="font-size:.74rem;line-height:1.45;display:inline-block;white-space:nowrap">
-          ${lv.target != null ? `<span style="color:#ef4444;font-weight:700">標 ${lv.target}</span>` : '<span class="muted">標 —</span>'}${icon}
+          ${held ? `<span title="持有中：成本 ${lv.entry.price}（${lv.entry.pnl_pct > 0 ? '+' : ''}${lv.entry.pnl_pct}%）">💼</span>` : ''}${lv.target != null ? `<span style="color:#ef4444;font-weight:700">標 ${lv.target}</span>` : '<span class="muted">標 —</span>'}${icon}
           <br>${p1 != null ? `<span style="color:#f59e0b">壓 ${p1}${p2 != null ? ' · ' + p2 : ''}</span>` : '<span class="muted">無前高</span>'}
           <br><span style="color:#4ade80">撐 ${sup ?? '—'}</span> · <span style="color:#22c55e;font-weight:700">損 ${stop ? stop.price : '—'}</span>${lv.stop && lv.stop.basis === 'trail' ? '<span style="font-size:.66rem;color:#a78bfa" title="強勢股離前低太遠：撐看 10 日線，停損＝20 日線 − 1 ATR，跟著月線上移"> 移動</span>'
-            : lv.stop && lv.stop.basis === 'risk' ? '<span class="muted" style="font-size:.66rem" title="前低太遠、又不是強勢：附近沒有可靠支撐，停損用現價 − 3.5 ATR"> 風險上限</span>' : ''}</span>`;
+            : lv.stop && lv.stop.basis === 'risk' ? '<span class="muted" style="font-size:.66rem" title="前低太遠、又不是強勢：附近沒有可靠支撐，停損用現價 − 3.5 ATR"> 風險上限</span>'
+            : lv.stop && lv.stop.basis === 'entry10' ? `<span style="font-size:.66rem;color:#f472b6" title="停損不低於${held ? '成本' : '加入價'} ${lv.entry.price} 的 −10%"> ${held ? '成本' : '加入'}−10%</span>` : ''}${flag}</span>`;
       })();
   return `<td id="levels-${s.stock_id}" onclick="event.stopPropagation();showLevels('${_jsq(s.stock_id)}')" style="cursor:pointer" title="點開看關鍵價位">${inner}</td>`;
 }
@@ -1819,6 +1824,21 @@ async function showLevels(sid) {
   const ma5Row = lv.stop && lv.stop.basis === 'trail' && lv.ma5 != null ? `<div>· <b>${lv.ma5}</b> <span class="muted">5 日線：短線參考（回測顯示用 5／10 日線頻繁進出容易被洗，停損以移動停損為準）</span></div>` : '';
   const sizePct = lv.downside_pct != null && lv.downside_pct < 0 ? Math.min(100, 2 / -lv.downside_pct * 100) : null;
   const sizeRow = sizePct != null ? `<div class="muted" style="margin-top:4px;font-size:.76rem">📏 部位建議：若每筆最多虧總資金 2%，這檔最多放總資金的 <b style="color:var(--text)">${sizePct.toFixed(0)}%</b>（停損 ${lv.downside_pct}%；停損寬就買少一點，不要把停損縮緊）</div>` : '';
+  const en = lv.entry, al = lv.alerts || {};
+  const alertHtml = al.stop_hit ? `<div style="margin-top:8px;padding:6px 8px;border-radius:6px;background:#dc262622;color:#f87171">🛑 今天價格 ${lv.price} 跌破昨天的停損線 <b>${al.stop_ref}</b></div>`
+    : al.target_hit ? `<div style="margin-top:8px;padding:6px 8px;border-radius:6px;background:#ea580c22;color:#fb923c">🎯 今天最高 ${lv.high} 碰到昨天的目標價 <b>${al.target_ref}</b></div>` : '';
+  const wlItem = (_wlData || []).find(x => x.stock_id === sid);
+  const posHtml = !wlItem ? '' : `<div style="margin-top:10px;padding:8px 10px;border:1px solid #f472b655;border-radius:8px;font-size:.8rem;line-height:1.7">
+      <b>💼 持有設定</b>　${en ? (en.kind === 'cost'
+        ? `持有模式：成本 <b>${en.price}</b>（${en.pnl_pct > 0 ? '+' : ''}${en.pnl_pct}%），底線 ${en.floor}`
+        : `觀察模式：加入價 <b>${en.price}</b>（${en.pnl_pct > 0 ? '+' : ''}${en.pnl_pct}%），底線 ${en.floor}`) : '<span class="muted">（查不到加入日股價）</span>'}
+      <div style="display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap">
+        <input id="pos-cost-${_esc(sid)}" type="number" step="0.01" inputmode="decimal" placeholder="我的成本價" value="${en && en.kind === 'cost' ? en.price : ''}" style="width:120px;font-size:16px">
+        <button class="btn sm" onclick="savePosCost('${_jsq(sid)}', false)">儲存</button>
+        ${en && en.kind === 'cost' ? `<button class="btn sm ghost" onclick="savePosCost('${_jsq(sid)}', true)">清除（改回觀察）</button>` : ''}
+      </div>
+      <div class="muted" style="font-size:.72rem">有填成本＝持有模式：停損不低於成本 −10%，盤中每小時＋收盤後檢查，跌破停損或碰到目標發 Telegram。沒填＝觀察模式：用加入日收盤價 −10%，只在網頁標示。（研究：加這條底線報酬少約 0.25%、最差 5% 的情況少虧約 3.7%）</div>
+    </div>`;
   const upExit = st.uptrend_exit ? `<div style="margin-top:8px;color:#a78bfa">⚡ 上漲模式出場：收盤跌破 <b>${st.uptrend_exit.price}</b>（今天低點）就出場</div>` : '';
   const th = lv.thunder;
   const thHtml = th ? `<div style="margin-top:10px;padding:8px 10px;border:1px solid #a78bfa55;border-radius:6px;font-size:.8rem;line-height:1.7">
@@ -1835,7 +1855,7 @@ async function showLevels(sid) {
       <b style="font-size:1rem">${_esc(sid)} ${_esc(name)}</b><button class="btn sm ghost" onclick="this.closest('div[style*=fixed]').remove()">✕</button></div>
     ${lv.error ? `<div class="muted">${_esc(lv.error)}</div>` : `
     <div class="muted" style="margin-bottom:8px">現價 <b style="color:var(--text)">${lv.price}</b>（${fmtD(lv.date)}）· 型態：<b style="color:#a78bfa">${_esc(lv.mode)}</b></div>
-    <div style="line-height:1.7">${fivesHtml}</div>${sizeRow}${upExit}
+    <div style="line-height:1.7">${fivesHtml}</div>${sizeRow}${upExit}${alertHtml}${posHtml}
     ${refRows || structRow || ma5Row ? `<div style="margin-top:10px;font-size:.8rem"><b>參考低點</b>（你的規則：跌破爆量低點出場、站回是假跌破）${structRow}${ma5Row}${refRows}</div>` : ''}${thHtml}
     ${(lv.notes || []).length ? `<div style="margin-top:8px;font-size:.78rem;color:#f59e0b">${lv.notes.map(_esc).join('<br>')}</div>` : ''}
     <div style="margin-top:12px;display:flex;gap:8px"><button class="btn sm" onclick="this.closest('div[style*=fixed]').remove();openWlChart('${_jsq(sid)}')">📈 K 線（畫出價位線）</button></div>
@@ -1843,6 +1863,26 @@ async function showLevels(sid) {
   </div>`;
   document.body.appendChild(m);
 }
+// 持有模式：存／清成本價，之後重抓這檔的關鍵價位
+async function savePosCost(sid, clear) {
+  const inp = document.getElementById(`pos-cost-${sid}`);
+  const v = clear ? null : (inp ? inp.value.trim() : '');
+  if (!clear && !v) { toast('請輸入成本價', true); return; }
+  try {
+    const r = await api('POST', `/api/watchlist/${encodeURIComponent(sid)}/cost`, { cost: clear ? null : Number(v) });
+    const item = (_wlData || []).find(x => x.stock_id === sid);
+    if (item) { item.cost = r.cost; item.cost_at = r.cost_at; }
+    delete _levelsData[sid];
+    toast(clear ? '已清除成本價，改回觀察模式' : `已設定成本價 ${r.cost}（持有模式）`);
+    document.querySelectorAll('div[style*=fixed]').forEach(e => { if (e.style.zIndex === '10001') e.remove(); });
+    const lv = await api('GET', `/api/levels/${encodeURIComponent(sid)}`);
+    _levelsData[sid] = lv;
+    const td = document.getElementById(`levels-${sid}`);
+    if (td && item) td.outerHTML = _levelsCell(item);
+    showLevels(sid);
+  } catch (e) { toast(e.message, true); }
+}
+
 // K 線畫上關鍵價位線
 async function _drawLevelLines(series, sid) {
   if (!series || !sid || String(sid).startsWith('__idx_')) return;
@@ -1856,7 +1896,8 @@ async function _drawLevelLines(series, sid) {
   const basis = lv.stop && lv.stop.basis;
   if (lv.support) add(lv.support.price, '#4ade80', basis === 'trail' ? '10日線' : '支撐');
   const sp = _levelsPrimaryStop(lv);
-  if (sp) add(sp.price, '#22c55e', basis === 'trail' ? '移動停損' : basis === 'risk' ? '風險上限' : '停損', 0, 2);
+  if (sp) add(sp.price, '#22c55e', basis === 'trail' ? '移動停損' : basis === 'risk' ? '風險上限'
+    : basis === 'entry10' ? (lv.entry && lv.entry.kind === 'cost' ? '成本−10%' : '加入−10%') : '停損', 0, 2);
   const st = lv.stops || {};
   if (st.uptrend_exit) add(st.uptrend_exit.price, '#a78bfa', '破此出場', 1);
 }
@@ -5654,9 +5695,9 @@ async function saveAllStratParams() {
   </div>
 </div>
 
-<script src="/treasury/static/treasury.js?v=20261005e"></script>
-<script src="/mna/static/mna.js?v=20261005e"></script>
-<script src="/cb/static/cb.js?v=20261005e"></script>
-<script src="/notes/static/notes.js?v=20261005e"></script>
+<script src="/treasury/static/treasury.js?v=20261005f"></script>
+<script src="/mna/static/mna.js?v=20261005f"></script>
+<script src="/cb/static/cb.js?v=20261005f"></script>
+<script src="/notes/static/notes.js?v=20261005f"></script>
 </body>
 </html>

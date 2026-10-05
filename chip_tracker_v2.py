@@ -210,6 +210,13 @@ def init_db():
         conn.commit()
     except Exception:
         pass
+    # 持有模式：成本價（PLAN-POSITIONS.md；個人資料只存本機 SQLite，跟 memo 一樣）
+    for col in ("cost REAL", "cost_at TEXT"):
+        try:
+            conn.execute(f"ALTER TABLE watchlist ADD COLUMN {col}")
+            conn.commit()
+        except Exception:
+            pass
     conn.close()
 
 

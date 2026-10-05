@@ -23,6 +23,7 @@ price_levels.py — 依使用者的看盤邏輯算關鍵價位（觀察清單、
 """
 from __future__ import annotations
 
+import copy
 import math
 from typing import Optional
 
@@ -332,7 +333,7 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
         notes.append(f"昨天跌破爆量低點 {vl['price']}、今天站回 → 假跌破")
 
     return {
-        "price": _r(price), "date": str(df["date"].iloc[last]), "mode": mode,
+        "price": _r(price), "high": _r(h[last]), "date": str(df["date"].iloc[last]), "mode": mode,
         "pressure1": p1, "pressure2": p2, "zones": zones[:4],
         "target": _r(target), "target_method": method, "target_kind": target_kind,
         "upside_pct": _r((target / price - 1) * 100, 1) if target else None,
@@ -342,3 +343,55 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
         "measured": {k: (_r(x, 3) if isinstance(x, float) else x) for k, x in mm.items()} if mm else None,
         "stops": stops, "thunder": th, "ma_near": ma_near, "notes": notes,
     }
+
+
+def apply_entry_floor(lv: dict, entry: Optional[float], kind: str = "added", prev: Optional[dict] = None) -> dict:
+    """觀察／持有模式（PLAN-POSITIONS.md）：停損不低於 參考價 ×0.9。
+    kind＝"cost"（持有：成本價）或 "added"（觀察：加入日收盤價）。不改傳入的 dict，回傳新的。
+    研究（research/levels/trailing.py）：線上規則加這條，40 天平均 +2.39% → +2.15%，最差 5% −16.9% → −13.2%。
+    alerts 跟 prev（到前一根 K 棒為止算出的 {stop, target}）比：價位用當下價格重算，跌下去停損也會往下移，
+    跟「現在的停損」比永遠不會跌破。"""
+    out = copy.deepcopy(lv)
+    if not out or out.get("error") or not out.get("price") or out["price"] <= 0:
+        return out
+    price = out["price"]
+    floor = round(entry * 0.9, 2) if entry and entry > 0 else None
+    if floor is None:
+        out["alerts"] = _alerts(out, None, prev)
+        return out
+    name = "成本" if kind == "cost" else "加入價"
+    out["entry"] = {"price": _r(entry), "kind": kind, "floor": floor, "pnl_pct": _r((price / entry - 1) * 100, 1)}
+    stop = out.get("stop")
+    if stop is None or floor > stop["price"]:
+        out["stop_before_floor"] = stop
+        breached = floor >= price
+        label = f"{name} {_r(entry)} −10% 底線，收盤跌破出場"
+        out["stop"] = {"price": floor, "basis": "entry10",
+                       "label": ("已跌破！" if breached else "") + label, "breached": breached}
+        sup = out.get("support")
+        if sup is not None and floor >= sup["price"]:     # 維持「有支撐時停損 < 支撐」
+            if not out.get("struct_support"):
+                out["struct_support"] = sup
+            out["support"] = None
+        tgt = out.get("target")
+        if breached:
+            out["rr"], out["downside_pct"] = None, None
+        else:
+            out["downside_pct"] = _r((floor / price - 1) * 100, 1)
+            out["rr"] = _r((tgt - price) / (price - floor), 1) if tgt else None
+    out["alerts"] = _alerts(out, floor, prev)
+    return out
+
+
+def _alerts(out: dict, floor: Optional[float], prev: Optional[dict]) -> dict:
+    """今天有沒有跌破停損／碰到目標：有 prev 用前一根的停損（再套底線）與目標；沒有 prev 才用現在的"""
+    if prev is not None:
+        stop_ref = max([x for x in (prev.get("stop"), floor) if x is not None], default=None)
+        target_ref = prev.get("target")
+    else:
+        stop_ref = (out.get("stop") or {}).get("price")
+        target_ref = out.get("target")
+    high = out.get("high")
+    return {"stop_ref": stop_ref, "target_ref": target_ref,
+            "stop_hit": bool(stop_ref is not None and out["price"] < stop_ref),
+            "target_hit": bool(target_ref is not None and high is not None and high >= target_ref)}

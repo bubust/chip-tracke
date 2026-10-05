@@ -199,3 +199,57 @@ def test_thunder_first_high_below_breakout_no_crash():
     assert th is not None and th["retrace"] is None and th["target"] is None and "量不出來" in th["stage"]
     lv = compute_levels(df)
     assert lv["target_kind"] != "thunder" and lv["stop"]
+
+
+# ── 觀察／持有模式：進場價 −10% 底線（PLAN-POSITIONS.md）─────────────────────
+from price_levels import apply_entry_floor
+
+
+def _lv(price=100.0, stop=95.0, support=97.0, target=110.0, high=None):
+    return {"price": price, "high": high if high is not None else price, "stop": {"price": stop, "basis": "support", "label": "x"},
+            "support": {"price": support, "kind": "swing", "label": "波段低點", "date": "20261001"},
+            "struct_support": None, "target": target, "rr": 1.0, "downside_pct": -5.0}
+
+
+def test_entry_floor_not_binding_keeps_stop_and_adds_entry():
+    lv = _lv(stop=95)
+    out = apply_entry_floor(lv, 100, "added")
+    assert out["stop"]["price"] == 95 and out["entry"] == {"price": 100, "kind": "added", "floor": 90.0, "pnl_pct": 0.0}
+    assert lv.get("entry") is None                                  # 不改原 dict
+
+
+def test_entry_floor_binds_and_moves_support_when_above_it():
+    out = apply_entry_floor(_lv(price=100, stop=80, support=85, target=120), 100, "cost")
+    st = out["stop"]
+    assert st["price"] == 90 and st["basis"] == "entry10" and "成本" in st["label"] and not st["breached"]
+    assert out["support"] is None and out["struct_support"]["price"] == 85     # 停損不能高於支撐 → 支撐移到參考
+    assert out["stop_before_floor"]["price"] == 80
+    assert out["downside_pct"] == -10.0 and out["rr"] == 2.0
+
+
+def test_entry_floor_breached_and_no_original_stop():
+    out = apply_entry_floor({**_lv(price=85, stop=None, target=120), "stop": None}, 100, "cost")
+    assert out["stop"]["price"] == 90 and out["stop"]["breached"] and out["stop"]["label"].startswith("已跌破")
+    assert out["rr"] is None and out["downside_pct"] is None and out["alerts"]["stop_hit"]
+
+
+def test_alerts_use_previous_bar_levels_plus_floor():
+    lv = _lv(price=93, stop=88, support=90, target=110, high=94)
+    prev = {"date": "20261004", "stop": 94.0, "target": 93.5}
+    out = apply_entry_floor(lv, 100, "added", prev)
+    assert out["alerts"]["stop_ref"] == 94.0 and out["alerts"]["stop_hit"]          # 93 < 昨天的 94
+    assert out["alerts"]["target_ref"] == 93.5 and out["alerts"]["target_hit"]      # 今天最高 94 ≥ 昨天目標 93.5
+    out = apply_entry_floor(lv, 120, "cost", {"date": "x", "stop": None, "target": None})
+    assert out["alerts"]["stop_ref"] == 108.0 and out["alerts"]["stop_hit"] and not out["alerts"]["target_hit"]
+    out = apply_entry_floor(lv, None, "added", {"date": "x", "stop": None, "target": None})
+    assert out["alerts"]["stop_ref"] is None and not out["alerts"]["stop_hit"]
+
+
+def test_falling_price_only_detected_against_previous_stop():
+    """回歸：價位用當下價格重算，股價跌下去停損也跟著往下 → 用「現在的停損」永遠抓不到跌破，要用前一根算出的"""
+    closes = seg(20, 10, 20) + seg(10, 20, 20) + seg(20, 18.5, 8) + [16.0]          # 最後一天大跌
+    df = make(closes)
+    now, prev = compute_levels(df), compute_levels(df.iloc[:-1])
+    assert now["price"] > now["stop"]["price"]                                       # 重算的停損永遠在現價下面
+    out = apply_entry_floor(now, None, "added", {"date": prev["date"], "stop": prev["stop"]["price"], "target": prev["target"]})
+    assert prev["stop"]["price"] > now["price"] and out["alerts"]["stop_hit"]

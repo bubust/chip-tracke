@@ -228,3 +228,6 @@
 - 單元測試：80 組隨機走勢驗證不變式與各 basis 的公式；固定案例：強勢延伸（MA10／MA20−1ATR）、拉回延伸（support None、p−3.5ATR）、floor。
 - 線上：/api/levels/2409 → 撐＝10 日線、損＝20 日線 − 1ATR、basis=trail。
 - 計畫審查已達 5 輪上限；此節採用的是已審過的第 7.1 節推薦方案，改以 fresh 程式檢查（Gemini＋Groq）把關。
+
+## 9. 後續（PLAN-POSITIONS.md）
+compute_levels 新增回傳欄位 `high`（最後一根 K 棒最高價，給持股盯盤判斷「碰到目標」用）；進場價 −10% 底線由 `apply_entry_floor` 在 API 層套用，不改 compute_levels 既有欄位。
