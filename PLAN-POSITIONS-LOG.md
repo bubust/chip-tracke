@@ -30,3 +30,10 @@
   - server F1（日期格式 YYYY-MM-DD vs YYYYMMDD）→ 查證：_parse_yahoo_json 與 price_daily 都是 %Y%m%d，不會不符；仍加 replace("-","") 防呆。F2（Telegram 沒 escape）→ 駁回：sid／名稱／label 已 html.escape，其餘是數字。F3（cost 是字串）→ 駁回：寫入一律 float。F4（成本驗證用快取價）→ 駁回：10 分鐘快取對 0.2～5 倍範圍足夠。F5（emoji）→ 駁回：常數。
   - js F1（數字沒 _esc）→ 駁回：API 數字欄位。F2（輸入框 id 重複）→ 接受：id 加代號。F3（_levelsCell 參數）、F4（flag 沒空格，實為 <br> 開頭）、F5 → 駁回：誤讀。
 - 檢查輪數用 1（初檢）；修正都是一兩行防呆，未再送檢，如實記錄。
+
+## 程式檢查 第 2 輪（fresh，最終版）
+- Gemini gemini-2.5-flash（price_levels.py、test_positions 全檔＋server／dashboard 片段，含 K 線初始範圍）：APPROVED，無 findings。
+- Groq（拆 py／server／js diff）：REVISE，13 點全部駁回——多數是第 1 輪已用證據駁回又重提（prev.stop 是數字、h 有定義、數字欄位不需 _esc），其餘為只看 diff 的誤讀：alerts 確實有 stop_ref／target_ref（測試直接斷言）；compute_levels 的 date 是 str；log_push 的 signal_title 就是去重 key；prev 需要 31 根是因為 compute_levels 本身要 ≥30 根；entry NaN 不可能（cost 經驗證、added 來自 close>0）且 NaN 時 floor=None 提早回傳。
+- 檢查輪數用滿 2 輪。另修 Gemini 第 1 輪 F2：_loadLevels 對上次 error 的股票重抓。
+- 之後新增（檢查輪數已用滿，未經外部審查，如實記錄）：盯盤狀態 GET /api/positions/status（上次檢查時間／phase／持有檔數／發出則數、下次排程時間）＋持有設定區塊顯示；check_positions 非試算時寫 settings positions_last（沒有持有股也記，才看得出排程有在跑）。有測試 test_positions_status_records_last_run。
+- 本機全域 Python 的 starlette 在 2026-10-05 23:07 被別的安裝升到 1.7.0，與全域 fastapi 0.111.0 不相容（test_mna／test_treasury 收集失敗）。沒有動全域環境；改在 scratchpad 建獨立 venv 依 requirements.txt 安裝（fastapi 0.142.2＋starlette 1.7.0，等同正式站 Docker 會裝的版本）跑全部測試：97 passed。

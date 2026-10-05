@@ -112,3 +112,20 @@ def test_positions_failed_send_retries_and_skips_non_trading_day(env):
 def test_positions_ignores_stocks_without_cost(env):
     server, state = env
     assert server.check_positions("close") == []
+
+
+def test_positions_status_records_last_run(env):
+    server, state = env
+    import json
+    old = server.settings_get("positions_last")
+    try:
+        _set_cost(server, 100.0)
+        server.check_positions("intraday", dry=True)                     # 試算不記錄
+        before = server.settings_get("positions_last")
+        server.check_positions("intraday")
+        last = json.loads(server.settings_get("positions_last"))
+        assert last["phase"] == "intraday" and last["held"] >= 1 and last["notified"] == 1 and before == old
+        st = TestClient(server.app).get("/api/positions/status").json()
+        assert st["last"]["phase"] == "intraday" and "running" in st and "next" in st
+    finally:
+        server.settings_set("positions_last", old or "null")

@@ -1785,7 +1785,8 @@ function _levelsCell(s) {
 }
 async function _loadLevels() {
   if (_levelsLoading || !(_wlData || []).length) return;
-  const ids = _wlData.map(x => x.stock_id).filter(id => !_levelsData[id]);
+  // 沒載過、或上次抓不到 K 線（error）的都再抓一次（不用整頁重新整理）
+  const ids = _wlData.map(x => x.stock_id).filter(id => !_levelsData[id] || _levelsData[id].error);
   if (!ids.length) return;
   _levelsLoading = true;
   try {
@@ -1837,6 +1838,7 @@ async function showLevels(sid) {
         <button class="btn sm" onclick="savePosCost('${_jsq(sid)}', false)">儲存</button>
         ${en && en.kind === 'cost' ? `<button class="btn sm ghost" onclick="savePosCost('${_jsq(sid)}', true)">清除（改回觀察）</button>` : ''}
       </div>
+      <div id="pos-status-${_esc(sid)}" class="muted" style="font-size:.72rem"></div>
       <div class="muted" style="font-size:.72rem">有填成本＝持有模式：停損不低於成本 −10%，盤中每小時＋收盤後檢查，跌破停損或碰到目標發 Telegram。沒填＝觀察模式：用加入日收盤價 −10%，只在網頁標示。（研究：加這條底線報酬少約 0.25%、最差 5% 的情況少虧約 3.7%）</div>
     </div>`;
   const upExit = st.uptrend_exit ? `<div style="margin-top:8px;color:#a78bfa">⚡ 上漲模式出場：收盤跌破 <b>${st.uptrend_exit.price}</b>（今天低點）就出場</div>` : '';
@@ -1862,6 +1864,18 @@ async function showLevels(sid) {
     <div class="muted" style="margin-top:10px;font-size:.72rem;line-height:1.6">依 1,810 檔兩年日 K 回測（跟同樣距離的隨機價位比）：前低是最穩定的支撐；舊停損太貼（約 1 ATR、三分之二會被打到），改成支撐下方留 0.5 倍 ATR 緩衝；強勢股離前低太遠時，撐看 10 日線、停損用 20 日線 − 1 ATR 的移動停損（比 5／10 日線進出少被洗、回撤也比固定停損小）；壓力線和目標價的各種算法都沒有比隨機準，依你的規則（前高、等幅）排，另外看報酬風險比。ATR＝14 日平均真實波幅${lv.atr ? `（${lv.atr}）` : ''}。只是依線圖規則計算，不是投資建議。</div>`}
   </div>`;
   document.body.appendChild(m);
+  if (wlItem) _fillPosStatus(sid);
+}
+// 盯盤狀態（上次檢查／下次檢查），持有設定區塊用
+async function _fillPosStatus(sid) {
+  const el = document.getElementById(`pos-status-${sid}`);
+  if (!el) return;
+  try {
+    const s = await api('GET', '/api/positions/status');
+    const l = s.last;
+    el.textContent = !s.running ? '盯盤排程沒有在跑' :
+      `盯盤：上次檢查 ${l ? `${l.at}（${l.phase === 'close' ? '收盤後' : '盤中'}，持有 ${l.held} 檔，發出 ${l.notified} 則${l.pending ? `、${l.pending} 則未送出` : ''}）` : '還沒跑過'}；下次 ${s.next || '—'}`;
+  } catch (e) { /* 讀不到就不顯示 */ }
 }
 // 持有模式：存／清成本價，之後重抓這檔的關鍵價位
 async function savePosCost(sid, clear) {

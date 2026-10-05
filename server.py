@@ -593,6 +593,8 @@ async def lifespan(app: FastAPI):
         _pos_watch.add_job(lambda: _pos_job("close"), "cron", day_of_week="mon-fri", hour=14, minute=40,
                            id="positions_close", replace_existing=True)
         _pos_watch.start()
+        global _POS_SCHED
+        _POS_SCHED = _pos_watch
     except Exception as _pwe:
         import logging; logging.getLogger(__name__).warning(f"[positions_scheduler] {_pwe}")
     # ── 全市場掃描排程：每個交易日 18:00 自動執行（備援：GitHub Actions）──
@@ -3794,6 +3796,7 @@ def api_levels_batch(ids: str = ""):
 
 # ── 持有模式：成本價＋盯盤推播（PLAN-POSITIONS.md）────────────────────────────
 _TW_TZ = timezone(timedelta(hours=8))
+_POS_SCHED = None          # 盯盤排程（啟動時建立），給 /api/positions/status 看下次執行時間
 _POS_HEAD = {
     "stop_warn":  ("⚠️", "盤中跌破停損（收盤確認才算）"),
     "stop_close": ("🛑", "收盤跌破停損，依規則出場"),
@@ -3906,7 +3909,28 @@ def check_positions(phase: str, dry: bool = False) -> list:
                 else:
                     log.info(f"[positions] Telegram 沒設定，略過 {sid} {typ}")
             out.append(item)
+    if not dry:                      # 記下這次檢查（沒有持有股也記，才看得出排程有在跑）
+        settings_set("positions_last", json.dumps({
+            "phase": phase, "at": datetime.now(_TW_TZ).strftime("%Y-%m-%d %H:%M"), "held": len(rows),
+            "notified": sum(1 for i in out if i.get("sent")), "pending": sum(1 for i in out if not i.get("sent")),
+        }, ensure_ascii=False))
     return out
+
+
+@app.get("/api/positions/status")
+def api_positions_status():
+    """盯盤狀態：上次檢查結果、下次排程時間（只回時間與數量，不含個股）"""
+    try:
+        last = json.loads(settings_get("positions_last") or "null")
+    except Exception:
+        last = None
+    nxt = None
+    try:
+        times = [j.next_run_time for j in (_POS_SCHED.get_jobs() if _POS_SCHED else []) if j.next_run_time]
+        nxt = min(times).astimezone(_TW_TZ).strftime("%Y-%m-%d %H:%M") if times else None
+    except Exception:
+        pass
+    return {"running": _POS_SCHED is not None, "next": nxt, "last": last}
 
 
 @app.get("/api/positions/check")
