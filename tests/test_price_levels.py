@@ -97,7 +97,7 @@ def test_support_falls_back_to_60_day_low_on_short_history():
 
 def test_stop_formula_and_all_bases():
     """PLAN 第 8 節：強勢延伸 撐＝10 日線、損＝min(20 日線−1ATR, 10 日線−0.5ATR, 價−1.5ATR)；
-    拉回延伸 不顯示支撐、損＝價−3.5ATR；其他 支撐−0.5ATR、至少 1.5ATR；有支撐時停損一定 < 支撐"""
+    其他（10-06 起含前低遠又不強勢）支撐−0.5ATR、至少 2.5ATR；有支撐時停損一定 < 支撐"""
     seen = set()
     for seed in range(80):
         rng = np.random.default_rng(seed)
@@ -107,7 +107,7 @@ def test_stop_formula_and_all_bases():
         lv = compute_levels(make(closes, spread=vol / 2))
         p, a, st, sup, ss = lv["price"], lv["atr"], lv["stop"], lv["support"], lv["struct_support"]
         assert st and st["price"] < p and "收盤跌破" in st["label"]
-        assert st["basis"] in {"support", "floor", "atr", "trail", "risk"}
+        assert st["basis"] in {"support", "floor", "atr", "trail"}           # 10-06 起不再用 risk（前低遠也顯示前低）
         if sup is not None:
             assert st["price"] < sup["price"]                # 停損一定在支撐下面
         c = pd.Series(closes)
@@ -116,20 +116,17 @@ def test_stop_formula_and_all_bases():
             assert ss and p - ss["price"] > 3 * a and p > m5 > m10
             assert sup["kind"] == "ma10" and abs(sup["price"] - m10) < 0.01
             assert abs(st["price"] - min(m20 - a, m10 - 0.5 * a, p - 1.5 * a)) < 0.02
-        elif st["basis"] == "risk":
-            assert ss and sup is None and p - ss["price"] > 3 * a
-            assert abs(st["price"] - (p - 3.5 * a)) < 0.02
         elif sup is None:
             assert st["basis"] == "atr" and ss is None and abs(st["price"] - (p - 2.5 * a)) < 0.02
         else:
-            assert ss is None and p - sup["price"] <= 3 * a + 0.02
+            assert ss is None
             raw = sup["price"] - 0.5 * a
-            assert abs(st["price"] - min(raw, p - 1.5 * a)) < 0.02
-            assert st["basis"] == ("floor" if raw > p - 1.5 * a else "support")
+            assert abs(st["price"] - min(raw, p - 2.5 * a)) < 0.02
+            assert st["basis"] == ("floor" if raw > p - 2.5 * a else "support")
         seen.add(st["basis"])
         if lv["target"]:
             assert lv["rr"] == round((lv["target"] - p) / (p - st["price"]), 1)
-    assert {"floor", "support", "trail", "risk"} <= seen
+    assert {"floor", "support", "trail"} <= seen
 
 
 def test_trailing_stop_for_extended_uptrend():
@@ -145,12 +142,13 @@ def test_trailing_stop_for_extended_uptrend():
     assert lv["ma5"] is not None
 
 
-def test_pullback_far_support_hides_support_and_uses_risk_cap():
+def test_pullback_far_support_still_shows_previous_low():
+    """10-06 用戶：支撐要顯示前低（10-05 版前低遠又不強勢時撐顯示「—」、停損用現價 −3.5ATR）"""
     closes = seg(20, 10, 20) + seg(10, 30, 40) + seg(30, 27, 5)   # 漲完拉回到 5 日線下：不是強勢
     lv = compute_levels(make(closes))
-    a, st = lv["atr"], lv["stop"]
-    assert lv["support"] is None and lv["struct_support"]["kind"] == "swing"
-    assert st["basis"] == "risk" and abs(st["price"] - (lv["price"] - 3.5 * a)) < 0.02 and "風險上限" in st["label"]
+    a, st, sup = lv["atr"], lv["stop"], lv["support"]
+    assert sup is not None and lv["struct_support"] is None and lv["price"] - sup["price"] > 3 * a
+    assert st["basis"] == "support" and abs(st["price"] - (sup["price"] - 0.5 * a)) < 0.02 and "部位" in st["label"]
 
 
 def test_floor_keeps_stop_below_near_support():
@@ -158,7 +156,7 @@ def test_floor_keeps_stop_below_near_support():
     lv = compute_levels(make(closes, spread=0.05))
     p, a, sup, st = lv["price"], lv["atr"], lv["support"], lv["stop"]
     assert p - sup["price"] < a and st["basis"] == "floor"
-    assert abs(st["price"] - (p - 1.5 * a)) < 0.02 and st["price"] < sup["price"]
+    assert abs(st["price"] - (p - 2.5 * a)) < 0.02 and st["price"] < sup["price"]
 
 
 def test_target_prefers_previous_high_then_measured_move():
@@ -192,13 +190,41 @@ def test_recent_unconfirmed_high_counts_as_previous_high():
     assert lv["pressure1"] is None and lv["target_kind"] != "pressure1"
 
 
-def test_support_uses_nearest_k3_low_not_older_k5_low():
+def test_support_uses_nearest_higher_low_not_older_low():
     """2026-10-06 群創：起漲前的低點 48.55（k=3 波段低）才是支撐，k=5 會跳到更早更低的 46.25"""
     closes = seg(20, 10, 20) + seg(10, 15, 8) + [12.0, 13.5, 14.5, 13.8, 13.2, 13.8, 14.3, 14.6]
     lv = compute_levels(make(closes))
     sup = lv["support"]
-    assert sup and sup["kind"] == "swing" and abs(sup["price"] - 13.2 * 0.99) < 0.01     # 不是 k=5 的 12.0 × 0.99
+    assert sup and sup["kind"] == "swing" and abs(sup["price"] - 13.2 * 0.99) < 0.01     # 較近的墊高低點，不是 12.0 × 0.99
     assert lv["stop"]["price"] < sup["price"]
+
+
+def test_intraday_break_that_closes_back_keeps_previous_low():
+    """京元電子 10/06：前低 292（10/01），今天盤中 288.5 收 298 → 不算跌破，支撐還是 292"""
+    hi = [330, 321.5, 315.5, 305.5, 304, 298.5, 298, 303.5, 301]
+    # 前面墊一段上漲，最後 9 根照京元 9/22～10/06
+    base = seg(250, 300, 40)
+    df = make(base + [317, 304, 311, 294.5, 294.5, 296, 295.5, 294, 298], spread=0.0)
+    n = len(df)
+    df.loc[n - 9:, "high"] = hi
+    df.loc[n - 9:, "low"] = [312, 302.5, 300.5, 293, 294, 292, 292, 294, 288.5]
+    lv = compute_levels(df)
+    assert lv["support"]["price"] == 292.0
+    # 收盤跌破 292 → 不再是支撐
+    df.loc[n - 1, "close"] = 290.0
+    lv = compute_levels(df)
+    assert lv["support"] is None or lv["support"]["price"] < 290
+
+
+def test_pullback_low_after_steep_rally():
+    """友達：9/18 29.5 → 9/22 高 36.65 → 9/23 回檔低 33.4 → 10/05 高 43.55 → 現在 37.45；33.4 左邊比它低，波段低點抓不到"""
+    closes = seg(25, 30, 30) + [33.35, 36.65, 34.7, 34.2, 35.05, 38.55, 38.3, 40.45, 39.05, 37.45]
+    df = make(closes, spread=0.0)
+    n = len(df)
+    df.loc[n - 10:, "high"] = [33.35, 36.65, 36.65, 35.95, 35.8, 38.55, 40.0, 40.85, 43.55, 39.5]
+    df.loc[n - 10:, "low"] = [31.8, 34.0, 33.4, 33.75, 33.8, 35.65, 37.8, 38.65, 39.0, 37.15]
+    lv = compute_levels(df)
+    assert lv["support"]["price"] == 33.4 and lv["pressure1"]["low"] == 43.55 and lv["target"] == 43.55
 
 
 def test_flat_prices_zero_atr_no_crash():
@@ -245,11 +271,11 @@ def test_entry_floor_not_binding_keeps_stop_and_adds_entry():
     assert lv.get("entry") is None                                  # 不改原 dict
 
 
-def test_entry_floor_binds_and_moves_support_when_above_it():
+def test_entry_floor_binds_and_keeps_support_visible():
     out = apply_entry_floor(_lv(price=100, stop=80, support=85, target=120), 100, "cost")
     st = out["stop"]
     assert st["price"] == 90 and st["basis"] == "entry10" and "成本" in st["label"] and not st["breached"]
-    assert out["support"] is None and out["struct_support"]["price"] == 85     # 停損不能高於支撐 → 支撐移到參考
+    assert out["support"]["price"] == 85 and "比支撐 85" in st["label"]           # 10-06：支撐照樣顯示
     assert out["stop_before_floor"]["price"] == 80
     assert out["downside_pct"] == -10.0 and out["rr"] == 2.0
 
@@ -274,7 +300,7 @@ def test_alerts_use_previous_bar_levels_plus_floor():
 
 def test_falling_price_only_detected_against_previous_stop():
     """回歸：價位用當下價格重算，股價跌下去停損也跟著往下 → 用「現在的停損」永遠抓不到跌破，要用前一根算出的"""
-    closes = seg(20, 10, 20) + seg(10, 20, 20) + seg(20, 18.5, 8) + [16.0]          # 最後一天大跌
+    closes = seg(20, 10, 20) + seg(10, 20, 20) + seg(20, 17, 6) + seg(17, 19.5, 6) + [16.0]   # 回檔到 17 再彈，最後一天大跌破前低
     df = make(closes)
     now, prev = compute_levels(df), compute_levels(df.iloc[:-1])
     assert now["price"] > now["stop"]["price"]                                       # 重算的停損永遠在現價下面

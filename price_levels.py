@@ -12,12 +12,13 @@ price_levels.py — 依使用者的看盤邏輯算關鍵價位（觀察清單、
 - 區間整理：5 日 > 10 日 > 20 日、底部一直墊高、但還沒過區間高 → 加入自選觀察
 
 2026-10-05 改版（PLAN-LEVELS.md、research/levels/）：用 1,810 檔兩年日 K walk-forward 回測、跟「同樣 ATR 距離的隨機價位」比
-- 支撐價：k=3 波段低點（沒有就 60 日低）——前低是唯一穩定有效的支撐（撐住 +3.3 個百分點）
-  （10-05 版用 k=5；10-06 用戶看群創：起漲前的低點才合理，k=5 會跳到更早更遠的低點 → 改 k=3，研究兩者分不出高下）
-- 停損價：支撐 −0.5 ATR、至少離現價 1.5 ATR，收盤跌破出場（舊版約 1 ATR、67% 會被打到；
+- 支撐價：前低＝最近一段回檔的最低點（pullback_low；沒有就 60 日低）——前低是唯一穩定有效的支撐（撐住 +3～3.4 個百分點）
+  （10-05 版用 k=5 波段低點；10-06 用戶看群創、京元電子、友達：起漲前／盤整的低點才合理、盤中跌破又拉回不算破、
+   急漲後的回檔低點也算 → 改成兩個波段高點之間的最低點，今天這根不算）
+- 停損價：支撐 −0.5 ATR、至少離現價 2.5 ATR（10-06 前是 1.5；支撐改抓最近的前低後太常被洗，見 STOP_MIN_ATR），收盤跌破出場（舊版約 1 ATR、67% 會被打到；
   改善來自留足空間，前低錨定跟同距離純 ATR 一樣好，選它是因為符合用戶「停損看波段低點」）
   前低離現價 > 3 ATR 且強勢（收盤 > 5 日線 > 10 日線）→ 撐＝10 日線、損＝20 日線 −1 ATR（移動停損）；
-  前低 > 3 ATR 但不強勢 → 不顯示支撐、損＝現價 −3.5 ATR（風險上限）（PLAN 第 7、8 節）
+  前低 > 3 ATR 但不強勢 → 10-05 版不顯示支撐、用風險上限；10-06 改回照樣顯示前低、損＝前低 −0.5 ATR（PLAN 第 10 節）
 - 目標價：前高（壓力區一，離現價不到 0.5 ATR 就壓力區二）→ 平地一聲雷等幅 → 一般等幅（回檔低＋前高−起漲低）→ 現價＋3 ATR；
   （10-06 用戶：「有前高就要看前高，還沒過怎麼會先跳到另一種計算模式」——等幅只在上方沒有前高時用）
   各種目標算法都沒有比隨機準，所以照用戶規則排，另給報酬風險比 rr
@@ -31,6 +32,10 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
+
+# 停損至少離現價幾倍 ATR（支撐太近時）。2026-10-06 支撐改抓最近的前低，1.5 倍時停損被打到 40%、40 天中位報酬 +0.2%；
+# 2.5 倍 29%、+3.1%（成交值前 300 檔、Yahoo 兩年、9,722 樣本；PLAN-LEVELS.md 第 11 節）
+STOP_MIN_ATR = 2.5
 
 THUNDER_DEFAULTS = {"base_days": 90, "base_range": 0.15, "vol_mult": 2.5, "max_retrace": 0.618,
                     "breakout_within": 60}
@@ -165,6 +170,41 @@ def recent_high(h, k: int = 5) -> Optional[int]:
     return None
 
 
+def pullback_low(h, l, price: float, look: int, k: int = 3) -> Optional[int]:
+    """前低＝最近一段回檔的最低點：相鄰兩個波段高點（k 根）之間、或最後一個高點到「昨天」的最低價，
+    由近往遠取第一個低於現價的。回傳 index，沒有回 None。
+    - 今天這根不算：盤中跌破前低又拉回（收盤還在上面）不算跌破，前低照樣是支撐（2026-10-06 京元電子：
+      10/06 盤中 288.5 收 298，前低 292 仍是支撐）；收盤跌破 → 前低 > 現價 → 往前找下一個前低
+    - 不要求左邊 k 根都比它高：急漲後的回檔低點（友達 9/23 33.4，左邊是更低的起漲 K 棒）也算"""
+    last = len(h) - 1
+    hs = [i for i in pivots(h, k, "high") if i >= look]
+    rh = recent_high(h, k)
+    if rh is not None and rh >= look and rh not in hs:
+        hs.append(rh)
+    bounds = sorted(hs) + [last]
+    for a, b in reversed(list(zip(bounds[:-1], bounds[1:]))):
+        if b - a < 2:
+            continue
+        j = a + 1 + int(l[a + 1:b].argmin())
+        if l[j] < price:
+            return j
+    return None
+
+
+def support_low(h, l, c, price: float, look: int, k: int = 3) -> Optional[int]:
+    """支撐用的前低：下面兩種裡面最近的一個（都要低於現價）。回傳 index，沒有回 None
+    1. 波段低點：左邊 k 根的低點都比它高、右邊 k 根的「收盤」都沒跌破它（盤中跌破又拉回不算破）
+    2. 回檔低點 pullback_low：兩個波段高點之間的最低點（急漲後的回檔低點左邊比它低，1 抓不到）
+    例：高點 15 → 跌到 12 → 彈到 14.5 → 回到 13.2 → 現在 14.6：13.2 是 1（較近的墊高低點）、12 是 2，取 13.2"""
+    n = len(l)
+    cands = [i for i in range(max(k, look), n - k)
+             if l[i] < l[i - k:i].min() and c[i + 1:i + k + 1].min() >= l[i] and l[i] < price]
+    pb = pullback_low(h, l, price, look, k)
+    if pb is not None:
+        cands.append(pb)
+    return max(cands) if cands else None
+
+
 def _zones(highs_idx, h, price, tol=0.02):
     """把現價上方的波段高點合併成壓力區（相差 2% 內算同一區），由近到遠"""
     above = sorted(float(h[i]) for i in highs_idx if h[i] > price * 1.005)
@@ -268,13 +308,14 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
         stops["uptrend_exit"] = {"price": th["exit_prev_low"], "date": str(df["date"].iloc[last]),
                                  "label": "上漲模式：收盤跌破這天低點出場"}
 
-    # 支撐價：最近一個 k=3 波段低點（近一年、低於現價）；沒有就 60 日低點
-    # 2026-10-06 從 k=5 改 k=3（用戶：群創 起漲前的低點 48.55 才合理、k=5 的 46.25 太遠）；
-    # 研究 k=3 撐住 edge +3.3、k=5 +2.8，統計上分不出高下（PLAN-LEVELS.md 3.2）
+    # 支撐價：最近的前低（support_low：波段低點或回檔低點，近一年、低於現價）；沒有就 60 日低點
+    # 2026-10-06 用戶回饋：群創 起漲前的低點 48.55（不是更早的 46.25）、京元電子 盤中跌破又拉回不算破 → 前低 292、
+    # 友達 急漲後的回檔低點 33.4。舊版 k=5 波段低點要求左右低點都比它高，這三個都抓不到
     support = None
-    if lows:
-        i = lows[-1]
-        support = {"price": _r(l[i]), "date": fmtd(i), "label": "波段低點", "kind": "swing"}
+    sl = support_low(h, l, c, price, look)
+    if sl is not None:
+        i = sl
+        support = {"price": _r(l[i]), "date": fmtd(i), "label": "前低", "kind": "swing"}
     else:
         s60 = max(0, n - 60)
         i = s60 + int(l[s60:].argmin())
@@ -284,8 +325,9 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
     # 停損價（PLAN-LEVELS.md 第 8 節，研究最佳做法）：
     # - 前低離現價 > 3 ATR 且強勢（收盤 > 5 日線 > 10 日線）→ 撐＝10 日線、損＝20 日線 −1 ATR（移動停損，跟著月線上移）
     #   （研究：強勢延伸股 40 天 +3.98%、最大回撤 12.7%；用戶原本的 5／10 日線進出 +1.12%、會被洗）
-    # - 前低離現價 > 3 ATR 但不是強勢 → 不顯示支撐（前低太遠、附近沒有可靠支撐），停損用風險上限 現價 −3.5 ATR
-    # - 其他：支撐 −0.5 ATR，至少離現價 1.5 ATR；沒有支撐用現價 −2.5 ATR
+    # - 其他（含前低 > 3 ATR 但不是強勢）：支撐 −0.5 ATR，至少離現價 2.5 ATR（STOP_MIN_ATR）；沒有支撐用現價 −2.5 ATR
+    #   （10-05 版前低遠又不強勢時不顯示支撐、停損用 現價 −3.5 ATR 風險上限；10-06 用戶：支撐要顯示前低 → 拿掉。
+    #    研究 3.2：前低 −0.5ATR 不設上限 +2.59%、夾 1.5～3.5ATR +2.55%，差不多）
     # 每次都用當下的均線重算（無狀態），所以只要有支撐，停損一定低於支撐
     struct_support = None
     stop = None
@@ -302,23 +344,16 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
             stop = {"price": _r(trail_p), "basis": "trail",
                     "label": f"移動停損：20 日線 {m20:.2f} − 1×ATR（{a:.2f}）{note}，跟著 20 日線每天上移，收盤跌破出場；"
                              f"前低 {struct_support['price']} 離現價超過 3 倍 ATR"}
-    if stop is None and far:
-        struct_support = support
-        support = None
-        stop_p = price - 3.5 * a
-        stop = {"price": _r(stop_p), "basis": "risk",
-                "label": f"前低 {struct_support['price']} 離現價超過 3 倍 ATR、又不是強勢：停損用風險上限 現價 − 3.5×ATR，"
-                         f"收盤跌破出場"} if stop_p > 0 else None
-    elif stop is None:
+    if stop is None:
         if support:
             sp = support["price"]
             raw = sp - 0.5 * a
-            if raw > price - 1.5 * a:
-                stop_p, basis = price - 1.5 * a, "floor"
-                label = f"支撐 {sp} 離現價太近，停損放在現價 − 1.5×ATR，避免盤中雜訊洗出場"
+            if raw > price - STOP_MIN_ATR * a:
+                stop_p, basis = price - STOP_MIN_ATR * a, "floor"
+                label = f"支撐 {sp} 離現價太近，停損放在現價 − {STOP_MIN_ATR:g}×ATR，避免盤中雜訊洗出場"
             else:
                 stop_p, basis = raw, "support"
-                label = f"支撐 {sp} − 0.5×ATR（{a:.2f}）"
+                label = f"支撐 {sp} − 0.5×ATR（{a:.2f}）" + ("；前低離現價超過 3 倍 ATR，停損比較寬，用部位大小控制風險" if far else "")
         else:
             stop_p, basis = price - 2.5 * a, "atr"
             label = "近一年沒有低於現價的低點可當支撐，停損用現價 − 2.5×ATR"
@@ -384,14 +419,12 @@ def apply_entry_floor(lv: dict, entry: Optional[float], kind: str = "added", pre
     if stop is None or floor > stop["price"]:
         out["stop_before_floor"] = stop
         breached = floor >= price
-        label = f"{name} {_r(entry)} −10% 底線，收盤跌破出場"
+        sup = out.get("support")
+        # 底線高於支撐時支撐照樣顯示（10-06 用戶：支撐要看得到前低）；這條是「進場價 −10%」的資金控管線，不是線圖支撐
+        over = f"（比支撐 {sup['price']} 還高：先守{name} −10%）" if sup is not None and floor >= sup["price"] else ""
+        label = f"{name} {_r(entry)} −10% 底線{over}，收盤跌破出場"
         out["stop"] = {"price": floor, "basis": "entry10",
                        "label": ("已跌破！" if breached else "") + label, "breached": breached}
-        sup = out.get("support")
-        if sup is not None and floor >= sup["price"]:     # 維持「有支撐時停損 < 支撐」
-            if not out.get("struct_support"):
-                out["struct_support"] = sup
-            out["support"] = None
         tgt = out.get("target")
         if breached:
             out["rr"], out["downside_pct"] = None, None
