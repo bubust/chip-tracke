@@ -651,7 +651,61 @@ async function loadScannerUnderlying() {
   return res.json();
 }
 
+// ── 標的股票加入觀察清單：在戰術中心裡用主頁的函式（觀察清單分頁立刻更新），單獨開 /warrant/ 時直接打 API ──
+let _wlSet = null;   // 單獨開時：已在清單的代號
+function _wlHost() {
+  try { return window.parent !== window && typeof window.parent.wlAddExternal === 'function' ? window.parent : null; }
+  catch (e) { return null; }
+}
+async function _loadWlSet() {
+  try { const d = await (await fetch('/api/watchlist')).json(); _wlSet = new Set((Array.isArray(d) ? d : []).map(x => x.stock_id)); }
+  catch (e) { _wlSet = new Set(); }
+}
+function _wlHas(sid) {
+  const host = _wlHost();
+  return host ? host.wlHas(sid) : !!(_wlSet && _wlSet.has(sid));
+}
+const _attr = s => escHtml(s).replace(/"/g, '&quot;');
+function wlBtn(sid, name, note) {
+  if (!sid) return '';
+  const has = _wlHas(sid);
+  return `<button class="wl-add${has ? ' wl-add--on' : ''}" data-sid="${_attr(sid)}" data-name="${_attr(name)}" data-note="${_attr(note)}"
+    ${has ? 'disabled title="已在觀察清單"' : 'title="把這檔股票加進觀察清單"'} onclick="addUlToWl(this, event)">${has ? '✓' : '＋'}</button>`;
+}
+// 只更新按鈕狀態（不重抓資料）；主頁觀察清單有變動時也會呼叫（dashboard renderWatchlist）
+function refreshWlButtons() {
+  document.querySelectorAll('.wl-add').forEach(b => {
+    const has = _wlHas(b.dataset.sid);
+    b.disabled = has;
+    b.classList.toggle('wl-add--on', has);
+    b.textContent = has ? '✓' : '＋';
+    b.title = has ? '已在觀察清單' : '把這檔股票加進觀察清單';
+  });
+}
+async function addUlToWl(btn, ev) {
+  if (ev) ev.stopPropagation();          // 不要觸發整列的「選這檔標的」
+  const { sid, name, note } = btn.dataset;
+  btn.disabled = true;
+  try {
+    const host = _wlHost();
+    if (host) {
+      await host.wlAddExternal(sid, name, note);
+    } else {
+      const r = await fetch('/api/watchlist', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                               body: JSON.stringify({ stock_id: sid, name, note }) });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+      (_wlSet = _wlSet || new Set()).add(sid);
+      showToast(`已加入觀察清單：${sid} ${name}`);
+    }
+    refreshWlButtons();
+  } catch (e) {
+    btn.disabled = false;
+    showToast(`加入失敗：${e.message}`);
+  }
+}
+
 function renderScanner(data) {
+  if (!_wlHost() && _wlSet === null) { _wlSet = new Set(); _loadWlSet().then(refreshWlButtons); }
   if (_scanView === 'underlying') { renderScannerUnderlying(); return; }
   const tbl = $('scannerTable');
   if (!data) { tbl.innerHTML = '<div class="scan-empty">尚無資料，請點「立刻掃描」</div>'; return; }
@@ -729,7 +783,7 @@ function renderScanner(data) {
               <div class="scan-issuer">${escHtml(r.issuer)}</div>
             </td>
             <td>
-              <div class="scan-ul">${escHtml(r.underlying_name || r.underlying_code || '—')}</div>
+              <div class="scan-ul">${escHtml(r.underlying_name || r.underlying_code || '—')} ${wlBtn(r.underlying_code, r.underlying_name, `權證熱門：${r.code}（${r.kind === 'CALL' ? '認購' : '認售'}）`)}</div>
               <div class="scan-issuer">${escHtml(r.underlying_code || '')}</div>
             </td>
             <td>${kindBadge(r.kind)}</td>
@@ -805,7 +859,7 @@ async function renderScannerUnderlying() {
             ).join(' ');
             return `<tr class="scan-row" onclick="selectUnderlying('${escHtml(r.underlying_code)}','${escHtml(r.underlying_name)}'); switchTab('warrant')">
               <td>
-                <div class="scan-ul">${escHtml(r.underlying_name || r.underlying_code)}</div>
+                <div class="scan-ul">${escHtml(r.underlying_name || r.underlying_code)} ${wlBtn(r.underlying_code, r.underlying_name, `權證熱門：認購 ${r.call_vol.toLocaleString()} 張／認售 ${r.put_vol.toLocaleString()} 張`)}</div>
                 <div class="scan-issuer">${escHtml(r.underlying_code)}</div>
               </td>
               <td class="scan-num">

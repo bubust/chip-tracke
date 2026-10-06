@@ -1424,6 +1424,20 @@ async function loadPill() {
 let _detailSid = '';
 let _wlData    = [];  // cached summary
 // 庫藏股／收購併購／可轉債表格每列的「加入觀察清單」按鈕；已在清單顯示 ✓
+// 給 iframe 分頁（權證掃描）用：_wlData 是 let，iframe 拿不到，所以包成函式
+function wlHas(sid) { return _wlData.some(x => x.stock_id === sid); }
+async function wlAddExternal(sid, name, note) {
+  const exists = wlHas(sid);
+  if (!exists) {
+    await api('POST', '/api/watchlist', { stock_id: sid, name: name || '', note: note || '' });
+    _wlData.push({ stock_id: sid, name: name || '', memo: '', note: note || '', has_data: false });
+    const ls = lsLoadWatchlist();
+    if (!ls.find(x => x.stock_id === sid)) { ls.push({ stock_id: sid, name: name || '', memo: '', note: note || '' }); lsSaveWatchlist(ls); }
+    renderWatchlist();
+  }
+  toast(exists ? `${sid} 已在觀察清單` : `已加入觀察清單：${sid} ${name || ''}`);
+  return !exists;
+}
 function wlRowBtn(sid, call) {
   const has = _wlData.some(x => x.stock_id === sid);
   return `<button class="btn sm ghost" ${has ? 'disabled title="已在觀察清單"' : 'title="加入觀察清單"'} style="padding:1px 8px;color:${has ? 'var(--muted)' : '#22c55e'}" onclick="event.stopPropagation();${call}">${has ? '✓' : '＋'}</button>`;
@@ -1546,6 +1560,7 @@ async function loadWatchlist() {
 }
 
 function renderWatchlist() {
+  try { document.querySelector('#tab-warrant iframe').contentWindow.refreshWlButtons(); } catch (e) { /* 權證分頁還沒載入 */ }
   setTimeout(_loadLevels, 0);   // 關鍵價位非同步補上
   const tbody = document.getElementById('wl-tbody');
   if (!_wlData.length) {

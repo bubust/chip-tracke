@@ -427,3 +427,9 @@ html, body { min-height: 100vh; background: var(--bg); color: var(--text);
   text-transform: uppercase;
   border-top: 1px solid var(--border);
 }
+
+/* 標的股票加入觀察清單 */
+.wl-add { margin-left: 6px; padding: 0 8px; min-width: 26px; height: 22px; border-radius: 6px; font-size: 13px; font-weight: 700;
+          border: 1px solid #22c55e; background: transparent; color: #22c55e; cursor: pointer; vertical-align: middle; }
+.wl-add:hover { background: rgba(34,197,94,.12); }
+.wl-add--on, .wl-add:disabled { border-color: var(--border); color: var(--muted); cursor: default; background: transparent; }
