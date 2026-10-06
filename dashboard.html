@@ -1808,7 +1808,8 @@ async function showLevels(sid) {
   const fmtD = d => (d && String(d).length === 8) ? `${String(d).slice(4, 6)}/${String(d).slice(6)}` : '';
   const zone = z => z ? (z.low === z.high ? `${z.low}` : `${z.low}～${z.high}`) + (z.touches > 1 ? `（碰過 ${z.touches} 次）` : '') : '—';
   const st = lv.stops || {};
-  const refRows = ['volume_low', 'swing_low', 'prev_low'].filter(k => st[k] && !(lv.struct_support && st[k].price === lv.struct_support.price)).map(k =>   // 跟前低同價的不重複列
+  const refRows = ['volume_low', 'swing_low', 'prev_low'].filter(k => st[k] && !(lv.struct_support && st[k].price === lv.struct_support.price)
+    && !(lv.support && st[k].price === lv.support.price)).map(k =>   // 跟支撐、前低同價的不重複列
     `<div>· <b>${st[k].price}</b> <span class="muted">${_esc(st[k].label)} ${fmtD(st[k].date)}</span></div>`).join('');
   const sup = lv.support, stp = _levelsPrimaryStop(lv);
   const item = (dot, label, val, color, note) => `<div style="margin-top:4px">${dot} ${label} <b style="color:${color}">${val}</b></div>`
@@ -1861,7 +1862,7 @@ async function showLevels(sid) {
     ${refRows || structRow || ma5Row ? `<div style="margin-top:10px;font-size:.8rem"><b>參考低點</b>（你的規則：跌破爆量低點出場、站回是假跌破）${structRow}${ma5Row}${refRows}</div>` : ''}${thHtml}
     ${(lv.notes || []).length ? `<div style="margin-top:8px;font-size:.78rem;color:#f59e0b">${lv.notes.map(_esc).join('<br>')}</div>` : ''}
     <div style="margin-top:12px;display:flex;gap:8px"><button class="btn sm" onclick="this.closest('div[style*=fixed]').remove();openWlChart('${_jsq(sid)}')">📈 K 線（畫出價位線）</button></div>
-    <div class="muted" style="margin-top:10px;font-size:.72rem;line-height:1.6">依 1,810 檔兩年日 K 回測（跟同樣距離的隨機價位比）：前低是最穩定的支撐；舊停損太貼（約 1 ATR、三分之二會被打到），改成支撐下方留 0.5 倍 ATR 緩衝；強勢股離前低太遠時，撐看 10 日線、停損用 20 日線 − 1 ATR 的移動停損（比 5／10 日線進出少被洗、回撤也比固定停損小）；壓力線和目標價的各種算法都沒有比隨機準，依你的規則（前高、等幅）排，另外看報酬風險比。ATR＝14 日平均真實波幅${lv.atr ? `（${lv.atr}）` : ''}。只是依線圖規則計算，不是投資建議。</div>`}
+    <div class="muted" style="margin-top:10px;font-size:.72rem;line-height:1.6">依 1,810 檔兩年日 K 回測（跟同樣距離的隨機價位比）：前低是最穩定的支撐；舊停損太貼（約 1 ATR、三分之二會被打到），改成支撐下方留 0.5 倍 ATR 緩衝；強勢股離前低太遠時，撐看 10 日線、停損用 20 日線 − 1 ATR 的移動停損（比 5／10 日線進出少被洗、回撤也比固定停損小）；壓力線和目標價的各種算法都沒有比隨機準，所以照你的規則：上方有前高、還沒過，目標就看前高；沒有前高才用等幅，另外看報酬風險比。ATR＝14 日平均真實波幅${lv.atr ? `（${lv.atr}）` : ''}。只是依線圖規則計算，不是投資建議。</div>`}
   </div>`;
   document.body.appendChild(m);
   if (wlItem) _fillPosStatus(sid);
@@ -1904,9 +1905,11 @@ async function _drawLevelLines(series, sid) {
   if (!lv) { try { lv = await api('GET', `/api/levels/${encodeURIComponent(sid)}`); _levelsData[sid] = lv; } catch (e) { return; } }
   if (!lv || lv.error || _chartStockId !== sid) return;
   const add = (price, color, title, style = 2, width = 1) => { if (price != null) try { series.createPriceLine({ price, color, lineWidth: width, lineStyle: style, axisLabelVisible: true, title }); } catch (e) {} };
-  add(lv.target, '#ef4444', '目標', 0);
-  if (lv.pressure1) add(lv.pressure1.low, '#f59e0b', '壓1');
-  if (lv.pressure2) add(lv.pressure2.low, '#f59e0b', '壓2', 3);
+  // 目標＝前高時只畫一條（兩條同價的標籤會疊在一起）
+  const tgtOn = z => z && lv.target != null && z.low === lv.target;
+  add(lv.target, '#ef4444', tgtOn(lv.pressure1) ? '目標=壓1' : tgtOn(lv.pressure2) ? '目標=壓2' : '目標', 0);
+  if (lv.pressure1 && !tgtOn(lv.pressure1)) add(lv.pressure1.low, '#f59e0b', '壓1');
+  if (lv.pressure2 && !tgtOn(lv.pressure2)) add(lv.pressure2.low, '#f59e0b', '壓2', 3);
   const basis = lv.stop && lv.stop.basis;
   if (lv.support) add(lv.support.price, '#4ade80', basis === 'trail' ? '10日線' : '支撐');
   const sp = _levelsPrimaryStop(lv);
@@ -5241,14 +5244,20 @@ async function openChart(stockId, savedRange = null) {
     _chartCachedMarkerData = { ohlcv, closes, ma5, ma10, ma20, chipDateMap, cSeries };
     _rebuildChartMarkers();
 
-    // 蠟燭 legend
+    // 蠟燭 legend：滑鼠停在哪根就顯示那天的 開／高／低／收、漲跌（對前一根收盤）；第二行均線
     const cLeg = _mkLegend(cEl);
+    const _legDay = r => r.ts != null ? new Date(r.ts * 1000).toISOString().slice(5, 16).replace('T', ' ').replace('-', '/')
+      : `${String(r.date).slice(4, 6)}/${String(r.date).slice(6, 8)}`;
     function updateCLeg(idx) {
       const i = Math.min(Math.max(idx, 0), n - 1);
       const r = ohlcv[i];
-      const priceColor = r.close >= r.open ? '#ef5350' : '#26a69a';
+      const pc = i > 0 ? ohlcv[i - 1].close : null;
+      const chg = pc ? (r.close / pc - 1) * 100 : null;
+      const chgColor = chg == null || chg === 0 ? '#d1d4dc' : chg > 0 ? '#ef5350' : '#26a69a';
+      const px = (label, v) => `${label} <b style="color:${pc == null || v === pc ? '#d1d4dc' : v > pc ? '#ef5350' : '#26a69a'}">${_fmtN(v)}</b>`;
       cLeg.innerHTML =
-        `<span style="color:${priceColor};font-weight:bold">現價:${_fmtN(r.close)}</span>　` +
+        `<span style="color:#9598a1">${_legDay(r)}</span>　${px('開', r.open)}　${px('高', r.high)}　${px('低', r.low)}　${px('收', r.close)}` +
+        (chg != null ? `　<b style="color:${chgColor}">${chg > 0 ? '+' : ''}${chg.toFixed(2)}%</b>` : '') + '<br>' +
         `<span style="color:#4caf50">MA5:${_fmtN(ma5[i])}</span>　` +
         `<span style="color:#ffeb3b">MA10:${_fmtN(ma10[i])}</span>　` +
         `<span style="color:#e91e63">MA20:${_fmtN(ma20[i])}</span>　` +
@@ -5686,8 +5695,9 @@ async function saveAllStratParams() {
       <span style="font-size:.8rem;color:#38bdf8" title="收盤跌破前10日最低點，次日收復 → 假跌破前低">▲藍 前低↑</span>
       <span style="font-size:.8rem;color:#f97316" title="收盤突破前10日最高點，次日跌回 → 假突破前高">▼橙 前高↓</span>
       <span style="font-size:.8rem;color:#6b7280">｜</span>
-      <span style="font-size:.8rem;color:#f87171" title="⚠️ 籌碼訊號：散戶接盤警示（大戶賣+散戶買）或一般買入（level 3~4）">●紅 籌碼買入</span>
+      <span style="font-size:.8rem;color:#f87171" title="籌碼訊號：外資投信同步建倉（level 3~4），K 棒下方紅點＋🟢🟢">●紅 籌碼買入</span>
       <span style="font-size:.8rem;color:#ef4444" title="籌碼訊號：法人強力買超（level ≥5），最強買入訊號">▲紅 籌碼強買</span>
+      <span style="font-size:.8rem;color:#fbbf24" title="K 棒上方綠點旁的 🔴⚠️：法人（外資＋投信＋自營）7 日累計賣超 1000 張以上，同時融資 7 日增加 300 張以上 → 法人出貨、散戶接盤，風險訊號">🔴⚠️ 散戶接盤警示（法人賣、融資增）</span>
       <span style="font-size:.8rem;color:#4ade80" title="籌碼訊號：法人出貨賣壓（level -3~-4）">●綠 籌碼賣壓</span>
       <span style="font-size:.8rem;color:#22c55e" title="籌碼訊號：法人強力賣出（level ≤-5），最強賣出訊號">▼綠 籌碼強賣</span>
       <span style="font-size:.8rem;color:#6b7280">｜</span>

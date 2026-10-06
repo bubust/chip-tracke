@@ -12,14 +12,16 @@ price_levels.py — 依使用者的看盤邏輯算關鍵價位（觀察清單、
 - 區間整理：5 日 > 10 日 > 20 日、底部一直墊高、但還沒過區間高 → 加入自選觀察
 
 2026-10-05 改版（PLAN-LEVELS.md、research/levels/）：用 1,810 檔兩年日 K walk-forward 回測、跟「同樣 ATR 距離的隨機價位」比
-- 支撐價：k=5 波段低點（沒有就 60 日低）——前低是唯一穩定有效的支撐（撐住 +3.4 個百分點）
+- 支撐價：k=3 波段低點（沒有就 60 日低）——前低是唯一穩定有效的支撐（撐住 +3.3 個百分點）
+  （10-05 版用 k=5；10-06 用戶看群創：起漲前的低點才合理，k=5 會跳到更早更遠的低點 → 改 k=3，研究兩者分不出高下）
 - 停損價：支撐 −0.5 ATR、至少離現價 1.5 ATR，收盤跌破出場（舊版約 1 ATR、67% 會被打到；
   改善來自留足空間，前低錨定跟同距離純 ATR 一樣好，選它是因為符合用戶「停損看波段低點」）
   前低離現價 > 3 ATR 且強勢（收盤 > 5 日線 > 10 日線）→ 撐＝10 日線、損＝20 日線 −1 ATR（移動停損）；
   前低 > 3 ATR 但不強勢 → 不顯示支撐、損＝現價 −3.5 ATR（風險上限）（PLAN 第 7、8 節）
-- 目標價：平地一聲雷等幅 → 一般等幅（回檔低＋前高−起漲低）→ 壓力區二 → 現價＋3 ATR（不再拿壓力區一當目標）；
+- 目標價：前高（壓力區一，離現價不到 0.5 ATR 就壓力區二）→ 平地一聲雷等幅 → 一般等幅（回檔低＋前高−起漲低）→ 現價＋3 ATR；
+  （10-06 用戶：「有前高就要看前高，還沒過怎麼會先跳到另一種計算模式」——等幅只在上方沒有前高時用）
   各種目標算法都沒有比隨機準，所以照用戶規則排，另給報酬風險比 rr
-- 壓力區：9 種算法都沒有比隨機準，維持「前高」定義
+- 壓力區：9 種算法都沒有比隨機準，維持「前高」定義；近幾天剛做的高點（右邊還不滿 5 根）也算前高
 """
 from __future__ import annotations
 
@@ -153,6 +155,16 @@ def measured_move(h, l, look: int, last: int, price: float) -> Optional[dict]:
             "pullback_low": L1, "pullback_idx": int(i1 + 1 + int(seg.argmin())), "retrace": (H1 - L1) / leg}
 
 
+def recent_high(h, k: int = 5) -> Optional[int]:
+    """右邊還不滿 k 根、所以 pivots 還沒確認的近期高點（例：前天創高、這兩天拉回）。
+    條件：比左邊 k 根都高、之後到今天都沒超過；不含今天自己（今天的上影線不算前高）。沒有回 None"""
+    n = len(h)
+    for i in range(n - 2, max(k, n - k) - 1, -1):
+        if h[i] > h[i - k:i].max() and h[i] >= h[i + 1:].max():
+            return i
+    return None
+
+
 def _zones(highs_idx, h, price, tol=0.02):
     """把現價上方的波段高點合併成壓力區（相差 2% 內算同一區），由近到遠"""
     above = sorted(float(h[i]) for i in highs_idx if h[i] > price * 1.005)
@@ -182,8 +194,11 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
     notes = []
     look = max(0, n - 250)                 # 約一年內的前高前低
 
-    # 壓力區（現價上方的前高）
+    # 壓力區（現價上方的前高）；近幾天剛做的高點右邊還不滿 5 根也算（2026-10-06 南茂：前天高 133 被漏掉、顯示無前高）
     ph = [i for i in pivots(h, 5, "high") if i >= look]
+    rh = recent_high(h, 5)
+    if rh is not None and rh not in ph:
+        ph.append(rh)
     zones = _zones(ph, h, price)
     p1 = zones[0] if zones else None
     p2 = zones[1] if len(zones) > 1 else None
@@ -216,17 +231,20 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
     a = max(float(atr_v) if np.isfinite(atr_v) else 0.0, price * 0.005)
     fmtd = lambda i: str(df["date"].iloc[i])
 
-    # 目標價：依序取第一個 > 現價 + 0.5 ATR 的（研究：沒有目標算法比隨機準 → 照用戶規則：等幅、前高）
+    # 目標價：依序取第一個 > 現價 + 0.5 ATR 的（研究：沒有目標算法比隨機準 → 照用戶規則）
+    # 用戶規則（2026-10-06 再確認）：上方有前高、還沒過 → 目標就是前高；沒有前高才用等幅（平地一聲雷、一般等幅）、3 ATR
     mm = measured_move(h, l, look, last, price)
     cands = []
+    if p1:
+        cands.append((p1["low"], "pressure1", "前高（壓力區一）還沒過：先看前高"))
+    if p2:
+        cands.append((p2["low"], "pressure2", "壓力區一離現價太近（不到 0.5 倍 ATR），看下一個前高（壓力區二）"))
     if th and th["target"]:
         cands.append((th["target"], "thunder",
-                      f"平地一聲雷等幅：高點 {th['high']} − 突破點 {th['base_top']} ＋ 回檔低點 {th['pullback_low']}"))
+                      f"上方沒有前高可看，用平地一聲雷等幅：高點 {th['high']} − 突破點 {th['base_top']} ＋ 回檔低點 {th['pullback_low']}"))
     if mm:
         cands.append((mm["target"], "measured",
-                      f"等幅：回檔低點 {mm['pullback_low']:.2f} ＋（前高 {mm['high']:.2f} − 起漲低點 {mm['start_low']:.2f}）"))
-    if p2:
-        cands.append((p2["low"], "pressure2", "壓力區二（前高）"))
+                      f"上方沒有前高可看，用等幅：回檔低點 {mm['pullback_low']:.2f} ＋（前高 {mm['high']:.2f} − 起漲低點 {mm['start_low']:.2f}）"))
     cands.append((price + 3 * a, "atr", f"上方沒有前高、也沒有等幅可量：現價 ＋ 3×ATR（約 {3 * a / price * 100:.0f}%）"))
     target, target_kind, method = next((x for x in cands if x[0] is not None and x[0] > price + 0.5 * a), (None, None, ""))
 
@@ -250,11 +268,12 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
         stops["uptrend_exit"] = {"price": th["exit_prev_low"], "date": str(df["date"].iloc[last]),
                                  "label": "上漲模式：收盤跌破這天低點出場"}
 
-    # 支撐價：已確認的 k=5 波段低點（近一年、低於現價、最近一個）；沒有就 60 日低點
+    # 支撐價：最近一個 k=3 波段低點（近一年、低於現價）；沒有就 60 日低點
+    # 2026-10-06 從 k=5 改 k=3（用戶：群創 起漲前的低點 48.55 才合理、k=5 的 46.25 太遠）；
+    # 研究 k=3 撐住 edge +3.3、k=5 +2.8，統計上分不出高下（PLAN-LEVELS.md 3.2）
     support = None
-    lows5 = [i for i in pivots(l, 5, "low") if i >= look and l[i] < price]
-    if lows5:
-        i = lows5[-1]
+    if lows:
+        i = lows[-1]
         support = {"price": _r(l[i]), "date": fmtd(i), "label": "波段低點", "kind": "swing"}
     else:
         s60 = max(0, n - 60)

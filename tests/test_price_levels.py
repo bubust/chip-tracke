@@ -57,7 +57,8 @@ def test_levels_pressure_zones_ordered_above_price():
     lv = compute_levels(make(closes))
     assert lv["pressure1"]["low"] < lv["pressure2"]["low"]
     assert 14.5 < lv["pressure1"]["low"] < 15.5 and 16.5 < lv["pressure2"]["low"] < 17.5
-    assert lv["target"] == lv["pressure2"]["low"] and lv["target_kind"] == "pressure2" and "壓力區二" in lv["target_method"]
+    # 2026-10-06 用戶規則：上方有前高還沒過 → 目標就是前高（壓力區一）
+    assert lv["target"] == lv["pressure1"]["low"] and lv["target_kind"] == "pressure1" and "前高" in lv["target_method"]
     assert "swing_low" in lv["stops"]
 
 
@@ -78,7 +79,7 @@ from price_levels import measured_move
 seg = lambda a, b, k: list(np.linspace(a, b, k))
 
 
-def test_support_is_latest_confirmed_k5_swing_low_and_old_fields_kept():
+def test_support_is_latest_confirmed_swing_low_and_old_fields_kept():
     closes = seg(20, 10, 20) + seg(10, 16, 12) + seg(16, 12, 10) + seg(12, 15, 10)
     lv = compute_levels(make(closes))
     ss = lv["struct_support"] or lv["support"]              # 強勢延伸時前低移到 struct_support
@@ -160,18 +161,44 @@ def test_floor_keeps_stop_below_near_support():
     assert abs(st["price"] - (p - 1.5 * a)) < 0.02 and st["price"] < sup["price"]
 
 
-def test_target_measured_move_and_never_pressure1_only():
+def test_target_prefers_previous_high_then_measured_move():
+    # 上方有前高還沒過（回檔後彈到 17，前高 20 在上面）→ 目標＝前高，不跳到等幅
     closes = seg(20, 10, 20) + seg(10, 20, 15) + seg(20, 15, 8) + seg(15, 17, 6)
     lv = compute_levels(make(closes))
-    assert lv["target_kind"] == "measured" and lv["measured"]
+    assert lv["measured"] and lv["pressure1"]
+    assert lv["target_kind"] == "pressure1" and lv["target"] == lv["pressure1"]["low"]
+    # 已經過了前高、上方沒有前高 → 才用等幅
+    closes = seg(20, 10, 20) + seg(10, 20, 15) + seg(20, 15, 8) + seg(15, 21, 8)
+    lv = compute_levels(make(closes))
+    assert lv["pressure1"] is None and lv["target_kind"] == "measured" and lv["measured"]
     m = lv["measured"]
     assert abs(lv["target"] - (m["pullback_low"] + m["high"] - m["start_low"])) < 0.02 and lv["target"] > lv["price"]
-    # 只有一個前高、回檔太深沒有等幅 → 不拿壓力區一當目標，改用 3 ATR
+    assert "沒有前高" in lv["target_method"]
+    # 只有一個前高、回檔太深沒有等幅 → 目標＝前高
     closes = seg(15, 10, 10) + seg(10, 20, 15) + seg(20, 12, 15) + seg(12, 14, 8)
     lv = compute_levels(make(closes))
     assert lv["pressure1"] and not lv["pressure2"] and lv["measured"] is None
-    assert lv["target_kind"] == "atr" and lv["target"] != lv["pressure1"]["low"]
-    assert abs(lv["target"] - (lv["price"] + 3 * lv["atr"])) < 0.02
+    assert lv["target_kind"] == "pressure1" and lv["target"] == lv["pressure1"]["low"]
+
+
+def test_recent_unconfirmed_high_counts_as_previous_high():
+    """2026-10-06 南茂：前天最高 133、這兩天拉回到 127.5，右邊不滿 5 根 → 以前漏掉、顯示「無前高」、目標跳去算 3 ATR"""
+    closes = seg(10, 20, 30) + [19.0, 18.5]
+    lv = compute_levels(make(closes))
+    assert lv["pressure1"] and abs(lv["pressure1"]["low"] - 20 * 1.01) < 0.01
+    assert lv["target_kind"] == "pressure1" and lv["target"] == lv["pressure1"]["low"]
+    # 今天自己的最高不算前高（還在創新高）
+    lv = compute_levels(make(seg(10, 20, 30)))
+    assert lv["pressure1"] is None and lv["target_kind"] != "pressure1"
+
+
+def test_support_uses_nearest_k3_low_not_older_k5_low():
+    """2026-10-06 群創：起漲前的低點 48.55（k=3 波段低）才是支撐，k=5 會跳到更早更低的 46.25"""
+    closes = seg(20, 10, 20) + seg(10, 15, 8) + [12.0, 13.5, 14.5, 13.8, 13.2, 13.8, 14.3, 14.6]
+    lv = compute_levels(make(closes))
+    sup = lv["support"]
+    assert sup and sup["kind"] == "swing" and abs(sup["price"] - 13.2 * 0.99) < 0.01     # 不是 k=5 的 12.0 × 0.99
+    assert lv["stop"]["price"] < sup["price"]
 
 
 def test_flat_prices_zero_atr_no_crash():
