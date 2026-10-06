@@ -32,7 +32,7 @@ STRATEGIES = {
     "S_FBD":    "假跌破買進",           # 移至第 2 — 用戶常在 K 線看到此標記
     "S1_SHORT": "雙MACD選股（空）",
 
-    "S2":       "W底騙線（跌破前低後收回）",
+    "S2":       "W底（碗公底・不破前低・盤整後再攻擊）",
     "S5":       "站上均線做多",
     "S10":      "漲停",
 
@@ -56,10 +56,10 @@ STRATEGY_PARAMS_SCHEMA = {
     "S2": [
         {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
         {"key": "min_vol_lots",     "label": "最低量（張）",          "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
-        {"key": "db_lookback",      "label": "前低回溯天數",          "type": "number", "default": 60,  "min": 20,  "max": 120,  "step": 5},
-        {"key": "min_gap",          "label": "前低距今至少幾天",       "type": "number", "default": 5,   "min": 3,   "max": 30,   "step": 1},
-        {"key": "bounce_pct",       "label": "前低後反彈至少%",        "type": "number", "default": 5,   "min": 2,   "max": 30,   "step": 1},
-        {"key": "gap_pct",          "label": "回測途中向下跳空缺口%（≥ 就不抄底，0＝不檢查）", "type": "number", "default": 2, "min": 0, "max": 10, "step": 0.5},
+        {"key": "bowl_days",        "label": "前低（碗底）＝第一波高點前幾天內的最低點", "type": "number", "default": 60, "min": 20, "max": 250, "step": 10},
+        {"key": "wave_pct",         "label": "第一波漲幅至少%",       "type": "number", "default": 10,  "min": 3,   "max": 50,   "step": 1},
+        {"key": "min_base",         "label": "盤整至少幾天",          "type": "number", "default": 3,   "min": 2,   "max": 15,   "step": 1},
+        {"key": "max_base",         "label": "盤整最多幾天",          "type": "number", "default": 20,  "min": 5,   "max": 60,   "step": 1},
     ],
     "S5": [
         {"key": "min_price",        "label": "最低股價",             "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
@@ -407,22 +407,28 @@ def screen_s1_2(prices: dict, names: dict = None, params: dict = None) -> list:
 
 def screen_s2(prices: dict, names: dict = None, params: dict = None) -> list:
     """
-    S2 W底騙線：底不破前低，跌破前低又收回＝騙線＝訊號（下去不是真的，上去才是真的）
-    1. 前低 = 近 db_lookback 天（不含昨天、今天）的最低價，且距今至少 min_gap 天
-    2. 前低之後有反彈 ≥ bounce_pct%（形成 W 的左半邊，不是一路破底）
-    3. 今天盤中跌破前低、收盤收回前低之上；或昨天跌破前低、今天收盤收回前低之上
-    4. （上課筆記「短線兩隻腳」）回測前低途中出現大幅向下跳空缺口 → 不抄底；停損＝第二隻腳最低點
+    S2 W底（碗公底）：不破前低、第一波攻擊後盤整幾天再攻擊（2026-10-06 用戶重新定義，取代「跌破前低又收回」的騙線版）
+    用戶：「我要的是 W 底，然後不可以破前低的股票，整體走勢要好，碗公底，10>20>60，第一波攻擊完之後盤個幾天再攻擊」
+    1. 整體走勢好：MA10 > MA20 > MA60
+    2. 第一波高點 H1：最近的波段高點（左右各 3 根；右邊還不滿 3 根的近期高點也算），離今天 min_base～max_base 天
+    3. 前低 L1（碗底）：H1 之前 bowl_days 天內的最低點；第一波 H1 ≥ L1 ×（1 + wave_pct%）
+    4. 盤整：H1 之後到今天的最低點 L2 > L1（不可以破前低）；盤整期間（不含今天）最高沒超過 H1
+    5. 再攻擊：今天收盤 > 盤整期間（不含今天）的最高價
+    停損＝盤整低點 L2（第二隻腳）
+    回測（Yahoo 308 檔大型股、近一年）：每天中位 2 檔；20 天後平均 +8.5%（同期任一股 +6.75%）
     """
+    from price_levels import pivots, recent_high
     p = params or {}
     min_price    = p.get("min_price", 10)
     min_vol_lots = p.get("min_vol_lots", 300)
-    db_lookback  = int(p.get("db_lookback", 60))
-    min_gap      = int(p.get("min_gap", 5))
-    bounce_pct   = float(p.get("bounce_pct", 5))
-    gap_pct      = float(p.get("gap_pct", 2))
+    bowl_days    = int(p.get("bowl_days", 60))
+    wave_pct     = float(p.get("wave_pct", 10))
+    min_base     = max(2, int(p.get("min_base", 3)))
+    max_base     = max(min_base, int(p.get("max_base", 20)))
     results = []
     for sid, df in prices.items():
-        if len(df) < db_lookback + 3:
+        n = len(df)
+        if n < 61:
             continue
         today = df.iloc[-1]
         c = float(today['close'])
@@ -431,42 +437,52 @@ def screen_s2(prices: dict, names: dict = None, params: dict = None) -> list:
         vol = float(today.get('volume', 0) or 0)
         if vol < min_vol_lots:
             continue
-        lows  = df['low'].astype(float).values
+        close = df['close'].astype(float)
+        m10, m20, m60 = (float(close.rolling(k).mean().iloc[-1]) for k in (10, 20, 60))
+        if any(pd.isna(x) for x in (m10, m20, m60)) or not (m10 > m20 > m60):
+            continue
         highs = df['high'].astype(float).values
-        n = len(df)
-        win_start = n - 2 - db_lookback
-        win = lows[win_start:n - 2]
-        if len(win) == 0 or pd.isna(win).any():
+        lows  = df['low'].astype(float).values
+        if pd.isna(highs).any() or pd.isna(lows).any():
             continue
-        lo_i = win_start + int(win.argmin())
-        prev_low = float(lows[lo_i])
-        if prev_low <= 0 or (n - 1) - lo_i < min_gap:
+        t = n - 1
+        hs = [i for i in pivots(highs, 3, "high") if t - max_base <= i <= t - min_base]
+        rh = recent_high(highs, 3)
+        if rh is not None and t - max_base <= rh <= t - min_base:
+            hs.append(rh)
+        if not hs:
             continue
-        # 前低後到前天的最高點：要有反彈才算 W 底
-        if lo_i + 1 >= n - 2 or highs[lo_i + 1:n - 2].max() < prev_low * (1 + bounce_pct / 100):
+        ih = max(hs)
+        H1 = float(highs[ih])
+        b0 = max(0, ih - bowl_days)
+        if ih - b0 < 2:
             continue
-        if c <= prev_low:
-            continue                      # 收盤沒收回前低：真跌破，不是騙線
-        if gap_pct > 0:                   # 從反彈高點回測到今天，有大幅向下跳空缺口就不抄底
-            pk = lo_i + 1 + int(highs[lo_i + 1:n - 2].argmax())
-            if any(highs[i] < lows[i - 1] * (1 - gap_pct / 100) for i in range(pk + 1, n)):
-                continue
-        if lows[-1] < prev_low:
-            fake_day, fake_low = "今天", float(lows[-1])
-        elif lows[-2] < prev_low:
-            fake_day, fake_low = "昨天", float(lows[-2])
-        else:
-            continue                      # 沒跌破前低：還不是騙線
+        i1 = b0 + int(lows[b0:ih].argmin())
+        L1 = float(lows[i1])
+        if L1 <= 0 or H1 < L1 * (1 + wave_pct / 100):
+            continue                      # 第一波漲幅不夠
+        L2 = float(lows[ih + 1:t + 1].min())
+        if L2 <= L1:
+            continue                      # 破前低
+        base_hi = float(highs[ih + 1:t].max())
+        if base_hi > H1:
+            continue                      # 盤整期間已經過了第一波高點，不是「盤整」
+        if c <= base_hi:
+            continue                      # 今天還沒再攻擊
         results.append({"stock_id": sid, "name": _name(sid, names),
                         "close": round(c, 2),
                         "change_pct": _change_pct(df),
                         "volume": round(vol),
                         "bb_score": calc_bb_score(df),
-                        "prev_low": round(prev_low, 2),
-                        "prev_low_date": str(df.iloc[lo_i].get('date', '')),
-                        "fake_day": fake_day,
-                        "fake_low": round(fake_low, 2),
-                        "stop": round(min(fake_low, float(lows[-1])), 2),
+                        "prev_low": round(L1, 2),
+                        "prev_low_date": str(df.iloc[i1].get('date', '')),
+                        "wave_high": round(H1, 2),
+                        "wave_high_date": str(df.iloc[ih].get('date', '')),
+                        "wave_pct": round((H1 / L1 - 1) * 100, 1),
+                        "base_days": int(t - ih),
+                        "base_low": round(L2, 2),
+                        "base_high": round(base_hi, 2),
+                        "stop": round(L2, 2),
                         "strategy": "S2"})
     return results
 
