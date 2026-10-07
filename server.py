@@ -1473,412 +1473,6 @@ async def api_watchlist_prices():
             yahoo_result.update(fm_fallback)
         return yahoo_result
 
-async def _deep_chip(stock_id: str) -> dict | None:
-    """籌碼：FinMind TaiwanStockInstitutionalInvestorsBuySell 近10日三大法人買賣超"""
-    from datetime import date, timedelta
-    start = (date.today() - timedelta(days=30)).strftime("%Y-%m-%d")  # 30天（原20天）
-    url = "https://api.finmindtrade.com/api/v4/data"
-    params = {
-        "dataset": "TaiwanStockInstitutionalInvestorsBuySell",
-        "data_id": stock_id,
-        "start_date": start,
-        "token": _FINMIND_TOKEN,
-    }
-    try:
-        async with httpx.AsyncClient(timeout=12) as c:
-            r = await c.get(url, params=params)
-            data = r.json().get("data", [])
-        if not data:
-            return {"error": "FinMind 無法人買賣資料（可能非交易日或API限速）"}
-        # 每日每機構一筆：name in [外資及陸資, 投信, 自營商]
-        from collections import defaultdict
-        buckets: dict[str, list] = defaultdict(list)
-        for row in data[-90:]:  # 最多取近 90 筆（約 30 天 × 3 機構）
-            try:
-                buy_raw  = int(str(row.get("buy",  0) or 0).replace(",", ""))
-                sell_raw = int(str(row.get("sell", 0) or 0).replace(",", ""))
-            except (ValueError, TypeError):
-                continue
-            # FinMind 回傳「股數」（shares），1張=1000股 → 轉為張
-            net = round((buy_raw - sell_raw) / 1000)
-            name = row.get("name", "")
-            if "外資" in name:
-                buckets["foreign"].append(net)
-            elif "投信" in name:
-                buckets["trust"].append(net)
-            elif "自營" in name:
-                buckets["dealer"].append(net)
-
-        def _agg(lst: list) -> dict:
-            net10 = sum(lst[-10:]) if lst else 0
-            days_buy  = sum(1 for x in lst[-10:] if x > 0)
-            days_sell = sum(1 for x in lst[-10:] if x < 0)
-            return {"net_10d": int(net10), "days_buy": days_buy, "days_sell": days_sell}
-
-        foreign = _agg(buckets["foreign"])
-        trust   = _agg(buckets["trust"])
-        dealer  = _agg(buckets["dealer"])
-        total   = foreign["net_10d"] + trust["net_10d"] + dealer["net_10d"]
-
-        # 零值偵測：有資料列但 30 天所有 net 值皆為 0 → API 速率限制導致
-        def _all_zero_bucket(lst: list) -> bool:
-            return not lst or all(v == 0 for v in lst)
-        all_zero = (len(data) > 0 and
-                    _all_zero_bucket(buckets["foreign"]) and
-                    _all_zero_bucket(buckets["trust"]) and
-                    _all_zero_bucket(buckets["dealer"]))
-        if all_zero:
-            # ── Fallback：TWSE T86 今日三大法人買賣超（免費，無需 token）──
-            try:
-                from datetime import date as _date_cls
-                _today = _date_cls.today().strftime("%Y%m%d")
-                async with httpx.AsyncClient(timeout=10) as _tc:
-                    _tr = await _tc.get(
-                        "https://www.twse.com.tw/rwd/zh/fund/T86",
-                        params={"response": "json", "date": _today, "selectType": "ALLBUT0999"},
-                        headers={"Referer": "https://www.twse.com.tw/"},
-                    )
-                if _tr.is_success:
-                    _tj = _tr.json()
-                    _fields = _tj.get("fields", [])
-                    for _row in _tj.get("data", []):
-                        if _row and str(_row[0]).strip() == stock_id:
-                            def _parse_num(v):
-                                try: return int(str(v).replace(",", "")) // 1000
-                                except: return 0
-                            # fields: 代號,名稱,外資買,外資賣,外資超,...
-                            fi = _fields.index("外陸資買賣超股數(不含外資自營商)") if "外陸資買賣超股數(不含外資自營商)" in _fields else 4
-                            ti = _fields.index("投信買賣超股數") if "投信買賣超股數" in _fields else 10
-                            di = _fields.index("自營商買賣超股數") if "自營商買賣超股數" in _fields else 13
-                            fn = _parse_num(_row[fi]) if len(_row) > fi else 0
-                            tn = _parse_num(_row[ti]) if len(_row) > ti else 0
-                            dn = _parse_num(_row[di]) if len(_row) > di else 0
-                            total = fn + tn + dn
-                            buckets["foreign"] = [fn]
-                            buckets["trust"]   = [tn]
-                            buckets["dealer"]  = [dn]
-                            foreign = {"net_10d": fn, "days_buy": 1 if fn > 0 else 0, "days_sell": 1 if fn < 0 else 0}
-                            trust   = {"net_10d": tn, "days_buy": 1 if tn > 0 else 0, "days_sell": 1 if tn < 0 else 0}
-                            dealer  = {"net_10d": dn, "days_buy": 1 if dn > 0 else 0, "days_sell": 1 if dn < 0 else 0}
-                            sig = ("三大法人強力買超" if total > 3000 else
-                                   "外資買超" if fn > 2000 else
-                                   "三大法人賣超" if total < -3000 else "中性")
-                            return {"foreign": foreign, "trust": trust, "dealer": dealer,
-                                    "total_net_10d": total, "signal": sig, "source": "TWSE今日"}
-            except Exception as _te:
-                log.warning(f"[deep_chip] TWSE fallback {stock_id}: {_te}")
-            sig = "⚠️ 法人資料暫時無法取得"
-        elif total > 3000:
-            sig = "三大法人強力買超"
-        elif foreign["net_10d"] > 2000:
-            sig = "外資連買"
-        elif total < -3000:
-            sig = "三大法人賣超"
-        else:
-            sig = "中性"
-
-        return {"foreign": foreign, "trust": trust, "dealer": dealer,
-                "total_net_10d": total, "signal": sig}
-    except Exception as e:
-        log.warning(f"[deep_chip] {stock_id}: {e}")
-        return {"error": f"法人資料暫時不可用：{type(e).__name__}"}
-
-
-async def _deep_fundamental(stock_id: str) -> dict | None:
-    """基本面：FinMind TaiwanStockPER — PE/PB/殖利率"""
-    from datetime import date, timedelta
-    start = (date.today() - timedelta(days=30)).strftime("%Y-%m-%d")
-    url = "https://api.finmindtrade.com/api/v4/data"
-    params = {
-        "dataset": "TaiwanStockPER",
-        "data_id": stock_id,
-        "start_date": start,
-        "token": _FINMIND_TOKEN,
-    }
-    try:
-        async with httpx.AsyncClient(timeout=12) as c:
-            r = await c.get(url, params=params)
-            data = r.json().get("data", [])
-        if not data:
-            return None
-        row = data[-1]
-        per = row.get("PER") or row.get("per")
-        pbr = row.get("PBR") or row.get("pbr")
-        dy  = row.get("DividendYield") or row.get("dividend_yield")
-        try:
-            per = float(per) if per not in (None, "", "—") else None
-            pbr = float(pbr) if pbr not in (None, "", "—") else None
-            dy  = float(dy)  if dy  not in (None, "", "—") else None
-        except Exception:
-            per = pbr = dy = None
-
-        if per is None:
-            sig = "無資料"
-        elif per < 10:
-            sig = "低估"
-        elif per < 20:
-            sig = "合理"
-        elif per < 30:
-            sig = "偏高"
-        else:
-            sig = "高估"
-
-        result = {
-            "date": row.get("date", ""),
-            "per": round(per, 2) if per is not None else None,
-            "pbr": round(pbr, 2) if pbr is not None else None,
-            "dividend_yield": round(dy, 2) if dy is not None else None,
-            "signal": sig,
-        }
-        # ── 補充：Yahoo Finance summaryDetail（市值/52週高低/Beta）──
-        try:
-            _YF_HDRS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                        "Accept": "application/json", "Accept-Language": "zh-TW,zh;q=0.9"}
-            async with httpx.AsyncClient(timeout=10, headers=_YF_HDRS, follow_redirects=True) as yc:
-                _yf_suffixes = [".TW", ".TWO"]  # 先試上市(.TW)，再試上櫃(.TWO)
-                yr = None
-                # 嘗試 v10 和 v11（v10 有時需要 crumb，v11 較寬鬆）
-                for _ver in ["v11", "v10"]:
-                    for _sfx in _yf_suffixes:
-                        try:
-                            _r = await yc.get(
-                                f"https://query1.finance.yahoo.com/{_ver}/finance/quoteSummary/{stock_id}{_sfx}",
-                                params={"modules": "summaryDetail,defaultKeyStatistics"},
-                            )
-                            if _r.is_success and (_r.json().get("quoteSummary", {}).get("result") or []):
-                                yr = _r
-                                break
-                        except Exception:
-                            continue
-                    if yr:
-                        break
-                if yr and yr.is_success:
-                    _yresult = yr.json().get("quoteSummary", {}).get("result") or []
-                    if _yresult:
-                        ydata = _yresult[0]
-                        sd = ydata.get("summaryDetail", {})
-                        ks = ydata.get("defaultKeyStatistics", {})
-                        mktcap = (sd.get("marketCap") or {}).get("raw")
-                        w52h   = (sd.get("fiftyTwoWeekHigh") or {}).get("raw")
-                        w52l   = (sd.get("fiftyTwoWeekLow") or {}).get("raw")
-                        beta   = (sd.get("beta") or {}).get("raw")
-                        shares = (ks.get("sharesOutstanding") or {}).get("raw")
-                        if mktcap:
-                            result["market_cap"] = round(mktcap / 1e8, 1)   # 億元
-                        if w52h:
-                            result["week52_high"] = round(w52h, 2)
-                        if w52l:
-                            result["week52_low"] = round(w52l, 2)
-                        if beta:
-                            result["beta"] = round(beta, 2)
-                        if shares:
-                            result["shares_outstanding"] = round(shares / 1e8, 2)  # 億股
-        except Exception:
-            pass
-        # ── 本地 price_daily 備援：52 週高低（Yahoo 失敗時）──
-        if result.get("week52_high") is None or result.get("week52_low") is None:
-            try:
-                from price_cache import get_stock_ohlcv as _get_ohlcv
-                _df52 = _get_ohlcv(stock_id, days=260)
-                if not _df52.empty and "high" in _df52.columns and "low" in _df52.columns:
-                    _h = float(_df52["high"].max())
-                    _l = float(_df52["low"].min())
-                    if _h > 0:
-                        result["week52_high"] = round(_h, 2)
-                        result["week52_low"]  = round(_l, 2)
-            except Exception:
-                pass
-        return result
-    except Exception as e:
-        log.warning(f"[deep_fund] {stock_id}: {e}")
-        return None
-
-
-def _fin_highlights(eps, gross_margin, eps_yoy, rev_yoy) -> list[dict]:
-    """生成財務亮點 / 警示清單。type: good=亮點 warn=警示 info=中性"""
-    items = []
-    if eps is not None:
-        if eps < 0:
-            items.append({"type": "warn", "text": f"EPS 虧損（{eps} 元），獲利能力待觀察"})
-        elif eps >= 8:
-            items.append({"type": "good", "text": f"EPS {eps} 元，高獲利優質股"})
-        elif eps >= 3:
-            items.append({"type": "good", "text": f"EPS {eps} 元，獲利穩健"})
-    if gross_margin is not None:
-        if gross_margin >= 50:
-            items.append({"type": "good", "text": f"毛利率 {gross_margin}%，高競爭壁壘"})
-        elif gross_margin >= 30:
-            items.append({"type": "good", "text": f"毛利率 {gross_margin}%，獲利空間充足"})
-        elif gross_margin < 10:
-            items.append({"type": "warn", "text": f"毛利率僅 {gross_margin}%，競爭激烈或成本壓力"})
-    if eps_yoy is not None:
-        if eps_yoy >= 50:
-            items.append({"type": "good", "text": f"EPS 年增 +{eps_yoy}%，爆發性成長"})
-        elif eps_yoy >= 20:
-            items.append({"type": "good", "text": f"EPS 年增 +{eps_yoy}%，成長動能強勁"})
-        elif eps_yoy <= -50:
-            items.append({"type": "warn", "text": f"EPS 年減 {eps_yoy}%，獲利大幅衰退"})
-        elif eps_yoy <= -20:
-            items.append({"type": "warn", "text": f"EPS 年減 {eps_yoy}%，獲利趨弱"})
-    if rev_yoy is not None:
-        if rev_yoy >= 30:
-            items.append({"type": "good", "text": f"營收年增 +{rev_yoy}%，業務高速擴張"})
-        elif rev_yoy >= 10:
-            items.append({"type": "info", "text": f"營收年增 +{rev_yoy}%，成長趨勢"})
-        elif rev_yoy <= -20:
-            items.append({"type": "warn", "text": f"營收年減 {rev_yoy}%，需留意訂單能見度"})
-    return items
-
-
-async def _deep_financial(stock_id: str) -> dict | None:
-    """財務：FinMind TaiwanFinancialStatements — EPS/營收/毛利率"""
-    from datetime import date, timedelta
-    start = (date.today() - timedelta(days=1000)).strftime("%Y-%m-%d")  # 1000天（原500天）
-    url = "https://api.finmindtrade.com/api/v4/data"
-    params = {
-        "dataset": "TaiwanFinancialStatements",
-        "data_id": stock_id,
-        "start_date": start,
-        "token": _FINMIND_TOKEN,
-    }
-    try:
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.get(url, params=params)
-            data = r.json().get("data", [])
-        if not data:
-            raise ValueError("finmind_no_data")  # 觸發下方 Yahoo Finance fallback
-
-        # 按 (date, type) 樞紐：取 EPS, Revenue, GrossProfit
-        from collections import defaultdict
-        pivot: dict[str, dict] = defaultdict(dict)
-        for row in data:
-            dt = row.get("date", "")[:7]  # YYYY-MM
-            tp = row.get("type", "")
-            try:
-                val = float(str(row.get("value", 0)).replace(",", "") or 0)
-            except Exception:
-                val = 0.0
-            if "EPS" in tp:
-                pivot[dt]["eps"] = val
-            elif "Revenue" in tp or "營業收入" in tp:
-                pivot[dt]["revenue"] = val
-            elif "GrossProfit" in tp or "毛利" in tp:
-                pivot[dt]["gross_profit"] = val
-
-        quarters = sorted(pivot.keys())
-        if not quarters:
-            raise ValueError("no_quarters")
-
-        latest_q = quarters[-1]
-        latest   = pivot[latest_q]
-        eps_latest = latest.get("eps")
-        rev_latest = latest.get("revenue")
-        gp_latest  = latest.get("gross_profit")
-
-        # YoY：比 4 季前
-        yoy_q = quarters[-5] if len(quarters) >= 5 else None
-        eps_yoy = rev_yoy = None
-        if yoy_q:
-            eps_prev = pivot[yoy_q].get("eps")
-            rev_prev = pivot[yoy_q].get("revenue")
-            if eps_prev and eps_prev != 0:
-                eps_yoy = round((eps_latest - eps_prev) / abs(eps_prev) * 100, 1)
-            if rev_prev and rev_prev != 0:
-                rev_yoy = round((rev_latest - rev_prev) / abs(rev_prev) * 100, 1) if rev_latest else None
-
-        gross_margin = None
-        if gp_latest and rev_latest and rev_latest != 0:
-            gross_margin = round(gp_latest / rev_latest * 100, 1)
-
-        if eps_yoy is None:
-            sig = "無資料"
-        elif eps_yoy > 20:
-            sig = "高成長"
-        elif eps_yoy > 0:
-            sig = "成長"
-        else:
-            sig = "衰退"
-
-        return {
-            "latest": {
-                "date": latest_q,
-                "eps": eps_latest,
-                "revenue": int(rev_latest) if rev_latest else None,
-                "gross_margin": gross_margin,
-                "revenue_unit": "千元",  # FinMind 單位
-            },
-            "eps_growth_yoy": eps_yoy,
-            "revenue_growth_yoy": rev_yoy,
-            "signal": sig,
-            "highlights": _fin_highlights(eps_latest, gross_margin, eps_yoy, rev_yoy),
-            "source": "FinMind",
-        }
-    except Exception as e:
-        log.warning(f"[deep_fin] FinMind {stock_id}: {e}")
-        # ── Fallback：Yahoo Finance financialData（v11/v10 × .TW/.TWO）──
-        try:
-            _YF_HDRS2 = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                         "Accept": "application/json"}
-            async with httpx.AsyncClient(timeout=10, headers=_YF_HDRS2, follow_redirects=True) as yc:
-                yr = None
-                for _ver in ["v11", "v10"]:
-                    for _sfx in [".TW", ".TWO"]:
-                        try:
-                            _r = await yc.get(
-                                f"https://query1.finance.yahoo.com/{_ver}/finance/quoteSummary/{stock_id}{_sfx}",
-                                params={"modules": "financialData,defaultKeyStatistics"},
-                            )
-                            if _r.is_success and (_r.json().get("quoteSummary", {}).get("result") or []):
-                                yr = _r
-                                break
-                        except Exception:
-                            continue
-                    if yr:
-                        break
-                if not yr or not yr.is_success:
-                    return None
-                _yres = yr.json().get("quoteSummary", {}).get("result") or []
-                if not _yres:
-                    return None
-                ydata = _yres[0]
-                fd  = ydata.get("financialData", {})
-                ks  = ydata.get("defaultKeyStatistics", {})
-                # financialData 欄位
-                total_rev = (fd.get("totalRevenue") or {}).get("raw")
-                gross_m_r = (fd.get("grossMargins") or {}).get("raw")
-                gross_margin = round(gross_m_r * 100, 1) if gross_m_r is not None else None
-                eps       = (ks.get("trailingEps") or {}).get("raw")
-                eg_raw    = (fd.get("earningsGrowth") or {}).get("raw")
-                rg_raw    = (fd.get("revenueGrowth") or {}).get("raw")
-                eps_yoy   = round(eg_raw * 100, 1) if eg_raw is not None else None
-                rev_yoy   = round(rg_raw * 100, 1) if rg_raw is not None else None
-                sig = "無資料"
-                if eps_yoy is not None:
-                    if eps_yoy > 20: sig = "高成長"
-                    elif eps_yoy > 0: sig = "成長"
-                    else: sig = "衰退"
-                if not any(v is not None for v in [total_rev, gross_margin, eps, eps_yoy]):
-                    return None  # 完全無資料才返回 None
-                _eps_r = round(eps, 2) if eps else None
-                return {
-                    "latest": {
-                        "date": "",
-                        "eps": _eps_r,
-                        "revenue": int(total_rev) if total_rev else None,
-                        "gross_margin": gross_margin,
-                        "revenue_unit": "元",  # Yahoo 單位為實際 TWD
-                    },
-                    "eps_growth_yoy": eps_yoy,
-                    "revenue_growth_yoy": rev_yoy,
-                    "signal": sig,
-                    "highlights": _fin_highlights(_eps_r, gross_margin, eps_yoy, rev_yoy),
-                    "source": "Yahoo Finance",
-                }
-        except Exception as e2:
-            log.warning(f"[deep_fin_yf] {stock_id}: {e2}")
-        return None
-
-
 async def _deep_news(stock_id: str) -> dict:
     """新聞：Google News RSS → cnyes → Yahoo Finance 多重 fallback"""
     import xml.etree.ElementTree as ET
@@ -1976,381 +1570,210 @@ async def _deep_news(stock_id: str) -> dict:
 
 
 @app.get("/api/stock/{stock_id}/deep-analysis")
-async def api_stock_deep_analysis(stock_id: str):
+async def api_stock_deep_analysis(stock_id: str, fresh: int = 0):
     """
-    股票深度分析：技術 + 籌碼 + 基本面 + 財務 + 新聞 + 產業
-    資料來源：price_daily / FinMind / Yahoo Finance
+    股票深度分析（PLAN-DEEP2）：綜合評價＋關鍵價位＋技術／籌碼／基本／財務／新聞／產業
+    資料：K 線同關鍵價位（_fetch_for_scan）；法人／融資券＝本機每日表（chip_course），不夠才 FinMind；
+    估值／營收／損益／股本＝證交所・櫃買官方整包表（deep_data）；評價＝deep_verdict（技術已回測，其他參考）
+    fresh=1：清掉這檔的 FinMind 與關鍵價位快取（官方整包表超過 30 分鐘才重抓）
     """
+    sid = _check_sid(stock_id)
     try:
-        data = await _api_stock_deep_analysis_impl(stock_id)
-        # JSONResponse 明確序列化，先 sanitize 確保無 NaN/Inf（FastAPI 序列化失敗不在 try 範圍內）
+        data = await _api_stock_deep_analysis_impl(sid, bool(fresh))
         return JSONResponse(content=_sanitize_for_json(data))
     except HTTPException:
         raise
     except Exception as e:
-        log.exception(f"[deep-analysis] {stock_id}: {repr(e)}")
+        log.exception(f"[deep-analysis] {sid}: {repr(e)}")
         raise HTTPException(status_code=500, detail=repr(e))
 
 
-def _compute_composite_score(
-    tech_score_100: int,
-    chip_data: dict | None,
-    fund_data: dict | None,
-    sector_info: dict | None,
-) -> dict:
-    """
-    綜合評分（0~100）：籌碼(50) + 技術(35) + 其他(15)
-    chip_data / fund_data 可能為 None 或含 {"error": "..."} 欄位。
-    """
-    breakdown = []
-
-    # ── 技術分（0~35）──
-    tech_35 = round((tech_score_100 or 0) * 35 / 100)
-
-    # ── 籌碼分（0~50）：無資料→預設 25（中性）──
-    chip_raw = 0
-    if chip_data and not chip_data.get("error"):
-        total_net  = chip_data.get("total_net_10d", 0) or 0
-        foreign    = chip_data.get("foreign") or {}
-        trust      = chip_data.get("trust") or {}
-        dealer     = chip_data.get("dealer") or {}
-        fn10 = foreign.get("net_10d", 0) or 0
-        dn10 = dealer.get("net_10d", 0) or 0
-        tb   = trust.get("days_buy", 0) or 0
-        # 三大法人合計 ±20 分
-        chip_raw += max(-20, min(20, int(total_net / 200)))
-        # 外資主力 ±15 分
-        chip_raw += max(-15, min(15, int(fn10 / 300)))
-        # 投信連買天數 +0~10 分
-        chip_raw += min(10, int(tb * 1.5))
-        # 自營商買超 +0~5 分
-        chip_raw += min(5, max(0, int(dn10 / 200)))
-        chip_50 = max(0, min(50, chip_raw + 25))
-        # 訊號說明
-        if total_net > 1000:
-            breakdown.append(f"法人10日買超 +{total_net:,}張")
-        elif total_net < -1000:
-            breakdown.append(f"法人10日賣超 {total_net:,}張")
-        if fn10 > 500:
-            breakdown.append(f"外資 +{fn10:,}張")
-    else:
-        chip_50 = 25   # 資料不足→中性
-
-    # ── 其他分（0~15）──
-    other = 0
-    if sector_info and not sector_info.get("error"):
-        r5 = sector_info.get("rank5d")
-        if r5 is not None:
-            if r5 <= 5:
-                other += 5; breakdown.append("族群強勢（前5）")
-            elif r5 <= 10:
-                other += 3; breakdown.append("族群偏強（前10）")
-    if fund_data and not fund_data.get("error"):
-        per = fund_data.get("per")
-        pbr = fund_data.get("pbr")
-        dy  = fund_data.get("dividend_yield")
-        try:
-            if per is not None and pbr is not None and 0 < float(per) < 20 and float(pbr) < 1.5:
-                other += 5; breakdown.append(f"估值合理 PE={per}")
-        except (TypeError, ValueError):
-            pass
-        try:
-            if dy is not None and float(dy) > 3:
-                other += 5; breakdown.append(f"殖利率 {dy}%")
-        except (TypeError, ValueError):
-            pass
-    other = max(0, min(15, other))
-
-    total = chip_50 + tech_35 + other
-
-    # tech signal
-    tech_score_100 = tech_score_100 or 0   # guard: None → 0
-    if tech_score_100 >= 70:
-        breakdown.insert(0, "技術面偏多")
-    elif tech_score_100 < 40:
-        breakdown.insert(0, "技術面偏空")
-
-    # 等級
-    if total >= 80:
-        grade, icon, color = "強烈看多", "⚡", "#22c55e"
-    elif total >= 65:
-        grade, icon, color = "偏多", "📈", "#84cc16"
-    elif total >= 45:
-        grade, icon, color = "中性", "➡️", "#94a3b8"
-    elif total >= 30:
-        grade, icon, color = "偏空", "📉", "#f97316"
-    else:
-        grade, icon, color = "強烈看空", "⚠️", "#ef4444"
-
-    return {
-        "total": total,
-        "chip": chip_50,
-        "tech": tech_35,
-        "other": other,
-        "grade": grade,
-        "grade_icon": icon,
-        "color": color,
-        "breakdown": breakdown[:4],   # 最多4條
-    }
-
-
-async def _api_stock_deep_analysis_impl(stock_id: str):
-    import math
-    import pandas as pd
-    from scanner import (
-        calc_macd, calc_ma, calc_bb_score, classify_stage, _change_pct
-    )
-    from chip_tracker_v2 import DB_PATH
-    from yahoo_price import get_stock_list
-
-    # ── 1. 取股票名稱 ──
-    try:
-        stocks_df = get_stock_list()
-        name_map = dict(zip(stocks_df["stock_id"], stocks_df["stock_name"]))
-        mkt_map  = dict(zip(stocks_df["stock_id"], stocks_df["type"]))
-    except Exception:
-        name_map = {}
-        mkt_map  = {}
-
-    stock_name = name_map.get(stock_id, stock_id)
-
-    # ── 2. 讀取 price_daily（至少 150 天供 50MA + 大MACD 計算）──
-    df = None
-    try:
-        cache_conn = sqlite3.connect(str(DB_PATH))
-        df = pd.read_sql_query(
-            "SELECT date, open, high, low, close, volume FROM price_daily WHERE stock_id=? ORDER BY date",
-            cache_conn, params=(stock_id,)
-        )
-        cache_conn.close()
-    except Exception:
-        pass
-
-    # 不足 100 天 → 補抓 Yahoo
-    if df is None or len(df) < 100:
-        try:
-            from yahoo_price import _fetch_yahoo_async
-            import httpx as _httpx
-            mkt = mkt_map.get(stock_id, "twse")
-            _sem = asyncio.Semaphore(1)
-            async with _httpx.AsyncClient(
-                timeout=_httpx.Timeout(12.0), verify=False, follow_redirects=True
-            ) as _cli:
-                new_df = await _fetch_yahoo_async(_cli, _sem, stock_id, mkt)
-            if new_df is not None and not new_df.empty and \
-               len(new_df) > (len(df) if df is not None else 0):
-                df = new_df
-        except Exception:
-            pass
-
-    if df is None or len(df) < 10:
-        return JSONResponse(content={
-            "error": "price_unavailable",
-            "detail": f"{stock_id} 價格資料不足（建議先執行「全系統更新」補齊歷史資料）",
-        })
-
-    # 確保欄位名稱一致（小寫）
-    df.columns = [c.lower() for c in df.columns]
-    df = df.reset_index(drop=True)
-
-    closes  = df['close'].astype(float)
-    volumes = df['volume'].astype(float)
-    today   = df.iloc[-1]
-
-    # ── 3. 技術指標 ──
-    # MACD
-    dif1, dea1, osc1 = calc_macd(closes, 12, 26, 9)
-    dif_v, dea_v, osc_v = float(dif1.iloc[-1]), float(dea1.iloc[-1]), float(osc1.iloc[-1])
-    dif2, dea2, osc2 = (None, None, None)
-    macd_big = None
-    if len(df) >= 235:
-        dif2, dea2, osc2 = calc_macd(closes, 108, 216, 18)
-        macd_big = {
-            "dif": round(float(dif2.iloc[-1]), 4),
-            "dea": round(float(dea2.iloc[-1]), 4),
-            "osc": round(float(osc2.iloc[-1]), 4),
-        }
-
-    # MACD 訊號判讀
-    macd_signal = "多" if dif_v > 0 and dea_v > 0 and osc_v > 0 else \
-                  "偏多" if dif_v > 0 and dea_v > 0 else \
-                  "空" if dif_v < 0 and dea_v < 0 and osc_v < 0 else \
-                  "偏空" if dif_v < 0 and dea_v < 0 else "震盪"
-
-    # MA
-    ma10 = float(closes.rolling(10, min_periods=10).mean().iloc[-1]) if len(df) >= 10 else None
-    ma20 = float(closes.rolling(20, min_periods=20).mean().iloc[-1]) if len(df) >= 20 else None
-    ma60 = float(closes.rolling(60, min_periods=60).mean().iloc[-1]) if len(df) >= 60 else None
-    tc   = float(today['close'])
-
-    # 均線黃金交叉（MA10 近10天由下穿 MA60）
-    golden_cross_days = None
-    if ma10 and ma60 and len(df) >= 70:
-        ma10_s = closes.rolling(10, min_periods=10).mean()
-        ma60_s = closes.rolling(60, min_periods=60).mean()
-        for lag in range(1, 11):
-            i = -(lag + 1)
-            if abs(i) <= len(df) and not pd.isna(ma10_s.iloc[i]) and not pd.isna(ma60_s.iloc[i]):
-                if float(ma10_s.iloc[i]) < float(ma60_s.iloc[i]):
-                    golden_cross_days = lag
-                    break
-
-    # BB 位置
-    bb_score = calc_bb_score(df)
-
-    # 量能
-    try:
-        vol_today = float(volumes.iloc[-1]) if len(volumes) > 0 else 0.0
-    except (TypeError, ValueError):
-        vol_today = 0.0
-    vol_prev   = float(volumes.iloc[-2]) if len(volumes) > 1 else 0
-    vol_5d_avg = float(volumes.iloc[-5:].mean()) if len(volumes) >= 5 else vol_today
-    vol_ratio  = round(vol_today / vol_prev, 2) if vol_prev > 0 else None
-    vol_vs_avg = round(vol_today / vol_5d_avg, 2) if vol_5d_avg > 0 else None
-
-    # 漲跌幅
-    change_pct = _change_pct(df)
-
-    # ── 4. 操作階段 ──
-    stage = classify_stage(df)
-
-    # ── 5. 族群資訊（sector DB）──
-    sector_info = None
+def _deep_sector(stock_id: str, last_price_date: str | None, dates: list) -> dict | None:
+    """所屬產業與 20 日強度名次；sector_daily 最新日距今超過 5 個交易日 → stale（評分不計）"""
     try:
         from sector.db import db as sector_db
         with sector_db() as sconn:
-            map_row = sconn.execute(
-                "SELECT sector_id FROM stock_sector_map WHERE stock_id=? LIMIT 1",
-                (stock_id,)
-            ).fetchone()
-            if map_row:
-                sid = map_row["sector_id"]
-                s_row = sconn.execute(
-                    "SELECT sector_name FROM sector_master WHERE sector_id=?", (sid,)
-                ).fetchone()
-                latest_date = sconn.execute(
-                    "SELECT MAX(observation_date) AS d FROM sector_daily"
-                ).fetchone()
-                ld = latest_date["d"] if latest_date else None
-                rank_row = sconn.execute(
-                    "SELECT relative_rank_5d, relative_rank_20d FROM sector_daily WHERE sector_id=? AND observation_date=?",
-                    (sid, ld)
-                ).fetchone() if ld else None
-                total_sectors = sconn.execute("SELECT COUNT(*) AS n FROM sector_master").fetchone()["n"]
-                sector_info = {
-                    "sector_id":   sid,
-                    "sector_name": s_row["sector_name"] if s_row else sid,
-                    "rank5d":      rank_row["relative_rank_5d"]  if rank_row else None,
-                    "rank20d":     rank_row["relative_rank_20d"] if rank_row else None,
-                    "total":       total_sectors,
-                }
+            map_row = sconn.execute("SELECT sector_id FROM stock_sector_map WHERE stock_id=? "
+                                    "ORDER BY effective_date DESC LIMIT 1", (stock_id,)).fetchone()
+            if not map_row:
+                return None
+            sec = map_row["sector_id"]
+            s_row = sconn.execute("SELECT sector_name FROM sector_master WHERE sector_id=?", (sec,)).fetchone()
+            ld = (sconn.execute("SELECT MAX(observation_date) AS d FROM sector_daily").fetchone() or {"d": None})["d"]
+            rank_row = sconn.execute("SELECT relative_rank_5d, relative_rank_20d FROM sector_daily "
+                                     "WHERE sector_id=? AND observation_date=?", (sec, ld)).fetchone() if ld else None
+            total = sconn.execute("SELECT COUNT(*) AS n FROM sector_daily WHERE observation_date=?", (ld,)).fetchone()["n"] if ld else 0
     except Exception:
-        pass
+        return None
+    ldn = str(ld or "").replace("-", "")
+    behind = sum(1 for d in dates if str(d) > ldn) if ldn else 99
+    return {"sector_id": sec, "sector_name": s_row["sector_name"] if s_row else sec,
+            "rank5d": rank_row["relative_rank_5d"] if rank_row else None,
+            "rank20d": rank_row["relative_rank_20d"] if rank_row else None,
+            "total": total, "date": ld, "stale": behind > 5}
 
-    # ── 6. 綜合評分（0~100）──
-    signals = []
-    tech_score = 50  # 基礎分
 
-    # MACD 加減分
-    if dif_v > 0 and dea_v > 0:
-        tech_score += 10; signals.append("MACD 多頭")
-    elif dif_v < 0 and dea_v < 0:
-        tech_score -= 10; signals.append("MACD 空頭")
+def _deep_market_regime() -> dict | None:
+    """總經面板最新一天的大盤狀態（只顯示，不計分）"""
+    try:
+        from regime.db import DB_PATH as _RDB
+        c = sqlite3.connect(str(_RDB), timeout=5.0)
+        r = c.execute("SELECT date, regime_label FROM factors WHERE regime_label IS NOT NULL AND regime_label != '' "
+                      "ORDER BY date DESC LIMIT 1").fetchone()
+        c.close()
+        return {"date": r[0], "label": r[1]} if r else None
+    except Exception:
+        return None
 
-    if osc_v > 0:
-        tech_score += 5; signals.append("OSC 翻正")
-    elif osc_v < 0 and osc_v > float(osc1.iloc[-2]) if len(osc1) > 1 else False:
-        tech_score += 3; signals.append("OSC 縮短")
 
-    # 均線加減分
-    if ma10 and tc > ma10:
-        tech_score += 5; signals.append(f"站上MA10({ma10:.0f})")
-    if ma60 and tc > ma60:
-        tech_score += 10; signals.append(f"站上MA60({ma60:.0f})")
-    elif ma60 and tc < ma60:
-        tech_score -= 10; signals.append(f"跌破MA60({ma60:.0f})")
+def _deep_strategies_today(stock_id: str) -> dict:
+    """最近一次全市場掃描命中的策略（key＋名稱）"""
+    try:
+        from yahoo_price import get_scan_results, get_scan_status
+        from scanner import STRATEGIES
+        hits = [k for k, rows in (get_scan_results() or {}).items()
+                if any(str(r.get("stock_id")) == stock_id for r in rows or [])]
+        return {"date": (get_scan_status() or {}).get("target_date"),
+                "items": [{"key": k, "label": STRATEGIES.get(k, k)} for k in hits]}
+    except Exception:
+        return {"date": None, "items": []}
 
-    if golden_cross_days is not None:
-        tech_score += 8; signals.append(f"{golden_cross_days}天前黃金交叉")
 
-    # BB 加減分
-    if bb_score is not None:
-        if bb_score >= 5:
-            tech_score += 5; signals.append("BB 上軌區")
-        elif bb_score <= -5:
-            tech_score -= 5; signals.append("BB 下軌區")
+async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False):
+    import math
+    import pandas as pd
+    from scanner import calc_macd, calc_bb_score, classify_stage, _change_pct
+    from yahoo_price import get_stock_list, _fetch_for_scan
+    import deep_data
+    import deep_verdict
 
-    # 量能加分
-    if vol_ratio is not None and vol_ratio >= 2:
-        tech_score += 5; signals.append(f"量能翻倍 ×{vol_ratio}")
+    try:
+        stocks_df = get_stock_list()
+        name_map = dict(zip(stocks_df["stock_id"], stocks_df["stock_name"]))
+        mkt_map = dict(zip(stocks_df["stock_id"], stocks_df["type"]))
+    except Exception:
+        name_map, mkt_map = {}, {}
+    stock_name = name_map.get(stock_id, stock_id)
+    mkt = str(mkt_map.get(stock_id, "twse"))
+    if fresh:
+        _levels_cache.pop(stock_id, None)
+        deep_data.clear_stock_cache(stock_id)
 
-    # Stage 加減分
-    stage_bonus = {"pullback": 8, "fbd": 10, "golden": 5, "consol": 0, "attack": -5, "bull": 3, "bearish": -15}
-    tech_score += stage_bonus.get(stage.get("code", ""), 0)
+    # ── K 線：跟關鍵價位同一個來源（快取優先、落後目標日才打 Yahoo）──
+    try:
+        df = await asyncio.to_thread(_fetch_for_scan, stock_id, mkt)
+    except Exception:
+        df = None
+    if df is None or len(df) < 10:
+        return {"error": "price_unavailable",
+                "detail": f"{stock_id} 價格資料不足（建議先執行「全系統更新」補齊歷史資料）"}
+    df = df.copy()
+    df.columns = [c.lower() for c in df.columns]
+    df = df.dropna(subset=["close"]).reset_index(drop=True)
+    closes = df["close"].astype(float)
+    volumes = deep_verdict.lots_volume(df["volume"].astype(float))     # 舊列可能存成「股」
+    tc = float(closes.iloc[-1])
+    dates = [str(x) for x in df["date"].tolist()] if "date" in df.columns else []
 
-    overall = max(0, min(100, tech_score))
+    # ── 技術指標（技術 tab 顯示用）──
+    dif1, dea1, osc1 = calc_macd(closes, 12, 26, 9)
+    dif_v, dea_v, osc_v = float(dif1.iloc[-1]), float(dea1.iloc[-1]), float(osc1.iloc[-1])
+    macd_big = None
+    if len(df) >= 235:
+        dif2, dea2, osc2 = calc_macd(closes, 108, 216, 18)
+        macd_big = {k: _safe_num(round(float(x.iloc[-1]), 4)) for k, x in (("dif", dif2), ("dea", dea2), ("osc", osc2))}
+    macd_signal = ("多" if dif_v > 0 and dea_v > 0 and osc_v > 0 else "偏多" if dif_v > 0 and dea_v > 0 else
+                   "空" if dif_v < 0 and dea_v < 0 and osc_v < 0 else "偏空" if dif_v < 0 and dea_v < 0 else "震盪")
+    ma = {k: (float(closes.rolling(k).mean().iloc[-1]) if len(df) >= k else None) for k in (10, 20, 60)}
+    vol_today = float(volumes.iloc[-1]) if len(volumes) and math.isfinite(float(volumes.iloc[-1])) else 0.0
+    vol_prev = float(volumes.iloc[-2]) if len(volumes) > 1 else 0.0
+    vol_5d = float(volumes.iloc[-5:].mean()) if len(volumes) >= 5 else vol_today
+    ts = deep_verdict.tech_series(df)
+    trow = ts.iloc[-1]
+    raw, _ = deep_verdict.tech_raw(trow) if len(df) >= deep_verdict.MIN_BARS else (None, None)
 
-    # ── 7. 並發抓取：籌碼 / 基本面 / 財務 / 新聞 ──
-    _gather_results = await asyncio.gather(
-        _deep_chip(stock_id),
-        _deep_fundamental(stock_id),
-        _deep_financial(stock_id),
-        _deep_news(stock_id),
-        return_exceptions=True,
-    )
-    chip_data  = None if isinstance(_gather_results[0], BaseException) else _gather_results[0]
-    fund_data  = None if isinstance(_gather_results[1], BaseException) else _gather_results[1]
-    fin_data   = None if isinstance(_gather_results[2], BaseException) else _gather_results[2]
-    news_data  = {"items": []} if isinstance(_gather_results[3], BaseException) else _gather_results[3]
+    def _f(x, nd=4):
+        try:
+            x = float(x)
+        except (TypeError, ValueError):
+            return None
+        return round(x, nd) if math.isfinite(x) else None
 
-    # ── 8. 產業信號補充 ──
-    if sector_info:
-        r5 = sector_info.get("rank5d")
-        if r5 is not None:
-            if r5 <= 5:
-                sector_info["signal"] = "族群強勢（前5）"
-            elif r5 <= 15:
-                sector_info["signal"] = "中等偏強"
-            else:
-                sector_info["signal"] = "偏弱"
+    # ── 其他資料並行抓（單一來源失敗不影響其他）──
+    def _levels():
+        return _levels_with_ref(stock_id, _watch_refs([stock_id]), fresh)
 
-    # macd_big: sanitize NaN/Inf
-    if macd_big:
-        macd_big = {k: _safe_num(v) for k, v in macd_big.items()}
+    def _kpct():
+        from tdcc_chip import get_tdcc_data
+        return (get_tdcc_data() or {}).get(stock_id)
+
+    jobs = [asyncio.to_thread(_levels),
+            asyncio.to_thread(deep_data.chip, stock_id, fresh),
+            asyncio.to_thread(deep_data.valuation, stock_id, tc, mkt, fresh),
+            asyncio.to_thread(deep_data.revenue, stock_id, mkt, fresh),
+            asyncio.to_thread(deep_data.income, stock_id, mkt, fresh),
+            asyncio.to_thread(deep_data.eps_history, stock_id, fresh),
+            _deep_news(stock_id),
+            asyncio.to_thread(_deep_sector, stock_id, dates[-1] if dates else None, dates[-30:]),
+            asyncio.to_thread(_kpct),
+            asyncio.to_thread(_deep_strategies_today, stock_id),
+            asyncio.to_thread(_deep_market_regime)]
+    res = await asyncio.gather(*jobs, return_exceptions=True)
+    for i, r in enumerate(res):
+        if isinstance(r, BaseException):
+            log.warning(f"[deep-analysis] {stock_id} job {i}: {type(r).__name__} {r}")
+    (levels, chip, val, rev, inc, eps_hist, news, sector, kp, strats, regime) = (
+        None if isinstance(r, BaseException) else r for r in res)
+    if chip is None:
+        chip = {"error": "籌碼資料讀取失敗"}
+    kpct_change = (kp or {}).get("change")
+    vol_sum = float(volumes.tail(int(chip.get("days") or 0)).sum()) if not chip.get("error") else None
+
+    verdict = deep_verdict.verdict(trow, chip=chip, vol_sum=vol_sum, kpct_change=kpct_change, rev=rev, inc=inc,
+                                   val=val, sector=sector, levels=levels)
+    if isinstance(levels, dict) and levels.get("error"):
+        levels = None
+    if verdict.get("ok"):
+        verdict["market"] = regime
 
     return {
         "stock_id": stock_id,
-        "name":     stock_name,
+        "name": stock_name,
+        "market": mkt,
         "technical": {
-            "close":      _safe_num(tc),
-            "change_pct": _safe_num(change_pct),
-            "volume":     int(vol_today) if math.isfinite(vol_today) else 0,
-            "vol_ratio":  _safe_num(vol_ratio),
-            "vol_vs_5d":  _safe_num(vol_vs_avg),
-            "bb_score":   _safe_num(bb_score),
-            "stage":      stage,
-            "macd": {
-                "dif": _safe_num(dif_v), "dea": _safe_num(dea_v), "osc": _safe_num(osc_v),
-                "signal": macd_signal,
-            },
+            "date": dates[-1] if dates else None,
+            "close": _safe_num(tc),
+            "change_pct": _safe_num(_change_pct(df)),
+            "volume": int(vol_today),
+            "vol_ratio": _f(vol_today / vol_prev, 2) if vol_prev > 0 else None,
+            "vol_vs_5d": _f(vol_today / vol_5d, 2) if vol_5d > 0 else None,
+            "vol20": _f(trow["vol20"], 0),
+            "bb_score": _safe_num(calc_bb_score(df)),
+            "stage": classify_stage(df),
+            "macd": {"dif": _f(dif_v), "dea": _f(dea_v), "osc": _f(osc_v), "signal": macd_signal},
             "macd_big": macd_big,
-            "ma": {
-                "ma10": _safe_num(ma10),
-                "ma20": _safe_num(ma20),
-                "ma60": _safe_num(ma60),
-                "above_ma10":        ma10 is not None and math.isfinite(ma10) and tc > ma10,
-                "above_ma60":        ma60 is not None and math.isfinite(ma60) and tc > ma60,
-                "golden_cross_days": golden_cross_days,
-            },
-            "score": {"overall": overall, "signals": signals},
+            "ma": {"ma10": _f(ma[10], 2), "ma20": _f(ma[20], 2), "ma60": _f(ma[60], 2),
+                   "above_ma10": bool(ma[10] and tc > ma[10]), "above_ma20": bool(ma[20] and tc > ma[20]),
+                   "above_ma60": bool(ma[60] and tc > ma[60]),
+                   "bull": bool(trow["bull"]), "ma60_up": bool(trow["ma60_up"])},
+            "pos52": _f(trow["pos52"], 3),
+            "w52_high": _f(df["high"].astype(float).tail(250).max(), 2),
+            "w52_low": _f(df["low"].astype(float).tail(250).min(), 2),
+            "ret": {k: _f(trow[f"r{k}"] * 100, 1) for k in (5, 20, 60, 120)},
+            "tech_raw": raw,
             "data_days": len(df),
         },
-        "chip":        chip_data,
-        "fundamental": fund_data,
-        "financial":   fin_data,
-        "news":        news_data,
-        "sector":      sector_info,
-        "composite_score": _compute_composite_score(overall, chip_data, fund_data, sector_info),
+        "levels": levels,
+        "verdict": verdict,
+        "chip": {**chip, "kpct": (kp or {}).get("current_pct"), "kpct_change": kpct_change,
+                 "kpct_date": (kp or {}).get("date")},
+        "valuation": val,
+        "revenue": rev,
+        "income": inc,
+        "eps_history": eps_hist,
+        "news": news or {"items": []},
+        "sector": sector,
+        "strategies_today": strats or {"date": None, "items": []},
     }
 
 

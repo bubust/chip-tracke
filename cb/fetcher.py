@@ -64,6 +64,25 @@ def fetch_short_day(c: httpx.Client, d: date) -> dict:
     return out
 
 
+def fetch_margin_day(c: httpx.Client, d: date) -> tuple:
+    """(上市 {sid: (融資, 融券)}, 上櫃 {sid: (融資, 融券)})（張），抓不到的市場回空 dict"""
+    from .parser import parse_twse_margin_both, parse_tpex_margin_both
+    tw, tp = {}, {}
+    try:
+        r = c.get("https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN",
+                  params={"date": d.strftime("%Y%m%d"), "selectType": "ALL", "response": "json"})
+        tw = parse_twse_margin_both(r.json())
+    except Exception:
+        pass
+    try:
+        r = c.post("https://www.tpex.org.tw/www/zh-tw/margin/balance",
+                   data={"date": d.strftime("%Y/%m/%d"), "response": "json"})
+        tp = parse_tpex_margin_both(r.json())
+    except Exception:
+        pass
+    return tw, tp
+
+
 def fetch_short_latest(c: httpx.Client) -> dict:
     out = {}
     for u in ("https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN",

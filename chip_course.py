@@ -11,6 +11,8 @@ chip_course.py — 上課筆記的籌碼面選股（2026-10-04 新增，掃描�
 - 投信：TWSE rwd fund/T86（可指定日期）；櫃買 OpenAPI tpex_3insti_daily_trading（只有最新一天，每天累積）
 - 融券餘額：cb.fetcher.fetch_short_day（TWSE rwd MI_MARGN＋櫃買 margin/balance，可指定日期）
 - 集保分級：TDCC OpenAPI 1-5（每週一份，每週累積）
+- 三大法人每日（深度分析用，PLAN-DEEP2 §4）：TWSE rwd fund/T86＋櫃買 www/zh-tw/insti/dailyTrade（兩邊都可指定日期）
+- 融資融券餘額每日：TWSE rwd MI_MARGN＋櫃買 margin/balance（cb.fetcher.fetch_margin_day）
 資料存 chip_data/course.db。
 """
 from __future__ import annotations
@@ -65,6 +67,12 @@ def get_conn():
         CREATE TABLE IF NOT EXISTS tdcc_tier (date TEXT, sid TEXT, tier INTEGER, people REAL, shares REAL,
                                               PRIMARY KEY (date, sid, tier));
         CREATE TABLE IF NOT EXISTS course_status (key TEXT PRIMARY KEY, value TEXT);
+        CREATE TABLE IF NOT EXISTS inst_daily (date TEXT, sid TEXT, foreign_net REAL, trust_net REAL, dealer_net REAL,
+                                               PRIMARY KEY (date, sid));                                   -- 三大法人買賣超（股）
+        CREATE TABLE IF NOT EXISTS margin_bal (date TEXT, sid TEXT, margin REAL, short REAL,
+                                               PRIMARY KEY (date, sid));                                   -- 融資／融券餘額（張）
+        CREATE TABLE IF NOT EXISTS fetch_log (kind TEXT, date TEXT, market TEXT, rows INTEGER,
+                                              PRIMARY KEY (kind, date, market));                           -- 抓成功的日期（假日／還沒公布不記，下次再抓）
     """)
     return c
 
@@ -90,6 +98,48 @@ def parse_t86(j: dict) -> dict:
         if v is not None:
             out[str(r[0]).strip()] = v
     return out
+
+
+def parse_t86_inst(j: dict) -> dict:
+    """TWSE T86 → {sid: (外資不含外資自營商, 投信, 自營商)} 買賣超股數；欄名對不上回空 dict"""
+    f = (j or {}).get("fields") or []
+    keys = ("外陸資買賣超股數(不含外資自營商)", "投信買賣超股數", "自營商買賣超股數")
+    if not all(k in f for k in keys):
+        return {}
+    idx = [f.index(k) for k in keys]
+    out = {}
+    for r in j.get("data") or []:
+        if len(r) <= max(idx):
+            continue
+        vals = [_num(r[i]) for i in idx]
+        if any(v is None for v in vals):
+            continue
+        out[str(r[0]).strip()] = tuple(vals)
+    return out
+
+
+def parse_tpex_insti_daily(j: dict) -> tuple:
+    """櫃買 www/zh-tw/insti/dailyTrade（type=Daily, sect=EW）→ (YYYY-MM-DD 或 None, {sid: (外資不含自營, 投信, 自營合計)})
+    欄位 24 個：代號、名稱、外資不含自營(3)、外資自營(3)、外資合計(3)、投信(3)、自營自行(3)、自營避險(3)、自營合計(3)、三大合計
+    每組最後一欄是買賣超；用「外資合計＋投信＋自營合計＝三大合計」驗算，對不上的列丟掉"""
+    tb = ((j or {}).get("tables") or [None])[0] or {}
+    f = tb.get("fields") or []
+    if (len(f) != 24 or f[0] != "代號" or "合計" not in f[23]
+            or any(f[i] != "買賣超股數" for i in (4, 7, 10, 13, 16, 19, 22))):
+        return None, {}
+    d = None
+    s = str(tb.get("date") or "").strip()
+    if len(s) == 9 and s[3] == "/" and s[6] == "/":
+        d = f"{int(s[:3]) + 1911}-{s[4:6]}-{s[7:]}"
+    out = {}
+    for r in tb.get("data") or []:
+        if len(r) < 24:
+            continue
+        fo, fa, tr, de, tot = (_num(r[i]) for i in (4, 10, 13, 22, 23))
+        if None in (fo, fa, tr, de, tot) or abs(fa + tr + de - tot) > 1:
+            continue
+        out[str(r[0]).strip()] = (fo, tr, de)
+    return d, out
 
 
 def parse_tpex_insti(rows: list) -> tuple:
@@ -156,32 +206,69 @@ def _weekdays_back(n):
     return out
 
 
+def _logged(c, kind):
+    return {(d, m) for d, m in c.execute("SELECT date, market FROM fetch_log WHERE kind=?", (kind,))}
+
+
+def _log(c, kind, ds, market, n):
+    if n > 0:
+        c.execute("INSERT OR REPLACE INTO fetch_log VALUES (?,?,?,?)", (kind, ds, market, n))
+
+
 def refresh(progress=None) -> dict:
-    """補最近 8 個交易日的投信、融券，以及最新一週集保分級"""
+    """補最近幾個交易日的三大法人（含投信）、融資融券，以及最新一週集保分級。
+    三大法人每日表不到 20 天 → 回補 25 個平日（第一次約 1～2 分鐘），之後每次 8 天；只抓還沒成功抓過的日期／市場
+    （假日、還沒公布的今天回空 → 不記錄，下次再試）"""
     import httpx
-    from cb.fetcher import client as _client, fetch_short_day
+    from cb.fetcher import client as _client, fetch_margin_day
     c = get_conn()
     msgs = []
     with _client() as cl:
-        days = _weekdays_back(8)
+        n_inst = c.execute("SELECT COUNT(DISTINCT date) FROM inst_daily").fetchone()[0]
+        days = _weekdays_back(25 if n_inst < 20 else 8)
         have_t = {r[0] for r in c.execute("SELECT DISTINCT date FROM inst_trust")}
         have_s = {r[0] for r in c.execute("SELECT DISTINCT date FROM short_bal")}
+        got_i, got_m = _logged(c, "inst"), _logged(c, "margin")
         for k, d in enumerate(days, 1):
             ds = d.isoformat()
             if progress:
-                progress(f"投信／融券 {ds}", k, len(days))
-            if ds not in have_t:
+                progress(f"法人／融資券 {ds}", k, len(days))
+            if (ds, "twse") not in got_i or ds not in have_t:
                 try:
                     r = cl.get("https://www.twse.com.tw/rwd/zh/fund/T86",
                                params={"date": d.strftime("%Y%m%d"), "selectType": "ALLBUT0999", "response": "json"})
-                    m = parse_t86(r.json())
+                    j = r.json()
+                    m = parse_t86(j)
                     c.executemany("INSERT OR REPLACE INTO inst_trust VALUES (?,?,?)", [(ds, s, v) for s, v in m.items()])
+                    mi = parse_t86_inst(j)
+                    c.executemany("INSERT OR REPLACE INTO inst_daily VALUES (?,?,?,?,?)",
+                                  [(ds, s, *v) for s, v in mi.items()])
+                    _log(c, "inst", ds, "twse", len(mi))
                 except Exception as e:
                     msgs.append(f"T86 {ds}：{type(e).__name__}")
                 time.sleep(0.6)
-            if ds not in have_s:
-                m = fetch_short_day(cl, d)
-                c.executemany("INSERT OR REPLACE INTO short_bal VALUES (?,?,?)", [(ds, s, v) for s, v in m.items()])
+            if (ds, "tpex") not in got_i:
+                try:
+                    r = cl.get("https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade",
+                               params={"type": "Daily", "sect": "EW", "date": d.strftime("%Y/%m/%d"), "response": "json"})
+                    dd, mi = parse_tpex_insti_daily(r.json())
+                    if mi and dd == ds:
+                        c.executemany("INSERT OR REPLACE INTO inst_daily VALUES (?,?,?,?,?)",
+                                      [(ds, s, *v) for s, v in mi.items()])
+                        c.executemany("INSERT OR REPLACE INTO inst_trust VALUES (?,?,?)",
+                                      [(ds, s, v[1]) for s, v in mi.items()])
+                        _log(c, "inst", ds, "tpex", len(mi))
+                except Exception as e:
+                    msgs.append(f"櫃買法人 {ds}：{type(e).__name__}")
+                time.sleep(0.6)
+            if (ds, "twse") not in got_m or (ds, "tpex") not in got_m or ds not in have_s:
+                tw, tp = fetch_margin_day(cl, d)
+                for mk, mm in (("twse", tw), ("tpex", tp)):
+                    c.executemany("INSERT OR REPLACE INTO margin_bal VALUES (?,?,?,?)",
+                                  [(ds, s, v[0], v[1]) for s, v in mm.items()])
+                    c.executemany("INSERT OR REPLACE INTO short_bal VALUES (?,?,?)",
+                                  [(ds, s, v[1]) for s, v in mm.items() if v[1] is not None])
+                    _log(c, "margin", ds, mk, len(mm))
                 time.sleep(0.6)
             c.commit()
         try:
@@ -207,6 +294,32 @@ def refresh(progress=None) -> dict:
     c.commit()
     c.close()
     return {"messages": msgs}
+
+
+# ── 深度分析讀取（PLAN-DEEP2 §4）────────────────────────────────────────────
+
+def inst_series(sid: str, n: int = 20) -> list:
+    """最近 n 個有資料的交易日 [(YYYY-MM-DD, 外資, 投信, 自營)]（股），舊→新"""
+    from contextlib import closing
+    try:
+        with closing(get_conn()) as c:
+            rows = c.execute("SELECT date, foreign_net, trust_net, dealer_net FROM inst_daily WHERE sid=? "
+                             "ORDER BY date DESC LIMIT ?", (sid, n)).fetchall()
+    except Exception:
+        return []
+    return [tuple(r) for r in reversed(rows)]
+
+
+def margin_series(sid: str, n: int = 6) -> list:
+    """最近 n 個交易日 [(YYYY-MM-DD, 融資餘額, 融券餘額)]（張），舊→新"""
+    from contextlib import closing
+    try:
+        with closing(get_conn()) as c:
+            rows = c.execute("SELECT date, margin, short FROM margin_bal WHERE sid=? ORDER BY date DESC LIMIT ?",
+                             (sid, n)).fetchall()
+    except Exception:
+        return []
+    return [tuple(r) for r in reversed(rows)]
 
 
 # ── 選股 ─────────────────────────────────────────────────────────────────────

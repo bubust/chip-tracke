@@ -1,0 +1,13 @@
+samples 69135
+bull      有 +1.21%  沒有 -0.61%  (33% 樣本)
+above60   有 +0.74%  沒有 -0.79%  (52% 樣本)
+ma60_up   有 +0.62%  沒有 -0.74%  (54% 樣本)
+dif_pos   有 +0.82%  沒有 -0.87%  (51% 樣本)
+osc_pos   有 +0.33%  沒有 -0.34%  (51% 樣本)
+osc_rise  有 +0.09%  沒有 -0.09%  (50% 樣本)
+pos52     五分位 x20: [np.float64(-1.5), np.float64(-0.86), np.float64(-0.77), np.float64(0.54), np.float64(2.58)]
+r20       五分位 x20: [np.float64(-0.62), np.float64(-0.95), np.float64(-0.62), np.float64(0.07), np.float64(2.13)]
+r60       五分位 x20: [np.float64(-0.46), np.float64(-1.02), np.float64(-0.75), np.float64(0.45), np.float64(1.78)]
+r120      五分位 x20: [np.float64(-1.08), np.float64(-1.1), np.float64(-0.73), np.float64(0.78), np.float64(2.14)]
+bias20    五分位 x20: [np.float64(-0.5), np.float64(-1.0), np.float64(-0.7), np.float64(0.24), np.float64(1.95)]
+vr        五分位 x20: [np.float64(-0.01), np.float64(0.05), np.float64(-0.15), np.float64(0.6), np.float64(-0.46)]

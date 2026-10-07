@@ -553,6 +553,9 @@ def classify_signal(
     cum7_foreign: float = 0.0,
     cum7_trust:   float = 0.0,
     consecutive_buy: int = 0,
+    today_foreign: float = None,
+    today_trust:   float = None,
+    T: dict = None,
 ) -> dict:
     """
     三層訊號判讀（v2）
@@ -569,23 +572,29 @@ def classify_signal(
      1  🟡    法人溫和買進 / 法人買散戶跟進
      2  🟢    法人建倉散戶退 / 外資投信同步買
      3  🟢🟢  外資投信同步建倉（連續4日+）
+
+    「同步」兩個訊號另外要求當天外資、投信都買超（2026-10-07 用戶：投信今天賣，怎麼會是同步買）；
+    today_foreign／today_trust 沒給（None）時維持只看 7 日累計的舊行為。
     """
-    T = get_thresholds()  # 動態讀取門檻
+    if T is None:
+        T = get_thresholds()  # 動態讀取門檻
+    sync_today = ((today_foreign is None or today_foreign > 0) and
+                  (today_trust is None or today_trust > 0))
 
     # ── 層二：背離（最高優先）──────────────────
     if cum7_whale < T["alert_whale"] and cum7_retail > T["alert_retail"]:
         return {"emoji": "🔴⚠️", "title": "散戶接盤警示", "level": -3}
 
     # ── 層一+三：外資投信同步 + 連續性 ───────────
-    if cum7_foreign > T["lvl3_foreign"] and cum7_trust > T["lvl3_trust"] and consecutive_buy >= T["lvl3_consec"]:
+    if sync_today and cum7_foreign > T["lvl3_foreign"] and cum7_trust > T["lvl3_trust"] and consecutive_buy >= T["lvl3_consec"]:
         return {"emoji": "🟢🟢", "title": "外資投信同步建倉", "level": 3}
 
     # ── 層一+二：法人買 + 散戶退場 ───────────────
     if cum7_whale > T["lvl2a_whale"] and cum7_retail < T["lvl2a_retail"]:
         return {"emoji": "🟢", "title": "法人建倉散戶退", "level": 2}
 
-    # 外資+投信同向買（無連續性門檻）
-    if cum7_foreign > T["lvl2b_foreign"] and cum7_trust > T["lvl2b_trust"]:
+    # 外資+投信同向買（無連續性門檻；當天也要兩者都買）
+    if sync_today and cum7_foreign > T["lvl2b_foreign"] and cum7_trust > T["lvl2b_trust"]:
         return {"emoji": "🟢", "title": "外資投信同步買", "level": 2}
 
     # 法人買 + 散戶也跟
@@ -697,6 +706,7 @@ async def update_stocks(
             df["consecutive_buy"] = consec
 
             signals = []
+            _T = get_thresholds()
             for _, row in df.iterrows():
                 sig = classify_signal(
                     row["cum7_whale"],
@@ -705,6 +715,9 @@ async def update_stocks(
                     row["cum7_foreign"],
                     row["cum7_trust"],
                     int(row["consecutive_buy"]),
+                    today_foreign=row["foreign_lots"],
+                    today_trust=row["trust_lots"],
+                    T=_T,
                 )
                 signals.append(sig)
             df["signal_emoji"] = [s["emoji"] for s in signals]
@@ -728,13 +741,40 @@ async def update_stocks(
     return results
 
 
+_RECLASS_KEYS = ("cum7_whale", "concentration_index", "cum7_retail", "cum7_foreign",
+                 "cum7_trust", "consecutive_buy", "foreign_lots", "trust_lots")
+
+
+def _fnum(v):
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if f == f else None   # NaN → None
+
+
+def reclassify_records(records: list[dict]) -> list[dict]:
+    """用每列已存的累計欄位重算訊號（存檔裡的舊訊號可能是改規則前算的）；缺欄位的列保留原值"""
+    if not records:
+        return records
+    T = get_thresholds()
+    for r in records:
+        vals = [_fnum(r.get(k)) for k in _RECLASS_KEYS]
+        if any(v is None for v in vals):
+            continue
+        cw, ci, cr, cf, ct, cb, tf, tt = vals
+        sig = classify_signal(cw, ci, cr, cf, ct, int(cb), today_foreign=tf, today_trust=tt, T=T)
+        r["signal_emoji"], r["signal_title"], r["signal_level"] = sig["emoji"], sig["title"], sig["level"]
+    return records
+
+
 def load_stock_history(stock_id: str) -> list[dict]:
-    """從 Supabase 或 CSV 讀取個股歷史"""
+    """從 Supabase 或 CSV 讀取個股歷史（讀出來時用現行規則重算訊號）"""
     try:
         import supabase_store as sb
         rows = sb.cd_load(stock_id)
         if rows:  # 有實際資料才用 Supabase，空 list 改 fallback 到 CSV
-            return rows
+            return reclassify_records(rows)
     except Exception:
         pass
     # fallback: CSV
@@ -742,7 +782,7 @@ def load_stock_history(stock_id: str) -> list[dict]:
     if not csv_path.exists():
         return []
     df = pd.read_csv(csv_path, encoding="utf-8-sig")
-    return df.to_dict(orient="records")
+    return reclassify_records(df.to_dict(orient="records"))
 
 
 def get_market_rankings(dt: str = None, top: int = 30) -> list[dict]:
@@ -945,6 +985,8 @@ async def scan_market_today(dt: date = None) -> tuple[list[dict], str]:
             est["foreign_lots"],
             est["trust_lots"],
             0,   # 無歷史資料，不計算連續性
+            today_foreign=est["foreign_lots"],
+            today_trust=est["trust_lots"],
         )
         results.append({
             "stock_id":            sid,

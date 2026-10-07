@@ -508,7 +508,7 @@ details.guide[open]>summary::before{content:'▾ ';}
                 <th>背離</th>
                 <th>連續買</th>
                 <th>7日累計</th>
-                <th>訊號</th>
+                <th title="依近 7 日累計判斷；「外資投信同步」還要今天外資、投信都買超">訊號</th>
               </tr>
             </thead>
             <tbody id="detail-tbody"></tbody>
@@ -1033,7 +1033,35 @@ function _doSwitchSettings() {
 }
 </script>
 
-<!-- ══════════════════ 深度分析側板 ══════════════════ -->
+<!-- ══════════════════ 深度分析側板（PLAN-DEEP2：🎯 總評＋技術／籌碼／基本／財務／新聞／產業）══════════════════ -->
+<style>
+  #deep-panel .dp-sec { font-size:.74rem;color:#8b949e;letter-spacing:.4px;margin:14px 0 6px;font-weight:600 }
+  #deep-panel .dp-box { background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:10px 12px }
+  #deep-panel .dp-row { display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid #21262d;font-size:.82rem }
+  #deep-panel .dp-row:last-child { border-bottom:none }
+  #deep-panel .dp-k { color:#8b949e;flex-shrink:0 }
+  #deep-panel .dp-v { text-align:right;font-weight:600 }
+  #deep-panel .dp-up { color:#f85149 } #deep-panel .dp-dn { color:#3fb950 } #deep-panel .dp-mu { color:#8b949e }
+  #deep-panel .dp-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:8px }
+  #deep-panel .dp-cell { background:#21262d;border-radius:8px;padding:9px 6px;text-align:center }
+  #deep-panel .dp-cell .l { font-size:.68rem;color:#8b949e;margin-bottom:3px }
+  #deep-panel .dp-cell .v { font-size:1.02rem;font-weight:700;color:#e6edf3 }
+  #deep-panel .dp-cell .s { font-size:.66rem;color:#8b949e;margin-top:2px }
+  #deep-panel .dp-ladder .dp-row.now { background:#1f2a3a;border-radius:6px;padding:6px 8px;border-bottom:none;margin:2px 0 }
+  #deep-panel .dp-tag { display:inline-block;font-size:.66rem;padding:1px 6px;border-radius:9px;border:1px solid #30363d;color:#8b949e;margin-left:6px;font-weight:400 }
+  #deep-panel table.dp-t { width:100%;border-collapse:collapse;font-size:.78rem }
+  #deep-panel table.dp-t th { color:#8b949e;font-weight:500;text-align:right;padding:4px 2px;border-bottom:1px solid #30363d }
+  #deep-panel table.dp-t th:first-child, #deep-panel table.dp-t td:first-child { text-align:left }
+  #deep-panel table.dp-t td { text-align:right;padding:4px 2px;border-bottom:1px solid #21262d }
+  #deep-panel .dp-note { font-size:.72rem;color:#8b949e;line-height:1.55 }
+  #deep-panel .dp-advice div { font-size:.84rem;line-height:1.55;padding:4px 0;border-bottom:1px dashed #21262d }
+  #deep-panel .dp-advice div:last-child { border-bottom:none }
+  #deep-panel .dp-comp { border:1px solid #21262d;border-radius:8px;padding:8px 10px;margin-bottom:8px }
+  #deep-panel .dp-comp .h { display:flex;justify-content:space-between;font-size:.82rem;font-weight:600;margin-bottom:4px }
+  #deep-panel .dp-comp .r { font-size:.76rem;color:#c9d1d9;padding:2px 0 }
+  #deep-panel .dp-bar { height:5px;background:#21262d;border-radius:3px;overflow:hidden;margin:3px 0 5px }
+  #deep-panel .dp-bar > div { height:100% }
+</style>
 <div id="deep-panel" style="
   position:fixed;right:-420px;top:0;width:420px;height:100vh;
   background:#161b22;border-left:1px solid #30363d;
@@ -1041,147 +1069,119 @@ function _doSwitchSettings() {
   transition:right .3s ease;overflow:hidden;box-shadow:-4px 0 20px rgba(0,0,0,.5)
 ">
   <!-- 標題列 -->
-  <div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid #30363d;flex-shrink:0">
-    <span style="font-size:1rem;font-weight:700" id="dp-title">— 深度分析</span>
+  <div style="display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid #30363d;flex-shrink:0">
+    <span style="font-size:1rem;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="dp-title">— 深度分析</span>
     <span id="dp-price" style="font-size:1rem;font-weight:700;margin-left:auto"></span>
-    <span id="dp-change" style="font-size:.85rem;margin-left:6px"></span>
-    <button onclick="closeDeepPanel()" style="background:none;border:none;color:#8b949e;cursor:pointer;font-size:1.2rem;margin-left:8px">✕</button>
+    <span id="dp-change" style="font-size:.85rem;margin-left:4px"></span>
+    <button onclick="dpRefresh()" title="重新抓資料（清掉這檔的快取）" style="background:none;border:none;color:#8b949e;cursor:pointer;font-size:1rem;margin-left:4px">🔄</button>
+    <button onclick="closeDeepPanel()" style="background:none;border:none;color:#8b949e;cursor:pointer;font-size:1.2rem;margin-left:2px">✕</button>
   </div>
   <!-- 操作階段 -->
-  <div id="dp-stage" style="padding:10px 16px;border-bottom:1px solid #30363d;flex-shrink:0;font-size:.85rem"></div>
-  <!-- 綜合評分卡片 -->
-  <div id="dp-score-card" style="display:none;flex-shrink:0;padding:10px 16px;border-bottom:1px solid #30363d;background:#161b22">
-    <div style="display:flex;align-items:center;gap:12px">
-      <div id="dp-score-num" style="font-size:2.4rem;font-weight:900;line-height:1;min-width:52px;text-align:center">—</div>
-      <div style="flex:1;min-width:0">
-        <div id="dp-score-grade" style="font-size:.9rem;font-weight:700;margin-bottom:4px">—</div>
-        <div id="dp-score-bars" style="display:flex;gap:3px;height:6px;border-radius:3px;overflow:hidden;margin-bottom:4px">
-          <div id="dp-bar-chip" style="background:#58a6ff;border-radius:3px" title="籌碼分"></div>
-          <div id="dp-bar-tech" style="background:#3fb950;border-radius:3px" title="技術分"></div>
-          <div id="dp-bar-other" style="background:#d29922;border-radius:3px" title="其他分"></div>
-        </div>
-        <div id="dp-score-breakdown" style="font-size:.72rem;color:#8b949e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
-      </div>
-      <div style="font-size:.7rem;color:#8b949e;text-align:right;line-height:1.4">
-        <div id="dp-score-chip-lbl" style="color:#58a6ff"></div>
-        <div id="dp-score-tech-lbl" style="color:#3fb950"></div>
-        <div id="dp-score-other-lbl" style="color:#d29922"></div>
-      </div>
-    </div>
-  </div>
+  <div id="dp-stage" style="padding:8px 16px;border-bottom:1px solid #30363d;flex-shrink:0;font-size:.82rem"></div>
+  <!-- 綜合評價（精簡，各 tab 都看得到） -->
+  <div id="dp-score-card" style="display:none;flex-shrink:0;padding:10px 16px;border-bottom:1px solid #30363d;background:#161b22"></div>
   <!-- Tab 切換 -->
   <div style="display:flex;border-bottom:1px solid #30363d;flex-shrink:0;overflow-x:auto">
-    <button class="dp-tab active" onclick="dpTab('tech')"  id="dp-tab-tech"  style="flex:1;min-width:60px;padding:8px 4px;font-size:.75rem;border:none;background:none;color:#58a6ff;border-bottom:2px solid #58a6ff;cursor:pointer;white-space:nowrap">📊 技術</button>
-    <button class="dp-tab" onclick="dpTab('chip')"  id="dp-tab-chip"  style="flex:1;min-width:60px;padding:8px 4px;font-size:.75rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">🏦 籌碼</button>
-    <button class="dp-tab" onclick="dpTab('fund')"  id="dp-tab-fund"  style="flex:1;min-width:60px;padding:8px 4px;font-size:.75rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">📋 基本</button>
-    <button class="dp-tab" onclick="dpTab('fin')"   id="dp-tab-fin"   style="flex:1;min-width:60px;padding:8px 4px;font-size:.75rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">💰 財務</button>
-    <button class="dp-tab" onclick="dpTab('news')"  id="dp-tab-news"  style="flex:1;min-width:60px;padding:8px 4px;font-size:.75rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">📰 新聞</button>
-    <button class="dp-tab" onclick="dpTab('sec')"   id="dp-tab-sec"   style="flex:1;min-width:60px;padding:8px 4px;font-size:.75rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">🔄 產業</button>
+    <button class="dp-tab" onclick="dpTab('sum')"  id="dp-tab-sum"  style="flex:1;min-width:52px;padding:8px 3px;font-size:.74rem;border:none;background:none;color:#58a6ff;border-bottom:2px solid #58a6ff;cursor:pointer;white-space:nowrap">🎯 總評</button>
+    <button class="dp-tab" onclick="dpTab('tech')" id="dp-tab-tech" style="flex:1;min-width:52px;padding:8px 3px;font-size:.74rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">📊 技術</button>
+    <button class="dp-tab" onclick="dpTab('chip')" id="dp-tab-chip" style="flex:1;min-width:52px;padding:8px 3px;font-size:.74rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">🏦 籌碼</button>
+    <button class="dp-tab" onclick="dpTab('fund')" id="dp-tab-fund" style="flex:1;min-width:52px;padding:8px 3px;font-size:.74rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">📋 基本</button>
+    <button class="dp-tab" onclick="dpTab('fin')"  id="dp-tab-fin"  style="flex:1;min-width:52px;padding:8px 3px;font-size:.74rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">💰 財務</button>
+    <button class="dp-tab" onclick="dpTab('news')" id="dp-tab-news" style="flex:1;min-width:52px;padding:8px 3px;font-size:.74rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">📰 新聞</button>
+    <button class="dp-tab" onclick="dpTab('sec')"  id="dp-tab-sec"  style="flex:1;min-width:52px;padding:8px 3px;font-size:.74rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">🔄 產業</button>
   </div>
   <!-- 內容區 -->
-  <div id="dp-body" style="flex:1;overflow-y:auto;padding:14px 16px"></div>
+  <div id="dp-body" style="flex:1;overflow-y:auto;padding:12px 16px 24px"></div>
 </div>
 <div id="deep-overlay" onclick="closeDeepPanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999"></div>
 
 <script>
-let _dpData = null;
+let _dpData = null, _dpTab = 'sum', _dpSid = '', _dpName = '';
 
 function dpTab(t) {
+  _dpTab = t;
   document.querySelectorAll('.dp-tab').forEach(b => {
     b.style.color = '#8b949e'; b.style.borderBottomColor = 'transparent';
   });
   const act = document.getElementById(`dp-tab-${t}`);
-  act.style.color = '#58a6ff'; act.style.borderBottomColor = '#58a6ff';
-  if (!_dpData) return;
+  if (act) { act.style.color = '#58a6ff'; act.style.borderBottomColor = '#58a6ff'; }
+  if (!_dpData || _dpData.error) return;
   renderDpBody(t, _dpData);
+  document.getElementById('dp-body').scrollTop = 0;
 }
 
-function openDeepPanel(stock_id, stock_name) {
-  // 面板初始化（DOM 操作）—— 加 try-catch，讓錯誤顯示在頁面而非靜默失敗
+function dpRefresh() { if (_dpSid) openDeepPanel(_dpSid, _dpName, true); }
+
+// 數字小工具：台股慣例 紅＝漲／買超、綠＝跌／賣超
+const _dpN = (v, nd = 0) => v == null || !isFinite(v) ? '—' : Number(v).toLocaleString('zh-TW', { minimumFractionDigits: nd, maximumFractionDigits: nd });
+const _dpS = (v, nd = 0) => v == null || !isFinite(v) ? '—' : (v > 0 ? '+' : '') + _dpN(v, nd);
+const _dpC = v => v == null ? 'dp-mu' : v > 0 ? 'dp-up' : v < 0 ? 'dp-dn' : 'dp-mu';
+const _dpPct = (a, b) => (a && b) ? (a / b - 1) * 100 : null;
+const _dpRow = (k, v, cls = '') => `<div class="dp-row"><span class="dp-k">${k}</span><span class="dp-v ${cls}">${v}</span></div>`;
+const _dpCell = (l, v, s = '', cls = '') => `<div class="dp-cell"><div class="l">${l}</div><div class="v ${cls}">${v}</div>${s ? `<div class="s">${s}</div>` : ''}</div>`;
+const _dpMsg = (ico, msg) => `<div style="padding:28px 12px;text-align:center;color:#8b949e;font-size:.85rem"><div style="font-size:1.6rem;margin-bottom:6px">${ico}</div>${msg}</div>`;
+const _dpDate = s => { s = String(s || ''); return /^\d{8}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6)}` : s; };
+const _dpStreak = n => !n ? '—' : (n > 0 ? `連買 ${n} 天` : `連賣 ${-n} 天`);
+
+function openDeepPanel(stock_id, stock_name, fresh) {
   let panel, overlay;
   try {
     panel = document.getElementById('deep-panel');
     overlay = document.getElementById('deep-overlay');
     if (!panel) throw new Error('找不到 #deep-panel，請重新整理頁面');
+    _dpSid = stock_id; _dpName = stock_name || '';
     document.getElementById('dp-title').textContent = `${stock_id} ${stock_name || ''} 深度分析`;
     document.getElementById('dp-price').textContent = '載入中...';
     document.getElementById('dp-change').textContent = '';
     document.getElementById('dp-stage').textContent = '';
-    document.getElementById('dp-body').innerHTML = '<div style="color:#8b949e;text-align:center;padding:40px">分析中...</div>';
+    document.getElementById('dp-score-card').style.display = 'none';
+    document.getElementById('dp-body').innerHTML = _dpMsg('⏳', '分析中...');
     panel.classList.add('dp-open');
     if (overlay) overlay.style.display = 'block';
     _dpData = null;
-    dpTab('tech');
-  } catch(err) {
+    dpTab('sum');
+  } catch (err) {
     const b = document.getElementById('_js-err-banner');
     if (b) { b.textContent = `⚠️ 分析面板初始化失敗: ${err.message}　（點擊關閉）`; b.style.display = 'block'; }
     console.error('[openDeepPanel]', err);
     return;
   }
-
-  api('GET', `/api/stock/${stock_id}/deep-analysis`)
+  const sid = stock_id;
+  api('GET', `/api/stock/${encodeURIComponent(stock_id)}/deep-analysis${fresh ? '?fresh=1' : ''}`)
     .then(d => {
+      if (_dpSid !== sid) return;            // 載入中又點了別檔
       _dpData = d;
-      // 價格資料不足的友善提示（HTTP 200 + error 欄位）
       if (d.error) {
-        document.getElementById('dp-title').textContent = `${stock_id} 深度分析`;
         document.getElementById('dp-price').textContent = '';
-        document.getElementById('dp-change').textContent = '';
-        document.getElementById('dp-stage').textContent = '';
-        document.getElementById('dp-score-card').style.display = 'none';
-        document.getElementById('dp-body').innerHTML =
-          `<div style="padding:24px;text-align:center">
-            <div style="font-size:2rem;margin-bottom:8px">📭</div>
-            <div style="color:#f85149;font-weight:600;margin-bottom:6px">資料不足</div>
-            <div style="color:#8b949e;font-size:.85rem">${d.detail || d.error}</div>
-           </div>`;
+        document.getElementById('dp-body').innerHTML = _dpMsg('📭', `<div style="color:#f85149;font-weight:600;margin-bottom:6px">資料不足</div>${_esc(d.detail || d.error)}`);
         return;
       }
-      document.getElementById('dp-title').textContent = `${d.stock_id} ${d.name} 深度分析`;
-      const tech = d.technical || {};
-      const pct = tech.change_pct;
-      document.getElementById('dp-price').textContent = tech.close;
-      document.getElementById('dp-price').style.color = pct > 0 ? '#f85149' : pct < 0 ? '#3fb950' : '#e6edf3';
-      document.getElementById('dp-change').textContent = `${pct > 0 ? '+' : ''}${pct != null ? pct : ''}%`;
-      document.getElementById('dp-change').style.color = pct > 0 ? '#f85149' : pct < 0 ? '#3fb950' : '#8b949e';
-      // 操作階段
-      const st = (tech.stage) || {};
-      const stageColors = {green:'#3fb950',gold:'#d29922',yellow:'#d29922',blue:'#58a6ff',cyan:'#22d3ee',red:'#f85149',gray:'#8b949e'};
-      const col = stageColors[st.color] || '#8b949e';
+      document.getElementById('dp-title').textContent = `${d.stock_id} ${d.name || ''} 深度分析`;
+      const tech = d.technical || {}, pct = tech.change_pct;
+      const pe = document.getElementById('dp-price');
+      pe.textContent = tech.close != null ? _dpN(tech.close, tech.close < 100 ? 2 : 1).replace(/\.0$/, '') : '';
+      pe.style.color = pct > 0 ? '#f85149' : pct < 0 ? '#3fb950' : '#e6edf3';
+      const ce = document.getElementById('dp-change');
+      ce.textContent = pct != null ? `${pct > 0 ? '+' : ''}${pct}%` : '';
+      ce.style.color = pct > 0 ? '#f85149' : pct < 0 ? '#3fb950' : '#8b949e';
+      const st = tech.stage || {};
+      const stageColors = { green: '#3fb950', gold: '#d29922', yellow: '#d29922', blue: '#58a6ff', cyan: '#22d3ee', red: '#f85149', gray: '#8b949e' };
       document.getElementById('dp-stage').innerHTML =
-        `<span style="font-weight:600;color:${col}">${st.label || '未知階段'}</span>` +
-        (st.desc ? `<span style="color:#8b949e;font-size:.78rem;margin-left:8px">${st.desc}</span>` : '');
-      // 綜合評分卡片
-      const cs = d.composite_score;
-      if (cs) {
-        const card = document.getElementById('dp-score-card');
-        card.style.display = 'block';
-        document.getElementById('dp-score-num').textContent = cs.total;
-        document.getElementById('dp-score-num').style.color = cs.color;
-        document.getElementById('dp-score-grade').textContent = `${cs.grade} ${cs.grade_icon}`;
-        document.getElementById('dp-score-grade').style.color = cs.color;
-        // 三分項橫條（總寬 = 100%，各佔比例）
-        const barBase = cs.chip + cs.tech + cs.other || 1;
-        document.getElementById('dp-bar-chip').style.width  = `${(cs.chip  / barBase * 100).toFixed(1)}%`;
-        document.getElementById('dp-bar-tech').style.width  = `${(cs.tech  / barBase * 100).toFixed(1)}%`;
-        document.getElementById('dp-bar-other').style.width = `${(cs.other / barBase * 100).toFixed(1)}%`;
-        document.getElementById('dp-score-chip-lbl').textContent  = `籌碼 ${cs.chip}/50`;
-        document.getElementById('dp-score-tech-lbl').textContent  = `技術 ${cs.tech}/35`;
-        document.getElementById('dp-score-other-lbl').textContent = `其他 ${cs.other}/15`;
-        document.getElementById('dp-score-breakdown').textContent = (cs.breakdown || []).join(' · ') || '—';
-      } else {
-        document.getElementById('dp-score-card').style.display = 'none';
-      }
-      renderDpBody('tech', d);
+        `<span style="font-weight:600;color:${stageColors[st.color] || '#8b949e'}">${_esc(st.label || '未知階段')}</span>` +
+        (st.desc ? `<span style="color:#8b949e;font-size:.76rem;margin-left:8px">${_esc(st.desc)}</span>` : '') +
+        (tech.date ? `<span style="color:#484f58;font-size:.7rem;margin-left:8px">K 線 ${_esc(_dpDate(tech.date))}</span>` : '');
+      _dpRenderScoreCard(d);
+      renderDpBody(_dpTab, d);
     })
     .catch(e => {
+      if (_dpSid !== sid) return;
+      document.getElementById('dp-price').textContent = '';
       document.getElementById('dp-body').innerHTML =
         `<div style="padding:24px;text-align:center">
           <div style="font-size:2rem;margin-bottom:8px">⚠️</div>
           <div style="color:#f85149;font-weight:600;margin-bottom:6px">分析載入失敗</div>
-          <div style="color:#8b949e;font-size:.82rem;margin-bottom:14px">${e.message || '伺服器忙碌中，請稍後再試'}</div>
-          <button class="btn sm" onclick="openDeepPanel('${stock_id}','${(stock_name||'').replace(/'/g,'')}')"
-            style="background:#30363d;color:#e6edf3;border:1px solid #444">🔄 重試</button>
+          <div style="color:#8b949e;font-size:.82rem;margin-bottom:14px">${_esc(e.message || '伺服器忙碌中，請稍後再試')}</div>
+          <button class="btn sm" onclick="dpRefresh()" style="background:#30363d;color:#e6edf3;border:1px solid #444">🔄 重試</button>
         </div>`;
     });
 }
@@ -1189,213 +1189,256 @@ function openDeepPanel(stock_id, stock_name) {
 function closeDeepPanel() {
   document.getElementById('deep-panel').classList.remove('dp-open');
   document.getElementById('deep-overlay').style.display = 'none';
+  _dpSid = '';
+}
+
+function _dpRenderScoreCard(d) {
+  const card = document.getElementById('dp-score-card');
+  const v = d.verdict || {}, lv = d.levels || {};
+  if (!v.ok) {
+    card.style.display = 'block';
+    card.innerHTML = `<div style="font-size:.8rem;color:#d29922">⚠️ ${_esc(v.reason || '資料不足，不給評價')}</div>`;
+    return;
+  }
+  const price = lv.price || (d.technical || {}).close;
+  const tg = lv.target, stop = (lv.stop || {}).price;
+  const bits = [];
+  const bear = ['避開', '已跌破停損'].includes(v.action);
+  if (tg) bits.push(`${bear ? '反彈壓力' : '目標'} <b class="dp-up">${_esc(tg)}</b> <span class="dp-mu">${_dpS(_dpPct(tg, price), 1)}%</span>`);
+  if (stop) bits.push(`停損 <b class="dp-dn">${_esc(stop)}</b> <span class="dp-mu">${_dpS(_dpPct(stop, price), 1)}%</span>`);
+  card.style.display = 'block';
+  card.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="font-size:2.2rem;font-weight:900;line-height:1;min-width:48px;text-align:center;color:${_esc(v.color)}">${_esc(v.score)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.95rem;font-weight:700;color:${_esc(v.color)}">${_esc(v.grade)}<span style="color:#e6edf3;font-weight:600;margin-left:8px">· ${_esc(v.action)}</span></div>
+        <div style="font-size:.74rem;color:#8b949e;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_esc(v.summary)}</div>
+        <div style="font-size:.76rem;margin-top:3px">${bits.join('　')}</div>
+      </div>
+    </div>`;
+}
+
+function _dpSum(d) {
+  const v = d.verdict || {}, lv = d.levels || {}, tech = d.technical || {};
+  if (!v.ok) return _dpMsg('📭', _esc(v.reason || '資料不足'));
+  const price = lv.price || tech.close;
+  // 價位梯
+  const pts = [];
+  const add = (label, p, note, kind) => { if (p != null && isFinite(p)) pts.push({ label, p: Number(p), note, kind }); };
+  if (lv.target) add('🎯 目標', lv.target, lv.target_method, 'up');
+  const p1 = (lv.pressure1 || {}).low, p2 = (lv.pressure2 || {}).low;
+  if (p2 && p2 !== lv.target) add('壓力二', p2, '前面的高點區', 'up');
+  if (p1 && p1 !== lv.target) add('壓力一', p1, '最近的前高', 'up');
+  add('● 現價', price, '', 'now');
+  if ((lv.support || {}).price) add('支撐', lv.support.price, lv.support.label, 'dn');
+  if ((lv.stop || {}).price) add('⛔ 停損', lv.stop.price, lv.stop.label, 'dn');
+  pts.sort((a, b) => b.p - a.p);
+  const ladder = pts.map(x => {
+    const pc = x.kind === 'now' ? '' : `<span class="${_dpC(_dpPct(x.p, price))}" style="font-size:.74rem;margin-left:6px">${_dpS(_dpPct(x.p, price), 1)}%</span>`;
+    return `<div class="dp-row ${x.kind === 'now' ? 'now' : ''}">
+      <span class="dp-k" style="color:${x.kind === 'now' ? '#e6edf3' : '#8b949e'}">${x.label}${x.note ? `<div style="font-size:.66rem;color:#6e7681;margin-top:1px;max-width:230px;line-height:1.35">${_esc(x.note)}</div>` : ''}</span>
+      <span class="dp-v">${_esc(x.p)}${pc}</span></div>`;
+  }).join('') || '<div class="dp-note">沒有關鍵價位資料</div>';
+  const bk = v.bucket || {}, bs = bk.stats;
+  const popTxt = { main: '一般股', low: '低量股（20 日均量 30～300 張）', none: '不在回測範圍' }[bk.pop] || '';
+  const statLine = bs ? `技術${_esc(bk.label)}的${popTxt}過去 20 天：平均比同期多 <b class="${_dpC(bs.x20)}">${_dpS(bs.x20, 2)}%</b>、
+      上漲機率 ${_esc(bs.up)}%、中位數 ${_dpS(bs.med, 1)}%、期間最大回檔平均 ${_esc(bs.mdd)}%（${_dpN(bs.n)} 筆，${_esc(v.period)}）` :
+      `技術${_esc(bk.label)}；${_esc(popTxt)}，沒有可用的回測數字`;
+  const comps = (v.components || []).map(c => {
+    const ok = c.pts != null;
+    const ratio = ok && c.max ? c.pts / c.max : 0;
+    const col = ratio >= .65 ? '#f85149' : ratio < .35 ? '#3fb950' : '#d29922';
+    return `<div class="dp-comp">
+      <div class="h"><span>${_esc(c.label)}${c.backtested ? '<span class="dp-tag" style="color:#58a6ff;border-color:#1f6feb">已回測</span>' : ok ? '<span class="dp-tag">參考</span>' : ''}</span>
+        <span style="color:${ok ? col : '#8b949e'}">${ok ? `${_esc(c.pts)} / ${_esc(c.max)}` : '不計'}</span></div>
+      ${ok ? `<div class="dp-bar"><div style="width:${Math.round(ratio * 100)}%;background:${col}"></div></div>` : ''}
+      ${ok ? (c.reasons || []).map(r => `<div class="r">${r.pts > 0 ? '✅' : '⚠️'} ${_esc(r.text)}</div>`).join('') : `<div class="r" style="color:#8b949e">${_esc(c.note || '')}</div>`}
+    </div>`;
+  }).join('');
+  const st = d.strategies_today || {};
+  const strat = (st.items || []).length
+    ? (st.items || []).map(x => `<span style="display:inline-block;font-size:.74rem;padding:2px 8px;margin:2px 4px 2px 0;background:#1f2a3a;border:1px solid #1f6feb;border-radius:10px;color:#79c0ff">${_esc(x.label)}</span>`).join('') +
+      (st.date ? `<span class="dp-note" style="margin-left:4px">（掃描 ${_esc(_dpDate(st.date))}）</span>` : '')
+    : '<span class="dp-note">最近一次掃描沒有命中任何策略</span>';
+  const mk = v.market ? `<div class="dp-note" style="margin-top:4px">大盤（總經面板）：${_esc(v.market.label)}（${_esc(v.market.date)}）</div>` : '';
+  return `
+    <div class="dp-box" style="border-color:${_esc(v.color)}55">
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+        <span style="font-size:1.15rem;font-weight:800;color:${_esc(v.color)}">${_esc(v.grade)}</span>
+        <span style="font-size:.95rem;font-weight:700">${_esc(v.action)}</span>
+        <span style="margin-left:auto;font-size:.8rem;color:#8b949e">綜合 ${_esc(v.score)} / 100</span>
+      </div>
+      <div style="font-size:.8rem;color:#c9d1d9;margin-top:4px">${_esc(v.summary)}</div>${mk}
+    </div>
+    <div class="dp-sec">關鍵價位（跟觀察清單同一套）</div>
+    <div class="dp-box dp-ladder">${ladder}</div>
+    <div class="dp-sec">操作建議</div>
+    <div class="dp-box dp-advice">${(v.advice || []).map(x => `<div>${_esc(x)}</div>`).join('')}</div>
+    <div class="dp-sec">技術分類回測</div>
+    <div class="dp-box" style="font-size:.8rem;line-height:1.6">${statLine}</div>
+    <div class="dp-sec">分項分數</div>
+    ${comps}
+    <div class="dp-sec">今天符合的選股策略</div>
+    <div>${strat}</div>
+    <div class="dp-sec">注意</div>
+    <div class="dp-note">${(v.notes || []).map(x => `• ${_esc(x)}`).join('<br>')}</div>`;
+}
+
+function _dpTech(d) {
+  const t = d.technical || {}, m = t.macd || {}, ma = t.ma || {}, r = t.ret || {}, v = d.verdict || {};
+  const maRow = (lbl, val, above) => val == null ? '' : _dpRow(lbl, `${_esc(val)} <span style="font-size:.72rem;font-weight:400" class="${above ? 'dp-up' : 'dp-dn'}">${above ? '站上' : '跌破'}</span>`);
+  const bk = v.bucket || {};
+  return `
+    <div class="dp-box" style="font-size:.82rem">技術分類：<b>${_esc(bk.label || '—')}</b>
+      ${t.tech_raw != null ? `<span class="dp-mu">（原始 ${_esc(t.tech_raw)} / 40；≥32 強勢、&lt;8 弱勢）</span>` : '<span class="dp-mu">（K 線不足，不分類）</span>'}
+      <div class="dp-note" style="margin-top:4px">只用回測有效的「趨勢＋動能」：均線排列、60 日線方向、DIF、52 週位置、半年漲跌。</div></div>
+    <div class="dp-sec">均線</div>
+    <div class="dp-box">
+      ${maRow('10 日線', ma.ma10, ma.above_ma10)}${maRow('20 日線', ma.ma20, ma.above_ma20)}${maRow('60 日線', ma.ma60, ma.above_ma60)}
+      ${_dpRow('排列', ma.bull ? '多頭排列（10>20>60）' : '還沒排好', ma.bull ? 'dp-up' : 'dp-mu')}
+      ${_dpRow('60 日線方向', ma.ma60_up ? '上彎' : '下彎', ma.ma60_up ? 'dp-up' : 'dp-dn')}
+    </div>
+    <div class="dp-sec">位置與動能</div>
+    <div class="dp-grid">
+      ${_dpCell('52 週位置', t.pos52 != null ? Math.round(t.pos52 * 100) + '%' : '—', t.w52_low != null ? `${_esc(t.w52_low)}～${_esc(t.w52_high)}` : '0＝一年最低')}
+      ${_dpCell('近 5 日', _dpS(r['5'], 1) + '%', '', _dpC(r['5']))}
+      ${_dpCell('近 20 日', _dpS(r['20'], 1) + '%', '', _dpC(r['20']))}
+      ${_dpCell('近 60 日', _dpS(r['60'], 1) + '%', '', _dpC(r['60']))}
+      ${_dpCell('近 120 日', _dpS(r['120'], 1) + '%', '', _dpC(r['120']))}
+      ${_dpCell('BB 位置', t.bb_score != null ? _dpS(t.bb_score, 1) : '—', '上軌 +10／下軌 −10')}
+    </div>
+    <div class="dp-sec">量能</div>
+    <div class="dp-box">
+      ${_dpRow('今天成交量', `${_dpN(t.volume)} 張`)}
+      ${_dpRow('量 vs 昨天', t.vol_ratio != null ? '×' + _esc(t.vol_ratio) : '—', t.vol_ratio >= 2 ? 'dp-up' : '')}
+      ${_dpRow('量 vs 5 日均', t.vol_vs_5d != null ? '×' + _esc(t.vol_vs_5d) : '—')}
+      ${_dpRow('20 日均量', t.vol20 != null ? `${_dpN(t.vol20)} 張` : '—')}
+    </div>
+    <div class="dp-sec">MACD（12/26/9）</div>
+    <div class="dp-box">
+      ${_dpRow('DIF', _esc(m.dif), _dpC(m.dif))}${_dpRow('DEA', _esc(m.dea), _dpC(m.dea))}${_dpRow('OSC（柱狀體）', _esc(m.osc), _dpC(m.osc))}
+      ${_dpRow('判讀', _esc(m.signal || '—'))}
+      <div class="dp-note" style="margin-top:4px">回測：DIF 在 0 軸上有用；柱狀體翻正、變長變短沒有預測力，只供參考。</div>
+    </div>
+    ${t.macd_big ? `<div class="dp-sec">大 MACD（108/216/18）</div><div class="dp-box">
+      ${_dpRow('DIF', _esc(t.macd_big.dif), _dpC(t.macd_big.dif))}${_dpRow('DEA', _esc(t.macd_big.dea), _dpC(t.macd_big.dea))}${_dpRow('OSC', _esc(t.macd_big.osc), _dpC(t.macd_big.osc))}</div>` : ''}
+    <div class="dp-note" style="margin-top:10px">${_esc(t.data_days)} 根 K 線</div>`;
+}
+
+function _dpChip(d) {
+  const c = d.chip || {};
+  const big = c.kpct != null ? `<div class="dp-sec">千張大戶（集保，每週）</div><div class="dp-box">
+      ${_dpRow('持股比率', `${_esc(c.kpct)}%`)}${_dpRow('比上週', c.kpct_change != null ? `${_dpS(c.kpct_change, 2)} 個百分點` : '—', _dpC(c.kpct_change))}
+      ${c.kpct_date ? _dpRow('資料日期', _esc(c.kpct_date)) : ''}</div>` : '';
+  if (c.error) return _dpMsg('🏦', _esc(c.error)) + big;
+  const row = (lbl, o) => `<tr><td>${lbl}</td>${['d1', 'd5', 'd20'].map(k => `<td class="${_dpC(o[k])}">${_dpS(o[k])}</td>`).join('')}
+      <td class="${_dpC(o.streak)}" style="font-size:.72rem">${_dpStreak(o.streak)}</td></tr>`;
+  const daily = (c.daily || []).slice().reverse().map(x => `<tr><td>${_esc(x.date.slice(5))}</td>
+      <td class="${_dpC(x.foreign)}">${_dpS(x.foreign)}</td><td class="${_dpC(x.trust)}">${_dpS(x.trust)}</td><td class="${_dpC(x.dealer)}">${_dpS(x.dealer)}</td></tr>`).join('');
+  const mg = c.margin;
+  const mgHtml = mg ? `<div class="dp-sec">融資融券（張）</div><div class="dp-box">
+      ${_dpRow('融資餘額', `${_dpN(mg.margin)}　<span class="${_dpC(mg.margin_chg)}" style="font-size:.74rem">${mg.span} 日 ${_dpS(mg.margin_chg)}</span>`)}
+      ${_dpRow('融券餘額', `${_dpN(mg.short)}　<span class="${_dpC(mg.short_chg)}" style="font-size:.74rem">${mg.span} 日 ${_dpS(mg.short_chg)}</span>`)}
+      <div class="dp-note" style="margin-top:4px">融資大增＝散戶追價、融券大增＝有人放空（軋空題材）；只顯示、不計分。資料日期 ${_esc(mg.date)}</div></div>` : '';
+  return `
+    <div class="dp-note" style="margin-bottom:6px">來源：${_esc(c.source)}　資料日期 ${_esc(c.date)}（盤後約 16:00 公布）</div>
+    <div class="dp-sec" style="margin-top:4px">三大法人買賣超（張）</div>
+    <div class="dp-box"><table class="dp-t">
+      <tr><th></th><th>最新一天</th><th>近 5 日</th><th>近 ${_esc(c.days)} 日</th><th>連續</th></tr>
+      ${row('外資', c.foreign || {})}${row('投信', c.trust || {})}${row('自營商', c.dealer || {})}
+    </table></div>
+    <div class="dp-sec">近 10 個交易日（張）</div>
+    <div class="dp-box"><table class="dp-t"><tr><th>日期</th><th>外資</th><th>投信</th><th>自營商</th></tr>${daily}</table></div>
+    ${big}${mgHtml}`;
+}
+
+function _dpFund(d) {
+  const f = d.valuation || {}, t = d.technical || {};
+  if (f.etf) return _dpMsg('📋', 'ETF 沒有本益比與財報');
+  if (!d.valuation) return _dpMsg('📋', '基本資料暫時無法取得');
+  let judge = '—', jc = '#8b949e';
+  if (f.per == null) { judge = '虧損或沒有本益比'; jc = '#d29922'; }
+  else if (f.pe_vs_peer != null) {
+    const x = f.pe_vs_peer;
+    if (x < 0.8) { judge = `比同產業便宜（本益比是中位數的 ${x} 倍）`; jc = '#f85149'; }
+    else if (x <= 1.2) { judge = `跟同產業差不多（${x} 倍）`; jc = '#58a6ff'; }
+    else { judge = `比同產業貴（${x} 倍）`; jc = '#3fb950'; }
+  }
+  return `
+    <div class="dp-note" style="margin-bottom:8px">來源：${f.source === 'tpex' ? '櫃買中心' : '證交所'}　本益比日期 ${_esc(f.date || '—')}</div>
+    <div class="dp-grid">
+      ${_dpCell('本益比', f.per != null ? _esc(f.per) : '—', f.peer_pe_median ? `同產業中位數 ${_esc(f.peer_pe_median)}` : '')}
+      ${_dpCell('股價淨值比', f.pbr != null ? _esc(f.pbr) : '—')}
+      ${_dpCell('殖利率', f.dividend_yield != null ? _esc(f.dividend_yield) + '%' : '—')}
+      ${_dpCell('股本', f.capital != null ? _dpN(f.capital, 1) + ' 億' : '—', f.shares != null ? _dpN(f.shares * 1e5) + ' 張' : '')}
+      ${_dpCell('市值', f.market_cap != null ? _dpN(f.market_cap) + ' 億' : '—')}
+      ${_dpCell('52 週位置', t.pos52 != null ? Math.round(t.pos52 * 100) + '%' : '—', t.w52_low != null ? `${_esc(t.w52_low)}～${_esc(t.w52_high)}` : '')}
+    </div>
+    <div class="dp-box" style="margin-top:10px;border-color:${jc}55;color:${jc};font-weight:600;font-size:.84rem">估值：${_esc(judge)}</div>
+    <div class="dp-note" style="margin-top:6px">同產業＝產業輪動的分類${f.sector_name ? `（${_esc(f.sector_name)}，${_esc(f.peer_n || 0)} 檔有本益比）` : ''}；本益比是證交所／櫃買每日公布的（近四季 EPS）。</div>`;
+}
+
+function _dpFin(d) {
+  const rv = d.revenue, inc = d.income, eh = d.eps_history, f = d.valuation || {};
+  if (f.etf) return _dpMsg('💰', 'ETF 沒有財報');
+  if (!rv && !inc) return _dpMsg('💰', '沒有營收／財報資料（金融保險業的財報格式不同，或剛上市）');
+  const yi = (v) => `<span class="${_dpC(v)}">${_dpS(v, 1)}%</span>`;
+  const bil = v => v == null ? '—' : (v / 1e5 >= 1 ? _dpN(v / 1e5, 2) + ' 億' : _dpN(v / 1e3, 1) + ' 百萬');   // 千元 → 億
+  const rvHtml = rv ? `<div class="dp-sec">月營收（${_esc(rv.ym || '')}）</div><div class="dp-box">
+      ${_dpRow('當月營收', bil(rv.revenue))}${_dpRow('比上月', yi(rv.mom))}${_dpRow('比去年同月', yi(rv.yoy))}
+      ${_dpRow('今年累計', bil(rv.ytd))}${_dpRow('累計比去年', yi(rv.ytd_yoy))}
+      ${rv.note ? `<div class="dp-note" style="margin-top:4px">${_esc(rv.note)}</div>` : ''}
+      <div class="dp-note" style="margin-top:4px">每月 10 日前公布上個月營收</div></div>` : '';
+  const incHtml = inc ? `<div class="dp-sec">${_esc(inc.label)}（綜合損益表）</div>
+    <div class="dp-grid">
+      ${_dpCell('EPS', inc.eps != null ? _esc(inc.eps) + ' 元' : '—', '', inc.eps > 0 ? 'dp-up' : inc.eps < 0 ? 'dp-dn' : '')}
+      ${_dpCell('毛利率', inc.gross_margin != null ? _esc(inc.gross_margin) + '%' : '—')}
+      ${_dpCell('營益率', inc.op_margin != null ? _esc(inc.op_margin) + '%' : '—')}
+      ${_dpCell('淨利率', inc.net_margin != null ? _esc(inc.net_margin) + '%' : '—')}
+      ${_dpCell('營收', bil(inc.revenue))}
+    </div>` : '';
+  const ehHtml = eh && (eh.quarters || []).length ? `<div class="dp-sec">近幾季 EPS（單季，FinMind）</div><div class="dp-box">
+      <table class="dp-t"><tr>${eh.quarters.map(q => `<th>${_esc(q.q)}</th>`).join('')}</tr>
+      <tr>${eh.quarters.map(q => `<td class="${_dpC(q.eps)}">${_esc(q.eps)}</td>`).join('')}</tr></table>
+      ${eh.ttm != null ? _dpRow('近四季合計', `${_esc(eh.ttm)} 元`) : ''}${eh.eps_yoy != null ? _dpRow('最新一季比去年同季', yi(eh.eps_yoy)) : ''}</div>`
+    : '<div class="dp-note" style="margin-top:10px">近幾季 EPS 走勢要用 FinMind，今天額度用完時不顯示</div>';
+  return rvHtml + incHtml + ehHtml;
 }
 
 function renderDpBody(tab, d) {
   const body = document.getElementById('dp-body');
-  const tech = d.technical || {};
-  const _sec = (lbl, v) => `<tr><td style="color:#8b949e;padding:4px 0;font-size:.82rem">${lbl}</td><td style="text-align:right;font-size:.82rem">${v}</td></tr>`;
-
-  if (tab === 'tech') {
-    const m = tech.macd || {}, ma = tech.ma || {};
-    const macdRow = (lbl, v) => `<tr><td style="color:#8b949e;padding:4px 0">${lbl}</td><td style="text-align:right;color:${v > 0 ? '#3fb950' : v < 0 ? '#f85149' : '#8b949e'};font-weight:600">${(v||0).toFixed(4)}</td></tr>`;
-    const maRow   = (lbl, v, above) => v == null ? '' :
-      `<tr><td style="color:#8b949e;padding:4px 0">${lbl}</td>
-       <td style="text-align:right"><span style="color:${above?'#3fb950':'#f85149'};font-weight:600">${v}</span>
-       <span style="font-size:.72rem;color:#8b949e;margin-left:4px">${above?'站上 ✓':'跌破 ✗'}</span></td></tr>`;
-    const sc = tech.score || {}, overall = sc.overall || 0;
-    const barCol = overall >= 65 ? '#3fb950' : overall >= 45 ? '#d29922' : '#f85149';
-    const scoreLabel = overall >= 70 ? '偏多 ✓' : overall >= 55 ? '略偏多' : overall >= 45 ? '中性' : overall >= 30 ? '略偏空' : '偏空 ✗';
-    body.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-        <div style="font-size:2rem;font-weight:700;color:${barCol}">${overall}</div>
-        <div>
-          <div style="font-weight:600;font-size:.9rem;color:${barCol}">${scoreLabel}</div>
-          <div style="background:#21262d;border-radius:4px;height:6px;width:100px;margin-top:4px;overflow:hidden">
-            <div style="height:100%;border-radius:4px;background:${barCol};width:${overall}%"></div>
-          </div>
+  try {
+    if (tab === 'sum') body.innerHTML = _dpSum(d);
+    else if (tab === 'tech') body.innerHTML = _dpTech(d);
+    else if (tab === 'chip') body.innerHTML = _dpChip(d);
+    else if (tab === 'fund') body.innerHTML = _dpFund(d);
+    else if (tab === 'fin') body.innerHTML = _dpFin(d);
+    else if (tab === 'news') {
+      const items = (d.news || {}).items || [];
+      body.innerHTML = !items.length ? _dpMsg('📰', '暫無新聞資料') : items.map(n => {
+        const link = /^https?:\/\//.test(n.link || '') ? n.link : '#';
+        return `<div style="border-bottom:1px solid #21262d;padding:10px 0">
+          <a href="${_esc(link)}" target="_blank" rel="noopener" style="color:#e6edf3;text-decoration:none;font-size:.85rem;font-weight:500;line-height:1.4">${_esc(n.title || '—')}</a>
+          <div style="font-size:.72rem;color:#8b949e;margin-top:4px">${_esc(n.publisher || '')} · ${_esc(n.date || '')}</div></div>`;
+      }).join('');
+    } else if (tab === 'sec') {
+      const s = d.sector;
+      if (!s) { body.innerHTML = _dpMsg('🔄', '沒有產業資料（需先初始化產業輪動）'); return; }
+      const rk = (r) => r != null && s.total ? `第 ${_esc(r)} 名／${_esc(s.total)}` : '—';
+      const col = r => r == null || !s.total ? '' : r <= s.total / 3 ? 'dp-up' : r > s.total * 2 / 3 ? 'dp-dn' : '';
+      body.innerHTML = `
+        <div class="dp-sec" style="margin-top:0">所屬產業</div>
+        <div style="font-size:1rem;font-weight:600;color:#58a6ff">${_esc(s.sector_name)}</div>
+        <div class="dp-box" style="margin-top:10px">
+          ${_dpRow('5 日強度', rk(s.rank5d), col(s.rank5d))}${_dpRow('20 日強度', rk(s.rank20d), col(s.rank20d))}
+          ${_dpRow('資料日期', _esc(_dpDate(s.date)) + (s.stale ? '（過期，不計分）' : ''))}
         </div>
-        <div style="margin-left:auto;font-size:.75rem;color:#8b949e">${tech.data_days||0}天資料</div>
-      </div>
-      <div style="font-size:.75rem;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">MACD (12/26/9)</div>
-      <table style="width:100%;margin-bottom:14px">
-        ${macdRow('DIF', m.dif || 0)}${macdRow('DEA', m.dea || 0)}${macdRow('OSC', m.osc || 0)}
-        <tr><td style="color:#8b949e;padding:4px 0;font-size:.82rem">訊號</td><td style="text-align:right;font-weight:600;color:${m.signal==='多'||m.signal==='偏多'?'#3fb950':m.signal==='空'||m.signal==='偏空'?'#f85149':'#d29922'}">${m.signal||'—'}</td></tr>
-      </table>
-      ${tech.macd_big ? `<div style="font-size:.75rem;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">大 MACD (108/216/18)</div>
-      <table style="width:100%;margin-bottom:14px">
-        ${macdRow('DIF', tech.macd_big.dif)}${macdRow('DEA', tech.macd_big.dea)}${macdRow('OSC', tech.macd_big.osc)}
-      </table>` : ''}
-      <div style="font-size:.75rem;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">均線</div>
-      <table style="width:100%;margin-bottom:14px">
-        ${maRow('MA10', ma.ma10, ma.above_ma10)}${maRow('MA20', ma.ma20, tech.close >= (ma.ma20||0))}${maRow('MA60', ma.ma60, ma.above_ma60)}
-        ${ma.golden_cross_days != null ? `<tr><td colspan="2" style="color:#d29922;padding:4px 0;font-size:.78rem">🟡 ${ma.golden_cross_days} 天前黃金交叉</td></tr>` : ''}
-      </table>
-      <div style="font-size:.75rem;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">量能 & 位置</div>
-      <table style="width:100%;margin-bottom:14px">
-        ${_sec('BB 位置', `<span style="color:${(tech.bb_score||0)>0?'#3fb950':(tech.bb_score||0)<0?'#f85149':'#8b949e'};font-weight:600">${tech.bb_score!=null?((tech.bb_score>0?'+':'')+tech.bb_score):'—'}</span>`)}
-        ${_sec('量 vs 昨日', `<span style="color:${(tech.vol_ratio||0)>=2?'#3fb950':'#e6edf3'};font-weight:600">${tech.vol_ratio!=null?'×'+tech.vol_ratio:'—'}</span>`)}
-        ${_sec('量 vs 5日均', tech.vol_vs_5d!=null?'×'+tech.vol_vs_5d:'—')}
-      </table>
-      <div style="font-size:.75rem;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">觸發訊號</div>
-      <div style="display:flex;flex-wrap:wrap;gap:5px">
-        ${(sc.signals||[]).map(s=>`<span style="font-size:.73rem;padding:2px 7px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:#e6edf3">${s}</span>`).join('')||'<span style="color:#8b949e;font-size:.82rem">無</span>'}
-      </div>`;
-
-  } else if (tab === 'chip') {
-    const c = d.chip;
-    if (!c || c.error) {
-      body.innerHTML = `<div style="padding:20px;text-align:center">
-        <div style="font-size:1.6rem;margin-bottom:6px">🏦</div>
-        <div style="color:#8b949e;font-size:.85rem">${c?.error || '籌碼資料暫時無法取得（FinMind API 限速或非交易日）'}</div>
-        <div style="color:#8b949e;font-size:.75rem;margin-top:6px">技術面評分仍有效，籌碼分以中性 25 計入綜合評分</div>
-      </div>`;
-      return;
+        <div class="dp-note" style="margin-top:6px">強度＝產業等權指數的報酬在所有產業裡的名次（1 最強）。</div>
+        <a href="/sector/" target="_blank" style="display:inline-block;margin-top:10px;color:#58a6ff;font-size:.82rem;text-decoration:none">→ 查看產業輪動</a>`;
     }
-    const netCol = n => n > 0 ? '#3fb950' : n < 0 ? '#f85149' : '#8b949e';
-    const chipRow = (lbl, obj) =>
-      `<tr style="border-bottom:1px solid #21262d">
-        <td style="color:#8b949e;padding:6px 0;font-size:.82rem">${lbl}</td>
-        <td style="text-align:right;padding:6px 0;font-weight:600;color:${netCol(obj.net_10d)}">${obj.net_10d>0?'+':''}${obj.net_10d.toLocaleString()} 張</td>
-        <td style="text-align:right;padding:6px 0;font-size:.76rem;color:#8b949e">${obj.days_buy}買/${obj.days_sell}賣</td>
-       </tr>`;
-    const sigCol = c.signal==='三大法人強力買超'||c.signal==='外資連買'?'#3fb950':c.signal==='三大法人賣超'?'#f85149':'#8b949e';
-    body.innerHTML = `
-      <div style="font-size:.75rem;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">三大法人近10日</div>
-      <table style="width:100%;margin-bottom:14px">
-        ${chipRow('外資', c.foreign)}${chipRow('投信', c.trust)}${chipRow('自營商', c.dealer)}
-        <tr><td style="color:#8b949e;padding:6px 0;font-size:.82rem">合計</td>
-            <td colspan="2" style="text-align:right;padding:6px 0;font-weight:700;color:${netCol(c.total_net_10d)}">${c.total_net_10d>0?'+':''}${c.total_net_10d.toLocaleString()} 張</td></tr>
-      </table>
-      <div style="padding:8px 12px;background:${sigCol}22;border:1px solid ${sigCol}55;border-radius:6px;color:${sigCol};font-weight:600;font-size:.85rem">${c.signal}</div>`;
-
-  } else if (tab === 'fund') {
-    const f = d.fundamental;
-    if (!f) { body.innerHTML = '<div style="color:#8b949e;padding:20px">基本面資料暫時無法取得</div>'; return; }
-    const valOrDash = v => v != null ? v : '—';
-    const sigCol = f.signal==='低估'?'#3fb950':f.signal==='合理'?'#58a6ff':f.signal==='偏高'?'#d29922':'#f85149';
-    const mktcapStr = f.market_cap != null ? `${f.market_cap}億` : '—';
-    const w52Str = (f.week52_high != null && f.week52_low != null)
-      ? `${f.week52_low} ~ ${f.week52_high}` : '—';
-    const betaStr = f.beta != null ? f.beta : '—';
-    const sharesStr = f.shares_outstanding != null ? `${f.shares_outstanding}億股` : '—';
-    body.innerHTML = `
-      <div style="font-size:.75rem;color:#8b949e;margin-bottom:4px">資料日期：${f.date||'—'}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:10px 0">
-        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">本益比(PE)</div>
-          <div style="font-size:1.2rem;font-weight:700;color:#e6edf3">${valOrDash(f.per)}</div>
-        </div>
-        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">股價淨值比</div>
-          <div style="font-size:1.2rem;font-weight:700;color:#e6edf3">${valOrDash(f.pbr)}</div>
-        </div>
-        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">殖利率%</div>
-          <div style="font-size:1.2rem;font-weight:700;color:#3fb950">${valOrDash(f.dividend_yield)}${f.dividend_yield!=null?'%':''}</div>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">市值</div>
-          <div style="font-size:1rem;font-weight:700;color:#e6edf3">${mktcapStr}</div>
-        </div>
-        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">52週區間</div>
-          <div style="font-size:.85rem;font-weight:600;color:#e6edf3">${w52Str}</div>
-        </div>
-        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">Beta</div>
-          <div style="font-size:1rem;font-weight:700;color:#e6edf3">${betaStr}</div>
-        </div>
-        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">在外流通股</div>
-          <div style="font-size:1rem;font-weight:700;color:#e6edf3">${sharesStr}</div>
-        </div>
-      </div>
-      <div style="padding:8px 12px;background:${sigCol}22;border:1px solid ${sigCol}55;border-radius:6px;color:${sigCol};font-weight:600;font-size:.85rem">估值：${f.signal}</div>`;
-
-  } else if (tab === 'fin') {
-    const f = d.financial;
-    if (!f) { body.innerHTML = '<div style="color:#8b949e;padding:20px">財務資料暫時無法取得（可能為興櫃股或尚未公布季報）</div>'; return; }
-    const lt = f.latest || {};
-    const growthHtml = (val, lbl) => {
-      if (val == null) return `<div style="font-size:.78rem;color:#8b949e">${lbl}: —</div>`;
-      const col = val > 0 ? '#3fb950' : '#f85149';
-      const arrow = val > 0 ? '▲' : '▼';
-      return `<div style="font-size:.82rem;color:#e6edf3">${lbl}: <span style="color:${col};font-weight:600">${arrow} ${Math.abs(val)}%</span></div>`;
-    };
-    const fmtRev = (v, unit) => {
-      if (v == null) return '—';
-      const base = (unit === '千元') ? v * 1000 : v;  // 統一換算成實際元
-      if (base >= 1e9) return (base/1e8).toFixed(1) + '億';
-      if (base >= 1e6) return (base/1e6).toFixed(1) + '百萬';
-      return (base/1e3).toFixed(0) + '千';
-    };
-    const sigCol = f.signal==='高成長'?'#3fb950':f.signal==='成長'?'#58a6ff':f.signal==='衰退'?'#f85149':'#8b949e';
-    const hlHtml = (f.highlights||[]).map(h => {
-      const col = h.type==='good'?'#3fb950':h.type==='warn'?'#f85149':'#8b949e';
-      const ico = h.type==='good'?'✅':h.type==='warn'?'⚠️':'ℹ️';
-      return `<div style="font-size:.8rem;color:${col};padding:3px 0;border-bottom:1px solid #21262d">${ico} ${h.text}</div>`;
-    }).join('') || '<div style="font-size:.8rem;color:#8b949e">無額外亮點或警示</div>';
-    body.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <span style="font-size:.75rem;color:#8b949e">最新季度：${lt.date||'—'}</span>
-        ${f.source ? `<span style="font-size:.68rem;color:#484f58;background:#21262d;padding:2px 6px;border-radius:4px">來源：${f.source}</span>` : ''}
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
-        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">EPS（元）</div>
-          <div style="font-size:1.2rem;font-weight:700;color:${(lt.eps||0)>0?'#3fb950':'#f85149'}">${lt.eps!=null?lt.eps:'—'}</div>
-        </div>
-        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">毛利率</div>
-          <div style="font-size:1.2rem;font-weight:700;color:#e6edf3">${lt.gross_margin!=null?lt.gross_margin+'%':'—'}</div>
-        </div>
-        <div style="background:#21262d;border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">營收</div>
-          <div style="font-size:1rem;font-weight:700;color:#e6edf3">${fmtRev(lt.revenue, lt.revenue_unit)}</div>
-        </div>
-      </div>
-      <div style="margin-bottom:12px">
-        ${growthHtml(f.eps_growth_yoy, 'EPS YoY')}
-        ${growthHtml(f.revenue_growth_yoy, '營收 YoY')}
-      </div>
-      <div style="padding:8px 12px;background:${sigCol}22;border:1px solid ${sigCol}55;border-radius:6px;color:${sigCol};font-weight:600;font-size:.85rem;margin-bottom:12px">財務訊號：${f.signal}</div>
-      <div style="font-size:.75rem;color:#8b949e;margin-bottom:6px;font-weight:600">亮點 / 警示</div>
-      <div style="background:#0d1117;border-radius:6px;padding:8px 10px">${hlHtml}</div>`;
-
-  } else if (tab === 'news') {
-    const news = d.news || {};
-    const items = news.items || [];
-    if (!items.length) { body.innerHTML = '<div style="color:#8b949e;padding:20px">暫無新聞資料</div>'; return; }
-    body.innerHTML = items.map(n =>
-      `<div style="border-bottom:1px solid #21262d;padding:10px 0">
-        <a href="${n.link||'#'}" target="_blank" rel="noopener" style="color:#e6edf3;text-decoration:none;font-size:.85rem;font-weight:500;line-height:1.4">${n.title||'—'}</a>
-        <div style="font-size:.72rem;color:#8b949e;margin-top:4px">${n.publisher||''} · ${n.date||''}</div>
-      </div>`
-    ).join('');
-
-  } else if (tab === 'sec') {
-    const s = d.sector;
-    if (!s) { body.innerHTML = '<div style="color:#8b949e;padding:20px">無族群資料（需先初始化產業輪動）</div>'; return; }
-    const sigCol = s.signal==='族群強勢（前5）'?'#3fb950':s.signal==='中等偏強'?'#58a6ff':'#f85149';
-    body.innerHTML = `
-      <div style="margin-bottom:14px">
-        <div style="font-size:.75rem;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">所屬族群</div>
-        <div style="font-size:1rem;font-weight:600;color:#58a6ff">${s.sector_name}</div>
-        <div style="font-size:.78rem;color:#8b949e;margin-top:2px">ID: ${s.sector_id}</div>
-      </div>
-      <table style="width:100%;margin-bottom:14px">
-        <tr style="border-bottom:1px solid #21262d">
-          ${_sec('5日排名', `<span style="font-weight:600;color:${s.rank5d!=null&&s.rank5d<=5?'#3fb950':s.rank5d!=null&&s.rank5d>15?'#f85149':'#e6edf3'}">${s.rank5d!=null?`第 ${s.rank5d} 名 / ${s.total}`:'—'}</span>`)}
-        </tr>
-        <tr>
-          ${_sec('20日排名', `<span style="font-weight:600;color:${s.rank20d!=null&&s.rank20d<=5?'#3fb950':s.rank20d!=null&&s.rank20d>15?'#f85149':'#e6edf3'}">${s.rank20d!=null?`第 ${s.rank20d} 名 / ${s.total}`:'—'}</span>`)}
-        </tr>
-      </table>
-      <div style="padding:8px 12px;background:${sigCol}22;border:1px solid ${sigCol}55;border-radius:6px;color:${sigCol};font-weight:600;font-size:.85rem;margin-bottom:14px">${s.signal||'—'}</div>
-      <a href="/sector/" target="_blank" style="color:#58a6ff;font-size:.82rem;text-decoration:none">→ 查看族群詳情</a>`;
+  } catch (err) {
+    console.error('[renderDpBody]', err);
+    body.innerHTML = _dpMsg('⚠️', `畫面產生失敗：${_esc(err.message)}`);
   }
 }
 </script>

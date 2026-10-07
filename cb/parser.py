@@ -128,6 +128,44 @@ def parse_tpex_margin(j: dict) -> dict:
     return out
 
 
+def parse_twse_margin_both(j: dict) -> dict:
+    """TWSE rwd MI_MARGN（selectType=ALL）→ {sid: (融資今日餘額, 融券今日餘額)}（張）
+    欄位：代號、名稱、融資 6 欄（買進、賣出、現金償還、前日餘額、今日餘額、限額）、融券 6 欄（…今日餘額、限額）…
+    有 groups（股票 2／融資 6／融券 6）時用它確認欄位位置，對不上就不解析"""
+    out = {}
+    for t in (j or {}).get("tables") or []:
+        f = t.get("fields") or []
+        if len(f) < 13 or "代號" not in f[0] or f[6] != "今日餘額" or f[12] != "今日餘額":
+            continue
+        g = [(x.get("title"), x.get("span")) for x in (t.get("groups") or [])]
+        if g and g[:3] != [("股票", 2), ("融資", 6), ("融券", 6)]:
+            continue
+        for r in t.get("data") or []:
+            if len(r) < 13:
+                continue
+            m, s_ = num(r[6]), num(r[12])
+            if m is not None or s_ is not None:
+                out[str(r[0]).strip()] = (m, s_)
+    return out
+
+
+def parse_tpex_margin_both(j: dict) -> dict:
+    """櫃買 /www/zh-tw/margin/balance → {sid: (資餘額, 券餘額)}（張）"""
+    out = {}
+    for t in (j or {}).get("tables") or []:
+        f = t.get("fields") or []
+        if "資餘額" not in f or "券餘額" not in f:
+            continue
+        im, i_s = f.index("資餘額"), f.index("券餘額")
+        for r in t.get("data") or []:
+            if len(r) <= max(im, i_s):
+                continue
+            m, s_ = num(r[im]), num(r[i_s])
+            if m is not None or s_ is not None:
+                out[str(r[0]).strip()] = (m, s_)
+    return out
+
+
 def parse_openapi_margin(rows: list) -> dict:
     """TWSE openapi MI_MARGN / 櫃買 tpex_mainboard_margin_balance → {sid: 融券餘額（張）}"""
     out = {}
