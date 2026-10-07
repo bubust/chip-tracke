@@ -109,8 +109,11 @@
   .sig--2, .sig--3 { background: #16301e; color: var(--down); }
 
   /* detail panel */
-  #detail-panel { border: 1px solid var(--accent); border-radius: var(--radius); margin-bottom: 14px; overflow: hidden; display: none; }
-  .detail-header { background: #1a2640; padding: 12px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); }
+  /* 點觀察清單就在原地跳出（不捲到頁面最下面） */
+  #detail-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 9990; align-items: flex-start; justify-content: center; padding: 4vh 16px; }
+  #detail-modal.open { display: flex; }
+  #detail-panel { border: 1px solid var(--accent); border-radius: var(--radius); background: var(--card); width: min(1400px, 100%); max-height: 92vh; overflow-y: auto; box-shadow: 0 12px 60px #000c; }
+  .detail-header { background: #1a2640; padding: 12px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 3; flex-wrap: wrap; }
   .detail-header h3 { font-size: 1rem; font-weight: 700; }
   .detail-body { padding: 16px 20px; }
 
@@ -232,6 +235,10 @@
     #watchlist-table th:nth-child(6), #watchlist-table td:nth-child(6),
     #watchlist-table th:nth-child(n+11), #watchlist-table td:nth-child(n+11) { display: none; }
     input[type=text], input[type=number], select { font-size: 16px; }   /* iOS 不會自動放大 */
+    #detail-modal { padding: 8px; }
+    #detail-panel { max-height: calc(100vh - 16px); }
+    .detail-header { padding: 10px 12px; }
+    .detail-body { padding: 12px; }
   }
 /* 分頁開頭的使用說明 */
 details.guide{margin:4px 0 8px;border:1px solid #30363d;border-radius:8px;background:#0d1117}
@@ -470,7 +477,8 @@ details.guide[open]>summary::before{content:'▾ ';}
     </div>
   </div>
 
-  <!-- 個股詳細（點擊後展開） -->
+  <!-- 個股詳細（點擊後在原地跳出） -->
+  <div id="detail-modal" onclick="if(event.target===this)closeDetail()">
   <div id="detail-panel">
     <div class="detail-header">
       <h3 id="detail-title">—</h3>
@@ -508,6 +516,7 @@ details.guide[open]>summary::before{content:'▾ ';}
         </div>
       </div>
     </div>
+  </div>
   </div>
 
 <!-- 最近查詢 -->
@@ -2974,21 +2983,38 @@ function removeHistory(sid) {
   renderQueryHistory();
 }
 
+// 股名：觀察清單 → 籌碼資料 → 最近查詢紀錄（存成「代號 名稱」）
+function _detailName(sid, data) {
+  const w = _wlData.find(s => s.stock_id === sid);
+  if (w && w.name && w.name !== sid) return w.name;
+  const d = (data || []).find(x => x && x.name);
+  if (d) return d.name;
+  const h = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]').find(h => h.sid === sid);
+  if (h && h.name && h.name !== sid) return h.name.replace(new RegExp('^' + sid + '\\s*'), '');
+  return '';
+}
+function _detailTitle(sid, data) {
+  const name = _detailName(sid, data);
+  return `${sid}${name ? ' ' + name : ''} 詳細分析`;
+}
+
 async function openDetail(sid) {
   _detailSid = sid;
-  const panel = document.getElementById('detail-panel');
-  panel.style.display = 'block';
-  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  document.getElementById('detail-title').textContent = `${sid} 詳細分析`;
+  // 原地跳出，不捲動頁面
+  document.getElementById('detail-modal').classList.add('open');
+  document.getElementById('detail-panel').scrollTop = 0;
+  document.getElementById('detail-title').textContent = _detailTitle(sid);
   document.getElementById('detail-signal').textContent = '';
+  document.getElementById('detail-meta').textContent = '';
   document.getElementById('detail-metrics').innerHTML =
     '<div class="loading" style="grid-column:1/-1"><span class="spinner"></span>載入中...</div>';
   document.getElementById('detail-tbody').innerHTML = '';
   try {
     const r = await api('GET', `/api/stock/${sid}?days=30`);
+    if (_detailSid !== sid) return;   // 載入中已經換看別檔或關掉
     // 取得股票名稱後記錄歷史
-    const name = (r.data && r.data[0] && r.data[0].name) ? `${sid} ${r.data[0].name}` : sid;
-    addQueryHistory(sid, name);
+    const nm = _detailName(sid, r.data);
+    addQueryHistory(sid, nm ? `${sid} ${nm}` : sid);
     renderDetail(sid, r.data);
   } catch (e) {
     toast(e.message, true);
@@ -3023,7 +3049,7 @@ function renderDetail(sid, data) {
   const cb  = latest.consecutive_buy    || 0;
   const lv  = latest.signal_level       || 0;
 
-  document.getElementById('detail-title').textContent = `${sid} 詳細分析`;
+  document.getElementById('detail-title').textContent = _detailTitle(sid, data);
   document.getElementById('detail-signal').innerHTML  =
     `<span class="sig-badge sig-${lv}">${latest.signal_emoji} ${latest.signal_title}</span>`;
   document.getElementById('detail-meta').textContent  = `· ${data.length} 筆 · 最新 ${latest.date}`;
@@ -3118,9 +3144,12 @@ async function pushSingle() {
 }
 
 function closeDetail() {
-  document.getElementById('detail-panel').style.display = 'none';
+  document.getElementById('detail-modal').classList.remove('open');
   _detailSid = '';
 }
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('detail-modal').classList.contains('open')) closeDetail();
+});
 
 // ── 非同步補充千張大戶多週趨勢（渲染後執行）────────────────────────────────
 async function enrichTdccTrends() {
