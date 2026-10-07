@@ -201,6 +201,7 @@
   nav { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
   nav::-webkit-scrollbar { display: none; }
   nav button { flex-shrink: 0; white-space: nowrap; }
+  @media (max-width: 1700px) { nav button { padding: 12px 15px; } }   /* 13 個分頁：1366～1700 寬的筆電也放得下 */
   .tab iframe { height: calc(100dvh - 120px) !important; }
   @media (max-width: 1024px) {
     nav button { padding: 11px 14px; }
@@ -270,6 +271,45 @@ details.guide[open]>summary::before{content:'▾ ';}
 .note-card ul{margin:4px 0 0;padding-left:18px}
 .note-h{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 #notes-checklist label{display:block;padding:3px 0;cursor:pointer}
+
+  /* 💬 戰略討論區 */
+  .dc-input textarea { width: 100%; resize: vertical; font-size: .88rem; line-height: 1.5; }
+  .dc-imgs { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+  .dc-imgs:empty { display: none; }
+  .dc-thumb { position: relative; }
+  .dc-thumb img { height: 80px; border-radius: 6px; border: 1px solid var(--border); display: block; }
+  .dc-thumb button { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; border: none; background: var(--red); color: #fff; cursor: pointer; font-size: .7rem; line-height: 20px; padding: 0; }
+  .dc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+  .dc-subtabs { display: flex; gap: 4px; margin: 14px 0 10px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+  .dc-subtabs button { background: none; border: none; color: var(--muted); padding: 8px 12px; cursor: pointer; font-size: .84rem; border-bottom: 2px solid transparent; white-space: nowrap; }
+  .dc-subtabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .dc-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .dc-sec { margin: 14px 0; }
+  .dc-sec h4 { font-size: .9rem; margin-bottom: 6px; }
+  .dc-views { margin: 6px 0 0 18px; font-size: .84rem; line-height: 1.6; }
+  .dc-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .dc-table table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+  .dc-table th, .dc-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; vertical-align: top; }
+  .dc-table th { color: var(--muted); font-weight: 600; font-size: .74rem; }
+  .dc-chip { display: inline-block; background: var(--card2); border: 1px solid var(--border); border-radius: 12px; padding: 1px 8px; font-size: .74rem; margin: 1px 0; }
+  .dc-tag { display: inline-block; border-radius: 4px; padding: 0 5px; font-size: .7rem; font-weight: 700; margin-right: 3px; }
+  .dc-lead { background: #7c2d12; color: #fed7aa; }
+  .dc-follow { background: #1e3a5f; color: #bfdbfe; }
+  .dc-conf { font-size: .7rem; font-weight: 700; }
+  .dc-fix { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; align-items: center; }
+  .dc-lf { background: var(--card2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; display: flex; flex-direction: column; gap: 4px; }
+  .dc-seg { display: flex; gap: 10px; margin-bottom: 8px; }
+  .dc-seg-h { flex: 0 0 150px; font-size: .8rem; font-weight: 700; color: var(--accent); padding-top: 4px; }
+  .dc-seg-b { flex: 1; display: flex; flex-wrap: wrap; gap: 6px; }
+  .dc-stock { background: var(--card2); border: 1px solid var(--border); border-radius: 8px; padding: 5px 9px; cursor: pointer; font-size: .8rem; max-width: 260px; }
+  .dc-stock:hover { border-color: var(--accent); }
+  .dc-mentioned { border-color: #eab308; }
+  .dc-hist { background: var(--card2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; margin-bottom: 8px; cursor: pointer; }
+  .dc-hist:hover { border-color: var(--accent); }
+  .dc-link { color: #93c5fd; text-decoration: none; }
+  .dc-link:hover { text-decoration: underline; }
+  .dc-pre { white-space: pre-wrap; font-size: .82rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin-top: 6px; font-family: inherit; }
+  @media (max-width: 640px) { .dc-seg { flex-direction: column; gap: 4px; } .dc-seg-h { flex: none; } .dc-stock { max-width: none; flex: 1 1 140px; } }
 </style>
 </head>
 <body>
@@ -307,6 +347,7 @@ details.guide[open]>summary::before{content:'▾ ';}
   <button onclick="switchTab('mna')">🤝 收購併購</button>
   <button onclick="switchTab('cb')">🎫 可轉債</button>
   <button onclick="switchTab('notes')">📚 上課筆記</button>
+  <button onclick="switchTab('discuss')">💬 戰略討論區</button>
   <button onclick="switchTab('settings')">設定</button>
 </nav>
 
@@ -547,6 +588,7 @@ details.guide[open]>summary::before{content:'▾ ';}
       <button class="btn ghost screen-strat-btn" data-s="S10"      onclick="viewStrategy('S10')">S10 漲停 <span class="strat-cnt" id="cnt-S10"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_FBD"   onclick="viewStrategy('S_FBD')">🪤 假跌破 <span class="strat-cnt" id="cnt-S_FBD"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_THUNDER" onclick="viewStrategy('S_THUNDER')" title="盤整 90 天（區間 ≤15%）後帶量 2.5 倍突破；回檔 ≤0.618 時目標價＝第一段高點−突破點＋回檔低點">⚡ 平地一聲雷 <span class="strat-cnt" id="cnt-S_THUNDER"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_XIANREN" onclick="viewStrategy('S_XIANREN')" title="盤整後上攻收長上影線（第一次出量）→ 繼續盤整 1～10 天不破低、沒過頂 → 今天第二次出量收紅；停損＝仙人指路那根的低點">🧙 仙人指路 <span class="strat-cnt" id="cnt-S_XIANREN"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_WARRANT_TOP" onclick="viewStrategy('S_WARRANT_TOP')">📈 認購前十大 <span class="strat-cnt" id="cnt-S_WARRANT_TOP"></span></button>
       <div class="strat-divider" style="flex-basis:100%;font-size:.74rem;color:var(--muted);margin-top:6px">📚 上課筆記策略（做多 14 個；⛔ 之後 7 個是做空／出場警訊）· 籌碼類（投信、融券、大戶）在全市場掃描最後另外抓資料計算</div>
       <button class="btn ghost screen-strat-btn" data-s="S_WMACD" onclick="viewStrategy('S_WMACD')" title="週 K、MACD(10,20,50)：大跌後重新站上 20 週線且週柱由綠翻紅；沒破 20 週線、MACD 沒翻綠就抱">📅 週MACD大波段 <span class="strat-cnt" id="cnt-S_WMACD"></span></button>
@@ -838,6 +880,17 @@ details.guide[open]>summary::before{content:'▾ ';}
       <span style="font-size:.78rem;color:var(--muted)">能寫成程式的都已加進「策略篩選」（按 🔍 直接看結果）；✍️ 是要自己查的方法或觀念</span>
     </div>
     <div id="notes-root"><div class="muted" style="padding:20px;text-align:center">載入中...</div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ 💬 戰略討論區 ═══════════════════════ -->
+<div id="tab-discuss" class="tab">
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+      <strong style="font-size:1.05rem">💬 戰略討論區</strong>
+      <span style="font-size:.78rem;color:var(--muted)">把跟老大哥的對話貼進來（文字或截圖）：AI 找出在講哪些股票、什麼題材、產業鏈位置、大哥／小弟、同族群，接上戰術中心的資料</span>
+    </div>
+    <div id="dc-root"><div class="muted" style="padding:20px;text-align:center">載入中...</div></div>
   </div>
 </div>
 
@@ -1396,7 +1449,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  const idx = { watchlist: 0, market: 1, screen: 2, warrant: 3, regime: 4, sector: 5, relationship: 6, treasury: 7, mna: 8, cb: 9, notes: 10, settings: 11 };
+  const idx = { watchlist: 0, market: 1, screen: 2, warrant: 3, regime: 4, sector: 5, relationship: 6, treasury: 7, mna: 8, cb: 9, notes: 10, discuss: 11, settings: 12 };
   const navIdx = idx[name];
   if (navIdx !== undefined) document.querySelectorAll('nav button')[navIdx].classList.add('active');
   if (name === 'settings') { _doSwitchSettings(); }
@@ -1407,6 +1460,7 @@ function switchTab(name) {
   if (name === 'mna') { mnaOnShow(); }
   if (name === 'cb') { cbOnShow(); }
   if (name === 'notes') { _notesInit(); }
+  if (name === 'discuss') { discussOnShow(); }
   if (name !== 'watchlist') { _stopPriceRefreshIfActive(); }
   if (name === 'watchlist') { _autoStartPriceRefresh(); }
 }
@@ -3823,6 +3877,7 @@ const STRATEGY_LABELS = {
   S_FBD: '🪤 假跌破買進（跌破MA10後快速收復，洗盤完成）',
   S_WARRANT_TOP: '📈 認購權證前十大（最近交易日認購成交額最高的標的股）',
   S_THUNDER: '⚡ 平地一聲雷（長期盤整後帶量突破，回檔不破才買）',
+  S_XIANREN: '🧙 仙人指路（盤整完上攻收長上影線，之後繼續盤整，今天第二次出量＝要進攻；停損＝仙人指路那根的低點）',
   S_WMACD: '📅 週MACD大波段（週 K、MACD(10,20,50)：大跌後重新站上 20 週線且週柱由綠翻紅）',
   S_BIAS: '🧲 負乖離抄底（季線（60BIAS）負乖離 ≤ −20%）',
   S_RSI_OS: '🔄 RSI6 超賣勾起（RSI(6) 跌破 20 後第一次勾起突破 20）',
@@ -3880,6 +3935,7 @@ const STRATEGY_SHORT = {
   S_FBD: '🪤 假跌破',
   S_WARRANT_TOP: '📈 認購前十大',
   S_THUNDER: '⚡ 平地一聲雷',
+  S_XIANREN: '🧙 仙人指路',
   S_WMACD: '📅 週MACD大波段',
   S_BIAS: '🧲 負乖離抄底',
   S_RSI_OS: '🔄 RSI6 超賣勾起',
@@ -4412,6 +4468,7 @@ function renderScreenTable(strategy, data) {
   if (strategy === 'S10')  headRow += `${th('連續漲停','consec_limit_up')}`;
   if (strategy === 'S2')   headRow += `${th('前低（碗底）','prev_low')}${th('第一波','wave_pct')}${th('盤整','base_days')}`;
   if (strategy === 'S_WARRANT_TOP') headRow += `${th('認購額(萬)','call_turnover_wan')}${th('認購/認售比','cp_ratio')}`;
+  if (strategy === 'S_XIANREN') headRow += `${th('盤整箱','box_high')}${th('仙人指路','probe_vol_ratio')}${th('之後盤整','pause_days')}${th('今天','today_vol_ratio')}${th('距上影線頂','dist_top_pct')}`;
   if (strategy === 'S_THUNDER') headRow += `${th('階段','stage')}${th('突破點','base_top')}${th('第一段高','first_high')}${th('回檔低','pullback_low')}${th('目標價','target')}`;
   if (COURSE_COLS[strategy]) headRow += COURSE_COLS[strategy].map(([lab, key]) => th(lab, key)).join('') + '<th>提醒</th>';
   headRow += `${th('成交量(張)','volume')}${th('成交金額','turnover','hide-mobile')}${th('BB位置','bb_score','hide-mobile')}${th('重疊策略','overlap','hide-mobile','此股票同時符合的其他策略，點擊依重疊數量排序')}<th>操作</th></tr>`;
@@ -4438,6 +4495,12 @@ function renderScreenTable(strategy, data) {
         : `<td>${row.prev_low ?? '—'}<br><small class="muted">${String(row.prev_low_date||'').slice(4,6)}/${String(row.prev_low_date||'').slice(6)}</small></td>
         <td>高 ${row.wave_high}（+${row.wave_pct}%）<br><small class="muted">${String(row.wave_high_date||'').slice(4,6)}/${String(row.wave_high_date||'').slice(6)}</small></td>
         <td>${row.base_days} 天・低 ${row.base_low}<br><small class="muted">突破 ${row.base_high}・停損 ${row.stop}</small></td>`;
+    else if (strategy === 'S_XIANREN')
+      extraTd = `<td>${row.box_low}～${row.box_high}</td>
+        <td>頂 ${row.probe_high}・低 ${row.probe_low}<br><small class="muted">${String(row.probe_date||'').slice(4,6)}/${String(row.probe_date||'').slice(6)} ${row.probe_vol_ratio}倍量</small></td>
+        <td>${row.pause_days} 天</td>
+        <td>${row.today_vol_ratio}倍量<br><small class="muted">停損 ${row.stop}</small></td>
+        <td>${row.broke_top ? '<span style="color:#ef4444;font-weight:700">已過頂</span>' : row.dist_top_pct >= 0 ? '到頂' : `差 ${(-row.dist_top_pct).toFixed(1)}%`}<br><small class="muted">頂 ${row.probe_high}</small></td>`;
     else if (strategy === 'S_THUNDER')
       extraTd = `<td style="font-size:.75rem;white-space:normal;min-width:140px">${_esc(row.stage || '')}${row.uptrend ? `<br><span style="color:#f59e0b">上漲模式：收盤破 ${row.exit_prev_low} 出場</span>` : ''}</td>
         <td>${row.base_top ?? '—'}<br><small class="muted">${String(row.breakout_date||'').slice(4,6)}/${String(row.breakout_date||'').slice(6)} ${row.breakout_vol_ratio ?? ''}倍量</small></td>
@@ -5740,6 +5803,7 @@ async function saveAllStratParams() {
 <script src="/treasury/static/treasury.js?v=20261005f"></script>
 <script src="/mna/static/mna.js?v=20261005f"></script>
 <script src="/cb/static/cb.js?v=20261005f"></script>
-<script src="/notes/static/notes.js?v=20261006a"></script>
+<script src="/notes/static/notes.js?v=20261007a"></script>
+<script src="/discuss/static/discuss.js?v=20261007a"></script>
 </body>
 </html>

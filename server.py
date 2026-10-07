@@ -37,6 +37,7 @@ from relationship.db import init_db as init_relationship_db
 from treasury.router import router as treasury_router
 from treasury.db import init_db as init_treasury_db
 from mna.router import router as mna_router
+from discuss.router import router as discuss_router
 from mna.db import init_db as init_mna_db
 from cb.router import router as cb_router
 from cb.db import init_db as init_cb_db
@@ -889,6 +890,8 @@ app.mount("/mna/static", StaticFiles(directory=str(BASE_DIR / "mna-frontend")), 
 app.include_router(cb_router)
 app.mount("/cb/static", StaticFiles(directory=str(BASE_DIR / "cb-frontend")), name="cb_static")
 app.mount("/notes/static", StaticFiles(directory=str(BASE_DIR / "notes-frontend")), name="notes_static")
+app.include_router(discuss_router)
+app.mount("/discuss/static", StaticFiles(directory=str(BASE_DIR / "discuss-frontend")), name="discuss_static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -2524,6 +2527,7 @@ async def api_watchlist_summary():
             "CHIP":         (9,  "💎", "主力籌碼", 3),
             "S1":           (8,  "📈", "雙MACD多", 2),
             "S2":           (7,  "📈", "W底再攻擊", 2),
+            "S_XIANREN":    (7,  "🧙", "仙人指路", 2),
             "S5":           (6,  "📈", "站上均線", 2),
             "S1_SHORT":     (5,  "📉", "雙MACD空", 2),
             "S_FBD":        (3,  "🔻", "假跌破",  1),
@@ -2890,6 +2894,7 @@ async def api_market_scan(top: int = 50):
             "CHIP":         (9,  "💎", "主力籌碼", 3),
             "S1":           (8,  "📈", "雙MACD多", 2),
             "S2":           (7,  "📈", "W底再攻擊", 2),
+            "S_XIANREN":    (7,  "🧙", "仙人指路", 2),
             "S5":           (6,  "📈", "站上均線", 2),
             "S1_SHORT":     (5,  "📉", "雙MACD空", 2),
         }

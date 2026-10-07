@@ -39,6 +39,7 @@ STRATEGIES = {
 
     "S_WARRANT_TOP": "認購權證前十大（昨日）",
     "S_THUNDER":    "平地一聲雷（長期盤整後帶量突破）",
+    "S_XIANREN":    "仙人指路（盤整→上攻收長上影線→再盤整→第二次出量）",
 }
 
 STRATEGY_PARAMS_SCHEMA = {
@@ -82,6 +83,20 @@ STRATEGY_PARAMS_SCHEMA = {
         {"key": "vol_mult",        "label": "突破量（20 日均量倍數 ≥）",  "type": "number", "default": 2.5,  "min": 1.5, "max": 10,  "step": 0.5},
         {"key": "max_retrace",     "label": "回檔上限（第一段漲幅比例）", "type": "number", "default": 0.618,"min": 0.3, "max": 1,   "step": 0.01},
         {"key": "breakout_within", "label": "突破發生在近幾天內",         "type": "number", "default": 30,   "min": 1,   "max": 120, "step": 1},
+    ],
+    "S_XIANREN": [
+        {"key": "min_price",    "label": "最低股價",                         "type": "number", "default": 10,  "min": 1,   "max": 500,  "step": 1},
+        {"key": "min_vol_lots", "label": "今天最低量（張）",                  "type": "number", "default": 300, "min": 0,   "max": 5000, "step": 50},
+        {"key": "box_days",     "label": "上攻前盤整天數",                    "type": "number", "default": 15,  "min": 5,   "max": 60,   "step": 1},
+        {"key": "box_range",    "label": "盤整區間（收盤高低差 %）≤",          "type": "number", "default": 15,  "min": 5,   "max": 40,   "step": 1},
+        {"key": "attack_max",   "label": "盤整結束到仙人指路最多幾天（上攻）",   "type": "number", "default": 5,   "min": 0,   "max": 15,   "step": 1},
+        {"key": "sh_body",      "label": "上影線 ≥ 實體幾倍",                 "type": "number", "default": 1.5, "min": 0.5, "max": 5,    "step": 0.5},
+        {"key": "sh_range",     "label": "上影線佔整根 K 棒 % ≥",             "type": "number", "default": 40,  "min": 10,  "max": 90,   "step": 5},
+        {"key": "sh_min",       "label": "上影線長度 ≥ 股價 %",               "type": "number", "default": 2,   "min": 0,   "max": 10,   "step": 0.5},
+        {"key": "probe_vol",    "label": "仙人指路量 ≥ 20 日均量幾倍（第一次出量）", "type": "number", "default": 2, "min": 1, "max": 10, "step": 0.5},
+        {"key": "min_pause",    "label": "之後盤整至少幾天",                  "type": "number", "default": 1,   "min": 1,   "max": 10,   "step": 1},
+        {"key": "max_pause",    "label": "之後盤整最多幾天",                  "type": "number", "default": 10,  "min": 1,   "max": 30,   "step": 1},
+        {"key": "today_vol",    "label": "今天量 ≥ 20 日均量幾倍（第二次出量）", "type": "number", "default": 1.5, "min": 1, "max": 10, "step": 0.1},
     ],
 
 
@@ -486,6 +501,112 @@ def screen_s2(prices: dict, names: dict = None, params: dict = None) -> list:
                         "strategy": "S2"})
     return results
 
+def _xianren_probe(o, h, l, c, v, p: int, P: dict):
+    """第 p 根是不是「仙人指路」K 棒：前面有盤整箱、上攻衝過箱頂、收長上影線、出量（第一次出量）。
+    是 → 回傳 (前 20 日均量, 箱底, 箱頂)；不是 → None"""
+    vd, bd, am = P["vol_days"], P["box_days"], P["attack_max"]
+    if p - vd < 0 or p - bd - am < 0:
+        return None
+    avg_v = float(v[p - vd:p].mean())
+    if avg_v <= 0 or v[p] < avg_v * P["probe_vol"]:
+        return None
+    top = max(o[p], c[p])
+    body, rng, upper = abs(c[p] - o[p]), h[p] - l[p], h[p] - top
+    if rng <= 0 or upper < body * P["sh_body"] or upper < rng * P["sh_range"] / 100 \
+            or upper < c[p - 1] * P["sh_min"] / 100:
+        return None
+    # 盤整箱：箱子結束在仙人指路前 0～attack_max 天（中間是上攻），箱內收盤高低差 ≤ box_range%
+    for k in range(am + 1):
+        e = p - k
+        s = e - bd
+        cs = c[s:e]
+        if cs.max() / cs.min() - 1 <= P["box_range"] / 100:
+            box_hi = float(h[s:e].max())
+            return (avg_v, float(l[s:e].min()), box_hi) if h[p] > box_hi else None
+    return None
+
+
+def screen_xianren(prices: dict, names: dict = None, params: dict = None) -> list:
+    """
+    仙人指路（2026-10-07 老大哥：「盤整完上攻，收上引線後繼續盤整，第二次出量的時候抓出來，這邊是要進攻了」）
+    1. 盤整：上攻前 box_days 天收盤高低差 ≤ box_range%
+    2. 仙人指路 K 棒（第一次出量）：最高價衝過箱頂；上影線 ≥ 實體×sh_body、≥ 整根 sh_range%、≥ 前一天收盤 sh_min%；
+       量 ≥ 前 20 日均量×probe_vol
+    3. 繼續盤整 min_pause～max_pause 天：收盤沒跌破仙人指路低點（盤中跌破拉回不算）、最高沒過上影線頂
+    4. 今天第二次出量：量 ≥ 仙人指路之前的 20 日均量×today_vol（不跟昨天比：漲停鎖住量會變小）、收紅（漲、收≥開）、
+       收盤站上仙人指路的實體上緣；只抓第一次（盤整中已經出量攻過的不重複抓）
+    停損＝仙人指路那根的低點；上影線頂＝第一個壓力
+    例：華新科 2492 9/14～9/30 盤整 300～326 → 10/01、10/02 連兩根漲停 → 10/05 高 396 收 368.5、量＝均量 3.3 倍
+        → 10/06 盤整 → 10/07 量＝均量 1.8 倍漲停 428
+    回測（Yahoo 全市場 1,946 檔、近一年）：每天平均 1.7 檔；20 天後平均 +4.4%（同期任一股 +3.0%），
+    但上漲比例 46%、中位數 −1.3%：贏的抱得大（20 天內最高平均 +18%），一半會失敗，停損要守
+    """
+    p = params or {}
+    P = {"vol_days": 20,
+         "box_days":   int(p.get("box_days", 15)),
+         "box_range":  float(p.get("box_range", 15)),
+         "attack_max": int(p.get("attack_max", 5)),
+         "sh_body":    float(p.get("sh_body", 1.5)),
+         "sh_range":   float(p.get("sh_range", 40)),
+         "sh_min":     float(p.get("sh_min", 2)),
+         "probe_vol":  float(p.get("probe_vol", 2)),
+         "today_vol":  float(p.get("today_vol", 1.5))}
+    min_price    = p.get("min_price", 10)
+    min_vol_lots = p.get("min_vol_lots", 300)
+    min_pause    = max(1, int(p.get("min_pause", 1)))
+    max_pause    = max(min_pause, int(p.get("max_pause", 10)))
+    results = []
+    for sid, df in prices.items():
+        n = len(df)
+        if n < P["vol_days"] + P["box_days"] + P["attack_max"] + max_pause + 2:
+            continue
+        o, h, l, c, v = (df[k].astype(float).values for k in ("open", "high", "low", "close", "volume"))
+        t = n - 1
+        if c[t] <= min_price or v[t] < min_vol_lots:
+            continue
+        if any(pd.isna(x[t - max_pause - P["vol_days"] - P["box_days"] - P["attack_max"] - 1:]).any()
+               for x in (o, h, l, c, v)):
+            continue
+
+        def attack(i, avg_v):            # 第 i 根是不是「第二次出量」
+            return v[i] >= avg_v * P["today_vol"] and c[i] > c[i - 1] and c[i] >= o[i]
+
+        for pause in range(min_pause, max_pause + 1):          # 由近往遠找仙人指路
+            pi = t - 1 - pause
+            probe = _xianren_probe(o, h, l, c, v, pi, P)
+            if probe is None:
+                continue
+            avg_v, box_lo, box_hi = probe
+            mid = slice(pi + 1, t)
+            if (c[mid] < l[pi]).any() or (h[mid] > h[pi]).any():
+                break                     # 盤整中收盤跌破低點／已經衝過上影線頂 → 這根仙人指路作廢
+            if not attack(t, avg_v) or c[t] <= max(o[pi], c[pi]):
+                break
+            if any(attack(d, avg_v) for d in range(pi + 1 + min_pause, t)):
+                break                     # 盤整中已經出量攻過一次，今天不是第一次
+            top = float(h[pi])
+            results.append({"stock_id": sid, "name": _name(sid, names),
+                            "close": round(float(c[t]), 2),
+                            "change_pct": _change_pct(df),
+                            "volume": round(float(v[t])),
+                            "bb_score": calc_bb_score(df),
+                            "probe_date": str(df.iloc[pi].get("date", "")),
+                            "probe_high": round(top, 2),
+                            "probe_low": round(float(l[pi]), 2),
+                            "probe_close": round(float(c[pi]), 2),
+                            "probe_vol_ratio": round(float(v[pi]) / avg_v, 1),
+                            "box_low": round(box_lo, 2),
+                            "box_high": round(box_hi, 2),
+                            "pause_days": pause,
+                            "today_vol_ratio": round(float(v[t]) / avg_v, 1),
+                            "broke_top": bool(c[t] > top),
+                            "dist_top_pct": round((float(c[t]) / top - 1) * 100, 1),
+                            "stop": round(float(l[pi]), 2),
+                            "strategy": "S_XIANREN"})
+            break
+    return results
+
+
 def screen_s5(prices: dict, names: dict = None, params: dict = None) -> list:
     """S5 站上均線做多（今日才剛全部突破5/10/20/60/200MA，且今日量 ≥ 昨日量 × vol_mult）"""
     p = params or {}
@@ -887,6 +1008,7 @@ PRICE_STRATEGY_FNS = {
     "S10":          screen_s10,
     "S_FBD":        screen_sfbd,
     "S_THUNDER":    screen_sthunder,
+    "S_XIANREN":    screen_xianren,
 }
 SHORT_STRATEGIES = {"S1_SHORT"}
 
