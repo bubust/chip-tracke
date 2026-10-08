@@ -683,6 +683,7 @@ details.guide[open]>summary::before{content:'▾ ';}
     </div>
     <!-- 策略快篩（掃描前後都顯示；掃描完後顯示各策略命中數） -->
     <div id="screen-strat-bar" style="display:flex;flex-wrap:wrap;gap:6px">
+      <button class="btn ghost screen-strat-btn" data-s="S_BEST" onclick="viewStrategy('S_BEST')" style="border-color:#f59e0b;color:#f59e0b;font-weight:700" title="用 5 年官方資料（含 2022 空頭、含下市股、含除權息）回測 18,426 種組合：沒有方法全部過關，這是最接近的（負乖離抄底＋破底翻 3 天內都出現）。每筆勝率高，但帳戶回撤超標；點開看完整說明">🔬 研究候選 <span class="strat-cnt" id="cnt-S_BEST"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S1"       onclick="viewStrategy('S1')">S1 雙MACD多 <span class="strat-cnt" id="cnt-S1"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S1_SHORT" onclick="viewStrategy('S1_SHORT')">S1空 雙MACD空 <span class="strat-cnt" id="cnt-S1_SHORT"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S2"       onclick="viewStrategy('S2')">S2 W底再攻擊 <span class="strat-cnt" id="cnt-S2"></span></button>
@@ -733,6 +734,7 @@ details.guide[open]>summary::before{content:'▾ ';}
       </div>
       <button class="btn" style="font-size:.8rem;padding:5px 12px" onclick="openStrategyBacktest()">🔬 批量回測此策略</button>
     </div>
+    <div id="best-explain" style="display:none;margin-bottom:14px"></div>
     <div class="tbl-wrap">
       <table>
         <thead id="screen-thead">
@@ -1882,6 +1884,7 @@ async function loadWatchlist() {
 function renderWatchlist() {
   try { document.querySelector('#tab-warrant iframe').contentWindow.refreshWlButtons(); } catch (e) { /* 權證分頁還沒載入 */ }
   setTimeout(_loadLevels, 0);   // 關鍵價位非同步補上
+  setTimeout(_loadBestWatch, 0);   // 🏆 研究最佳的出場狀態
   const tbody = document.getElementById('wl-tbody');
   if (!_wlData.length) {
     document.getElementById('wl-empty').style.display = 'block';
@@ -2992,7 +2995,7 @@ function noteCell(s) {
     ? `<span style="font-size:.72rem;padding:2px 7px;border-radius:10px;background:rgba(79,142,247,.18);color:var(--accent);white-space:nowrap;border:1px solid rgba(79,142,247,.3)">${_esc(s.note)}</span>`
     : `<span style="font-size:.72rem;color:var(--muted)">點擊編輯</span>`;
   return `<td onclick="event.stopPropagation()" style="min-width:90px;max-width:180px;cursor:text" title="點擊編輯來源">
-    <div class="note-view" onclick="this.style.display='none';this.nextElementSibling.style.display='block';this.nextElementSibling.focus()">${display}</div>
+    <div class="note-view" onclick="this.style.display='none';this.nextElementSibling.style.display='block';this.nextElementSibling.focus()">${display}<div id="best-${_esc(s.stock_id)}"></div></div>
     <input type="text" value="${val}" placeholder="來源…"
       style="display:none;width:100%;background:transparent;border:none;border-bottom:1px dashed var(--accent);color:var(--accent);font-size:.75rem;padding:2px 0;outline:none"
       onblur="saveNote('${s.stock_id}', this.value, this)"
@@ -4158,6 +4161,7 @@ let _screenSort = { col: null, dir: 1 };  // 排序狀態
 let _screenStartTime  = null;  // 掃描開始時間（Date.now()）
 
 const STRATEGY_LABELS = {
+  S_BEST: '🔬 研究候選（負乖離＋破底翻抄底：每筆勝率高，帳戶回撤超標未全過）',
   S1: 'S1 雙MACD選股（多）', S1_SHORT: 'S1空 雙MACD選股（空）',
   S2: 'S2 W底（碗公底，10>20>60，第一波攻擊後盤整、不破前低，今天突破盤整再攻擊）',
   S5: 'S5 站上均線做多（今日量 ≥ 昨日3倍）', S10: 'S10 漲停',
@@ -4212,10 +4216,12 @@ const COURSE_COLS = {
   S_KDJ_HIGH: [['K', 'k'], ['D', 'd'], ['J', 'j'], ['鈍化天數', 'dull_days'], ['5MA', 'ma5'], ['10MA', 'ma10'], ['月線', 'ma20']],
   S_KDJ_DIV: [['前波高點', 'prev_high'], ['前高日', 'prev_high_date', _dF], ['前波K', 'k_prev'], ['這次K', 'k_now']],
   S_TRUST_DUMP: [['連賣天數', 'sell_days', v => v + '天'], ['賣超(張)', 'sell_lots'], ['之前買超(張)', 'buy_lots'], ['60日高', 'high60'], ['10日線', 'ma10']],
+  S_BEST: [['停損', 'stop'], ['停利', 'target'], ['最晚出場', 'last_day', _dF], ['怎麼做', 'plan']],
   S_BIGHOLD: [['千張大戶%', 'big_pct'], ['週增減', 'big_chg'], ['散戶%', 'retail_pct'], ['週增減', 'retail_chg'], ['散戶比率', 'retail_low'], ['大戶連增週', 'big_up_weeks']],
 };
 // 策略短名稱（用於「重疊策略」欄位badge）
 const STRATEGY_SHORT = {
+  S_BEST: '🔬 研究候選',
   S1: 'S1 雙MACD多', S1_SHORT: 'S1空 雙MACD空',
   S2: 'S2 W底再攻擊',
   S5: 'S5 站上均線', S10: 'S10 漲停',
@@ -4677,6 +4683,92 @@ function _renderBatch(r) {
     </table></div>`;
 }
 
+// ── 🔬 研究結果（PLAN-BEST）：說明頁（全過關＝🏆 研究最佳；沒有全過＝🔬 研究候選＋警告）──
+let _bestSummary = null;
+const _bp = x => x == null ? '—' : `${(x * 100).toFixed(1)}%`;
+const _bp2 = x => x == null ? '—' : `${x >= 0 ? '+' : ''}${(x * 100).toFixed(2)}%`;
+const _bcol = x => x == null ? '' : x > 0 ? 'color:var(--up)' : x < 0 ? 'color:var(--down)' : '';
+async function _renderBestExplain() {
+  const el = document.getElementById('best-explain');
+  if (!el) return;
+  if (!_bestSummary) {
+    el.innerHTML = '<div class="muted">載入研究結果…</div>';
+    try { _bestSummary = await api('GET', '/api/best/summary'); } catch (e) { el.innerHTML = `<div class="muted">研究結果載入失敗：${_esc(e.message)}</div>`; return; }
+  }
+  const S = _bestSummary.summary || {}, passed = !!S.main, m = S.main || S.candidate;
+  if (!m) {
+    el.innerHTML = `<div class="card" style="border-color:#f59e0b"><b>🔬 研究結果</b>：照事先定好的標準，${S.n_combos ? `測了 ${S.n_combos.toLocaleString()} 個組合，` : ''}沒有方法通過全部關卡（不放寬標準硬湊）。</div>`;
+    return;
+  }
+  const dg = S.diag || {};
+  const md = dg.max_signals_one_day || {};
+  const _md = v => v ? `${String(v).slice(0, 4)}/${String(v).slice(4, 6)}${String(v).length > 6 ? '/' + String(v).slice(6, 8) : ''}` : '';
+  const warn = passed ? '' : `<div style="border:1px solid #f59e0b;background:rgba(245,158,11,.12);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:.86rem;line-height:1.6">
+      ⚠️ <b>照事先定好的標準，${(S.n_combos || 0).toLocaleString()} 個組合沒有一個全部過關（不放寬標準硬湊）。</b>這是最接近的一個：每筆勝率高、樣本外也站得住、明顯勝過隨機進場，
+      <b>只差「整個帳戶照做的最大回撤 ≤ 30%」</b>（${_esc((m.reasons || []).join('；'))}）。<br>
+      原因：訊號集中在大跌之後（最多一天 ${md.n || '—'} 個，${_md(md.date)}）。崩盤<b>第一波</b>進場的常常連續停損，<b>第二波</b>反彈才大賺，但帳戶名額有限、只吃得到一小部分。
+      5 年年化只有 ${_bp2((m.port_slots || {}).cagr)}～${_bp2((m.port_risk || {}).cagr)}，同期買大盤 ${_bp2((S.taiex || {}).cagr)}。<br>
+      👉 <b>適合當「大跌後的抄底工具」、每筆小部位；不適合拿整個帳戶照做。</b></div>`;
+  const waves = (dg.waves || []).map(w => `<tr><td>${_md(w.month)}</td><td>${w.n}</td><td>${w.first_n} 筆｜${_bp(w.first_win)}｜<span style="${_bcol(w.first_mean)}">${_bp2(w.first_mean)}</span></td><td>${w.rest_n} 筆｜${_bp(w.rest_win)}｜<span style="${_bcol(w.rest_mean)}">${_bp2(w.rest_mean)}</span></td></tr>`).join('');
+  const sizing = (dg.sizing || []).map(z => `<tr><td>${z.slots} 檔 × ${_bp(z.weight)}</td><td>${_bp(z.max_exposure)}</td><td style="${_bcol(z.cagr)}">${_bp2(z.cagr)}</td><td style="color:var(--down)">${_bp2(z.mdd)}</td></tr>`).join('');
+  const diagHtml = passed || !dg.sizing ? '' : `<details style="margin-top:10px;font-size:.82rem"><summary style="cursor:pointer;font-weight:700">事後試算：崩盤第一波 vs 之後、不同部位大小（不是選方法的依據）</summary>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;margin-top:8px">
+        <div class="tbl-wrap"><table style="font-size:.8rem"><thead><tr><th>大跌月份</th><th>訊號</th><th>第一波（前 1/3 天）</th><th>之後</th></tr></thead><tbody>${waves}</tbody></table></div>
+        <div class="tbl-wrap"><table style="font-size:.8rem"><thead><tr><th>最多檔數 × 每筆</th><th>最多投入</th><th>年化</th><th>最大回撤</th></tr></thead><tbody>${sizing}</tbody></table>
+        <div class="muted" style="font-size:.72rem;margin-top:4px">每筆佔資金越小回撤越小、報酬也越少；這是看完結果才算的，沒有經過樣本外驗證。</div></div>
+      </div></details>`;
+  const d = m.desc || {}, st = m.stats || {}, tx = S.taiex || {};
+  const row = (lab, x) => !x || !x.n ? `<tr><td>${lab}</td><td colspan="6" class="muted">沒有交易</td></tr>` :
+    `<tr><td>${lab}</td><td>${x.n.toLocaleString()}</td><td style="font-weight:700">${_bp(x.win)}</td><td style="${_bcol(x.mean)};font-weight:700">${_bp2(x.mean)}</td><td>${x.pf.toFixed(2)}</td><td style="${_bcol(x.p5)}">${_bp2(x.p5)}</td><td>${x.days != null ? x.days.toFixed(1) + ' 天' : '—'}</td></tr>`;
+  const years = Object.entries(m.years || {}).map(([y, v]) => `<td>${y}<br><b>${_bp(v.win)}</b><br><span style="${_bcol(v.mean)}">${_bp2(v.mean)}</span><br><small class="muted">${v.n || 0} 筆</small></td>`).join('');
+  const ps = m.port_slots || {}, pr = m.port_risk || {};
+  const regimeTxt = (_bestSummary.config || {}).regime === 'none' ? '' : `<li>大盤濾網沒過（${_esc(d.regime || '')}的條件不成立）就不做，訊號也不會出現。</li>`;
+  el.innerHTML = `<div class="card" style="border-color:#f59e0b;background:linear-gradient(180deg,rgba(245,158,11,.08),transparent)">
+    <div style="font-size:1.05rem;font-weight:800;margin-bottom:8px">${passed ? '🏆 研究最佳：5 年回測選出來的做法' : '🔬 研究候選：最接近過關的做法（未全過）'}</div>
+    ${warn}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-bottom:12px">
+      <div><div class="muted" style="font-size:.78rem">① 什麼時候買</div><div style="color:var(--up);font-weight:700">${_esc(d.signal || '')}</div><div style="font-size:.8rem">${_esc(d.regime || '')}。當天收盤出訊號 → <b>隔天開盤買</b>（開盤一價漲停買不到就放棄，不追）。</div></div>
+      <div><div class="muted" style="font-size:.78rem">② 停損／出場</div><div style="font-weight:700">${_esc(d.exit || '')}</div><div style="font-size:.8rem">條件都用<b>收盤</b>判斷，成立就<b>隔天開盤賣</b>；表格「停損／停利／最晚出場」已經幫你算好。</div></div>
+      <div><div class="muted" style="font-size:.78rem">③ 一次買多少</div><div style="font-size:.85rem">每筆最多虧總資金 <b>1%</b>：張數 ＝ 總資金 × 1% ÷（買價 − 停損）÷ 1000；單檔不超過總資金 ${passed ? '20%' : '5%'}。${passed ? '同時最多抱 10 檔，訊號太多挑量增最明顯的。' : (() => { const z = (dg.sizing || []).find(x => x.slots === 20 && Math.abs(x.weight - 0.05) < 1e-9); return '大跌時訊號一天可能上百個，<b>不要第一天就買滿</b>。' + (z ? `<br><small class="muted">事後試算：每筆 5%、最多 20 檔 → 5 年年化 ${_bp2(z.cagr)}、最大回撤 ${_bp2(z.mdd)}（不是選方法的依據）</small>` : ''); })()}</div></div>
+    </div>
+    <div class="tbl-wrap"><table style="font-size:.85rem"><thead><tr><th>期間</th><th>筆數</th><th>勝率</th><th>平均每筆（扣成本）</th><th>獲利因子</th><th>最差 5%</th><th>平均持有</th></tr></thead><tbody>
+      ${row('樣本內 2021-10～2024-06（含 2022 空頭）', st.is)}${row('樣本外 2024-07～2026-08（選方法時沒看）', st.oos)}${row('全期', st.all)}
+    </tbody></table></div>
+    <div style="font-size:.8rem;margin:8px 0 4px" class="muted">各年（勝率／平均每筆）</div>
+    <div class="tbl-wrap"><table style="font-size:.8rem;text-align:center"><tr>${years}</tr></table></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:10px;font-size:.82rem">
+      <div><b>防「挑到運氣」</b><ul style="margin:4px 0 0 18px;padding:0">
+        <li>總共測了 ${(S.n_combos || 0).toLocaleString()} 個組合，樣本內前 20 名裡 ${S.n_top20_oos_ok} 個在樣本外也合格。</li>
+        <li>同樣出場、隨機挑股票進場：勝率 ${_bp(m.baseline && m.baseline.win)}、平均 ${_bp2(m.baseline && m.baseline.mean)}（這個方法要高 5 個百分點以上）。</li>
+        <li>樣本外平均每筆 95% 信賴區間 ${_bp2(m.boot_ci && m.boot_ci[0])} ～ ${_bp2(m.boot_ci && m.boot_ci[1])}（下限要 > 0）。</li></ul></div>
+      <div><b>整個帳戶照做的結果（2021-10～2026-08）</b><ul style="margin:4px 0 0 18px;padding:0">
+        <li>10 個名額等分資金：年化 <b style="${_bcol(ps.cagr)}">${_bp2(ps.cagr)}</b>、最大回撤 <span style="color:var(--down)">${_bp2(ps.mdd)}</span>、平均持股 ${_bp(ps.exposure)}</li>
+        <li>每筆風險 1%：年化 <b style="${_bcol(pr.cagr)}">${_bp2(pr.cagr)}</b>、最大回撤 <span style="color:var(--down)">${_bp2(pr.mdd)}</span>、平均持股 ${_bp(pr.exposure)}</li>
+        <li>同期加權指數（不含股利）：年化 ${_bp2(tx.cagr)}、最大回撤 ${_bp2(tx.mdd)}</li></ul></div>
+      <div><b>什麼時候不要用／要注意</b><ul style="margin:4px 0 0 18px;padding:0">
+        ${regimeTxt}
+        <li>勝率高不代表每筆都賺：最差 5% 的單筆會虧 ${_bp2(st.all && st.all.p5)} 以上，一定要照停損／出場規則走。</li>
+        <li>回測已扣 手續費＋證交稅＋每邊 0.1% 滑價；冷門股、大部位滑價會更大。</li>
+        <li>停損是看<b>收盤</b>、隔天開盤賣，盤中跌破不算；跳空開低的損失回測已經算進去。</li>
+        <li>5 年裡 2023～2026 多頭為主，過去的勝率不保證未來。</li></ul></div>
+    </div>
+    ${diagHtml}
+    <div class="muted" style="font-size:.72rem;margin-top:8px">股票池：4 碼普通股、收盤 ≥ 10 元、20 日均量 ≥ 500 張。研究程式與完整報告：research/best/（PLAN-BEST）。觀察清單從這裡「+ 加入清單」或填成本的股票，會自動顯示「抱第幾天／明天開盤賣」；有填成本的出場那天會推 Telegram。</div>
+  </div>`;
+}
+
+// 觀察清單：🏆 研究最佳的計畫／出場狀態
+let _bestWatch = {};
+async function _loadBestWatch() {
+  try { _bestWatch = await api('GET', '/api/best/watch') || {}; } catch (e) { return; }
+  Object.entries(_bestWatch).forEach(([sid, p]) => {
+    const el = document.getElementById(`best-${sid}`);
+    if (!el || !p.text) return;   // 文字由 best_routes.status_text 產生（🔬 明天開盤買／抱第幾天／🔔 明天開盤賣）
+    const col = p.status === 'exit_today' ? '#f59e0b' : p.status === 'signal' ? 'var(--up)' : p.status === 'holding' ? 'var(--accent)' : 'var(--muted)';
+    el.innerHTML = `<span style="display:inline-block;margin-top:3px;font-size:.7rem;color:${col};white-space:normal" title="${_esc(p.stop_note || '')}">${_esc(p.text)}</span>`;
+  });
+}
+
 function viewStrategy(s) {
   _viewingStrategy = s;
   _screenSort = { col: null, dir: 1 };  // 切換策略時重置排序
@@ -4721,6 +4813,8 @@ function renderScreenTable(strategy, data) {
   const card = document.getElementById('screen-result-card');
   card.style.display = 'block';
   document.getElementById('screen-result-title').textContent = STRATEGY_LABELS[strategy] || strategy;
+  const _be = document.getElementById('best-explain');
+  if (_be) { _be.style.display = strategy === 'S_BEST' ? 'block' : 'none'; if (strategy === 'S_BEST') _renderBestExplain(); }
   document.getElementById('screen-result-count').textContent = `共 ${data.length} 支`;
 
   // 計算跨策略：每支股票還符合哪些其他策略
@@ -4795,7 +4889,7 @@ function renderScreenTable(strategy, data) {
         <td style="color:#ef4444;font-weight:700">${row.target ?? '—'}</td>`;
     else if (COURSE_COLS[strategy])
       extraTd = COURSE_COLS[strategy].map(([, key, f]) => `<td>${row[key] == null || row[key] === '' ? '—' : _esc(String(f ? f(row[key]) : row[key]))}</td>`).join('')
-        + `<td style="font-size:.72rem;white-space:normal;min-width:160px;color:var(--muted)">${_esc(row.note || '')}</td>`;
+        + `<td style="font-size:.72rem;white-space:normal;min-width:160px;color:var(--muted)">${_esc(row.note || row.regime_note || row.stop_note || '')}</td>`;
     else if (strategy === 'S_WARRANT_TOP') {
       extraTd = `<td>${row.call_turnover_wan != null ? row.call_turnover_wan : '—'}</td>`
               + `<td>${row.cp_ratio != null ? row.cp_ratio : '—'}</td>`;

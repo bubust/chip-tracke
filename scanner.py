@@ -1101,3 +1101,8 @@ SHORT_STRATEGIES |= _COURSE_SHORT
 from chip_course import CHIP_PARAMS as _CHIP_PARAMS, CHIP_STRATEGIES as _CHIP_STRATEGIES  # noqa: E402
 STRATEGIES.update(_CHIP_STRATEGIES)          # 籌碼型：掃描後由 chip_course.run_all 另外算（不在 PRICE_STRATEGY_FNS）
 STRATEGY_PARAMS_SCHEMA.update(_CHIP_PARAMS)
+# ── 🏆 研究最佳（PLAN-BEST，best_strategy.py；5 年回測選出的方法）──
+import best_strategy as _best  # noqa: E402
+STRATEGIES[_best.KEY] = "研究最佳（5 年回測選出：進場、停損、出場都算好）"
+STRATEGY_PARAMS_SCHEMA[_best.KEY] = []
+PRICE_STRATEGY_FNS[_best.KEY] = _best.screen_best

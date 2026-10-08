@@ -30,3 +30,9 @@ chip_data/*.db-wal
 
 # 含 Fly token，只留本機
 fly_deploy.ps1
+
+# PLAN-BEST 研究：全組合結果只 commit 壓縮檔
+research/best/results/grid.csv
+research/best/data/
+research/best/sig_a.csv.gz
+research/best/e5.csv

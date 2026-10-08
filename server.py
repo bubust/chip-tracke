@@ -775,6 +775,12 @@ async def lifespan(app: FastAPI):
                         await run_market_scan(strategy_params=params)
                     _aio.run(_update_then_scan())
                     lg.info("[scan_scheduler] Step 1 完成")
+                    # 🏆 研究最佳：今天的訊號、持有中的出場（同一天只推一次）
+                    try:
+                        from best_routes import push_best_signals, push_best_exits
+                        lg.info(f"[best] 訊號推播 {push_best_signals()}；出場推播 {len(push_best_exits())} 則")
+                    except Exception as _be:
+                        lg.warning(f"[best] 推播失敗: {_be}")
                 else:
                     lg.info("[scan_scheduler] 掃描進行中，跳過 Step 1")
             except Exception as _e1:
@@ -1054,6 +1060,8 @@ app.include_router(cb_router)
 app.mount("/cb/static", StaticFiles(directory=str(BASE_DIR / "cb-frontend")), name="cb_static")
 app.mount("/notes/static", StaticFiles(directory=str(BASE_DIR / "notes-frontend")), name="notes_static")
 app.include_router(discuss_router)
+from best_routes import router as best_router  # noqa: E402  🏆 研究最佳（PLAN-BEST）
+app.include_router(best_router)
 app.mount("/discuss/static", StaticFiles(directory=str(BASE_DIR / "discuss-frontend")), name="discuss_static")
 
 app.add_middleware(
