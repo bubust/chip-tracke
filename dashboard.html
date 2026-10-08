@@ -2071,7 +2071,7 @@ async function showLevels(sid) {
     ${refRows || structRow || ma5Row ? `<div style="margin-top:10px;font-size:.8rem"><b>參考低點</b>（你的規則：跌破爆量低點出場、站回是假跌破）${structRow}${ma5Row}${refRows}</div>` : ''}${thHtml}
     ${(lv.notes || []).length ? `<div style="margin-top:8px;font-size:.78rem;color:#f59e0b">${lv.notes.map(_esc).join('<br>')}</div>` : ''}
     <div style="margin-top:12px;display:flex;gap:8px"><button class="btn sm" onclick="this.closest('div[style*=fixed]').remove();openWlChart('${_jsq(sid)}')">📈 K 線（畫出價位線）</button></div>
-    <div class="muted" style="margin-top:10px;font-size:.72rem;line-height:1.6">依 1,810 檔兩年日 K 回測（跟同樣距離的隨機價位比）：前低是最穩定的支撐（支撐＝最近一個前低；盤中跌破又拉回、收盤沒破，不算跌破）；舊停損太貼（約 1 ATR、三分之二會被打到），改成支撐下方留 0.5 倍 ATR 緩衝；強勢股離前低太遠時，撐看 10 日線、停損用 20 日線 − 1 ATR 的移動停損（比 5／10 日線進出少被洗、回撤也比固定停損小）；壓力線和目標價的各種算法都沒有比隨機準，所以照你的規則：上方有前高、還沒過，目標就看前高；沒有前高才用等幅，另外看報酬風險比。ATR＝14 日平均真實波幅${lv.atr ? `（${lv.atr}）` : ''}。只是依線圖規則計算，不是投資建議。</div>`}
+    <div class="muted" style="margin-top:10px;font-size:.72rem;line-height:1.6">依 1,810 檔兩年日 K 回測（跟同樣距離的隨機價位比）：前低是最穩定的支撐（支撐＝最近一個前低；盤中跌破又拉回、收盤沒破，不算跌破）；停損放在離現價至少 1 倍 ATR 的最近結構低點（舊版「至少 2.5 倍 ATR」太遠、而且每天重算、跌的時候會跟著往下掉），觀察清單從加入那天起出現確認過的平台低點（之後漲上去 ≥2.5 倍 ATR）就上修、只上不下（2026-10 官方不還原兩年、2.6 萬個進場點回測：最差 5% 的虧損 −20.6% → −16.7%）；強勢股離前低太遠時，撐看 10 日線、停損用 20 日線 − 1 ATR 的移動停損（比 5／10 日線進出少被洗、回撤也比固定停損小）；壓力線和目標價的各種算法都沒有比隨機準，所以照你的規則：上方有前高、還沒過，目標就看前高；沒有前高才用等幅，另外看報酬風險比。ATR＝14 日平均真實波幅${lv.atr ? `（${lv.atr}）` : ''}。只是依線圖規則計算，不是投資建議。</div>`}
   </div>`;
   document.body.appendChild(m);
   if (wlItem) _fillPosStatus(sid);
