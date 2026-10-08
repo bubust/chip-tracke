@@ -146,34 +146,73 @@ def _sf_price(s) -> "float | None":
         return None
 
 
+_RT_HDRS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
+_CNYES_URL = "https://ws.api.cnyes.com/ws/api/v1/quote/quotes/"
+
+
+def _tw_date_of(ts) -> "str | None":
+    """epoch 秒或 ISO 時間 → 台灣日期 YYYYMMDD"""
+    try:
+        if isinstance(ts, (int, float)):
+            dt = datetime.fromtimestamp(float(ts), timezone(timedelta(hours=8)))
+        else:
+            dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00")).astimezone(timezone(timedelta(hours=8)))
+        return dt.strftime("%Y%m%d")
+    except Exception:
+        return None
+
+
+def _rt_entry(price, prev, pct=None, **bar) -> "dict | None":
+    """一筆即時報價 → {close, change_pct, date, open, high, low, volume}（開高低量只有鉅亨有）"""
+    price, prev = _sf_price(price), _sf_price(prev)
+    if price is None or price <= 0:
+        return None
+    if pct is None and prev:
+        pct = (price - prev) / prev * 100
+    out = {"close": round(price, 2), "change_pct": round(float(pct), 2) if pct is not None else None}
+    for k, v in bar.items():
+        out[k] = v if k == "date" else _sf_price(v)
+    return out
+
+
+def _parse_cnyes(x: dict):
+    """鉅亨一筆：6 成交價、21 昨收、56 漲跌幅 %、19 開、12 高、13 低、200013 成交量（張）、200007 時間、200010 代號"""
+    key = str(x.get("0") or "").split(":")          # "TWS:2449:STOCK"
+    sid = str(x.get("200010") or (key[1] if len(key) >= 2 else ""))
+    return sid, _rt_entry(x.get("6"), x.get("21"), _sf_price(x.get("56")), date=_tw_date_of(x.get("200007")),
+                          open=x.get("19"), high=x.get("12"), low=x.get("13"), volume=x.get("200013"))
+
+
+def _rt_quote_sync(sid: str) -> "dict | None":
+    """單一檔即時報價（K 線圖補今天那根用）"""
+    try:
+        r = httpx.get(_CNYES_URL + f"TWS:{sid}:STOCK", headers=_RT_HDRS, timeout=6)
+        for x in (r.json().get("data") or []):
+            got, q = _parse_cnyes(x)
+            if got == sid:
+                return q
+    except Exception as e:
+        print(f"[RT] 鉅亨 {sid} 失敗: {e}")
+    return None
+
+
 async def _fetch_rt_quotes(stock_ids: list, mkt_map: dict) -> dict:
     """觀察清單現價（跟看盤軟體一樣的最後成交價）：鉅亨 → Yahoo奇摩股市 補缺的。
     MIS 的 z（成交價）現在幾乎都是 "-"，舊做法只能拿幾分鐘前的快取；Yahoo Finance 又常回昨收（2026-10-08 實測）。
-    兩個來源從 Fly 東京都抓得到。回傳 {sid: {"close", "change_pct"}}，抓不到的不放（呼叫端走舊的備援）"""
+    兩個來源從 Fly 東京都抓得到。回傳 {sid: {"close", "change_pct", "date", ...}}，抓不到的不放（呼叫端走舊的備援）"""
     out: dict = {}
     if not stock_ids:
         return out
-    hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
-
-    def _put(sid, price, prev, pct=None):
-        price, prev = _sf_price(price), _sf_price(prev)
-        if price is None or price <= 0:
-            return
-        if pct is None and prev:
-            pct = (price - prev) / prev * 100
-        out[sid] = {"close": round(price, 2), "change_pct": round(float(pct), 2) if pct is not None else None}
-
-    async with httpx.AsyncClient(timeout=8, headers=hdrs, follow_redirects=True) as c:
-        # ── 1. 鉅亨：一次一批（欄位 6＝成交價、21＝昨收、56＝漲跌幅 %）──
+    async with httpx.AsyncClient(timeout=8, headers=_RT_HDRS, follow_redirects=True) as c:
+        # ── 1. 鉅亨：一次一批 ──
         for i in range(0, len(stock_ids), 40):
             chunk = stock_ids[i:i + 40]
             try:
-                r = await c.get("https://ws.api.cnyes.com/ws/api/v1/quote/quotes/" + ",".join(f"TWS:{s}:STOCK" for s in chunk))
+                r = await c.get(_CNYES_URL + ",".join(f"TWS:{s}:STOCK" for s in chunk))
                 for x in (r.json().get("data") or []):
-                    key = str(x.get("0") or "").split(":")          # "TWS:2449:STOCK"
-                    sid = str(x.get("200010") or (key[1] if len(key) >= 2 else ""))
-                    if sid in chunk:
-                        _put(sid, x.get("6"), x.get("21"), _sf_price(x.get("56")))
+                    sid, q = _parse_cnyes(x)
+                    if sid in chunk and q:
+                        out[sid] = q
             except Exception as e:
                 print(f"[RT] 鉅亨失敗: {e}")
         # ── 2. Yahoo奇摩股市：鉅亨沒給的 ──
@@ -190,11 +229,57 @@ async def _fetch_rt_quotes(stock_ids: list, mkt_map: dict) -> dict:
                     price = _sf_price((x.get("price") or {}).get("raw"))
                     chg = _sf_price((x.get("change") or {}).get("raw"))
                     if sid in chunk and price is not None:
-                        _put(sid, price, price - chg if chg is not None else None,
-                             _sf_price(str(x.get("changePercent") or "").rstrip("%")))
+                        q = _rt_entry(price, price - chg if chg is not None else None,
+                                      _sf_price(str(x.get("changePercent") or "").rstrip("%")),
+                                      date=_tw_date_of(x.get("regularMarketTime")))
+                        if q:
+                            out[sid] = q
             except Exception as e:
                 print(f"[RT] Yahoo奇摩失敗: {e}")
     return out
+
+
+_BB_BASE: dict = {}   # {sid: (讀取時間, 報價日, 報價日之前最後 19 根收盤)}
+
+
+def _bb_live(sid: str, price, qdate: "str | None") -> "float | None":
+    """BB 位置（上軌 +10／中軌 0／下軌 −10；20 日、2 倍標準差）＝K 線圖同一份日 K（price_daily）報價日之前 19 根＋現價。
+    觀察清單 BB 位置、股價欄、K 線圖今天那根用同一個價格，才不會清單說超上軌、圖上卻貼著上軌"""
+    import time as _t
+    price = _sf_price(price)
+    if price is None or not qdate:
+        return None
+    hit = _BB_BASE.get(sid)
+    if not hit or hit[1] != qdate or _t.time() - hit[0] > 600:
+        try:
+            from price_cache import get_stock_ohlcv
+            df = get_stock_ohlcv(sid, days=45)
+            closes = [float(c) for d, c in zip(df["date"], df["close"]) if str(d) < qdate and c == c][-19:]
+        except Exception:
+            closes = []
+        hit = (_t.time(), qdate, closes)
+        _BB_BASE[sid] = hit
+    if len(hit[2]) < 19:
+        return None
+    arr = hit[2] + [price]
+    m = sum(arr) / 20
+    sd = (sum((v - m) ** 2 for v in arr) / 20) ** 0.5
+    return round((price - m) / (2 * sd) * 10, 1) if sd > 0 else None
+
+
+def _append_live_bar(sid: str, df):
+    """日 K 補上今天這根：盤中、收盤後到晚上掃描前 price_daily 都還沒有今天 → 圖上看不到今天（看盤軟體看得到）"""
+    import pandas as pd
+    if df is None or df.empty:
+        return df
+    q = _rt_quote_sync(sid)
+    if not q or not q.get("date") or None in (q.get("open"), q.get("high"), q.get("low")):
+        return df
+    if q["date"] <= str(df.iloc[-1]["date"]):
+        return df
+    row = {"date": q["date"], "open": q["open"], "high": q["high"], "low": q["low"],
+           "close": q["close"], "volume": q.get("volume") or 0}
+    return pd.concat([df, pd.DataFrame([row])], ignore_index=True)
 
 
 async def _fetch_mis_prices(stock_ids: list, mkt_map: dict) -> dict:
@@ -1501,6 +1586,10 @@ async def api_watchlist_prices():
     stock_ids = [r["stock_id"] for r in rows]
 
     result = await _fetch_rt_quotes(stock_ids, mkt_map)
+    for sid, q in result.items():
+        bb = _bb_live(sid, q["close"], q.get("date"))
+        if bb is not None:
+            q["bb_score"] = bb
     missing = [sid for sid in stock_ids if sid not in result]
     if missing:
         old = await _watchlist_prices_fallback(missing, mkt_map)
@@ -1938,6 +2027,9 @@ async def api_watchlist_summary():
     # 股價、漲跌改用跟看盤軟體一樣的最後成交價（布林位置、階段仍用上面 Yahoo 日 K 算的）
     for sid, q in (await _fetch_rt_quotes(stock_ids, mkt_map)).items():
         latest_prices[sid] = {**(latest_prices.get(sid) or {}), **q}
+        bb = _bb_live(sid, q["close"], q.get("date"))
+        if bb is not None:
+            latest_prices[sid]["bb_score"] = bb
 
     added_px = _added_prices(rows)
 
@@ -2853,6 +2945,7 @@ def api_stock_ohlcv(stock_id: str, interval: str = "1d"):
             from price_cache import get_stock_ohlcv as _pc_ohlcv
             _cached = _pc_ohlcv(stock_id, days=730)
             if not _cached.empty and len(_cached) >= 20:
+                _cached = _append_live_bar(stock_id, _cached)
                 _today_m4 = (_dt_ohlcv.date.today() - _dt_ohlcv.timedelta(days=4)).strftime("%Y%m%d")
                 _last_date = str(_cached.iloc[-1]["date"])
                 if _last_date >= _today_m4:

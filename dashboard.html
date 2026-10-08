@@ -1841,20 +1841,7 @@ function renderWatchlist() {
           : `<td class="muted" style="font-size:.78rem">無籌碼</td>`;
       // BB 欄
       const ndBb = s.bb_score ?? null;
-      const ndBbCell = (() => {
-        if (ndBb === null || ndBb === undefined) return `<td class="muted" style="white-space:nowrap">—</td>`;
-        let zone;
-        if (ndBb > 10)       zone = '超上軌';
-        else if (ndBb > 5)   zone = '近上軌';
-        else if (ndBb > -5)  zone = '中軌';
-        else if (ndBb > -10) zone = '近下軌';
-        else                 zone = '超下軌';
-        const numColor = ndBb > 5 ? '#f85149' : ndBb > 0 ? '#ff9800' : ndBb > -5 ? '#8b949e' : '#58a6ff';
-        const sign = ndBb > 0 ? '+' : '';
-        return `<td title="布林軌道位置（上軌=+10 中軌=0 下軌=-10）｜${zone}" style="white-space:nowrap">
-          <span style="color:${numColor};font-weight:700;font-size:.85rem">${sign}${ndBb}</span>
-        </td>`;
-      })();
+      const ndBbCell = _bbCell(s.stock_id, ndBb);
       // 千張大戶欄
       const ndKpct = s.kpct;
       const ndKpctChg = s.kpct_change;
@@ -1909,21 +1896,7 @@ function renderWatchlist() {
       return `<td class="muted">—</td>`;
     })();
     const bb = s.bb_score ?? null;
-    const bbCell = (() => {
-      if (bb === null || bb === undefined) return `<td class="muted" style="white-space:nowrap">—</td>`;
-      let zone;
-      if (bb > 10)       zone = '超上軌';
-      else if (bb > 5)   zone = '近上軌';
-      else if (bb > -5)  zone = '中軌';
-      else if (bb > -10) zone = '近下軌';
-      else               zone = '超下軌';
-      const numColor = bb > 5 ? '#f85149' : bb > 0 ? '#ff9800' : bb > -5 ? '#8b949e' : '#58a6ff';
-      const sign = bb > 0 ? '+' : '';
-      const tipText = bb > 10 ? '已突破上軌' : bb < -10 ? '已跌破下軌' : '軌道內';
-      return `<td title="布林軌道位置（上軌=+10 中軌=0 下軌=-10）｜${zone}｜${tipText}" style="white-space:nowrap">
-        <span style="color:${numColor};font-weight:700;font-size:.85rem">${sign}${bb}</span>
-      </td>`;
-    })();
+    const bbCell = _bbCell(s.stock_id, bb);
     const kpct = s.kpct;
     const kpctChg = s.kpct_change;
     const kpctCell = (() => {
@@ -2284,6 +2257,20 @@ let _priceRefreshTimer = null;
 let _priceRefreshCountdown = 0;
 let _priceRefreshCountdownTimer = null;
 
+// BB 位置欄：20 日布林、2 倍標準差；上軌 +10、中軌 0、下軌 −10。後端用跟股價欄、K 線今天那根同一個現價算
+function _bbCell(sid, bb) {
+  if (bb === null || bb === undefined) return `<td id="bb-${sid}" class="muted" style="white-space:nowrap">—</td>`;
+  const zone = bb > 10 ? '超上軌' : bb >= 9 ? '貼上軌' : bb > 5 ? '近上軌' : bb > -5 ? '中軌附近' : bb > -9 ? '近下軌' : bb >= -10 ? '貼下軌' : '破下軌';
+  const numColor = bb > 5 ? '#f85149' : bb > 0 ? '#ff9800' : bb > -5 ? '#8b949e' : '#58a6ff';
+  return `<td id="bb-${sid}" title="布林軌道位置（20 日、2 倍標準差；上軌=+10 中軌=0 下軌=-10，超過 ±10＝在軌道外）｜${zone}" style="white-space:nowrap;line-height:1.25">
+    <span style="color:${numColor};font-weight:700;font-size:.85rem">${bb > 0 ? '+' : ''}${bb}</span><br><span style="font-size:.66rem;color:var(--muted)">${zone}</span>
+  </td>`;
+}
+function _renderBbCell(sid, bb) {
+  const td = document.getElementById(`bb-${sid}`);
+  if (td && bb != null) td.outerHTML = _bbCell(sid, bb);
+}
+
 function _renderPriceCell(sid, close, change_pct) {
   const td = document.getElementById(`price-${sid}`);
   if (!td) return;
@@ -2327,8 +2314,13 @@ async function refreshPricesOnly(force = false) {
     const data = await api('GET', '/api/watchlist/prices');
     for (const [sid, info] of Object.entries(data)) {
       _renderPriceCell(sid, info.close, info.change_pct);
+      if (info.bb_score != null) _renderBbCell(sid, info.bb_score);
       const item = _wlData.find(x => x.stock_id === sid);
-      if (item) { item.close = info.close; item.change_pct = info.change_pct; _renderSinceAdded(sid); }
+      if (item) {
+        item.close = info.close; item.change_pct = info.change_pct;
+        if (info.bb_score != null) item.bb_score = info.bb_score;
+        _renderSinceAdded(sid);
+      }
     }
     if (status) status.textContent = `上次更新 ${new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit',second:'2-digit'})}`;
   } catch(e) {
