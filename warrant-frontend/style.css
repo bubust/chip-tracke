@@ -7,6 +7,8 @@
   --text:   #e8eaf2;
   --muted:  #7b82a0;
   --green:  #22c55e;
+  --up:     #ef4444;   /* 台股慣例：漲／多／認購＝紅、跌／空／認售＝綠（全系統統一，B57） */
+  --down:   #22c55e;
   --yellow: #f59e0b;
   --red:    #ef4444;
   --blue:   #3b82f6;
@@ -157,6 +159,8 @@ html, body { min-height: 100vh; background: var(--bg); color: var(--text);
 .green  { color: var(--green); }
 .yellow { color: var(--yellow); }
 .red    { color: var(--red); }
+.up     { color: var(--up); }
+.down   { color: var(--down); }
 
 /* ── Tab Bar ── */
 .tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border);
@@ -174,8 +178,8 @@ html, body { min-height: 100vh; background: var(--bg); color: var(--text);
 .fut-dir-btn { flex: 1; padding: 10px 0; border-radius: 10px; border: 1px solid var(--border);
                background: var(--card); color: var(--muted); cursor: pointer;
                font-size: 14px; font-weight: 600; transition: all .2s; }
-.fut-dir-btn.long.active  { background: rgba(34,197,94,.15); border-color: var(--green); color: var(--green); }
-.fut-dir-btn.short.active { background: rgba(239,68,68,.15);  border-color: var(--red);   color: var(--red); }
+.fut-dir-btn.long.active  { background: rgba(239,68,68,.15); border-color: var(--up); color: var(--up); }
+.fut-dir-btn.short.active { background: rgba(34,197,94,.15);  border-color: var(--down);   color: var(--down); }
 
 /* Placeholder */
 .fut-placeholder { display: flex; flex-direction: column; align-items: center;
@@ -299,8 +303,8 @@ html, body { min-height: 100vh; background: var(--bg); color: var(--text);
   display: inline-block; padding: 2px 8px; border-radius: 6px;
   font-size: 11px; font-weight: 700; letter-spacing: .03em;
 }
-.scan-badge--call { background: rgba(34,197,94,.15); color: var(--green); }
-.scan-badge--put  { background: rgba(239,68,68,.15);  color: var(--red); }
+.scan-badge--call { background: rgba(239,68,68,.15); color: var(--up); }
+.scan-badge--put  { background: rgba(34,197,94,.15);  color: var(--down); }
 .scan-empty { text-align: center; padding: 50px; color: var(--muted); font-size: 15px; }
 .scan-count { text-align: right; padding: 8px 16px; font-size: 12px; color: var(--muted); }
 
@@ -336,23 +340,23 @@ html, body { min-height: 100vh; background: var(--bg); color: var(--text);
 .flow-row { cursor: pointer; border-bottom: 1px solid rgba(255,255,255,.04); transition: background .12s; }
 .flow-row:hover { background: rgba(255,255,255,.04); }
 .flow-row td { padding: 9px 12px; vertical-align: middle; }
-.flow-row-call { background: rgba(34,197,94,.04); }
-.flow-row-put  { background: rgba(239,68,68,.04); }
+.flow-row-call { background: rgba(239,68,68,.04); }
+.flow-row-put  { background: rgba(34,197,94,.04); }
 .flow-rank  { color: var(--muted); font-size: 12px; text-align: left; width: 30px; }
 .flow-code  { font-weight: 700; font-size: 14px; }
 .flow-name  { color: var(--text-dim); font-size: 13px; }
-.flow-call-amt { color: var(--green); font-weight: 600; text-align: right; }
-.flow-put-amt  { color: var(--red);   font-weight: 600; text-align: right; }
+.flow-call-amt { color: var(--up); font-weight: 600; text-align: right; }
+.flow-put-amt  { color: var(--down);   font-weight: 600; text-align: right; }
 .flow-vol   { color: var(--muted); font-size: 12px; text-align: right; }
 .flow-net   { font-weight: 700; text-align: right; font-size: 14px; }
-.flow-net-pos { color: var(--green); }
-.flow-net-neg { color: var(--red); }
+.flow-net-pos { color: var(--up); }
+.flow-net-neg { color: var(--down); }
 .flow-cp      { text-align: right; font-size: 13px; }
 .flow-price   { text-align: right; font-size: 13px; }
 .flow-strike  { text-align: right; font-size: 12px; color: var(--muted); }
 .flow-expiry  { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
-.flow-dir-call { color: var(--green); font-weight: 700; }
-.flow-dir-put  { color: var(--red);   font-weight: 700; }
+.flow-dir-call { color: var(--up); font-weight: 700; }
+.flow-dir-put  { color: var(--down);   font-weight: 700; }
 .flow-dir-flat { color: var(--muted); }
 
 /* 個股歷史 panel */
@@ -401,12 +405,12 @@ html, body { min-height: 100vh; background: var(--bg); color: var(--text);
   letter-spacing: .02em;
 }
 .flow-top-panel-call .flow-top-panel-title {
-  background: rgba(34,197,94,.12);
-  color: var(--green);
+  background: rgba(239,68,68,.12);
+  color: var(--up);
 }
 .flow-top-panel-put .flow-top-panel-title {
-  background: rgba(239,68,68,.12);
-  color: var(--red);
+  background: rgba(34,197,94,.12);
+  color: var(--down);
 }
 .flow-top-table { font-size: 12px; }
 .flow-top-table thead th {
@@ -416,8 +420,8 @@ html, body { min-height: 100vh; background: var(--bg); color: var(--text);
 .flow-top-table td { padding: 6px 8px; }
 .flow-top-row { cursor: pointer; border-bottom: 1px solid rgba(255,255,255,.04); transition: background .12s; }
 .flow-top-row:hover { background: rgba(255,255,255,.05); }
-.flow-top-call { background: rgba(34,197,94,.04); }
-.flow-top-put  { background: rgba(239,68,68,.04); }
+.flow-top-call { background: rgba(239,68,68,.04); }
+.flow-top-put  { background: rgba(34,197,94,.04); }
 
 .flow-full-title {
   padding: 10px 12px 6px;

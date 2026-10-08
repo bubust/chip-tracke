@@ -168,7 +168,7 @@ function updateUnderlyingBar(ul) {
   const chgEl = $('ulChange');
   if (chg != null) {
     chgEl.textContent = fmtSign(chg);
-    chgEl.className = 'ul-change ' + (chg >= 0 ? 'green' : 'red');
+    chgEl.className = 'ul-change ' + (chg > 0 ? 'up' : chg < 0 ? 'down' : '');
   } else {
     chgEl.textContent = '';
     chgEl.className = 'ul-change';
@@ -847,9 +847,9 @@ async function renderScannerUnderlying() {
             const total   = r.total_vol;
             const callPct = total > 0 ? r.call_vol / total : 0;
             const biasLbl = r.bias > total * 0.3
-              ? '<span style="color:var(--green);font-weight:700">偏多 ▲</span>'
+              ? '<span style="color:var(--up);font-weight:700">偏多 ▲</span>'
               : r.bias < -total * 0.3
-                ? '<span style="color:var(--red);font-weight:700">偏空 ▼</span>'
+                ? '<span style="color:var(--down);font-weight:700">偏空 ▼</span>'
                 : '<span style="color:var(--text-dim)">中性 —</span>';
             const topCallStr = r.top_call.map(w =>
               `<span class="scan-badge scan-badge--call" style="cursor:pointer" onclick="switchTab('warrant');copyCode('${escHtml(w.code)}')">${escHtml(w.code)}<small> ${fmtK(w.vol)}</small></span>`
@@ -863,12 +863,12 @@ async function renderScannerUnderlying() {
                 <div class="scan-issuer">${escHtml(r.underlying_code)}</div>
               </td>
               <td class="scan-num">
-                <div style="color:var(--green)">${r.call_vol.toLocaleString()}</div>
-                <div class="scan-mini-bar" style="background:var(--green);opacity:.7;width:${barPct(r.call_vol)}%;height:3px;border-radius:2px"></div>
+                <div style="color:var(--up)">${r.call_vol.toLocaleString()}</div>
+                <div class="scan-mini-bar" style="background:var(--up);opacity:.7;width:${barPct(r.call_vol)}%;height:3px;border-radius:2px"></div>
               </td>
               <td class="scan-num">
-                <div style="color:var(--red)">${r.put_vol.toLocaleString()}</div>
-                <div class="scan-mini-bar" style="background:var(--red);opacity:.7;width:${barPct(r.put_vol)}%;height:3px;border-radius:2px"></div>
+                <div style="color:var(--down)">${r.put_vol.toLocaleString()}</div>
+                <div class="scan-mini-bar" style="background:var(--down);opacity:.7;width:${barPct(r.put_vol)}%;height:3px;border-radius:2px"></div>
               </td>
               <td style="text-align:center">${biasLbl}</td>
               <td style="font-size:.7rem;line-height:1.6">${topCallStr}${topPutStr || ''}</td>

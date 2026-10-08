@@ -86,8 +86,8 @@ function renderFutGrid(data) {
       </div>`;
 
     const chgSign  = (c.change != null && c.change >= 0) ? '+' : '';
-    const chgCls   = c.change != null ? (c.change >= 0 ? 'green' : 'red') : '';
-    const basisCls = c.basis != null ? (c.basis >= 0 ? 'red' : 'green') : '';
+    const chgCls   = c.change != null ? (c.change > 0 ? 'up' : c.change < 0 ? 'down' : '') : '';
+    const basisCls = c.basis != null ? (c.basis >= 0 ? 'up' : 'down') : '';
     const basisSign= c.basis != null ? (c.basis >= 0 ? '+' : '') : '';
     const basisStr = c.basis != null
       ? `${basisSign}${c.basis}（${basisSign}${c.basis_pct}%）`
@@ -187,7 +187,7 @@ function calcFutPnl() {
     const pnl1    = lots * (c.pnl_per_lot_1pct || 0);
     const fmtN    = v => Math.abs(v).toLocaleString('zh-TW');
     const fmtPnl  = v => {
-      const cls = v >= 0 ? 'green' : 'red';
+      const cls = v >= 0 ? 'up' : 'down';   // 台股慣例：賺＝紅、賠＝綠
       return `<span class="${cls}">${v >= 0 ? '+' : '-'}${fmtN(v)}</span>`;
     };
     return `

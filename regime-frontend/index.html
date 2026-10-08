@@ -83,6 +83,7 @@
     .series-list { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   }
 </style>
+<link rel="stylesheet" href="/theme.css?v=20261008">
 </head>
 <body>
 
@@ -117,7 +118,7 @@
     <div class="label">風險 Risk Score</div>
     <div class="value" id="risk-val">—</div>
     <div class="sub">市場脆弱度（0~100）</div>
-    <div class="desc">分數越低風險越高。<br>&gt;60 穩健｜40~60 留意停損｜&lt;40 建議減碼</div>
+    <div class="desc">分數越高越危險（VIX、融資、匯率加權）。<br>&lt;50 穩健｜50~70 留意停損｜&gt;70 偏高、&gt;85 極端風險</div>
   </div>
   <div class="score-card" id="card-ex">
     <div class="label">竭盡 Exhaustion</div>
@@ -168,14 +169,14 @@
 <h2>60 日走勢圖</h2>
 <div class="chart-box">
   <div class="chart-legend">
-    <span><i style="background:#3fb950"></i> Direction 方向</span>
-    <span><i style="background:#f85149"></i> Risk Score 風險</span>
+    <span><i style="background:#5b8cff"></i> Direction 方向</span>
+    <span><i style="background:#fb923c"></i> Risk Score 風險</span>
     <span><i style="background:#d29922"></i> Exhaustion 竭盡</span>
   </div>
   <canvas id="history-chart"></canvas>
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;font-size:.78rem;color:#8b949e;border-top:1px solid #21262d;padding-top:8px">
-    <div><b style="color:#3fb950">Direction 方向</b><br>七大因子加權合成（-100~+100）<br>正值代表多頭傾向，負值代表空頭傾向。&lt;-30 時避免主動做多</div>
-    <div><b style="color:#f85149">Risk Score 風險</b><br>市場脆弱度（0~100）<br>數值越低代表風險越高。&gt;60 穩健｜40~60 留意停損｜&lt;40 建議減碼</div>
+    <div><b style="color:#5b8cff">Direction 方向</b><br>七大因子加權合成（-100~+100）<br>正值代表多頭傾向，負值代表空頭傾向。&lt;-30 時避免主動做多</div>
+    <div><b style="color:#fb923c">Risk Score 風險</b><br>市場脆弱度（0~100，VIX、融資、匯率）<br>數值越高越危險。&lt;50 穩健｜50~70 留意停損｜&gt;70 偏高、&gt;85 極端風險</div>
     <div><b style="color:#d29922">Exhaustion 竭盡</b><br>極端竭盡指標（-100~+100）<br>接近 -100 → 賣壓耗盡可能反彈；接近 +100 → 買盤過熱可能見頂</div>
   </div>
 </div>
@@ -214,15 +215,23 @@ async function api(path) {
   return r.json();
 }
 
+// 台股慣例（全系統統一）：多／漲＝紅、空／跌＝綠、中性＝黃；風險、過熱這類警示用橘色，不用紅綠
 function colorDir(v) {
-  if (v > 30) return '#3fb950';
-  if (v < -30) return '#f85149';
+  if (v > 30) return '#f85149';
+  if (v < -30) return '#3fb950';
   return '#d29922';
 }
 function colorRisk(v) {
-  if (v > 70) return '#f85149';
+  if (v > 70) return '#fb923c';
   if (v > 50) return '#d29922';
-  return '#3fb950';
+  return '#94a3b8';
+}
+// 大盤狀態標籤的燈號（資料庫舊紀錄是 🟢 健康多頭／🔴 空頭／🔴 多頭過熱）→ 依文字換成台股慣例
+function twLabel(s) {
+  s = String(s || '');
+  const m = [['健康多頭', '🔴'], ['多頭過熱', '🟠'], ['恐慌竭盡', '🟡'], ['極端風險', '🚨'], ['空頭', '🟢'], ['震盪中性', '🟡']]
+    .find(([k]) => s.includes(k));
+  return m ? m[1] + ' ' + s.replace(/^[^\u4e00-\u9fff]+/, '') : s;
 }
 
 // ── 操作建議 Sprint 3 ────────────────────────────────────────────────
@@ -232,8 +241,8 @@ const SUGGESTIONS = [
     action: '✅ 積極布局，趨勢向上',
     desc: '市場方向明確向上，風險可控。適合持有強勢股，設定合理停損，順勢加碼。',
     tags: [
-      { text: '順勢操作', color: '#3fb950' },
-      { text: '持股比例 70~100%', color: '#3fb950' },
+      { text: '順勢操作', color: '#f85149' },
+      { text: '持股比例 70~100%', color: '#f85149' },
       { text: '重點：強勢板塊', color: '#58a6ff' },
     ],
   },
@@ -262,18 +271,18 @@ const SUGGESTIONS = [
     action: '🚨 降低部位，嚴控風險',
     desc: '市場處於極端風險狀態，系統性風險偏高。建議大幅降低持股比例，持現金觀望。',
     tags: [
-      { text: '大幅減碼', color: '#f85149' },
-      { text: '持股比例 < 20%', color: '#f85149' },
+      { text: '大幅減碼', color: '#fb923c' },
+      { text: '持股比例 < 20%', color: '#fb923c' },
       { text: '保留現金', color: '#8b949e' },
     ],
   },
   {
     match: d => d.regime_label && d.regime_label.includes('空頭'),
-    action: '🔴 空倉觀望，避免抄底',
+    action: '🟢 空倉觀望，避免抄底',
     desc: '市場趨勢向下，空頭力道強勁。避免逆勢操作，等待趨勢明確反轉後再布局。',
     tags: [
-      { text: '空倉為主', color: '#f85149' },
-      { text: '持股比例 0~20%', color: '#f85149' },
+      { text: '空倉為主', color: '#3fb950' },
+      { text: '持股比例 0~20%', color: '#3fb950' },
       { text: '等待趨勢反轉', color: '#8b949e' },
     ],
   },
@@ -306,9 +315,9 @@ function renderOverheating(oh, pa) {
     const ohPct = (oh * 100).toFixed(1);
     const ohAlert = oh >= 0.5;
     ohEl.textContent = ohPct + '%';
-    ohEl.style.color = ohAlert ? '#f85149' : '#3fb950';
+    ohEl.style.color = ohAlert ? '#fb923c' : '#94a3b8';
     ohBar.style.width = Math.min(100, oh * 100) + '%';
-    ohBar.style.background = ohAlert ? '#f85149' : '#3fb950';
+    ohBar.style.background = ohAlert ? '#fb923c' : '#5b8cff';
   } else {
     ohEl.textContent = '—';
     ohEl.style.color = '#8b949e';
@@ -321,9 +330,9 @@ function renderOverheating(oh, pa) {
     const paPct = (pa * 100).toFixed(1);
     const paAlert = pa >= 0.75;
     paEl.textContent = paPct + '%';
-    paEl.style.color = paAlert ? '#f85149' : '#3fb950';
+    paEl.style.color = paAlert ? '#fb923c' : '#94a3b8';
     paBar.style.width = Math.min(100, pa * 100) + '%';
-    paBar.style.background = paAlert ? '#f85149' : '#3fb950';
+    paBar.style.background = paAlert ? '#fb923c' : '#5b8cff';
   } else {
     paEl.textContent = '—';
     paEl.style.color = '#8b949e';
@@ -364,7 +373,7 @@ function renderToday(data) {
     exStatusEl.textContent = ex < -60 ? '⚠️ 賣壓耗盡' : '偏超賣';
     exStatusEl.style.color = '#3fb950';
   }
-  const regimeLabel = data.regime_label || '—';
+  const regimeLabel = twLabel(data.regime_label) || '—';
   document.getElementById('regime-label-top').textContent = regimeLabel;
 
   renderSuggestion(data);
@@ -457,8 +466,8 @@ function drawHistoryChart(history) {
 
   // 繪製三條線
   const LINES = [
-    { key: 'direction',   color: '#3fb950', toY: toY,    label: 'Direction' },
-    { key: 'risk_score',  color: '#f85149', toY: riskToY, label: 'Risk' },
+    { key: 'direction',   color: '#5b8cff', toY: toY,    label: 'Direction' },
+    { key: 'risk_score',  color: '#fb923c', toY: riskToY, label: 'Risk' },
     { key: 'exhaustion',  color: '#d29922', toY: riskToY, label: 'Exhaustion' },
   ];
 
@@ -516,12 +525,12 @@ function renderHistoryTable(history) {
       const ex = d.exhaustion;
       const oh = d.overheating;
       const pa = d.panic;
-      const dColor = dir > 30 ? '#3fb950' : dir < -30 ? '#f85149' : '#d29922';
-      const rColor = risk > 70 ? '#f85149' : risk > 50 ? '#d29922' : '#3fb950';
-      // 廣度：正=綠，負=紅，深淺依強度
+      const dColor = colorDir(dir);
+      const rColor = colorRisk(risk);
+      // 廣度：正＝紅、負＝綠（台股慣例），深淺依強度
       const bColor = breadth == null ? '#8b949e'
-        : breadth > 30 ? '#3fb950' : breadth > 0 ? '#7dd99e'
-        : breadth > -30 ? '#f47e7a' : '#f85149';
+        : breadth > 30 ? '#f85149' : breadth > 0 ? '#f47e7a'
+        : breadth > -30 ? '#7dd99e' : '#3fb950';
       const bStr = breadth != null ? ((breadth > 0 ? '+' : '') + breadth) : '—';
       // 竭盡：0=灰（正常），正=紅（過熱），負=綠（耗盡）
       const exColor = ex == null || ex === 0 ? '#484f58'
@@ -530,23 +539,23 @@ function renderHistoryTable(history) {
         ? (ex === 0 ? '<span style="color:#484f58">— 正常</span>'
           : `<b style="color:${exColor}">${ex > 0 ? '+' : ''}${ex}</b>`)
         : '—';
-      // 過熱指數：>50% 紅，否則綠
+      // 過熱指數：>50% 警示（橘），否則正常（灰）
       const ohPct = oh != null ? (oh * 100).toFixed(1) + '%' : '—';
-      const ohColor = oh == null ? '#8b949e' : oh >= 0.5 ? '#f85149' : '#3fb950';
+      const ohColor = oh == null ? '#8b949e' : oh >= 0.5 ? '#fb923c' : '#94a3b8';
       const ohAlert = oh != null && oh >= 0.5;
       const ohStr = oh != null
-        ? `<span style="color:${ohColor};font-weight:${ohAlert ? 700 : 400}">${ohPct}${ohAlert ? ' 🔴' : ''}</span>`
+        ? `<span style="color:${ohColor};font-weight:${ohAlert ? 700 : 400}">${ohPct}${ohAlert ? ' 🟠' : ''}</span>`
         : '<span style="color:#484f58">—</span>';
-      // 恐慌指數：>75% 紅，否則綠
+      // 恐慌指數：>75% 警示（橘），否則正常（灰）
       const paPct = pa != null ? (pa * 100).toFixed(1) + '%' : '—';
-      const paColor = pa == null ? '#8b949e' : pa >= 0.75 ? '#f85149' : '#3fb950';
+      const paColor = pa == null ? '#8b949e' : pa >= 0.75 ? '#fb923c' : '#94a3b8';
       const paAlert = pa != null && pa >= 0.75;
       const paStr = pa != null
-        ? `<span style="color:${paColor};font-weight:${paAlert ? 700 : 400}">${paPct}${paAlert ? ' 🔴' : ''}</span>`
+        ? `<span style="color:${paColor};font-weight:${paAlert ? 700 : 400}">${paPct}${paAlert ? ' 🟠' : ''}</span>`
         : '<span style="color:#484f58">—</span>';
       return `<tr>
         <td style="color:#8b949e">${d.date || ''}</td>
-        <td>${d.regime_label || '—'}</td>
+        <td>${twLabel(d.regime_label) || '—'}</td>
         <td style="color:${dColor};font-weight:600">${(dir >= 0 ? '+' : '') + dir}</td>
         <td style="color:${rColor}">${risk}</td>
         <td style="color:${bColor};font-weight:${Math.abs(breadth ?? 0) > 30 ? 600 : 400}">${bStr}</td>
@@ -569,7 +578,7 @@ async function loadBreadth() {
     const score = Math.round((val - 50) * 200) / 100;
     const sign = score >= 0 ? '+' : '';
     document.getElementById('breadth-pct').textContent = sign + score.toFixed(1);
-    const col = score > 30 ? '#3fb950' : score > -30 ? '#d29922' : '#f85149';
+    const col = colorDir(score);
     const barPct = Math.min(100, Math.max(0, (score + 100) / 2));  // -100→0%, 0→50%, +100→100%
     document.getElementById('breadth-bar').style.width = barPct + '%';
     document.getElementById('breadth-bar').style.background = col;
@@ -579,64 +588,64 @@ async function loadBreadth() {
 
 // ── 指標判讀邏輯 ──────────────────────────────────────────────────────
 function interpretSignal(k, val, diff) {
-  // 回傳 { dot: '🟢'|'🟡'|'🔴', hint: '...' }
+  // 回傳 { dot, hint }：🔴 偏多（漲）、🟢 偏空（跌）、🟡 中性、🟠 警示（過熱／恐慌／散戶過熱）、⚪ 正常——台股慣例，全系統統一
   switch (k) {
     case 'VIX':
-      if (val < 15)  return { dot: '🟢', hint: 'VIX 低 — 市場樂觀' };
+      if (val < 15)  return { dot: '🔴', hint: 'VIX 低 — 市場樂觀' };
       if (val < 25)  return { dot: '🟡', hint: 'VIX 中 — 正常波動' };
-      return                { dot: '🔴', hint: 'VIX 高 — 市場恐慌' };
+      return                { dot: '🟢', hint: 'VIX 高 — 市場恐慌' };
     case 'US10Y':
-      if (val < 4)   return { dot: '🟢', hint: '殖利率低 — 流動性寬鬆' };
+      if (val < 4)   return { dot: '🔴', hint: '殖利率低 — 流動性寬鬆' };
       if (val < 4.8) return { dot: '🟡', hint: '殖利率中性' };
-      return                { dot: '🔴', hint: '殖利率高 — 緊縮壓力大' };
+      return                { dot: '🟢', hint: '殖利率高 — 緊縮壓力大' };
     case 'USDTWD':
-      if (val < 31)  return { dot: '🟢', hint: '台幣強 — 外資流入' };
+      if (val < 31)  return { dot: '🔴', hint: '台幣強 — 外資流入' };
       if (val < 32)  return { dot: '🟡', hint: '台幣中性' };
-      return                { dot: '🔴', hint: '台幣弱 — 外資撤出' };
+      return                { dot: '🟢', hint: '台幣弱 — 外資撤出' };
     case 'FOREIGN_NET_LOT':
-      if (val > 0)   return { dot: '🟢', hint: `外資買超 ${Math.abs(val).toLocaleString()} 張` };
+      if (val > 0)   return { dot: '🔴', hint: `外資買超 ${Math.abs(val).toLocaleString()} 張` };
       if (val > -5000) return { dot: '🟡', hint: '外資小量賣超' };
-      return                { dot: '🔴', hint: `外資大賣 ${Math.abs(val).toLocaleString()} 張` };
+      return                { dot: '🟢', hint: `外資大賣 ${Math.abs(val).toLocaleString()} 張` };
     case 'FOREIGN_FUTURES_NET':
-      if (val > 5000)  return { dot: '🟢', hint: '外資期貨多單 — 偏多' };
+      if (val > 5000)  return { dot: '🔴', hint: '外資期貨多單 — 偏多' };
       if (val > -5000) return { dot: '🟡', hint: '外資期貨中性' };
-      return                 { dot: '🔴', hint: '外資期貨空單 — 偏空' };
+      return                 { dot: '🟢', hint: '外資期貨空單 — 偏空' };
     case 'MARGIN_BALANCE':
-      if (diff != null && diff > 50000) return { dot: '🔴', hint: '融資急增 — 散戶過熱' };
+      if (diff != null && diff > 50000) return { dot: '🟠', hint: '融資急增 — 散戶過熱' };
       if (diff != null && diff < -30000) return { dot: '🟡', hint: '融資減少 — 籌碼乾淨' };
       return { dot: '🟡', hint: '融資平穩' };
     case 'SHORT_BALANCE':
-      if (diff != null && diff > 20000) return { dot: '🔴', hint: '融券急增 — 空方壓力升' };
-      if (diff != null && diff < -10000) return { dot: '🟢', hint: '融券減少 — 空方回補' };
+      if (diff != null && diff > 20000) return { dot: '🟢', hint: '融券急增 — 空方壓力升' };
+      if (diff != null && diff < -10000) return { dot: '🔴', hint: '融券減少 — 空方回補' };
       return { dot: '🟡', hint: '融券平穩' };
     case 'SHORT_MARGIN_RATIO':
-      if (val > 20) return { dot: '🔴', hint: `券資比 ${val.toFixed(1)}% — 空方壓力大` };
+      if (val > 20) return { dot: '🟢', hint: `券資比 ${val.toFixed(1)}% — 空方壓力大` };
       if (val > 12) return { dot: '🟡', hint: `券資比 ${val.toFixed(1)}% — 偏高` };
-      return { dot: '🟢', hint: `券資比 ${val.toFixed(1)}%` };
+      return { dot: '⚪', hint: `券資比 ${val.toFixed(1)}%` };
     case 'BREADTH_50MA':
       // 新定義：淨廣度 = (上漲-下跌)/總家數×100，範圍 -100~+100
-      if (val > 30)  return { dot: '🟢', hint: `淨廣度 +${val.toFixed(1)}% — 多頭廣度佳` };
+      if (val > 30)  return { dot: '🔴', hint: `淨廣度 +${val.toFixed(1)}% — 多頭廣度佳` };
       if (val > -30) return { dot: '🟡', hint: `淨廣度 ${val.toFixed(1)}% — 多空拉鋸` };
-      return                { dot: '🔴', hint: `淨廣度 ${val.toFixed(1)}% — 空方主導` };
+      return                { dot: '🟢', hint: `淨廣度 ${val.toFixed(1)}% — 空方主導` };
     case 'AD_LINE':
-      if (val > 200)   return { dot: '🟢', hint: `漲家多跌家 ${val.toLocaleString()}` };
+      if (val > 200)   return { dot: '🔴', hint: `漲家多跌家 ${val.toLocaleString()}` };
       if (val > -200)  return { dot: '🟡', hint: '漲跌相當' };
-      return                  { dot: '🔴', hint: `跌家多漲家 ${Math.abs(val).toLocaleString()}` };
+      return                  { dot: '🟢', hint: `跌家多漲家 ${Math.abs(val).toLocaleString()}` };
     case 'MEDIAN_RET':
-      if (val > 0.5)  return { dot: '🟢', hint: '全市場普漲' };
+      if (val > 0.5)  return { dot: '🔴', hint: '全市場普漲' };
       if (val > -0.5) return { dot: '🟡', hint: '漲跌互見' };
-      return                 { dot: '🔴', hint: '全市場普跌' };
+      return                 { dot: '🟢', hint: '全市場普跌' };
     case 'OVERHEATING_INDEX':
-      if (val < 0.4)  return { dot: '🟢', hint: '量能正常' };
+      if (val < 0.4)  return { dot: '⚪', hint: '量能正常' };
       if (val < 0.5)  return { dot: '🟡', hint: '量能偏熱' };
-      return                 { dot: '🔴', hint: '成交/委買高 — 過熱' };
+      return                 { dot: '🟠', hint: '成交/委買高 — 過熱' };
     case 'PANIC_INDEX':
-      if (val < 0.6)  return { dot: '🟢', hint: '委賣正常' };
+      if (val < 0.6)  return { dot: '⚪', hint: '委賣正常' };
       if (val < 0.75) return { dot: '🟡', hint: '委賣偏高' };
-      return                 { dot: '🔴', hint: '成交/委賣高 — 恐慌' };
+      return                 { dot: '🟠', hint: '成交/委賣高 — 恐慌' };
     case 'TAIEX': case 'OTC': case 'SP500': case 'SOX': case 'TSM_ADR': case 'NASDAQ':
-      if (diff != null && diff > 0)  return { dot: '🟢', hint: '上漲' };
-      if (diff != null && diff < 0)  return { dot: '🔴', hint: '下跌' };
+      if (diff != null && diff > 0)  return { dot: '🔴', hint: '上漲' };
+      if (diff != null && diff < 0)  return { dot: '🟢', hint: '下跌' };
       return { dot: '🟡', hint: '持平' };
     default:
       return { dot: '🟡', hint: '' };
@@ -674,11 +683,11 @@ async function loadSeries() {
       const pct = latest.value * 100;
       const threshold = THRESHOLDS[k] * 100;
       const isAlert = pct >= threshold;
-      col = isAlert ? '#f85149' : '#3fb950';
+      col = isAlert ? '#fb923c' : '#94a3b8';   // 過熱／恐慌是警示（橘），不是漲跌
       valStr = pct.toFixed(1) + '%';
       badge = isAlert
-        ? `<span style="font-size:.62rem;padding:0 4px;background:#f8514922;color:#f85149;border:1px solid #f8514966;border-radius:3px;margin-left:4px">${k === 'OVERHEATING_INDEX' ? '過熱' : '恐慌'}</span>`
-        : `<span style="font-size:.62rem;padding:0 4px;background:#3fb95022;color:#3fb950;border:1px solid #3fb95066;border-radius:3px;margin-left:4px">正常</span>`;
+        ? `<span style="font-size:.62rem;padding:0 4px;background:#fb923c22;color:#fb923c;border:1px solid #fb923c66;border-radius:3px;margin-left:4px">${k === 'OVERHEATING_INDEX' ? '過熱' : '恐慌'}</span>`
+        : `<span style="font-size:.62rem;padding:0 4px;background:#94a3b822;color:#94a3b8;border:1px solid #94a3b866;border-radius:3px;margin-left:4px">正常</span>`;
       if (prev) {
         rawDiff = (latest.value - prev.value) * 100;
         chgStr = (rawDiff >= 0 ? '+' : '') + rawDiff.toFixed(1) + '%';
@@ -692,7 +701,7 @@ async function loadSeries() {
              : k === 'SHORT_MARGIN_RATIO'? latest.value.toFixed(1) + '%'
              : Number(latest.value).toLocaleString();
       if (diff != null) {
-        col = diff >= 0 ? '#3fb950' : '#f85149';
+        col = diff > 0 ? '#f85149' : diff < 0 ? '#3fb950' : '#94a3b8';
         chgStr = (diff >= 0 ? '+' : '') + (k === 'BREADTH_50MA' || k === 'MEDIAN_RET'
           ? diff.toFixed(1) : Math.round(diff).toLocaleString());
       }
@@ -701,7 +710,7 @@ async function loadSeries() {
       rawDiff = chg;
       valStr = Number(latest.value).toLocaleString();
       if (chg != null) {
-        col = chg >= 0 ? '#3fb950' : '#f85149';
+        col = chg > 0 ? '#f85149' : chg < 0 ? '#3fb950' : '#94a3b8';
         chgStr = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
       }
     }

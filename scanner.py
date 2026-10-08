@@ -216,7 +216,7 @@ def classify_stage(df: pd.DataFrame) -> dict:
 
     # ── 1. 空頭觀望 ─────────────────────────────────────────────────────
     if m10 < m60:
-        return {"code": "bearish", "label": "🔴 空頭", "color": "red",
+        return {"code": "bearish", "label": "🟢 空頭", "color": "green",
                 "desc": "MA10 < MA60 均線空頭排列，不操作"}
 
     # ── 以下皆為 MA10 > MA60 多頭區間 ────────────────────────────────────
@@ -245,7 +245,7 @@ def classify_stage(df: pd.DataFrame) -> dict:
                 for i in range(5) if i + 1 <= len(lows) and not pd.isna(ma10.iloc[-(i + 1)])
             )
             if touched and today_close > m10:
-                return {"code": "pullback", "label": "🎯 拉回買點", "color": "green",
+                return {"code": "pullback", "label": "🎯 拉回買點", "color": "red",
                         "desc": "回測MA10後站回，均線向上，等K線確認後買進"}
 
     # ── 4. 強勢攻擊中：近10天漲>15% 或近5天有漲停，且仍在高位 ─────────────

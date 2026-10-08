@@ -565,13 +565,14 @@ def classify_signal(
     層三：連續性 — consecutive_buy 天數
 
     訊號矩陣：
-    -3  🔴⚠️  散戶接盤警示（法人賣 + 融資增）
-    -2  🔴    法人出貨
+    -3  🟢⚠️  散戶接盤警示（法人賣 + 融資增）
+    -2  🟢    法人出貨
     -1  🟠    法人溫和賣出
      0  ⚪    盤整觀望
      1  🟡    法人溫和買進 / 法人買散戶跟進
-     2  🟢    法人建倉散戶退 / 外資投信同步買
-     3  🟢🟢  外資投信同步建倉（連續4日+）
+     2  🔴    法人建倉散戶退 / 外資投信同步買
+     3  🔴🔴  外資投信同步建倉（連續4日+）
+    （燈號用台股慣例：多＝紅、空＝綠，2026-10-08 B57 統一；以前是相反的）
 
     「同步」兩個訊號另外要求當天外資、投信都買超（2026-10-07 用戶：投信今天賣，怎麼會是同步買）；
     today_foreign／today_trust 沒給（None）時維持只看 7 日累計的舊行為。
@@ -583,19 +584,19 @@ def classify_signal(
 
     # ── 層二：背離（最高優先）──────────────────
     if cum7_whale < T["alert_whale"] and cum7_retail > T["alert_retail"]:
-        return {"emoji": "🔴⚠️", "title": "散戶接盤警示", "level": -3}
+        return {"emoji": "🟢⚠️", "title": "散戶接盤警示", "level": -3}
 
     # ── 層一+三：外資投信同步 + 連續性 ───────────
     if sync_today and cum7_foreign > T["lvl3_foreign"] and cum7_trust > T["lvl3_trust"] and consecutive_buy >= T["lvl3_consec"]:
-        return {"emoji": "🟢🟢", "title": "外資投信同步建倉", "level": 3}
+        return {"emoji": "🔴🔴", "title": "外資投信同步建倉", "level": 3}
 
     # ── 層一+二：法人買 + 散戶退場 ───────────────
     if cum7_whale > T["lvl2a_whale"] and cum7_retail < T["lvl2a_retail"]:
-        return {"emoji": "🟢", "title": "法人建倉散戶退", "level": 2}
+        return {"emoji": "🔴", "title": "法人建倉散戶退", "level": 2}
 
     # 外資+投信同向買（無連續性門檻；當天也要兩者都買）
     if sync_today and cum7_foreign > T["lvl2b_foreign"] and cum7_trust > T["lvl2b_trust"]:
-        return {"emoji": "🟢", "title": "外資投信同步買", "level": 2}
+        return {"emoji": "🔴", "title": "外資投信同步買", "level": 2}
 
     # 法人買 + 散戶也跟
     if cum7_whale > T["lvl1a_whale"] and cum7_retail > T["lvl1a_retail"]:
@@ -607,7 +608,7 @@ def classify_signal(
 
     # ── 賣出訊號 ─────────────────────────────
     if cum7_whale < T["sell_strong"]:
-        return {"emoji": "🔴", "title": "法人出貨", "level": -2}
+        return {"emoji": "🟢", "title": "法人出貨", "level": -2}
 
     if cum7_whale < T["sell_mild"]:
         return {"emoji": "🟠", "title": "法人溫和賣出", "level": -1}

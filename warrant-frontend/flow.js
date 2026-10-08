@@ -125,8 +125,8 @@ function renderFlowTable(callRows, putRows, allRows) {
       ? '<span class="flow-dir-put">▼認售</span>'
       : '<span class="flow-dir-flat">－持平</span>';
   const cpTag = cp => cp == null ? '—'
-    : cp >= 3 ? `<span style="color:var(--green);font-weight:700">${cp.toFixed(2)}</span>`
-    : cp <= 0.33 ? `<span style="color:var(--red);font-weight:700">${cp.toFixed(2)}</span>`
+    : cp >= 3 ? `<span style="color:var(--up);font-weight:700">${cp.toFixed(2)}</span>`
+    : cp <= 0.33 ? `<span style="color:var(--down);font-weight:700">${cp.toFixed(2)}</span>`
     : cp.toFixed(2);
 
   /* ── Top 30 個別權證雙欄面板 ── */
@@ -235,8 +235,8 @@ function renderFlowHistory(rows) {
     const isPut  = r.net_turnover < 0;
     html += `<tr>
       <td>${r.trade_date}</td>
-      <td style="color:var(--green)">${fmtM(r.call_turnover)}</td>
-      <td style="color:var(--red)">${fmtM(r.put_turnover)}</td>
+      <td style="color:var(--up)">${fmtM(r.call_turnover)}</td>
+      <td style="color:var(--down)">${fmtM(r.put_turnover)}</td>
       <td class="${isCall?'flow-net-pos':isPut?'flow-net-neg':''}">${isCall?'+':''}${fmtM(r.net_turnover)}</td>
       <td>${r.cp_ratio != null ? r.cp_ratio.toFixed(2) : '—'}</td>
     </tr>`;

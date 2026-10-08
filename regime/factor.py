@@ -249,15 +249,15 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
             vix_score = min(100, max(0, (cur_vix - 20) / 15 * 50))
             exhaustion = -round(vix_score, 1)
 
-    # ── Regime Label ──────────────────────────────────────────────────────
+    # ── Regime Label（燈號用台股慣例：多＝🔴、空＝🟢、警示＝🟠，B57；舊紀錄讀出來用 tw_label 換）──
     if direction > 50 and risk_score < 50:
-        label = "🟢 健康多頭"
+        label = "🔴 健康多頭"
     elif direction > 50 and risk_score > 70:
-        label = "🔴 多頭過熱"
+        label = "🟠 多頭過熱"
     elif direction < -50 and risk_score > 80 and exhaustion > 75:
         label = "🟡 恐慌竭盡"
     elif direction < -50:
-        label = "🔴 空頭"
+        label = "🟢 空頭"
     elif risk_score > 85:
         label = "🚨 極端風險"
     else:
@@ -403,3 +403,16 @@ def recalc_recent_factors(days: int = 60) -> int:
             log.warning(f"[factor] recalc {d} 失敗: {e}")
     log.info(f"[factor] 重算最近 {n} 天因子")
     return n
+
+
+_TW_LABEL_EMOJI = (("健康多頭", "🔴"), ("多頭過熱", "🟠"), ("恐慌竭盡", "🟡"), ("極端風險", "🚨"), ("空頭", "🟢"), ("震盪中性", "🟡"))
+
+
+def tw_label(label):
+    """大盤狀態標籤的燈號換成台股慣例（資料庫舊紀錄是 🟢 健康多頭／🔴 空頭／🔴 多頭過熱）"""
+    s = str(label or "")
+    for key, emo in _TW_LABEL_EMOJI:
+        if key in s:
+            i = next((k for k, ch in enumerate(s) if "一" <= ch <= "鿿"), len(s))
+            return f"{emo} {s[i:]}"
+    return s

@@ -15,6 +15,7 @@
     --muted: #8b949e;
     --accent: #58a6ff;
     --green: #3fb950;
+    --up: #f85149; --down: #3fb950;   /* 台股慣例：漲／多＝紅、跌／空＝綠（全系統統一，B57） */
     --red: #f85149;
     --yellow: #d29922;
     --orange: #db6d28;
@@ -146,12 +147,12 @@
     font-size: .75rem;
     font-weight: 600;
   }
-  .badge-bull  { background: rgba(63,185,80,.2);  color: var(--green); }
-  .badge-bear  { background: rgba(248,81,73,.2);  color: var(--red); }
+  .badge-bull  { background: rgba(248,81,73,.2);  color: var(--up); }
+  .badge-bear  { background: rgba(63,185,80,.2);  color: var(--down); }
   .badge-range { background: rgba(210,153,34,.2); color: var(--yellow); }
 
-  .badge-strong  { background: rgba(63,185,80,.15);  color: var(--green); }
-  .badge-weak    { background: rgba(248,81,73,.15);  color: var(--red); }
+  .badge-strong  { background: rgba(248,81,73,.15);  color: var(--up); }
+  .badge-weak    { background: rgba(63,185,80,.15);  color: var(--down); }
   .badge-stable  { background: rgba(139,148,158,.15); color: var(--muted); }
 
   .badge-event {
@@ -161,8 +162,8 @@
     font-size: .72rem;
     font-weight: 600;
   }
-  .badge-event-BREAKOUT        { background: rgba(63,185,80,.2);  color: var(--green); }
-  .badge-event-BREAKDOWN       { background: rgba(248,81,73,.2);  color: var(--red); }
+  .badge-event-BREAKOUT        { background: rgba(248,81,73,.2);  color: var(--up); }
+  .badge-event-BREAKDOWN       { background: rgba(63,185,80,.2);  color: var(--down); }
   .badge-event-FALSE_BREAKDOWN { background: rgba(188,140,255,.2); color: var(--purple); }
   .badge-event-FALSE_BREAKOUT  { background: rgba(210,153,34,.2); color: var(--yellow); }
   .badge-event-RECLAIM         { background: rgba(88,166,255,.2);  color: var(--accent); }
@@ -174,15 +175,15 @@
     font-weight: 600;
     color: var(--text);
   }
-  .rank-top3  { color: var(--green); }
-  .rank-bot3  { color: var(--red); }
+  .rank-top3  { color: var(--up); }
+  .rank-bot3  { color: var(--down); }
 
-  .ret-pos { color: var(--green); }
-  .ret-neg { color: var(--red); }
+  .ret-pos { color: var(--up); }
+  .ret-neg { color: var(--down); }
   .ret-neu { color: var(--muted); }
 
-  .arrow-up   { color: var(--green); }
-  .arrow-down { color: var(--red); }
+  .arrow-up   { color: var(--up); }
+  .arrow-down { color: var(--down); }
 
   /* ── expand row ── */
   .expand-row td { padding: 0; }
@@ -260,12 +261,12 @@
     font-weight: 600;
     white-space: nowrap;
   }
-  .regime-多頭強勢 { background: rgba(63,185,80,.25);  color: #5cf07f; }
-  .regime-多頭弱勢 { background: rgba(63,185,80,.12);  color: var(--green); }
+  .regime-多頭強勢 { background: rgba(248,81,73,.25);  color: #ff8a85; }
+  .regime-多頭弱勢 { background: rgba(248,81,73,.12);  color: var(--up); }
   .regime-盤整強勢 { background: rgba(210,153,34,.2);  color: var(--yellow); }
   .regime-盤整弱勢 { background: rgba(139,148,158,.12); color: var(--muted); }
-  .regime-空頭抗跌 { background: rgba(248,81,73,.15);  color: #ff8a85; }
-  .regime-空頭弱勢 { background: rgba(248,81,73,.25);  color: var(--red); }
+  .regime-空頭抗跌 { background: rgba(63,185,80,.15);  color: #5cf07f; }
+  .regime-空頭弱勢 { background: rgba(63,185,80,.25);  color: var(--down); }
 
   /* ── sector detail page ── */
   .back-btn { color: var(--accent); cursor: pointer; font-size: .85rem; display: inline-flex; align-items: center; gap: 4px; margin-bottom: 16px; }
@@ -295,7 +296,7 @@
 
   .health-bar-wrap { display: flex; align-items: center; gap: 8px; }
   .health-bar { height: 6px; border-radius: 3px; background: var(--border); flex: 1; max-width: 80px; overflow: hidden; }
-  .health-bar-fill { height: 100%; background: var(--green); transition: width .3s; }
+  .health-bar-fill { height: 100%; background: var(--accent); transition: width .3s; }
 
   /* ── 樹狀熱力圖 ── */
   #bubbleSection {
@@ -412,6 +413,7 @@
     .kline-info-grid { grid-template-columns: repeat(2, 1fr); }
   }
 </style>
+<link rel="stylesheet" href="/theme.css?v=20261008">
 </head>
 <body>
 

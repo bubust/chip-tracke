@@ -9,6 +9,7 @@
 <style>
 :root {
   --bg: #0d1117; --card: #161b22; --border: #30363d;
+  --up: #f85149; --down: #3fb950;   /* 台股慣例：漲／多＝紅、跌／空＝綠（全系統統一，B57） */
   --text: #e6edf3; --muted: #8b949e; --green: #3fb950;
   --red: #f85149; --yellow: #d29922; --blue: #388bfd;
   --purple: #bc8cff; --orange: #db6d28;
@@ -30,7 +31,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Segoe UI','PingF
 .stat-cell:last-child { border-right: none; }
 .stat-label { font-size: .72rem; color: var(--muted); }
 .stat-val { font-size: 1rem; font-weight: 700; }
-.pos { color: var(--green); } .neg { color: var(--red); } .neu { color: var(--muted); }
+.pos { color: var(--up); } .neg { color: var(--down); } .neu { color: var(--muted); }
 .layout { display: grid; grid-template-columns: 1fr 300px; gap: 0; flex: 1; min-height: 0; overflow: hidden; }
 .charts-col { display: flex; flex-direction: column; overflow: hidden; }
 .chart-section { flex: 2; min-height: 0; overflow: hidden; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; }
@@ -46,8 +47,8 @@ body { background: var(--bg); color: var(--text); font-family: 'Segoe UI','PingF
 .detail-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: .82rem; }
 .detail-label { color: var(--muted); }
 .badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: .72rem; font-weight: 600; }
-.badge-bull { background: rgba(63,185,80,.2); color: var(--green); }
-.badge-bear { background: rgba(248,81,73,.2); color: var(--red); }
+.badge-bull { background: rgba(248,81,73,.2); color: var(--up); }
+.badge-bear { background: rgba(63,185,80,.2); color: var(--down); }
 .badge-neutral { background: rgba(139,148,158,.2); color: var(--muted); }
 .badge-notable { background: rgba(210,153,34,.2); color: var(--yellow); }
 .badge-important { background: rgba(188,140,255,.2); color: var(--purple); }
@@ -90,6 +91,7 @@ select { background: #21262d; color: var(--text); border: 1px solid var(--border
   .stats-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 </style>
+<link rel="stylesheet" href="/theme.css?v=20261008">
 </head>
 <body>
 
@@ -228,7 +230,7 @@ async function init() {
 // ── Charts ────────────────────────────────────────────────────────────────────
 function initCharts() {
   const chartOpts = {
-    layout: { background: { color: '#161b22' }, textColor: '#8b949e' },
+    layout: { background: { color: '#121826' }, textColor: '#94a3b8' },
     grid: { vertLines: { color: '#21262d' }, horzLines: { color: '#21262d' } },
     crosshair: { mode: 1 },
     rightPriceScale: { borderColor: '#30363d' },
@@ -238,9 +240,9 @@ function initCharts() {
   const taiexEl = document.getElementById('chart-taiex');
   _taiexChart = LightweightCharts.createChart(taiexEl, { ...chartOpts, autoSize: true });
   _taiexSeries = _taiexChart.addCandlestickSeries({
-    upColor: '#3fb950', downColor: '#f85149',
-    borderUpColor: '#3fb950', borderDownColor: '#f85149',
-    wickUpColor: '#3fb950', wickDownColor: '#f85149',
+    upColor: '#f85149', downColor: '#3fb950',
+    borderUpColor: '#f85149', borderDownColor: '#3fb950',
+    wickUpColor: '#f85149', wickDownColor: '#3fb950',
   });
   _ma20Series = _taiexChart.addLineSeries({ color: '#58a6ff', lineWidth: 1, priceLineVisible: false });
   _ma60Series = _taiexChart.addLineSeries({ color: '#d29922', lineWidth: 1, priceLineVisible: false });
@@ -248,9 +250,9 @@ function initCharts() {
   const txEl = document.getElementById('chart-tx');
   _txChart = LightweightCharts.createChart(txEl, { ...chartOpts, autoSize: true });
   _txSeries = _txChart.addCandlestickSeries({
-    upColor: '#3fb950', downColor: '#f85149',
-    borderUpColor: '#3fb950', borderDownColor: '#f85149',
-    wickUpColor: '#3fb950', wickDownColor: '#f85149',
+    upColor: '#f85149', downColor: '#3fb950',
+    borderUpColor: '#f85149', borderDownColor: '#3fb950',
+    wickUpColor: '#f85149', wickDownColor: '#3fb950',
   });
 
   // Sync time scales
@@ -510,7 +512,7 @@ function toggleEventHelp() {
     const tbody = document.getElementById('event-help-tbody');
     if (!tbody.children.length) {
       const levelColor = {1:'#58a6ff', 2:'#d29922', 3:'#bc8cff'};
-      const dirColor = {多:'#3fb950', 空:'#f85149', 中性:'#8b949e'};
+      const dirColor = {多:'#f85149', 空:'#3fb950', 中性:'#8b949e'};
       tbody.innerHTML = Object.entries(_EVENT_META).map(([code, m]) => `
         <tr style="border-top:1px solid #21262d">
           <td style="padding:5px 8px;white-space:nowrap">
@@ -577,8 +579,8 @@ async function applyStrategyOverlay(etype) {
     document.getElementById('sm-wr').textContent = s5 ? `${s5.win_rate}%` : '—';
     const sm5 = document.getElementById('sm-5d');
     const sm10 = document.getElementById('sm-10d');
-    if (s5) sm5.style.color = s5.avg > 0 ? 'var(--green)' : s5.avg < 0 ? 'var(--red)' : '';
-    if (s10) sm10.style.color = s10.avg > 0 ? 'var(--green)' : s10.avg < 0 ? 'var(--red)' : '';
+    if (s5) sm5.style.color = s5.avg > 0 ? 'var(--up)' : s5.avg < 0 ? 'var(--down)' : '';
+    if (s10) sm10.style.color = s10.avg > 0 ? 'var(--up)' : s10.avg < 0 ? 'var(--down)' : '';
     // 說明 & 判讀多空
     const meta = _EVENT_META[etype];
     document.getElementById('sm-desc').textContent = d.description || '';
@@ -588,16 +590,16 @@ async function applyStrategyOverlay(etype) {
     const metaDir = meta ? meta.dir : '中性';
     let verdict, verdictColor;
     if (metaDir === '多') {
-      if (s5avg > 0 && s5wr >= 55) { verdict = '▲ 多方'; verdictColor = 'var(--green)'; }
+      if (s5avg > 0 && s5wr >= 55) { verdict = '▲ 多方'; verdictColor = 'var(--up)'; }
       else if (s5avg > 0)           { verdict = '△ 多方偏弱'; verdictColor = '#7dd99e'; }
       else                           { verdict = '▷ 中性偏多'; verdictColor = 'var(--muted)'; }
     } else if (metaDir === '空') {
-      if (s5avg < 0 && s5wr < 45)  { verdict = '▼ 空方'; verdictColor = 'var(--red)'; }
+      if (s5avg < 0 && s5wr < 45)  { verdict = '▼ 空方'; verdictColor = 'var(--down)'; }
       else if (s5avg < 0)           { verdict = '▽ 空方偏弱'; verdictColor = '#f47e7a'; }
       else                           { verdict = '◁ 中性偏空'; verdictColor = 'var(--muted)'; }
     } else {
-      if (s5avg > 1 && s5wr >= 55)  { verdict = '▲ 偏多'; verdictColor = 'var(--green)'; }
-      else if (s5avg < -1 && s5wr < 45) { verdict = '▼ 偏空'; verdictColor = 'var(--red)'; }
+      if (s5avg > 1 && s5wr >= 55)  { verdict = '▲ 偏多'; verdictColor = 'var(--up)'; }
+      else if (s5avg < -1 && s5wr < 45) { verdict = '▼ 偏空'; verdictColor = 'var(--down)'; }
       else                           { verdict = '◆ 中性'; verdictColor = 'var(--muted)'; }
     }
     smVerdict.textContent = verdict;

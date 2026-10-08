@@ -355,7 +355,7 @@ function renderDetailPage(d) {
     { label: "60D 報酬", value: `<span class="${retClass(s.return_ew_60d)}">${pctFmt(s.return_ew_60d)}</span>` },
     { label: "指數水位", value: s.index_level?.toFixed(2) ?? "—" },
     { label: "健康度", value: healthBadgeHtml(s.internal_health) },
-    { label: "漲跌比", value: s.breadth_up_ratio !== null && s.breadth_up_ratio !== undefined ? `<div class="health-bar-wrap"><div class="health-bar"><div class="health-bar-fill" style="width:${(s.breadth_up_ratio*100).toFixed(0)}%;background:${s.breadth_up_ratio>=0.5?'var(--green)':'var(--red)'}"></div></div>${(s.breadth_up_ratio*100).toFixed(1)}%</div>` : "—" },
+    { label: "漲跌比", value: s.breadth_up_ratio !== null && s.breadth_up_ratio !== undefined ? `<div class="health-bar-wrap"><div class="health-bar"><div class="health-bar-fill" style="width:${(s.breadth_up_ratio*100).toFixed(0)}%;background:${s.breadth_up_ratio>=0.5?'var(--up)':'var(--down)'}"></div></div>${(s.breadth_up_ratio*100).toFixed(1)}%</div>` : "—" },
     { label: "站上MA20", value: s.above_ma20_ratio !== null && s.above_ma20_ratio !== undefined ? `${(s.above_ma20_ratio*100).toFixed(1)}%` : "—" },
     { label: "結構事件", value: s.structure_event ? eventBadgeHtml(s.structure_event) : "—" },
   ];
@@ -736,10 +736,10 @@ window.addEventListener('resize', () => {
 });
 
 const _QUADS = [
-  { key: 'up',   name: '強勢加速', pos: '右上', col: '#3fb950', test: (a, b) => a >= 0 && b >= 0, hint: '5 日、20 日都漲：主流族群' },
+  { key: 'up',   name: '強勢加速', pos: '右上', col: '#f85149', test: (a, b) => a >= 0 && b >= 0, hint: '5 日、20 日都漲：主流族群' },
   { key: 'rec',  name: '反彈修復', pos: '左上', col: '#58a6ff', test: (a, b) => a <  0 && b >= 0, hint: '20 日漲、近 5 日回檔：強勢股休息' },
   { key: 'turn', name: '短多長弱', pos: '右下', col: '#d29922', test: (a, b) => a >= 0 && b <  0, hint: '20 日跌、近 5 日反彈：可能落底轉強' },
-  { key: 'weak', name: '雙弱',     pos: '左下', col: '#f85149', test: (a, b) => a <  0 && b <  0, hint: '5 日、20 日都跌：避開' },
+  { key: 'weak', name: '雙弱',     pos: '左下', col: '#3fb950', test: (a, b) => a <  0 && b <  0, hint: '5 日、20 日都跌：避開' },
 ];
 
 function _shortSector(n) {
@@ -875,10 +875,10 @@ async function renderBubbleChart(sectors) {
   const yTicks = ticks(yMax).map(v => `<line x1="${PAD.left}" y1="${toY(v)}" x2="${PAD.left + iW}" y2="${toY(v)}" stroke="#21262d"/>
       <text x="${PAD.left - 5}" y="${toY(v) + 3}" text-anchor="end" font-size="10" fill="#8b949e">${fmtPct(v)}</text>`).join('');
   const qBands = [
-    [x0, PAD.top, PAD.left + iW - x0, '#3fb950', '強勢加速 ↗', 'end', PAD.left + iW - 6, PAD.top + 13],
+    [x0, PAD.top, PAD.left + iW - x0, '#f85149', '強勢加速 ↗', 'end', PAD.left + iW - 6, PAD.top + 13],
     [PAD.left, PAD.top, x0 - PAD.left, '#58a6ff', '↖ 反彈修復', 'start', PAD.left + 6, PAD.top + 13],
     [x0, PAD.top + iH - 18, PAD.left + iW - x0, '#d29922', '短多長弱 ↘', 'end', PAD.left + iW - 6, PAD.top + iH - 5],
-    [PAD.left, PAD.top + iH - 18, x0 - PAD.left, '#f85149', '↙ 雙弱', 'start', PAD.left + 6, PAD.top + iH - 5],
+    [PAD.left, PAD.top + iH - 18, x0 - PAD.left, '#3fb950', '↙ 雙弱', 'start', PAD.left + 6, PAD.top + iH - 5],
   ].map(([x, y, w, c, t, a, tx, ty]) => `<rect x="${x}" y="${y}" width="${Math.max(0, w)}" height="18" fill="${c}" fill-opacity=".08"/>
       <text x="${tx}" y="${ty}" text-anchor="${a}" font-size="${small ? 10 : 11}" font-weight="700" fill="${c}" opacity=".85">${t}</text>`).join('');
 
@@ -965,7 +965,7 @@ function renderStocksTablePanel(stocks) {
     return '<div style="color:var(--muted);font-size:.8rem">無資料</div>';
   const rows = stocks.map(s => {
     const ret = s.return_20d;
-    const retStyle = ret == null ? '' : ret > 0 ? 'color:var(--green)' : ret < 0 ? 'color:var(--red)' : '';
+    const retStyle = ret == null ? '' : ret > 0 ? 'color:var(--up)' : ret < 0 ? 'color:var(--down)' : '';
     const retStr = ret == null ? '—' : (ret > 0 ? '+' : '') + ret.toFixed(2) + '%';
     const vol = s.volume ? (s.volume >= 10000 ? (s.volume/10000).toFixed(1)+'萬' : s.volume.toLocaleString()) : '—';
     const sname = escHtml(s.name || '');

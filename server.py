@@ -1005,6 +1005,13 @@ REGIME_FRONTEND = BASE_DIR / "regime-frontend"
 app.mount("/regime/static", StaticFiles(directory=str(REGIME_FRONTEND)), name="regime_static")
 
 
+@app.get("/theme.css", include_in_schema=False)
+def theme_css():
+    """內嵌頁面（總經、產業輪動、市場關聯、權證）共用主題，跟主網站同一種風格（B57）"""
+    from fastapi.responses import FileResponse
+    return FileResponse(str(BASE_DIR / "theme.css"), media_type="text/css")
+
+
 @app.get("/regime/", include_in_schema=False)
 def regime_index():
     from fastapi.responses import FileResponse
@@ -1793,7 +1800,8 @@ def _deep_market_regime() -> dict | None:
         r = c.execute("SELECT date, regime_label FROM factors WHERE regime_label IS NOT NULL AND regime_label != '' "
                       "ORDER BY date DESC LIMIT 1").fetchone()
         c.close()
-        return {"date": r[0], "label": r[1]} if r else None
+        from regime.factor import tw_label
+        return {"date": r[0], "label": tw_label(r[1])} if r else None   # 燈號換台股慣例（多＝🔴、空＝🟢）
     except Exception:
         return None
 
