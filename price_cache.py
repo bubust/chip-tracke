@@ -572,7 +572,9 @@ def get_stock_ohlcv(stock_id: str, days: int = 60) -> pd.DataFrame:
         return pd.DataFrame()
 
 def save_stock_ohlcv(stock_id: str, df: pd.DataFrame):
-    """將 Yahoo 抓回的 DataFrame 存入 price_daily 快取（供下次 Yahoo 失敗時使用）。"""
+    """將 Yahoo 抓回的 DataFrame 存入 price_daily 快取（供下次 Yahoo 失敗時使用）。
+    只補沒有的日子（INSERT OR IGNORE）：已經有的是官方行情（不還原），Yahoo 的舊價格常是還原價
+    （配股／減資，有的連 split 事件都沒列，例 0050 一拆四），不能蓋掉（B53）。"""
     try:
         if df is None or df.empty:
             return
@@ -602,7 +604,7 @@ def save_stock_ohlcv(stock_id: str, df: pd.DataFrame):
         if records:
             conn = sqlite3.connect(str(DB_PATH))
             conn.executemany(
-                "INSERT OR REPLACE INTO price_daily (date,stock_id,name,open,high,low,close,volume) "
+                "INSERT OR IGNORE INTO price_daily (date,stock_id,name,open,high,low,close,volume) "
                 "VALUES (:date,:stock_id,:name,:open,:high,:low,:close,:volume)",
                 records
             )

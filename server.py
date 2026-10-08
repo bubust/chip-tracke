@@ -183,8 +183,22 @@ def _parse_cnyes(x: dict):
                           open=x.get("19"), high=x.get("12"), low=x.get("13"), volume=x.get("200013"))
 
 
+_RT_ONE: dict = {}    # {sid: (時間, 報價)}：K 線、關鍵價位、深度分析同一檔幾秒內只問一次
+
+
 def _rt_quote_sync(sid: str) -> "dict | None":
-    """單一檔即時報價（K 線圖補今天那根用）"""
+    """單一檔即時報價（K 線圖、關鍵價位補今天那根用），快取 5 秒"""
+    import time as _t
+    hit = _RT_ONE.get(sid)
+    if hit and _t.time() - hit[0] < 5:
+        return hit[1]
+    q = _rt_quote_fetch(sid)
+    if q:
+        _RT_ONE[sid] = (_t.time(), q)
+    return q
+
+
+def _rt_quote_fetch(sid: str) -> "dict | None":
     try:
         r = httpx.get(_CNYES_URL + f"TWS:{sid}:STOCK", headers=_RT_HDRS, timeout=6)
         for x in (r.json().get("data") or []):
@@ -3311,10 +3325,18 @@ _levels_cache: dict = {}
 
 
 def _fetch_kline(sid: str, mkt: str):
-    """關鍵價位、深度分析共用的日 K：_fetch_for_scan（盤中會帶今天的即時 K 棒）。
-    Yahoo 限流（429）時它直接回空的（掃描靠這個進重試），這裡改用本機已存的日 K（到上一個收盤），
+    """關鍵價位、深度分析共用的日 K＝K 線圖同一份：price_daily（官方行情、不還原）＋今天的即時 K 棒（鉅亨）。
+    price_daily 太舊或不夠才走 _fetch_for_scan（Yahoo）；Yahoo 限流（429）回空的時候再退回本機已存的日 K，
     不然盤中觀察清單一大半都會變成「抓不到 K 線資料」"""
     from yahoo_price import _fetch_for_scan
+    try:
+        from price_cache import get_stock_ohlcv
+        cached = get_stock_ohlcv(sid, days=520)
+        fresh = (datetime.now(timezone(timedelta(hours=8))) - timedelta(days=6)).strftime("%Y%m%d")
+        if cached is not None and len(cached) >= 60 and str(cached.iloc[-1]["date"]) >= fresh:
+            return _append_live_bar(sid, cached)
+    except Exception:
+        pass
     df = _fetch_for_scan(sid, mkt)
     if df is None or df.empty:
         try:
