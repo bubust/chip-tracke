@@ -593,6 +593,8 @@ def save_stock_ohlcv(stock_id: str, df: pd.DataFrame):
             date_str = date_val.replace("-", "") if "-" in str(date_val) else str(date_val)
             if date_str == skip_date:
                 continue
+            if not float(row.get("volume") or 0):   # 量 0＝沒成交或休市日（颱風假 Yahoo 會塞假的 K 棒），官方也不會有這根
+                continue
             records.append({
                 "date": date_str, "stock_id": stock_id, "name": "",
                 "open": float(row.get("open") or 0) or None,

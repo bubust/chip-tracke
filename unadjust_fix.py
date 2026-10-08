@@ -83,13 +83,31 @@ def official_day(date8: str):
     return twse, tpex
 
 
+def market_closed(date8: str) -> bool:
+    """兩邊官方都明確說「這天沒有資料」＝休市（颱風假等）。抓失敗、格式不對都不算，免得誤刪"""
+    try:
+        j = httpx.get("https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX",
+                      params={"date": date8, "type": "ALLBUT0999", "response": "json"}, headers=_H, timeout=40).json()
+        twse_none = "沒有符合條件" in str(j.get("stat", "")) and not j.get("tables")
+        time.sleep(3)
+        j = httpx.get("https://www.tpex.org.tw/www/zh-tw/afterTrading/otc",
+                      params={"date": f"{date8[:4]}/{date8[4:6]}/{date8[6:]}", "type": "EW", "response": "json"},
+                      headers=_H, timeout=40).json()
+        tables = j.get("tables") or []
+        tpex_none = str(j.get("stat", "")).lower() == "ok" and bool(tables) and all(not t.get("data") for t in tables)
+        time.sleep(2)
+        return twse_none and tpex_none
+    except Exception:
+        return False
+
+
 def rebuild_dates(db_path, days: int = 760) -> list:
     tw_now = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
     today = tw_now.strftime("%Y%m%d")
     start = (tw_now - datetime.timedelta(days=days)).strftime("%Y%m%d")
     conn = sqlite3.connect(str(db_path), timeout=30)
-    rows = conn.execute("SELECT date FROM price_daily WHERE date >= ? AND date < ? GROUP BY date HAVING COUNT(*) > 500 "
-                        "ORDER BY date DESC", (start, today)).fetchall()
+    rows = conn.execute("SELECT DISTINCT date FROM price_daily WHERE date >= ? AND date < ? ORDER BY date DESC",
+                        (start, today)).fetchall()
     conn.close()
     return [r[0] for r in rows]          # 新的先做：最近的資料最常用
 
@@ -131,7 +149,15 @@ def run(force: bool = False) -> dict:
         for i, d in enumerate(dates):
             twse, tpex = official_day(d)
             if twse is None or tpex is None or len(twse or []) + len(tpex or []) < 500:
-                res["failed_dates"].append(d)
+                if market_closed(d):         # 休市日：Yahoo 塞的假 K 棒（收盤＝前一天、量 0）整天刪掉
+                    conn = sqlite3.connect(str(DB_PATH), timeout=30)
+                    n = conn.execute("DELETE FROM price_daily WHERE date=?", (d,)).rowcount
+                    conn.commit()
+                    conn.close()
+                    res.setdefault("closed_removed", {})[d] = n
+                    res["done_dates"].append(d)
+                else:
+                    res["failed_dates"].append(d)
                 _state["done"] += 1
                 continue
             recs = [r for r in twse + tpex if r["stock_id"] in known]
