@@ -4966,7 +4966,8 @@ const _chartOverlayState = { ma5: true, ma10: true, ma20: true, ma60: true, bb: 
 let _maSeriesRefs = {};
 let _bbSeriesRefs = [];
 let _fakeBdMA    = 'ma10';   // 假跌破偵測均線（null = 關閉）
-let _fakeBdPivot = false;    // 前高/前低突破模式
+let _fakeBdPivot = false;    // 破高回落／破低收復模式
+let _showSwings  = true;     // 前高／前低標記
 let _chartCachedMarkerData = null; // 用於重算 markers 無需整圖重繪
 
 function setChartPeriod(period) {
@@ -5107,13 +5108,13 @@ function _rebuildChartMarkers() {
         }
         // i 日突破 MAx，i+1 日跌回 → 假突破
         if (closes[i] > selMA[i] && closes[i + 1] < selMA[i + 1]) {
-          markers.push({ time: _rt(ohlcv[i + 1]), position: 'aboveBar', color: '#ef5350', shape: 'arrowDown', text: '假突破', size: 1 });
+          markers.push({ time: _rt(ohlcv[i + 1]), position: 'aboveBar', color: '#22c55e', shape: 'arrowDown', text: '假突破', size: 1 });
         }
       }
     }
   }
 
-  // ── 假跌破 / 假突破（前高/前低 模式）──
+  // ── 破低收復 / 破高回落（前 10 天最低／最高被收盤跌破／突破、隔天又收回）──
   if (_fakeBdPivot) {
     const W = 10;
     for (let i = W + 1; i < n - 1; i++) {
@@ -5124,81 +5125,81 @@ function _rebuildChartMarkers() {
       }
       // 跌破前低隔日收復 → 假跌破前低
       if (closes[i] < prevLow && closes[i + 1] > prevLow) {
-        markers.push({ time: _rt(ohlcv[i + 1]), position: 'belowBar', color: '#38bdf8', shape: 'arrowUp', text: '前低↑', size: 1 });
+        markers.push({ time: _rt(ohlcv[i + 1]), position: 'belowBar', color: '#38bdf8', shape: 'arrowUp', text: '破低收復', size: 1 });
       }
       // 突破前高隔日跌回 → 假突破前高
       if (closes[i] > prevHigh && closes[i + 1] < prevHigh) {
-        markers.push({ time: _rt(ohlcv[i + 1]), position: 'aboveBar', color: '#f97316', shape: 'arrowDown', text: '前高↓', size: 1 });
+        markers.push({ time: _rt(ohlcv[i + 1]), position: 'aboveBar', color: '#22c55e', shape: 'arrowDown', text: '破高回落', size: 1 });
       }
     }
   }
 
-  // ── 段落力道標示（最近 12 段）──
-  const PW = 3;
-  const pivots = [];
-  for (let i = PW; i < n - PW; i++) {
-    const c = closes[i];
-    let hi = true, lo = true;
-    for (let k = 1; k <= PW; k++) {
-      if (closes[i - k] >= c || closes[i + k] >= c) hi = false;
-      if (closes[i - k] <= c || closes[i + k] <= c) lo = false;
-    }
-    if (hi) pivots.push({ idx: i, type: 'H', price: c });
-    if (lo) pivots.push({ idx: i, type: 'L', price: c });
-  }
-  const cp = [];
-  for (const p of pivots) {
-    if (!cp.length || cp[cp.length - 1].type !== p.type) {
-      cp.push({ ...p });
-    } else {
-      const last = cp[cp.length - 1];
-      if ((p.type === 'H' && p.price > last.price) || (p.type === 'L' && p.price < last.price))
-        cp[cp.length - 1] = { ...p };
-    }
-  }
-  const recent = cp.slice(-12);
-  for (let i = 1; i < recent.length; i++) {
-    const prev = recent[i - 1], curr = recent[i];
-    const pct = ((curr.price - prev.price) / prev.price * 100).toFixed(1);
-    const sign = pct >= 0 ? '+' : '';
-    markers.push({
-      time: _rt(ohlcv[curr.idx]),
-      position: curr.type === 'H' ? 'aboveBar' : 'belowBar',
-      color: curr.type === 'H' ? '#ef5350' : '#26a69a',
-      shape: 'circle', size: 1,
-      text: `${sign}${pct}%`,
-    });
+  // ── 前高／前低：跟關鍵價位（price_levels.py）同一套，標在真正的最高價／最低價那根 ──
+  // 前高＝左右各 5 根都沒有更高的波段高點（右邊還不滿 5 根的近期高點也算，今天不算）＝壓力區用的前高；
+  // 前低＝兩個前高之間的最低點（最後一段到昨天）。以前用收盤價找轉折，標的位置跟壓力／支撐線對不起來（2026-10-08 用戶回報）
+  if (_showSwings) {
+    const sw = _swingPoints(ohlcv);
+    sw.highs.slice(-8).forEach(i => markers.push({
+      time: _rt(ohlcv[i]), position: 'aboveBar', color: '#f59e0b', shape: 'circle', size: 0.6,
+      text: `前高 ${+ohlcv[i].high.toFixed(2)}`,
+    }));
+    sw.lows.slice(-8).forEach(i => markers.push({
+      time: _rt(ohlcv[i]), position: 'belowBar', color: '#4ade80', shape: 'circle', size: 0.6,
+      text: `前低 ${+ohlcv[i].low.toFixed(2)}`,
+    }));
   }
 
-  // ── 籌碼事件標記 ──
+  // ── 籌碼事件標記：只標「開始」那天（7 日累計會連續好幾天符合，以前每天都標、擠成一團）──
   if (Object.keys(chipDateMap).length > 0) {
+    let prevCls = 0;
     ohlcv.forEach(r => {
-      const dateKey = String(r.date).replace(/-/g, '');
-      const chip = chipDateMap[dateKey];
-      if (!chip) return;
-      const lvl = chip.signal_level || 0;
-      if (lvl >= 3) {
-        markers.push({
-          time: _rt(r), position: 'belowBar',
-          color: lvl >= 5 ? '#ef4444' : '#f87171',
-          shape: lvl >= 5 ? 'arrowUp' : 'circle',
-          size: lvl >= 5 ? 2 : 1,
-          text: chip.signal_emoji ? `${chip.signal_emoji}` : '▲籌',
-        });
-      } else if (lvl <= -3) {
-        markers.push({
-          time: _rt(r), position: 'aboveBar',
-          color: lvl <= -5 ? '#22c55e' : '#4ade80',
-          shape: lvl <= -5 ? 'arrowDown' : 'circle',
-          size: lvl <= -5 ? 2 : 1,
-          text: chip.signal_emoji ? `${chip.signal_emoji}` : '▼籌',
-        });
+      const chip = chipDateMap[String(r.date).replace(/-/g, '')];
+      const lvl = chip ? (chip.signal_level || 0) : 0;
+      const cls = lvl >= 3 ? 1 : lvl <= -3 ? -1 : 0;
+      if (cls === 1 && prevCls !== 1) {
+        markers.push({ time: _rt(r), position: 'belowBar', color: '#ef4444', shape: 'arrowUp', size: 1,
+                       text: '建倉' });
+      } else if (cls === -1 && prevCls !== -1) {
+        markers.push({ time: _rt(r), position: 'aboveBar', color: '#22c55e', shape: 'arrowDown', size: 1,
+                       text: '接盤⚠' });
       }
+      prevCls = cls;
     });
   }
 
   markers.sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0);
   try { cSeries.setMarkers(markers); } catch(e) {}
+}
+
+// 前高／前低（跟 price_levels.py 同一套）：前高＝pivots(h,5,'high')＋recent_high(h,5)（壓力區用的前高）；
+// 前低＝相鄰 3 根波段高點之間的最低點（pullback_low／支撐、滾動停損用的回檔低點，最後一段到昨天、今天不算）
+function _swingPoints(ohlcv) {
+  const h = ohlcv.map(r => +r.high), l = ohlcv.map(r => +r.low), n = h.length;
+  const mx = (a, b) => { let m = -Infinity; for (let k = a; k < b; k++) if (h[k] > m) m = h[k]; return m; };
+  const peaks = K => {
+    const out = [];
+    for (let i = K; i < n - K; i++) if (h[i] > mx(i - K, i) && h[i] >= mx(i + 1, i + K + 1)) out.push(i);
+    for (let i = n - 2; i >= Math.max(K, n - K); i--) {        // 右邊還不滿 K 根的近期高點（今天不算）
+      if (h[i] > mx(i - K, i) && h[i] >= mx(i + 1, n)) { if (!out.includes(i)) out.push(i); break; }
+    }
+    return out.sort((a, b) => a - b);
+  };
+  const highs = peaks(5), bounds = [...peaks(3), n - 1], lows = [];
+  for (let s = 0; s < bounds.length - 1; s++) {
+    const a = bounds[s], b = bounds[s + 1];
+    if (b - a < 2) continue;
+    let j = a + 1;
+    for (let k = a + 2; k < b; k++) if (l[k] < l[j]) j = k;
+    lows.push(j);
+  }
+  return { highs, lows };
+}
+
+function toggleSwings() {
+  _showSwings = !_showSwings;
+  const btn = document.getElementById('swing-btn');
+  if (btn) btn.classList.toggle('active', _showSwings);
+  _rebuildChartMarkers();
 }
 
 function setFakeBdMA(key) {
@@ -6057,25 +6058,23 @@ async function saveAllStratParams() {
         <button id="fbd-ma-btn-ma5"  class="btn sm ghost chart-overlay-btn" onclick="setFakeBdMA('ma5')"  style="padding:2px 7px;font-size:.72rem;color:#4caf50;border-color:#4caf50" title="以 MA5 判斷假跌破/假突破">MA5</button>
         <button id="fbd-ma-btn-ma10" class="btn sm ghost chart-overlay-btn active" onclick="setFakeBdMA('ma10')" style="padding:2px 7px;font-size:.72rem;color:#ffeb3b;border-color:#ffeb3b" title="以 MA10 判斷假跌破/假突破">MA10</button>
         <button id="fbd-ma-btn-ma20" class="btn sm ghost chart-overlay-btn" onclick="setFakeBdMA('ma20')" style="padding:2px 7px;font-size:.72rem;color:#e91e63;border-color:#e91e63" title="以 MA20 判斷假跌破/假突破">MA20</button>
-        <button id="fbd-pivot-btn"   class="btn sm ghost chart-overlay-btn" onclick="toggleFakeBdPivot()" style="padding:2px 7px;font-size:.72rem;color:#38bdf8;border-color:#38bdf8" title="偵測跌破前10日最低點後次日收復（前低↑），或突破前10日最高點後次日跌回（前高↓）">前高/前低</button>
+        <button id="fbd-pivot-btn"   class="btn sm ghost chart-overlay-btn" onclick="toggleFakeBdPivot()" style="padding:2px 7px;font-size:.72rem;color:#38bdf8;border-color:#38bdf8" title="偵測收盤跌破前 10 天最低點、隔天收回（破低收復），或收盤突破前 10 天最高點、隔天跌回（破高回落）">破高/破低</button>
+        <button id="swing-btn" class="btn sm ghost chart-overlay-btn active" onclick="toggleSwings()" style="padding:2px 7px;font-size:.72rem;color:#f59e0b;border-color:#f59e0b" title="前高＝左右各 5 根的波段高點（壓力區用的前高）、前低＝兩個前高之間的最低點，標在真正的最高／最低價">前高/前低</button>
       </span>
     </div>
     <!-- 圖例說明列 -->
     <div style="display:flex;align-items:center;padding:5px 16px;background:#0a0f1a;flex-shrink:0;flex-wrap:wrap;gap:12px;border-bottom:1px solid #1a1f2e">
       <span style="font-size:.8rem;color:#6b7280">圖例：</span>
       <span style="font-size:.8rem;color:#fbbf24" title="跌破 MAx 次日收復 → 洗盤完成，看多訊號">▲黃 假跌破（MAx）</span>
-      <span style="font-size:.8rem;color:#ef5350" title="突破 MAx 次日跌回 → 假突破，看空訊號">▼紅 假突破（MAx）</span>
-      <span style="font-size:.8rem;color:#38bdf8" title="收盤跌破前10日最低點，次日收復 → 假跌破前低">▲藍 前低↑</span>
-      <span style="font-size:.8rem;color:#f97316" title="收盤突破前10日最高點，次日跌回 → 假突破前高">▼橙 前高↓</span>
+      <span style="font-size:.8rem;color:#22c55e" title="突破 MAx 次日跌回 → 假突破，看空訊號">▼綠 假突破（MAx）</span>
+      <span style="font-size:.8rem;color:#38bdf8" title="收盤跌破前 10 天最低點，隔天收回">▲藍 破低收復</span>
+      <span style="font-size:.8rem;color:#22c55e" title="收盤突破前 10 天最高點，隔天跌回">▼綠 破高回落</span>
       <span style="font-size:.8rem;color:#6b7280">｜</span>
-      <span style="font-size:.8rem;color:#f87171" title="籌碼訊號：外資投信同步建倉（level 3~4），K 棒下方紅點＋🔴🔴">●紅 籌碼買入</span>
-      <span style="font-size:.8rem;color:#ef4444" title="籌碼訊號：法人強力買超（level ≥5），最強買入訊號">▲紅 籌碼強買</span>
-      <span style="font-size:.8rem;color:#fbbf24" title="K 棒上方綠點旁的 🟢⚠️：法人（外資＋投信＋自營）7 日累計賣超 1000 張以上，同時融資 7 日增加 300 張以上 → 法人出貨、散戶接盤，風險訊號">🟢⚠️ 散戶接盤警示（法人賣、融資增）</span>
-      <span style="font-size:.8rem;color:#4ade80" title="籌碼訊號：法人出貨賣壓（level -3~-4）">●綠 籌碼賣壓</span>
-      <span style="font-size:.8rem;color:#22c55e" title="籌碼訊號：法人強力賣出（level ≤-5），最強賣出訊號">▼綠 籌碼強賣</span>
+      <span style="font-size:.8rem;color:#ef4444" title="外資投信同步建倉：外資、投信 7 日同步買超、連買 4 天以上，只標開始那天">▲紅 建倉</span>
+      <span style="font-size:.8rem;color:#22c55e" title="散戶接盤警示：法人 7 日累計賣超 1000 張以上、同時融資 7 日增加 300 張以上，只標開始那天">▼綠 接盤⚠</span>
       <span style="font-size:.8rem;color:#6b7280">｜</span>
-      <span style="font-size:.8rem;color:#ef5350" title="近12段的局部最高點 → 顯示與前段的漲跌%，負值=高點下降（下降趨勢）">●紅 段落高點</span>
-      <span style="font-size:.8rem;color:#26a69a" title="近12段的局部最低點 → 顯示與前段的漲跌%，正值=低點抬高（上升趨勢）">●綠 段落低點</span>
+      <span style="font-size:.8rem;color:#f59e0b" title="左右各 5 根的波段高點，跟壓力線同一套">●橘 前高</span>
+      <span style="font-size:.8rem;color:#4ade80" title="相鄰兩個小高點（左右各 3 根）之間的最低點，跟支撐、滾動停損同一套">●綠 前低</span>
     </div>
     <div id="chart-tv-container" style="flex:1;overflow:hidden"></div>
   </div>
