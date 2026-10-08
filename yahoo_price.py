@@ -320,7 +320,7 @@ STRATEGY_KEYS = ["S1", "S1_SHORT", "S2", "S5", "S10",
 from scanner_course import COURSE_FNS as _COURSE_FNS  # noqa: E402
 from chip_course import CHIP_STRATEGIES as _CHIP_STRATS  # noqa: E402
 STRATEGY_KEYS += [k for k in _COURSE_FNS if k not in STRATEGY_KEYS] + [k for k in _CHIP_STRATS if k not in STRATEGY_KEYS]
-STRATEGY_KEYS.append("S_BEST")   # 🏆 研究最佳（best_strategy.py）
+STRATEGY_KEYS.append("S_BEST")   # 🔬 研究候選（best_strategy.py，PLAN-BEST）
 
 _SCAN_WORKERS = 4    # Fly.io shared-cpu: 4 workers 避免 Yahoo 429 burst
 

@@ -1884,7 +1884,7 @@ async function loadWatchlist() {
 function renderWatchlist() {
   try { document.querySelector('#tab-warrant iframe').contentWindow.refreshWlButtons(); } catch (e) { /* 權證分頁還沒載入 */ }
   setTimeout(_loadLevels, 0);   // 關鍵價位非同步補上
-  setTimeout(_loadBestWatch, 0);   // 🏆 研究最佳的出場狀態
+  setTimeout(_loadBestWatch, 0);   // 🔬 研究候選（PLAN-BEST）的出場狀態
   const tbody = document.getElementById('wl-tbody');
   if (!_wlData.length) {
     document.getElementById('wl-empty').style.display = 'block';
@@ -4757,7 +4757,7 @@ async function _renderBestExplain() {
   </div>`;
 }
 
-// 觀察清單：🏆 研究最佳的計畫／出場狀態
+// 觀察清單：🔬 研究候選（PLAN-BEST）的計畫／出場狀態
 let _bestWatch = {};
 async function _loadBestWatch() {
   try { _bestWatch = await api('GET', '/api/best/watch') || {}; } catch (e) { return; }

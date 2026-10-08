@@ -775,7 +775,7 @@ async def lifespan(app: FastAPI):
                         await run_market_scan(strategy_params=params)
                     _aio.run(_update_then_scan())
                     lg.info("[scan_scheduler] Step 1 完成")
-                    # 🏆 研究最佳：今天的訊號、持有中的出場（同一天只推一次）
+                    # 🔬 研究候選（PLAN-BEST）：今天的訊號、持有中的出場（同一天只推一次）
                     try:
                         from best_routes import push_best_signals, push_best_exits
                         lg.info(f"[best] 訊號推播 {push_best_signals()}；出場推播 {len(push_best_exits())} 則")
