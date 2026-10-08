@@ -146,6 +146,57 @@ def _sf_price(s) -> "float | None":
         return None
 
 
+async def _fetch_rt_quotes(stock_ids: list, mkt_map: dict) -> dict:
+    """觀察清單現價（跟看盤軟體一樣的最後成交價）：鉅亨 → Yahoo奇摩股市 補缺的。
+    MIS 的 z（成交價）現在幾乎都是 "-"，舊做法只能拿幾分鐘前的快取；Yahoo Finance 又常回昨收（2026-10-08 實測）。
+    兩個來源從 Fly 東京都抓得到。回傳 {sid: {"close", "change_pct"}}，抓不到的不放（呼叫端走舊的備援）"""
+    out: dict = {}
+    if not stock_ids:
+        return out
+    hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
+
+    def _put(sid, price, prev, pct=None):
+        price, prev = _sf_price(price), _sf_price(prev)
+        if price is None or price <= 0:
+            return
+        if pct is None and prev:
+            pct = (price - prev) / prev * 100
+        out[sid] = {"close": round(price, 2), "change_pct": round(float(pct), 2) if pct is not None else None}
+
+    async with httpx.AsyncClient(timeout=8, headers=hdrs, follow_redirects=True) as c:
+        # ── 1. 鉅亨：一次一批（欄位 6＝成交價、21＝昨收、56＝漲跌幅 %）──
+        for i in range(0, len(stock_ids), 40):
+            chunk = stock_ids[i:i + 40]
+            try:
+                r = await c.get("https://ws.api.cnyes.com/ws/api/v1/quote/quotes/" + ",".join(f"TWS:{s}:STOCK" for s in chunk))
+                for x in (r.json().get("data") or []):
+                    key = str(x.get("0") or "").split(":")          # "TWS:2449:STOCK"
+                    sid = str(x.get("200010") or (key[1] if len(key) >= 2 else ""))
+                    if sid in chunk:
+                        _put(sid, x.get("6"), x.get("21"), _sf_price(x.get("56")))
+            except Exception as e:
+                print(f"[RT] 鉅亨失敗: {e}")
+        # ── 2. Yahoo奇摩股市：鉅亨沒給的 ──
+        miss = [s for s in stock_ids if s not in out]
+        for i in range(0, len(miss), 20):
+            chunk = miss[i:i + 20]
+            syms = ",".join(f"{s}.{'TWO' if mkt_map.get(s) == 'tpex' else 'TW'}" for s in chunk)
+            try:
+                r = await c.get(f"https://tw.stock.yahoo.com/_td-stock/api/resource/StockServices.stockList;fields=avgPrice;symbols={syms}")
+                for x in (r.json() or []):
+                    if not isinstance(x, dict):
+                        continue
+                    sid = str(x.get("symbol", "")).split(".")[0]      # 上市上櫃後綴給錯它也會自己更正
+                    price = _sf_price((x.get("price") or {}).get("raw"))
+                    chg = _sf_price((x.get("change") or {}).get("raw"))
+                    if sid in chunk and price is not None:
+                        _put(sid, price, price - chg if chg is not None else None,
+                             _sf_price(str(x.get("changePercent") or "").rstrip("%")))
+            except Exception as e:
+                print(f"[RT] Yahoo奇摩失敗: {e}")
+    return out
+
+
 async def _fetch_mis_prices(stock_ids: list, mkt_map: dict) -> dict:
     """
     TWSE MIS 即時報價（盤中每筆成交更新）。
@@ -1435,10 +1486,11 @@ async def api_indices():
 async def api_watchlist_prices():
     """
     輕量端點，供自動刷新用。
+    先用鉅亨／Yahoo奇摩股市（跟看盤軟體一樣的最後成交價，盤中盤後都適用）；抓不到的才走舊備援：
     盤中（09:00~13:35）→ TWSE MIS 即時報價
     盤後 / 假日       → Yahoo Finance 收盤價
     """
-    from yahoo_price import get_stock_list, fetch_prices_for_stocks
+    from yahoo_price import get_stock_list
     conn = get_conn()
     rows = conn.execute("SELECT stock_id FROM watchlist").fetchall()
     conn.close()
@@ -1448,6 +1500,17 @@ async def api_watchlist_prices():
     mkt_map = dict(zip(stocks_df["stock_id"], stocks_df["type"]))
     stock_ids = [r["stock_id"] for r in rows]
 
+    result = await _fetch_rt_quotes(stock_ids, mkt_map)
+    missing = [sid for sid in stock_ids if sid not in result]
+    if missing:
+        old = await _watchlist_prices_fallback(missing, mkt_map)
+        result.update({k: v for k, v in old.items() if k in missing})
+    return result
+
+
+async def _watchlist_prices_fallback(stock_ids: list, mkt_map: dict) -> dict:
+    """舊的現價來源（鉅亨／Yahoo奇摩都抓不到時才用）"""
+    from yahoo_price import fetch_prices_for_stocks
     if _is_tw_trading_hours():
         mis_result = await _fetch_mis_prices(stock_ids, mkt_map)
         # MIS 抓不到 z（低量股 / 上櫃不穩定）→ Yahoo 補最後成交價（15分鐘延遲但是今天的價）
@@ -1872,6 +1935,9 @@ async def api_watchlist_summary():
     if still_miss:
         fm_fb = await _fetch_finmind_prices(still_miss)
         latest_prices.update(fm_fb)
+    # 股價、漲跌改用跟看盤軟體一樣的最後成交價（布林位置、階段仍用上面 Yahoo 日 K 算的）
+    for sid, q in (await _fetch_rt_quotes(stock_ids, mkt_map)).items():
+        latest_prices[sid] = {**(latest_prices.get(sid) or {}), **q}
 
     added_px = _added_prices(rows)
 
