@@ -62,6 +62,34 @@ def get_stock_list() -> pd.DataFrame:
 
 # ── Yahoo Finance async fetch ─────────────────────────────────────────────────
 
+# Yahoo 把台股配股、減資、分割都當成「split」：事件日之前的開高低收除過比例、量乘過比例（＝還原價）。
+# 一般看盤軟體預設不還原 → 抓的時候帶 events=split（YF_EVENTS），解析時再乘回去，存進 price_daily 的都是實際成交價。
+YF_EVENTS = "split"
+
+
+def split_factor_fn(result: dict):
+    """回傳 f(YYYYMMDD) → 那天的價格要乘回去的倍數（之後每個 split 比例相乘）；沒有 split 事件回 None"""
+    evs = []
+    for s in ((result.get("events") or {}).get("splits") or {}).values():
+        try:
+            ratio = float(s["numerator"]) / float(s["denominator"])
+            if ratio > 0 and abs(ratio - 1) > 1e-6:
+                d = (datetime.datetime.utcfromtimestamp(int(s["date"])) + datetime.timedelta(hours=8)).strftime("%Y%m%d")
+                evs.append((d, ratio))
+        except Exception:
+            pass
+    if not evs:
+        return None
+
+    def f(date_str: str) -> float:
+        r = 1.0
+        for d, ratio in evs:
+            if str(date_str)[:8] < d:
+                r *= ratio
+        return r
+    return f
+
+
 def _parse_yahoo_json(data: dict, adjusted: bool = False) -> pd.DataFrame:
     """adjusted=True 時多一欄 adjclose（除權息還原收盤，回測用）；預設不變，掃描不受影響。"""
     result = (data.get("chart", {}).get("result") or [])
@@ -90,6 +118,13 @@ def _parse_yahoo_json(data: dict, adjusted: bool = False) -> pd.DataFrame:
     df["date"] = df.index.strftime("%Y%m%d")
     df = df.reset_index(drop=True)[["date", "open", "high", "low", "close", "volume"]
                                    + (["adjclose"] if adjusted else [])]
+    # 還原價 → 實際成交價（跟看盤軟體一樣）；adjclose 不動（回測要用還原報酬）
+    _f = split_factor_fn(result)
+    if _f is not None and not df.empty:
+        _fac = df["date"].map(_f).astype(float)
+        for _c in ("open", "high", "low", "close"):
+            df[_c] = (df[_c].astype(float) * _fac).round(2)
+        df["volume"] = df["volume"].astype(float) / _fac
     # Yahoo 成交量為「股數（股）」，台股 1 張 = 1000 股，統一轉為張，與 price_cache 一致
     df["volume"] = (df["volume"].fillna(0) / 1000).round().astype(int)
 
@@ -149,7 +184,7 @@ async def _fetch_yahoo_async(
     days = _range_days.get(range_, 365)
     now  = int(time.time())
     p1   = now - days * 86400
-    params = {"interval": "1d", "period1": p1, "period2": now}
+    params = {"interval": "1d", "period1": p1, "period2": now, "events": YF_EVENTS}
     async with sem:
         # 請求前加 0~150ms 隨機抖動，避免突刺流量觸發 Yahoo 限流
         await asyncio.sleep(random.uniform(0, 0.15))
@@ -265,7 +300,7 @@ def fetch_yahoo(stock_id: str, market: str = "twse") -> pd.DataFrame:
     try:
         r = httpx.get(
             url,
-            params={"interval": "1d", "range": "2y"},
+            params={"interval": "1d", "range": "2y", "events": YF_EVENTS},
             headers={"User-Agent": _UA, "Accept": "application/json"},
             timeout=8.0,
             verify=False,
@@ -376,7 +411,7 @@ def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
     # ── 2. Yahoo Finance ──────────────────────────────────────────────────────
     suffixes = [".TW"] if market == "twse" else [".TWO", ".TW"]
     now_ts = int(time.time())
-    params = {"interval": "1d", "period1": now_ts - 730 * 86400, "period2": now_ts}
+    params = {"interval": "1d", "period1": now_ts - 730 * 86400, "period2": now_ts, "events": YF_EVENTS}
     try:
         sess = _get_scan_session()
     except Exception:
@@ -749,7 +784,7 @@ async def run_market_scan(strategy_params: dict = None):
                 suffixes = [".TW"] if mkt == "twse" else [".TWO", ".TW"]
                 now2  = int(time.time())
                 p1    = now2 - 365 * 86400
-                params2 = {"interval": "1d", "period1": p1, "period2": now2}
+                params2 = {"interval": "1d", "period1": p1, "period2": now2, "events": YF_EVENTS}
                 df = pd.DataFrame()
                 for sfx in suffixes:
                     for host2 in ["query1", "query2"]:

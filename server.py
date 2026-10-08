@@ -898,6 +898,12 @@ async def lifespan(app: FastAPI):
         threading.Thread(target=_price_backfill_cold, daemon=True).start()
     except Exception as _bfe:
         import logging; logging.getLogger(__name__).warning(f"[price_cache_backfill] {_bfe}")
+    # 價格改回不還原（跟看盤軟體一樣，B52）：price_daily 裡 Yahoo 還原過的舊價格修回實際成交價，只跑一次
+    try:
+        import unadjust_fix
+        unadjust_fix.start_if_needed(delay=120)
+    except Exception as _ua_e:
+        import logging; logging.getLogger(__name__).warning(f"[unadjust_fix] {_ua_e}")
     yield
     stop_warrant_scheduler()
     if _scan_sched:
@@ -2994,7 +3000,8 @@ def api_stock_ohlcv(stock_id: str, interval: str = "1d"):
     UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     now = int(_time.time())
     p1 = now - days * 86400
-    params = {"interval": yf_iv, "period1": p1, "period2": now}
+    from yahoo_price import YF_EVENTS, split_factor_fn
+    params = {"interval": yf_iv, "period1": p1, "period2": now, "events": YF_EVENTS}
 
     for host in ["query1", "query2"]:
         for suffix in suffixes:
@@ -3024,19 +3031,25 @@ def api_stock_ohlcv(stock_id: str, interval: str = "1d"):
                     # 回傳含 Unix timestamp 的 records
                     # ts 加 8 小時偏移 (28800)，讓 LightweightCharts 顯示台灣時間
                     _TW_OFFSET = 8 * 3600
+                    _sf = split_factor_fn(res) or (lambda _d: 1.0)     # 配股／減資還原價 → 實際成交價
                     records = []
                     for i, ts in enumerate(timestamps):
                         c = closes[i] if i < len(closes) else None
                         if c is None:
                             continue
+                        _d = datetime.utcfromtimestamp(ts + _TW_OFFSET).strftime("%Y%m%d")
+                        _k = _sf(_d)
+                        _o = opens[i] if i < len(opens) and opens[i] is not None else c
+                        _h = highs[i] if i < len(highs) and highs[i] is not None else c
+                        _l = lows[i] if i < len(lows) and lows[i] is not None else c
                         records.append({
                             "ts":     int(ts) + _TW_OFFSET,
-                            "date":   datetime.utcfromtimestamp(ts + _TW_OFFSET).strftime("%Y%m%d"),
-                            "open":   opens[i] if i < len(opens) else c,
-                            "high":   highs[i] if i < len(highs) else c,
-                            "low":    lows[i]  if i < len(lows)  else c,
-                            "close":  c,
-                            "volume": int(vols[i] or 0) // 1000 if i < len(vols) else 0,  # 股 → 張
+                            "date":   _d,
+                            "open":   round(_o * _k, 2),
+                            "high":   round(_h * _k, 2),
+                            "low":    round(_l * _k, 2),
+                            "close":  round(c * _k, 2),
+                            "volume": int((vols[i] or 0) / _k) // 1000 if i < len(vols) else 0,  # 股 → 張
                         })
                     if records:
                         return records[-2000:]
@@ -3381,6 +3394,22 @@ def api_levels(stock_id: str):
     """關鍵價位：第一／第二壓力區、目標價、停損（爆量低點／波段低點／前低／上漲模式出場）"""
     sid = _check_sid(stock_id)
     return JSONResponse(content=_sanitize_for_json(_levels_with_ref(sid, _watch_refs([sid]))))
+
+
+@app.get("/api/admin/unadjust/status")
+def api_unadjust_status():
+    """不還原修正的進度和結果（unadjust_fix.py）"""
+    import unadjust_fix
+    return JSONResponse(content=_sanitize_for_json(unadjust_fix.status()))
+
+
+@app.post("/api/admin/unadjust/run")
+def api_unadjust_run():
+    """重跑一次不還原修正（背景）"""
+    import threading
+    import unadjust_fix
+    threading.Thread(target=unadjust_fix.run, daemon=True, name="unadjust-fix").start()
+    return {"started": True}
 
 
 @app.get("/api/levels")
@@ -3814,7 +3843,7 @@ async def debug_yahoo(stock_id: str):
 
     now = int(_time.time())
     p1  = now - 730 * 86400  # 2y
-    params = {"interval": "1d", "period1": p1, "period2": now}
+    params = {"interval": "1d", "period1": p1, "period2": now, "events": "split"}   # 配股／減資：解析時乘回實際成交價
 
     async with httpx.AsyncClient(verify=False, timeout=15,
             headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"}) as client:
@@ -3877,7 +3906,7 @@ async def debug_bb(stock_id: str):
     sem = asyncio.Semaphore(5)
     now = int(time.time())
     p1 = now - 365 * 86400
-    params = {"interval": "1d", "period1": p1, "period2": now}
+    params = {"interval": "1d", "period1": p1, "period2": now, "events": "split"}   # 配股／減資：解析時乘回實際成交價
     async with httpx.AsyncClient(verify=False, timeout=15) as client:
         for suffix in suffixes:
             url = f"https://query1.finance.yahoo.com/v8/finance/chart/{stock_id}{suffix}"
