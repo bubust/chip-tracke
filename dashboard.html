@@ -2078,9 +2078,9 @@ function _levelsCell(s) {
         const icon = lv.mode && lv.mode !== '一般' ? `<span style="color:#a78bfa"> ${lv.mode.startsWith('平地') ? '⚡' : '▭'}</span>` : '';
         const held = lv.entry && lv.entry.kind === 'cost';
         const al = lv.alerts || {};
-        const flag = al.stop_hit ? `<br><b style="color:#fff;background:#dc2626;border-radius:4px;padding:0 4px;font-size:.68rem" title="今天價格跌破昨天的停損線 ${al.stop_ref}">已跌破停損</b>`
+        const flag = al.stop_hit ? `<br><b style="color:#fff;background:#dc2626;border-radius:4px;padding:0 4px;font-size:.68rem" title="今天價格跌破昨天的停損線 ${_esc(al.stop_ref)}">已跌破停損</b>`
           : al.breached_on ? `<br><b style="color:#fca5a5;border:1px solid #dc2626;border-radius:4px;padding:0 4px;font-size:.68rem" title="持有中：這天收盤跌破滾動停損，停損停在這裡（出場或更新成本）">${String(al.breached_on).slice(4, 6)}/${String(al.breached_on).slice(6)} 已跌破</b>`
-          : al.target_hit ? `<br><b style="color:#fff;background:#ea580c;border-radius:4px;padding:0 4px;font-size:.68rem" title="今天最高碰到昨天的目標價 ${al.target_ref}">已到目標</b>` : '';
+          : al.target_hit ? `<br><b style="color:#fff;background:#ea580c;border-radius:4px;padding:0 4px;font-size:.68rem" title="今天最高碰到昨天的目標價 ${_esc(al.target_ref)}">已到目標</b>` : '';
         return `<span style="font-size:.74rem;line-height:1.45;display:inline-block;white-space:nowrap">
           ${held ? `<span title="持有中：成本 ${lv.entry.price}（${lv.entry.pnl_pct > 0 ? '+' : ''}${lv.entry.pnl_pct}%）">💼</span>` : ''}${lv.target != null ? `<span style="color:#ef4444;font-weight:700">標 ${lv.target}</span>` : '<span class="muted">標 —</span>'}${icon}
           <br>${p1 != null ? `<span style="color:#f59e0b">壓 ${p1}${p2 != null ? ' · ' + p2 : ''}</span>` : '<span class="muted">無前高</span>'}
@@ -2137,8 +2137,8 @@ async function showLevels(sid) {
   const sizePct = lv.downside_pct != null && lv.downside_pct < 0 ? Math.min(100, 2 / -lv.downside_pct * 100) : null;
   const sizeRow = sizePct != null ? `<div class="muted" style="margin-top:4px;font-size:.76rem">📏 部位建議：若每筆最多虧總資金 2%，這檔最多放總資金的 <b style="color:var(--text)">${sizePct.toFixed(0)}%</b>（停損 ${lv.downside_pct}%；停損寬就買少一點，不要把停損縮緊）</div>` : '';
   const en = lv.entry, al = lv.alerts || {};
-  const alertHtml = al.stop_hit ? `<div style="margin-top:8px;padding:6px 8px;border-radius:6px;background:#dc262622;color:#f87171">🛑 今天價格 ${lv.price} 跌破昨天的停損線 <b>${al.stop_ref}</b></div>`
-    : al.target_hit ? `<div style="margin-top:8px;padding:6px 8px;border-radius:6px;background:#ea580c22;color:#fb923c">🎯 今天最高 ${lv.high} 碰到昨天的目標價 <b>${al.target_ref}</b></div>` : '';
+  const alertHtml = al.stop_hit ? `<div style="margin-top:8px;padding:6px 8px;border-radius:6px;background:#dc262622;color:#f87171">🛑 今天價格 ${lv.price} 跌破昨天的停損線 <b>${_esc(al.stop_ref)}</b></div>`
+    : al.target_hit ? `<div style="margin-top:8px;padding:6px 8px;border-radius:6px;background:#ea580c22;color:#fb923c">🎯 今天最高 ${lv.high} 碰到昨天的目標價 <b>${_esc(al.target_ref)}</b></div>` : '';
   const wlItem = (_wlData || []).find(x => x.stock_id === sid);
   const posHtml = !wlItem ? '' : `<div style="margin-top:10px;padding:8px 10px;border:1px solid #f472b655;border-radius:8px;font-size:.8rem;line-height:1.7">
       <b>💼 持有設定</b>　${en ? (en.kind === 'cost'

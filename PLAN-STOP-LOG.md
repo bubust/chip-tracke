@@ -47,3 +47,7 @@ Round 1 dispositions (plan updated accordingly):
 - Groq 第 3 批（前端、unadjust_fix、測試 diff）：429 每日額度用完（要等 50 分鐘）→ **未審**；這部分 Gemini 第 1 輪已審過 APPROVED
 - 修正後 Gemini 2.5（新的一輪）重審最終 server diff：**APPROVED**
 - 線上（19:49）：unadjust_fix zero_volume_removed 13,038 列；群創 損 48.55 roll、36 檔都有停損、playwright 無 JS 錯誤
+- Groq 第 3 批（前端 diff＋unadjust_fix，20:3x 額度回來後補審）：REVISE
+  - F1／F2 high al.stop_ref／al.target_ref 沒 _esc → 實際是伺服器算的數字（_alerts），而且是 B38 就有的程式，不構成 XSS；但包 _esc 成本低 → 採用（清單 title 2 處＋明細 2 處）
+  - F3 low 量 0 刪除在每天的迴圈裡重複執行 → 不成立：實際縮排在 for 迴圈外（8 格 vs 迴圈內 12 格），只跑一次且做過就不再做
+- **最終檢查涵蓋**：Gemini 2.5 全部檔案 APPROVED＋修正後重審 APPROVED；Groq 三批都審到（共 9 條，採用 4 條小修正）
