@@ -1643,7 +1643,7 @@ async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False):
     import math
     import pandas as pd
     from scanner import calc_macd, calc_bb_score, classify_stage, _change_pct
-    from yahoo_price import get_stock_list, _fetch_for_scan
+    from yahoo_price import get_stock_list
     import deep_data
     import deep_verdict
 
@@ -1661,7 +1661,7 @@ async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False):
 
     # ── K 線：跟關鍵價位同一個來源（快取優先、落後目標日才打 Yahoo）──
     try:
-        df = await asyncio.to_thread(_fetch_for_scan, stock_id, mkt)
+        df = await asyncio.to_thread(_fetch_kline, stock_id, mkt)
     except Exception:
         df = None
     if df is None or len(df) < 10:
@@ -3138,23 +3138,38 @@ def api_screen_status():
 _levels_cache: dict = {}
 
 
+def _fetch_kline(sid: str, mkt: str):
+    """關鍵價位、深度分析共用的日 K：_fetch_for_scan（盤中會帶今天的即時 K 棒）。
+    Yahoo 限流（429）時它直接回空的（掃描靠這個進重試），這裡改用本機已存的日 K（到上一個收盤），
+    不然盤中觀察清單一大半都會變成「抓不到 K 線資料」"""
+    from yahoo_price import _fetch_for_scan
+    df = _fetch_for_scan(sid, mkt)
+    if df is None or df.empty:
+        try:
+            from price_cache import get_stock_ohlcv
+            df = get_stock_ohlcv(sid, days=520)
+        except Exception:
+            df = None
+    return df
+
+
 def _levels_for(sid: str, fresh: bool = False) -> dict:
     """單支股票關鍵價位（price_levels.compute_levels），10 分鐘快取；fresh=True 先丟掉快取（盯盤要用即時價）
     另外算「到前一根 K 棒為止」的停損／目標存在 prev：價位是用當下價格重算的（跌下去停損也跟著往下找），
     要判斷「今天跌破停損」必須跟昨天算出的那條線比（PLAN-POSITIONS.md 4.2）"""
     import time as _t
-    from yahoo_price import _fetch_for_scan, get_stock_list
+    from yahoo_price import get_stock_list
     from price_levels import compute_levels
     if fresh:
         _levels_cache.pop(sid, None)
     hit = _levels_cache.get(sid)
-    if hit and _t.time() - hit[0] < 600:
+    if hit and _t.time() - hit[0] < (60 if hit[1].get("error") else 600):   # 抓失敗只記 1 分鐘
         return hit[1]
     stocks = get_stock_list()
     row = stocks[stocks["stock_id"] == sid]
     mkt = str(row.iloc[0]["type"]) if not row.empty else "twse"
     name = str(row.iloc[0]["stock_name"]) if not row.empty else ""
-    df = _fetch_for_scan(sid, mkt)
+    df = _fetch_kline(sid, mkt)
     if df is None or df.empty:
         res = {"stock_id": sid, "name": name, "error": "抓不到 K 線資料"}
     else:

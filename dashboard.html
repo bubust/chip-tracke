@@ -164,17 +164,11 @@
     .hide-mobile { display: none !important; }
     /* 設定頁 cards */
     .card { padding: 14px 12px; }
-    /* 深度分析側板：全螢幕 */
-    #deep-panel { width: 100vw !important; }
-    #deep-panel.dp-open { right: 0 !important; }
-    #deep-panel:not(.dp-open) { right: -100vw !important; }
     /* 掃描 header 堆疊 */
     .scan-hdr { flex-direction: column; align-items: flex-start; gap: 8px; }
     /* 股票 row 操作欄位縮小 */
     .result-action { white-space: nowrap; }
   }
-  /* 深度分析側板：桌面版開關（必須在 media query 外才能在桌機生效） */
-  #deep-panel.dp-open { right: 0 !important; }
   .log-row { display: flex; gap: 12px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: .83rem; }
   .log-row:last-child { border-bottom: none; }
   code { font-family: monospace; font-size: .8rem; }
@@ -1033,7 +1027,7 @@ function _doSwitchSettings() {
 }
 </script>
 
-<!-- ══════════════════ 深度分析側板（PLAN-DEEP2：🎯 總評＋技術／籌碼／基本／財務／新聞／產業）══════════════════ -->
+<!-- ══════════════════ 深度分析彈窗，跟 K 線圖一樣大（PLAN-DEEP2：🎯 總評＋技術／籌碼／基本／財務／新聞／產業）══════════════════ -->
 <style>
   #deep-panel .dp-sec { font-size:.74rem;color:#8b949e;letter-spacing:.4px;margin:14px 0 6px;font-weight:600 }
   #deep-panel .dp-box { background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:10px 12px }
@@ -1061,13 +1055,23 @@ function _doSwitchSettings() {
   #deep-panel .dp-comp .r { font-size:.76rem;color:#c9d1d9;padding:2px 0 }
   #deep-panel .dp-bar { height:5px;background:#21262d;border-radius:3px;overflow:hidden;margin:3px 0 5px }
   #deep-panel .dp-bar > div { height:100% }
+  #deep-overlay { display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:999 }
+  #deep-panel { position:fixed;inset:0;margin:auto;width:min(98vw,1300px);height:85vh;
+    background:#161b22;border:1px solid #30363d;border-radius:var(--radius);
+    z-index:1000;display:none;flex-direction:column;overflow:hidden;box-shadow:0 12px 60px #000c }
+  #deep-panel.dp-open { display:flex }
+  @media (max-width: 768px) { #deep-panel { width:100vw;height:100dvh;border-radius:0;border:none } }
+  /* 寬螢幕：字放大、內容分兩欄（_dpColumns 把每個小標題跟它下面的內容包成一組） */
+  @media (min-width: 900px) {
+    #deep-panel > * { zoom:1.15 }
+    #dp-body.dp-cols { column-count:2;column-gap:28px }
+    #dp-body .dp-grp { break-inside:avoid;display:flow-root }
+    #dp-body .dp-lead { column-span:all;margin-bottom:4px }
+  }
+  .dp-open-btn { margin-left:6px;padding:1px 7px;font-size:.72rem;border-color:#a78bfa !important;color:#a78bfa !important;white-space:nowrap;vertical-align:middle }
+  @media (max-width: 480px) { .dp-open-btn { min-height:0 !important;padding:2px 6px !important;font-size:.8rem !important } .dp-open-btn .t { display:none } }
 </style>
-<div id="deep-panel" style="
-  position:fixed;right:-420px;top:0;width:420px;height:100vh;
-  background:#161b22;border-left:1px solid #30363d;
-  z-index:1000;display:flex;flex-direction:column;
-  transition:right .3s ease;overflow:hidden;box-shadow:-4px 0 20px rgba(0,0,0,.5)
-">
+<div id="deep-panel">
   <!-- 標題列 -->
   <div style="display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid #30363d;flex-shrink:0">
     <span style="font-size:1rem;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="dp-title">— 深度分析</span>
@@ -1093,7 +1097,7 @@ function _doSwitchSettings() {
   <!-- 內容區 -->
   <div id="dp-body" style="flex:1;overflow-y:auto;padding:12px 16px 24px"></div>
 </div>
-<div id="deep-overlay" onclick="closeDeepPanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999"></div>
+<div id="deep-overlay" onclick="closeDeepPanel()"></div>
 
 <script>
 let _dpData = null, _dpTab = 'sum', _dpSid = '', _dpName = '';
@@ -1237,7 +1241,7 @@ function _dpSum(d) {
     const pc = x.kind === 'now' ? '' : `<span class="${_dpC(_dpPct(x.p, price))}" style="font-size:.74rem;margin-left:6px">${_dpS(_dpPct(x.p, price), 1)}%</span>`;
     return `<div class="dp-row ${x.kind === 'now' ? 'now' : ''}">
       <span class="dp-k" style="color:${x.kind === 'now' ? '#e6edf3' : '#8b949e'}">${x.label}${x.note ? `<div style="font-size:.66rem;color:#6e7681;margin-top:1px;max-width:230px;line-height:1.35">${_esc(x.note)}</div>` : ''}</span>
-      <span class="dp-v">${_esc(x.p)}${pc}</span></div>`;
+      <span class="dp-v">${_esc(+x.p.toFixed(2))}${pc}</span></div>`;
   }).join('') || '<div class="dp-note">沒有關鍵價位資料</div>';
   const bk = v.bucket || {}, bs = bk.stats;
   const popTxt = { main: '一般股', low: '低量股（20 日均量 30～300 張）', none: '不在回測範圍' }[bk.pop] || '';
@@ -1405,8 +1409,28 @@ function _dpFin(d) {
   return rvHtml + incHtml + ehHtml;
 }
 
+// 每個 .dp-sec 小標題連同下面的內容包成一組，寬螢幕分兩欄時不會被切開；第一個小標題前的內容橫跨兩欄
+function _dpColumns(body) {
+  const nodes = [...body.childNodes];
+  if (body.querySelectorAll(':scope > .dp-sec').length < 2) return;
+  body.innerHTML = '';
+  let grp = document.createElement('div');
+  grp.className = 'dp-grp dp-lead';
+  for (const n of nodes) {
+    if (n.nodeType === 1 && n.classList.contains('dp-sec')) {
+      if (grp.textContent.trim() || grp.querySelector('*')) body.appendChild(grp);
+      grp = document.createElement('div');
+      grp.className = 'dp-grp';
+    }
+    grp.appendChild(n);
+  }
+  body.appendChild(grp);
+  body.classList.add('dp-cols');
+}
+
 function renderDpBody(tab, d) {
   const body = document.getElementById('dp-body');
+  body.classList.remove('dp-cols');
   try {
     if (tab === 'sum') body.innerHTML = _dpSum(d);
     else if (tab === 'tech') body.innerHTML = _dpTech(d);
@@ -1436,6 +1460,7 @@ function renderDpBody(tab, d) {
         <div class="dp-note" style="margin-top:6px">強度＝產業等權指數的報酬在所有產業裡的名次（1 最強）。</div>
         <a href="/sector/" target="_blank" style="display:inline-block;margin-top:10px;color:#58a6ff;font-size:.82rem;text-decoration:none">→ 查看產業輪動</a>`;
     }
+    _dpColumns(body);
   } catch (err) {
     console.error('[renderDpBody]', err);
     body.innerHTML = _dpMsg('⚠️', `畫面產生失敗：${_esc(err.message)}`);
@@ -1764,7 +1789,7 @@ function renderWatchlist() {
         ondragstart="wlDragStart(event)" ondragend="wlDragEnd(event)" ondragover="wlDragOver(event)" ondragleave="wlDragLeave(event)" ondrop="wlDrop(event)"
         onclick="openDetail('${s.stock_id}')">
         <td onclick="event.stopPropagation();openWlChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
-        <td>${nameCell(s)}</td>
+        <td>${nameCell(s)}${_dpBtn(s.stock_id, s.name)}</td>
         <td class="muted" title="${s.added_at || ''}">${_fmtAdded(s.added_at)}</td>
         ${_sinceAddedCell(s)}
         ${noteCell(s)}
@@ -1780,7 +1805,6 @@ function renderWatchlist() {
         ${ndStageCell}
         <td class="muted">—</td>
         <td onclick="event.stopPropagation()" style="white-space:nowrap">
-          <button class="btn sm ghost" style="margin-left:4px;border-color:#a78bfa;color:#a78bfa" onclick="openDeepPanel('${s.stock_id}','${(s.name||s.stock_id).replace(/'/g,'')}')">🔬 分析</button>
           <button class="btn sm ghost" style="margin-left:4px;border-color:var(--yellow);color:var(--yellow)" onclick="openWarrant('${s.stock_id}','${(s.name||s.stock_id).replace(/'/g,'')}')">權證/股期</button>
           <span id="del-wrap-${s.stock_id}" style="position:relative;display:inline-block"><button class="btn sm danger" style="margin-left:4px" onclick="showDelConfirm('${s.stock_id}')">刪除</button></span>
         </td>
@@ -1849,7 +1873,7 @@ function renderWatchlist() {
         ondragstart="wlDragStart(event)" ondragend="wlDragEnd(event)" ondragover="wlDragOver(event)" ondragleave="wlDragLeave(event)" ondrop="wlDrop(event)"
         onclick="openDetail('${s.stock_id}')">
       <td onclick="event.stopPropagation();openWlChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
-      <td>${nameCell(s)}</td>
+      <td>${nameCell(s)}${_dpBtn(s.stock_id, s.name)}</td>
       <td class="muted" title="${s.added_at || ''}">${_fmtAdded(s.added_at)}</td>
         ${_sinceAddedCell(s)}
       ${noteCell(s)}
@@ -1865,7 +1889,6 @@ function renderWatchlist() {
       ${stageCell}
       <td class="muted">${s.date || '—'}</td>
       <td onclick="event.stopPropagation()" style="white-space:nowrap">
-        <button class="btn sm ghost" style="margin-left:4px;border-color:#a78bfa;color:#a78bfa" onclick="openDeepPanel('${s.stock_id}','${(s.name||s.stock_id).replace(/'/g,'')}')">🔬 分析</button>
         <button class="btn sm ghost" style="margin-left:4px;border-color:var(--yellow);color:var(--yellow)" onclick="openWarrant('${s.stock_id}','${(s.name||s.stock_id).replace(/'/g,'')}')">權證/股期</button>
         <span id="del-wrap-${s.stock_id}" style="position:relative;display:inline-block"><button class="btn sm danger" style="margin-left:4px" onclick="showDelConfirm('${s.stock_id}')">刪除</button></span>
       </td>
@@ -2811,6 +2834,12 @@ async function saveNote(sid, val, inputEl) {
   } catch(e) { toast('來源儲存失敗', true); }
 }
 
+// 股名後面的 🔬 分析（打開深度分析，不觸發整列的點擊）
+function _dpBtn(sid, name) {
+  const n = String(name || sid).replace(/['"\\<>&]/g, '');
+  return `<button class="btn sm ghost dp-open-btn" title="深度分析" onclick="event.stopPropagation();openDeepPanel('${sid}','${n}')">🔬<span class="t"> 分析</span></button>`;
+}
+
 function nameCell(s) {
   return `<span class="view-name">${s.name ? _esc(s.name) : '<span style="color:var(--muted)">—</span>'}${typeof tbBadge === 'function' ? tbBadge(s.stock_id) : ''}</span>
     <input class="inline-edit" type="text" value="${_esc(s.name || '')}"
@@ -3191,6 +3220,7 @@ function closeDetail() {
   _detailSid = '';
 }
 document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('deep-panel').classList.contains('dp-open')) { closeDeepPanel(); return; }
   if (e.key === 'Escape' && document.getElementById('detail-modal').classList.contains('open')) closeDetail();
 });
 
@@ -4588,7 +4618,7 @@ function renderScreenTable(strategy, data) {
     return `<tr>
       <td class="muted">${i + 1}</td>
       <td><b class="link" onclick="openScreenChart('${row.stock_id}')" style="cursor:pointer;color:var(--accent)">${row.stock_id}</b></td>
-      <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openScreenChart('${row.stock_id}')">${row.name || '—'}${typeof tbBadge === 'function' ? tbBadge(row.stock_id) : ''}${row.vol_ratio != null && row.vol_ratio >= 2 ? `<span style="margin-left:4px;font-size:.68rem;background:#3fb95022;color:#3fb950;border:1px solid #3fb95055;border-radius:3px;padding:0 4px">量×${row.vol_ratio}</span>` : ''}</td>
+      <td style="white-space:nowrap;cursor:pointer" onclick="openScreenChart('${row.stock_id}')"><span style="display:inline-block;max-width:100px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle">${row.name || '—'}</span>${typeof tbBadge === 'function' ? tbBadge(row.stock_id) : ''}${row.vol_ratio != null && row.vol_ratio >= 2 ? `<span style="margin-left:4px;font-size:.68rem;background:#3fb95022;color:#3fb950;border:1px solid #3fb95055;border-radius:3px;padding:0 4px">量×${row.vol_ratio}</span>` : ''}${_dpBtn(row.stock_id, row.name)}</td>
       <td>${(() => {
         if (row.close == null) return '—';
         const d = row.last_date || '';
@@ -4603,8 +4633,7 @@ function renderScreenTable(strategy, data) {
       <td class="muted hide-mobile">${(() => { if (!row.close || !row.volume) return '—'; const amt = row.close * row.volume * 1000; if (amt >= 1e8) return (amt/1e8).toFixed(2)+'億'; if (amt >= 1e4) return Math.round(amt/1e4)+'萬'; return '—'; })()}</td>
       <td class="${(row.bb_score??0)>0?'pos':(row.bb_score??0)<0?'neg':'muted'} hide-mobile" title="上軌=+10 中軌=0 下軌=-10">${row.bb_score!=null ? ((row.bb_score>0?'+':'')+row.bb_score) : '—'}</td>
       <td class="hide-mobile" style="max-width:160px">${(_otherStratMap[row.stock_id]||[]).map(k=>`<span style="display:inline-block;font-size:.68rem;background:rgba(79,142,247,.13);color:var(--accent);border:1px solid rgba(79,142,247,.3);border-radius:3px;padding:1px 5px;margin:1px;white-space:nowrap" title="${STRATEGY_LABELS[k]||k}">${STRATEGY_SHORT[k]||k}</span>`).join('') || '<span class="muted" style="font-size:.72rem">—</span>'}</td>
-      <td style="white-space:nowrap"><button class="btn sm ghost" onclick="addFromMarket('${row.stock_id}','${(STRATEGY_LABELS[strategy]||strategy).replace(/[（(][^）)]{10,}[）)]/g,'').trim()}')">+ 加入清單</button>
-      <button class="btn sm ghost" style="margin-left:4px;border-color:#a78bfa;color:#a78bfa" onclick="openDeepPanel('${row.stock_id}','${(row.name||row.stock_id).replace(/'/g,'')}')">🔬</button></td>
+      <td style="white-space:nowrap"><button class="btn sm ghost" onclick="addFromMarket('${row.stock_id}','${(STRATEGY_LABELS[strategy]||strategy).replace(/[（(][^）)]{10,}[）)]/g,'').trim()}')">+ 加入清單</button></td>
     </tr>`;
   }).join('');
 }
