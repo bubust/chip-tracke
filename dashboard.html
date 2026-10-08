@@ -5,6 +5,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>牆泥袋溥的戰術中心</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg:     #0f1117;
@@ -311,12 +314,108 @@ details.guide[open]>summary::before{content:'▾ ';}
   .dc-link:hover { text-decoration: underline; }
   .dc-pre { white-space: pre-wrap; font-size: .82rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin-top: 6px; font-family: inherit; }
   @media (max-width: 640px) { .dc-seg { flex-direction: column; gap: 4px; } .dc-seg-h { flex: none; } .dc-stock { max-width: none; flex: 1 1 140px; } }
+
+  /* ══════════ 介面美化（2026-10-08）：顏色、字型、導覽、卡片、表格、按鈕、輸入框、彈窗、捲軸 ══════════ */
+  :root {
+    --bg: #0b0f17; --card: #121826; --card2: #172033; --border: #232d42; --border2: #2e3a54;
+    --accent: #5b8cff; --accent-soft: rgba(91,140,255,.14);
+    --text: #e8edf5; --muted: #94a3b8; --faint: #64748b;
+    --radius: 14px; --shadow: 0 1px 0 rgba(255,255,255,.035) inset, 0 10px 30px -12px rgba(0,0,0,.55);
+  }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', 'PingFang TC', system-ui, sans-serif;
+    font-size: 15px; line-height: 1.5; letter-spacing: .01em;
+    background: radial-gradient(1200px 500px at 15% -10%, rgba(91,140,255,.10), transparent 60%),
+                radial-gradient(900px 400px at 100% 0%, rgba(167,139,250,.07), transparent 60%), var(--bg);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+  }
+  table, .metric .val, .idx-item, [id^="price-"], [id^="bb-"] { font-variant-numeric: tabular-nums; }
+
+  /* 標題列 */
+  header { background: rgba(18,24,38,.82); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); padding: 12px 24px; }
+  header h1 { font-size: 1.22rem; font-weight: 800; letter-spacing: .02em; display: flex; align-items: center; gap: 6px; }
+  header h1 .ttl { background: linear-gradient(90deg, #e8edf5, #a5b4fc); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .pill-status { background: var(--card2); border-color: var(--border2); color: var(--muted); }
+
+  /* 分頁列：固定在上面、圓角按鈕 */
+  nav { position: sticky; top: 0; z-index: 900; gap: 4px; padding: 8px 16px; background: rgba(11,15,23,.86);
+        backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+  nav::-webkit-scrollbar { display: none; }
+  nav button { border-radius: 10px; border-bottom: none !important; padding: 8px 14px; font-size: .9rem; font-weight: 500;
+               color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+  nav button:hover:not(.active) { background: rgba(255,255,255,.04); color: var(--text); }
+  nav button.active { background: var(--accent-soft); color: #c7d7ff; font-weight: 700; box-shadow: inset 0 0 0 1px rgba(91,140,255,.35); }
+
+  main { padding: 18px 20px; }
+  .card { background: linear-gradient(180deg, rgba(255,255,255,.015), transparent 40%), var(--card);
+          border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 22px; margin-bottom: 16px; }
+  .metric { background: var(--card); border-color: var(--border); box-shadow: var(--shadow); }
+  .metric .lbl { color: var(--muted); }
+
+  /* 輸入框 */
+  input[type=text], input[type=password], input[type=number], select, textarea {
+    background: #0a0e16; border: 1px solid var(--border2); border-radius: 9px; padding: 8px 12px; font-size: .9rem; color: var(--text);
+    transition: border-color .15s, box-shadow .15s; }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(91,140,255,.22); }
+  ::placeholder { color: #5b6880; }
+
+  /* 按鈕 */
+  .btn { border-radius: 9px; font-weight: 600; letter-spacing: .02em;
+         background: linear-gradient(180deg, #6a98ff, #4f7ff0); box-shadow: 0 1px 0 rgba(255,255,255,.18) inset, 0 4px 14px -6px rgba(79,127,240,.7);
+         transition: transform .12s, box-shadow .15s, opacity .15s, border-color .15s, color .15s, background .15s; }
+  .btn:hover:not(:disabled) { opacity: 1; transform: translateY(-1px); filter: brightness(1.08); }
+  .btn:active:not(:disabled) { transform: translateY(0); }
+  .btn:focus-visible, nav button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn.sm { border-radius: 8px; padding: 5px 12px; font-size: .82rem; }
+  .btn.ghost { background: rgba(255,255,255,.025); border: 1px solid var(--border2); color: var(--text); box-shadow: none; }
+  .btn.ghost:hover:not(:disabled) { background: var(--accent-soft); border-color: rgba(91,140,255,.55); color: #c7d7ff; filter: none; }
+  .btn.green  { background: linear-gradient(180deg, #2fd16b, #1fae55); box-shadow: 0 1px 0 rgba(255,255,255,.18) inset, 0 4px 14px -6px rgba(34,197,94,.7); }
+  .btn.danger { background: linear-gradient(180deg, #f25c5c, #dc3a3a); box-shadow: 0 1px 0 rgba(255,255,255,.18) inset, 0 4px 14px -6px rgba(239,68,68,.6); }
+  .btn.orange { background: linear-gradient(180deg, #fb8a3c, #ea6c17); }
+
+  /* 表格 */
+  table { font-size: .875rem; letter-spacing: 0; }
+  th { background: rgba(255,255,255,.025); color: var(--muted); font-weight: 600; font-size: .78rem; letter-spacing: .02em;
+       padding: 10px 8px; border-bottom: 1px solid var(--border2); text-transform: none; }
+  th:first-child { border-top-left-radius: 10px; } th:last-child { border-top-right-radius: 10px; }
+  td { padding: 9px 8px; border-bottom: 1px solid rgba(35,45,66,.75); }
+  tbody tr { transition: background .12s; }
+  tbody tr:hover td, tr.clickable:hover td { background: rgba(91,140,255,.06); }
+  .pos { color: #f87171; } .neg { color: #34d399; }
+
+  /* 標籤、膠囊 */
+  .sig-badge { border: 1px solid rgba(255,255,255,.06); font-weight: 600; }
+  .pill { background: var(--card2); border-color: var(--border2); }
+  .pill.active { background: var(--accent-soft); border-color: rgba(91,140,255,.55); color: #c7d7ff; }
+  .hist-chip { background: var(--card2); border-color: var(--border2); }
+
+  /* 彈窗背景模糊 */
+  #detail-modal, #chart-modal, #backtest-modal, #tdcc-modal, #strat-params-modal, #deep-overlay { backdrop-filter: blur(4px); }
+  #detail-panel { border-color: rgba(91,140,255,.45); box-shadow: 0 24px 80px -20px #000; }
+  .detail-header { background: linear-gradient(180deg, #1a2440, #16203a); }
+  #toast { border-radius: 10px; box-shadow: 0 10px 30px -10px rgba(0,0,0,.6); }
+
+  /* 細捲軸 */
+  * { scrollbar-width: thin; scrollbar-color: #33405c transparent; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #2b3650; border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a4868; background-clip: padding-box; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  @media (max-width: 768px) {
+    nav { padding: 6px 8px; }
+    nav button { padding: 8px 11px; font-size: .84rem; min-height: 40px; }
+    main { padding: 10px 8px; }
+    .card { padding: 14px 12px; border-radius: 12px; }
+  }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>📈 牆泥袋溥的戰術中心</h1>
+  <h1><span class="logo">📈</span> <span class="ttl">牆泥袋溥的戰術中心</span></h1>
   <span class="sub">台股籌碼追蹤</span>
   <div class="pill-status" id="status-pill" onclick="loadPill()">載入中...</div>
   <span id="live-clock" style="margin-left:auto;font-size:.82rem;color:#8b949e;font-variant-numeric:tabular-nums;white-space:nowrap"></span>
@@ -1064,7 +1163,7 @@ function _doSwitchSettings() {
   /* 寬螢幕：字放大、內容分兩欄（_dpColumns 把每個小標題跟它下面的內容包成一組，放進內層 .dp-colwrap；
      分欄放在會捲動的 #dp-body 本身會變成往右長出第三欄＋橫向捲軸） */
   @media (min-width: 900px) {
-    #deep-panel > * { zoom:1.15 }
+    #deep-panel > * { zoom:1.22 }
     #dp-body .dp-colwrap { columns:340px 3;column-gap:24px }
     #dp-body .dp-grp { break-inside:avoid;display:flow-root }
     /* 分項分數、操作建議很長：可以在兩項之間換欄（框線在兩欄各畫一次） */
@@ -1074,8 +1173,8 @@ function _doSwitchSettings() {
     #dp-body .dp-sec { break-after:avoid }
     #dp-body .dp-lead { margin-bottom:4px }
   }
-  @media (min-width: 900px) and (max-height: 800px) { #deep-panel > * { zoom:1.05 } }   /* 1366×768 筆電：不放大才放得下 */
-  @media (min-width: 1700px) and (min-height: 950px) { #deep-panel > * { zoom:1.28 } }
+  @media (min-width: 900px) and (max-height: 800px) { #deep-panel > * { zoom:1.1 } }   /* 1366×768 筆電 */
+  @media (min-width: 1700px) and (min-height: 950px) { #deep-panel > * { zoom:1.36 } }
   /* K 線／分析切換按鈕 */
   .dp-sw-btn { padding:3px 9px;font-size:.76rem;white-space:nowrap }
   .dp-only { display:none }
@@ -1084,9 +1183,11 @@ function _doSwitchSettings() {
   body.dp-split .dp-split-btn { display:none !important }
   /* 同時看：K 線在左、分析在右（手機：K 線在上、分析在下） */
   body.dp-split #chart-modal { justify-content:flex-start !important;padding:8px !important }   /* 蓋過 inline 的置中 */
-  body.dp-split #chart-modal-box { width:calc(100vw - max(420px, 36vw) - 24px) !important;height:calc(100vh - 16px) !important }
-  body.dp-split #deep-panel { z-index:10000;inset:8px 8px 8px auto;margin:0;width:max(420px, 36vw);height:auto }
-  body.dp-split #deep-panel > * { zoom:1 }
+  body.dp-split #chart-modal-box { width:calc(100vw - max(460px, 40vw) - 24px) !important;height:calc(100vh - 16px) !important }
+  body.dp-split #deep-panel { z-index:10000;inset:8px 8px 8px auto;margin:0;width:max(460px, 40vw);height:auto }
+  body.dp-split #deep-panel > * { zoom:1.15 }
+  @media (min-width: 1700px) { body.dp-split #deep-panel > * { zoom:1.22 } }
+  @media (max-width: 768px) { body.dp-split #deep-panel > * { zoom:1 } }
   body.dp-split #dp-body .dp-colwrap { column-count:1 }
   @media (max-width: 768px) {
     body.dp-split #chart-modal { padding:0 !important;align-items:flex-start !important }
