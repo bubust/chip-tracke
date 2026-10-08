@@ -3322,6 +3322,7 @@ def api_screen_status():
     return get_scan_status()
 
 _levels_cache: dict = {}
+_levels_df: dict = {}      # {sid: 算關鍵價位用的那份日 K}：觀察清單滾動停損從進場日重播用（PLAN-STOP.md）
 
 
 def _fetch_kline(sid: str, mkt: str):
@@ -3356,6 +3357,7 @@ def _levels_for(sid: str, fresh: bool = False) -> dict:
     from price_levels import compute_levels
     if fresh:
         _levels_cache.pop(sid, None)
+        _levels_df.pop(sid, None)
     hit = _levels_cache.get(sid)
     if hit and _t.time() - hit[0] < (60 if hit[1].get("error") else 600):   # 抓失敗只記 1 分鐘
         return hit[1]
@@ -3381,34 +3383,81 @@ def _levels_for(sid: str, fresh: bool = False) -> dict:
             if not pv.get("error"):
                 res["prev"] = {"date": pv.get("date"), "stop": (pv.get("stop") or {}).get("price"), "target": pv.get("target")}
     _levels_cache[sid] = (_t.time(), res)
+    if df is not None and not df.empty and not res.get("error"):
+        _levels_df[sid] = df
+    else:
+        _levels_df.pop(sid, None)
     return res
 
 
 def _watch_refs(sids) -> dict:
-    """{sid: (參考價, kind)}：觀察清單裡有成本價 → ("cost")；沒有 → 加入日收盤 ("added")；不在清單 → 沒有"""
+    """{sid: (參考價, kind, 進場日 YYYYMMDD)}：觀察清單裡有成本價 → ("cost"，填成本那天；沒有就加入日)；
+    沒有 → 加入日收盤 ("added"，加入那天或前一個交易日)；不在清單 → 沒有"""
     sids = list(sids)
     if not sids:
         return {}
     conn = get_conn()
     q = ",".join("?" * len(sids))
-    rows = conn.execute(f"SELECT stock_id, added_at, cost FROM watchlist WHERE stock_id IN ({q})", sids).fetchall()
+    rows = conn.execute(f"SELECT stock_id, added_at, cost, cost_at FROM watchlist WHERE stock_id IN ({q})", sids).fetchall()
     conn.close()
     out, need_added = {}, []
     for r in rows:
         if r["cost"] is not None and float(r["cost"]) > 0:
-            out[r["stock_id"]] = (float(r["cost"]), "cost")
+            d = str(r["cost_at"] or r["added_at"] or "")[:10].replace("-", "").replace("/", "")
+            out[r["stock_id"]] = (float(r["cost"]), "cost", d if len(d) == 8 and d.isdigit() else None)
         else:
             need_added.append(r)
-    for sid, (px, _d) in _added_prices(need_added).items():
-        out[sid] = (px, "added")
+    for sid, (px, d) in _added_prices(need_added).items():
+        out[sid] = (px, "added", d)
+    return out
+
+
+def _apply_roll(lv: dict, df, entry_date: str, kind: str) -> dict:
+    """觀察清單／持有：停損改成從進場日逐日重播的滾動停損（只上不下，PLAN-STOP.md）；原本「如果今天買」的放 stop_today。
+    不改快取裡的 lv（回傳新的）"""
+    import copy
+    from price_levels import rolling_stop, roll_label
+    dates = [str(x) for x in df["date"]]
+    idx = max((i for i, d in enumerate(dates) if d <= entry_date), default=0)   # 最後一根 ≤ 進場日；早於資料 → 第 0 根
+    roll = rolling_stop(df, idx, kind)
+    out = copy.deepcopy(lv)
+    out["stop_today"] = out.get("stop")
+    out["stop"] = {"price": roll["price"], "basis": "roll", "label": roll_label(roll, kind)}
+    if roll["frozen"]:
+        out["stop"]["breached"] = True
+        out["stop"]["label"] = "已跌破！" + out["stop"]["label"]
+    out["roll"] = {k: roll[k] for k in ("entry_date", "entry_stop", "entry_basis", "active_date", "active_stop",
+                                         "history", "breached", "frozen")}
+    out["prev"] = {**(out.get("prev") or {}), "stop": roll["prev"]}
+    pr, sp, tgt = out.get("price"), roll["price"], out.get("target")
+    if pr and sp is not None:
+        out["downside_pct"] = round((sp / pr - 1) * 100, 1) if sp < pr else None
+        out["rr"] = round((round(tgt, 2) - pr) / (pr - sp), 1) if (tgt and pr > sp) else None
     return out
 
 
 def _levels_with_ref(sid: str, refs: dict, fresh: bool = False) -> dict:
     from price_levels import apply_entry_floor
     lv = _levels_for(sid, fresh)
-    entry, kind = refs.get(sid, (None, "added"))
-    return apply_entry_floor(lv, entry, kind, lv.get("prev"))
+    ref = refs.get(sid) or (None, "added", None)
+    entry, kind = ref[0], ref[1]
+    entry_date = ref[2] if len(ref) > 2 else None
+    df = _levels_df.get(sid)
+    roll = None
+    if entry_date and df is not None and not lv.get("error"):
+        try:
+            lv = _apply_roll(lv, df, entry_date, kind)
+            roll = lv.get("roll")
+        except Exception as e:
+            print(f"[levels] {sid} 滾動停損失敗，用今天的停損: {e}")
+    out = apply_entry_floor(lv, entry, kind, lv.get("prev"))
+    # 持有模式更早之前就跌破、停損停住：只在跌破那天提醒（盯盤推播），之後明細標「MM/DD 已跌破」，不要每天重發
+    if roll and roll.get("frozen") and roll.get("breached") and roll["breached"]["date"] != out.get("date"):
+        al = out.get("alerts") or {}
+        al["stop_hit"] = False
+        al["breached_on"] = roll["breached"]["date"]
+        out["alerts"] = al
+    return out
 
 
 @app.get("/api/levels/{stock_id}")
@@ -3534,7 +3583,7 @@ def check_positions(phase: str, dry: bool = False) -> list:
     for r in rows:
         sid, cost = r["stock_id"], float(r["cost"])
         try:
-            lv = _levels_with_ref(sid, {sid: (cost, "cost")}, fresh=True)
+            lv = _levels_with_ref(sid, _watch_refs([sid]) or {sid: (cost, "cost", None)}, fresh=True)
         except Exception as ex:
             log.warning(f"[positions] {sid}: {ex}")
             continue

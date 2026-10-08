@@ -96,8 +96,8 @@ def test_support_falls_back_to_60_day_low_on_short_history():
 
 
 def test_stop_formula_and_all_bases():
-    """PLAN 第 8 節：強勢延伸 撐＝10 日線、損＝min(20 日線−1ATR, 10 日線−0.5ATR, 價−1.5ATR)；
-    其他（10-06 起含前低遠又不強勢）支撐−0.5ATR、至少 2.5ATR；有支撐時停損一定 < 支撐"""
+    """PLAN-STOP（B55）：強勢延伸 撐＝10 日線、損＝min(20 日線−1ATR, 10 日線−0.5ATR, 價−1.5ATR)；
+    其他：離現價至少 1 倍 ATR 的結構低點（停損＝那個低點，可能剛好＝支撐）；沒有 → 價−2.5ATR"""
     seen = set()
     for seed in range(80):
         rng = np.random.default_rng(seed)
@@ -107,26 +107,25 @@ def test_stop_formula_and_all_bases():
         lv = compute_levels(make(closes, spread=vol / 2))
         p, a, st, sup, ss = lv["price"], lv["atr"], lv["stop"], lv["support"], lv["struct_support"]
         assert st and st["price"] < p and "收盤跌破" in st["label"]
-        assert st["basis"] in {"support", "floor", "atr", "trail"}           # 10-06 起不再用 risk（前低遠也顯示前低）
+        assert st["basis"] in {"struct", "atr", "trail"}
         if sup is not None:
-            assert st["price"] < sup["price"]                # 停損一定在支撐下面
+            assert st["price"] <= sup["price"]               # 停損不會高於支撐（結構低點離現價 ≥1ATR 時兩者同一點）
         c = pd.Series(closes)
         m5, m10, m20 = (c.rolling(k).mean().iloc[-1] for k in (5, 10, 20))
         if st["basis"] == "trail":
             assert ss and p - ss["price"] > 3 * a and p > m5 > m10
             assert sup["kind"] == "ma10" and abs(sup["price"] - m10) < 0.01
             assert abs(st["price"] - min(m20 - a, m10 - 0.5 * a, p - 1.5 * a)) < 0.02
-        elif sup is None:
-            assert st["basis"] == "atr" and ss is None and abs(st["price"] - (p - 2.5 * a)) < 0.02
+        elif st["basis"] == "atr":
+            assert ss is None and abs(st["price"] - (p - 2.5 * a)) < 0.02
         else:
-            assert ss is None
-            raw = sup["price"] - 0.5 * a
-            assert abs(st["price"] - min(raw, p - 2.5 * a)) < 0.02
-            assert st["basis"] == ("floor" if raw > p - 2.5 * a else "support")
+            assert ss is None and p - st["price"] >= a - 0.02          # 離現價至少 1 倍 ATR
+            lows = make(closes, spread=vol / 2)["low"].round(2).tolist()
+            assert st["price"] in lows                                # 停損就是某一根的低點（沒有再減緩衝）
         seen.add(st["basis"])
         if lv["target"]:
             assert lv["rr"] == round((lv["target"] - p) / (p - st["price"]), 1)
-    assert {"floor", "support", "trail"} <= seen
+    assert {"struct", "trail"} <= seen
 
 
 def test_trailing_stop_for_extended_uptrend():
@@ -148,15 +147,18 @@ def test_pullback_far_support_still_shows_previous_low():
     lv = compute_levels(make(closes))
     a, st, sup = lv["atr"], lv["stop"], lv["support"]
     assert sup is not None and lv["struct_support"] is None and lv["price"] - sup["price"] > 3 * a
-    assert st["basis"] == "support" and abs(st["price"] - (sup["price"] - 0.5 * a)) < 0.02 and "部位" in st["label"]
+    assert st["basis"] == "struct" and st["price"] <= sup["price"] and lv["price"] - st["price"] >= a
 
 
-def test_floor_keeps_stop_below_near_support():
+def test_near_support_skipped_to_next_low():
+    """支撐離現價不到 1 ATR（太近、容易被洗）→ 停損放在再下一個結構低點（B55 以前是硬推到現價 −2.5ATR）"""
     closes = seg(20, 12, 20) + seg(12, 11, 6) + seg(11, 11.3, 6)   # 波段低點 11 就在現價下方不到 1 ATR
     lv = compute_levels(make(closes, spread=0.05))
     p, a, sup, st = lv["price"], lv["atr"], lv["support"], lv["stop"]
-    assert p - sup["price"] < a and st["basis"] == "floor"
-    assert abs(st["price"] - (p - 2.5 * a)) < 0.02 and st["price"] < sup["price"]
+    assert p - sup["price"] < a and st["price"] < sup["price"] and p - st["price"] >= a
+    assert st["basis"] in {"struct", "atr"}
+    if st["basis"] == "struct":
+        assert "太近" in st["label"]
 
 
 def test_target_prefers_previous_high_then_measured_move():
@@ -196,7 +198,7 @@ def test_support_uses_nearest_higher_low_not_older_low():
     lv = compute_levels(make(closes))
     sup = lv["support"]
     assert sup and sup["kind"] == "swing" and abs(sup["price"] - 13.2 * 0.99) < 0.01     # 較近的墊高低點，不是 12.0 × 0.99
-    assert lv["stop"]["price"] < sup["price"]
+    assert lv["stop"]["price"] <= sup["price"]
 
 
 def test_intraday_break_that_closes_back_keeps_previous_low():

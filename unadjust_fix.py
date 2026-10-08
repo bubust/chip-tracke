@@ -138,7 +138,8 @@ def run(force: bool = False) -> dict:
             prev = {}
         res = {"version": VERSION, "status": "running", "done_dates": prev.get("done_dates", []),
                "failed_dates": [], "rows_written": prev.get("rows_written", 0), "rows_changed": prev.get("rows_changed", 0),
-               "examples": prev.get("examples", {}), "started": prev.get("started") or
+               "examples": prev.get("examples", {}), **{k: prev[k] for k in ("closed_removed", "zero_volume_removed") if k in prev},
+               "started": prev.get("started") or
                (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M")}
         done = set(res["done_dates"])
         dates = [d for d in rebuild_dates(DB_PATH) if d not in done]
@@ -178,6 +179,12 @@ def run(force: bool = False) -> dict:
             _state["done"] += 1
             if i % 5 == 0:
                 _save(res)
+        if "zero_volume_removed" not in res:
+            # 量 0／NULL 的列＝沒成交或停牌時 Yahoo 塞的假 K 棒（開高低收都一樣），官方行情沒有這些 K 棒 → 刪掉（B55，全市場約 1.1 萬列）
+            conn = sqlite3.connect(str(DB_PATH), timeout=30)
+            res["zero_volume_removed"] = conn.execute("DELETE FROM price_daily WHERE volume IS NULL OR volume <= 0").rowcount
+            conn.commit()
+            conn.close()
         res["status"] = "done" if not res["failed_dates"] else "done_with_failures"
         res["finished"] = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M")
         res["seconds_this_run"] = round(time.time() - started)
@@ -201,7 +208,7 @@ def status() -> dict:
 def start_if_needed(delay: int = 120):
     """還沒做完（或版本舊）就在背景跑；delay 秒後才開始，不拖慢開機"""
     r = _load()
-    if r.get("version") == VERSION and r.get("status") == "done":
+    if r.get("version") == VERSION and r.get("status") == "done" and "zero_volume_removed" in r:
         return
 
     def _go():

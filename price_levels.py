@@ -15,10 +15,10 @@ price_levels.py — 依使用者的看盤邏輯算關鍵價位（觀察清單、
 - 支撐價：前低＝最近一段回檔的最低點（pullback_low；沒有就 60 日低）——前低是唯一穩定有效的支撐（撐住 +3～3.4 個百分點）
   （10-05 版用 k=5 波段低點；10-06 用戶看群創、京元電子、友達：起漲前／盤整的低點才合理、盤中跌破又拉回不算破、
    急漲後的回檔低點也算 → 改成兩個波段高點之間的最低點，今天這根不算）
-- 停損價：支撐 −0.5 ATR、至少離現價 2.5 ATR（10-06 前是 1.5；支撐改抓最近的前低後太常被洗，見 STOP_MIN_ATR），收盤跌破出場（舊版約 1 ATR、67% 會被打到；
-  改善來自留足空間，前低錨定跟同距離純 ATR 一樣好，選它是因為符合用戶「停損看波段低點」）
-  前低離現價 > 3 ATR 且強勢（收盤 > 5 日線 > 10 日線）→ 撐＝10 日線、損＝20 日線 −1 ATR（移動停損）；
-  前低 > 3 ATR 但不強勢 → 10-05 版不顯示支撐、用風險上限；10-06 改回照樣顯示前低、損＝前低 −0.5 ATR（PLAN 第 10 節）
+- 停損價（2026-10-08 B55 改版，PLAN-STOP.md）：「如果今天買」＝離現價至少 1 倍 ATR 的最近結構低點（收盤跌破出場）；
+  前低離現價 > 3 ATR 且強勢（收盤 > 5 日線 > 10 日線）→ 撐＝10 日線、損＝20 日線 −1 ATR（沿用）；
+  觀察清單／持有的股票另外從加入（填成本）那天逐日重播 rolling_stop：出現確認過的平台低點（之後漲上去 ≥2.5 ATR）就上修，只上不下。
+  舊版「支撐 −0.5 ATR、至少離現價 2.5 ATR」每天重算、跌的時候停損跟著往下掉，研究見 PLAN-STOP.md 第 2 節
 - 目標價：前高（壓力區一，離現價不到 0.5 ATR 就壓力區二）→ 平地一聲雷等幅 → 一般等幅（回檔低＋前高−起漲低）→ 現價＋3 ATR；
   （10-06 用戶：「有前高就要看前高，還沒過怎麼會先跳到另一種計算模式」——等幅只在上方沒有前高時用）
   各種目標算法都沒有比隨機準，所以照用戶規則排，另給報酬風險比 rr
@@ -33,9 +33,11 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-# 停損至少離現價幾倍 ATR（支撐太近時）。2026-10-06 支撐改抓最近的前低，1.5 倍時停損被打到 40%、40 天中位報酬 +0.2%；
-# 2.5 倍 29%、+3.1%（成交值前 300 檔、Yahoo 兩年、9,722 樣本；PLAN-LEVELS.md 第 11 節）
+# 舊規則（B42～B54）：停損至少離現價 2.5 倍 ATR。B55 起 compute_levels 不再使用，留著給研究腳本對照
 STOP_MIN_ATR = 2.5
+# B55 滾動停損（PLAN-STOP.md）：進場停損要離現價至少 ENTRY_MIN_ATR 倍 ATR；平台低點之後漲上去 ≥ RAISE_ATR 倍 ATR 才上修
+ENTRY_MIN_ATR = 1.0
+RAISE_ATR = 2.5
 
 THUNDER_DEFAULTS = {"base_days": 90, "base_range": 0.15, "vol_mult": 2.5, "max_retrace": 0.618,
                     "breakout_within": 60}
@@ -205,6 +207,143 @@ def support_low(h, l, c, price: float, look: int, k: int = 3) -> Optional[int]:
     return max(cands) if cands else None
 
 
+class StructLows:
+    """結構低點（PLAN-STOP.md 第 3 節）：k=3 波段低點（左 3 根低點都比它高、右 3 根收盤沒跌破）＋
+    每兩個相鄰波段高點之間的回檔低點（最後一段到昨天、今天不算）。at(j)＝第 j 天收盤後看得到的，index 由新到舊。
+    波段高低點整段只算一次（第 i 根要到 i+3 才確認），每天只重算回檔低點那幾段 → 逐日重播很快；
+    結果跟每天整段重算一樣（tests、research/levels/verify_stop.py 驗證）。"""
+    K = 3
+
+    def __init__(self, h, l, c, window: int = 250):
+        self.h, self.l, self.c, self.window = h, l, c, window
+        n, k = len(l), self.K
+        self.swing = [i for i in range(k, n - k) if l[i] < l[i - k:i].min() and c[i + 1:i + k + 1].min() >= l[i]]
+        self.peaks = pivots(h, k, "high")          # 第 i 根的右邊 3 根都在 i+3 以內 → 跟 pivots(h[:j+1]) 一樣
+        self._cache = {}
+
+    def at(self, j: int) -> list:
+        if j in self._cache:
+            return self._cache[j]
+        k, l = self.K, self.l
+        look = max(0, j + 1 - self.window)
+        out = {i for i in self.swing if max(k, look) <= i <= j - k}
+        hs = [i for i in self.peaks if look <= i <= j - k]
+        rh = recent_high(self.h[:j + 1], k)
+        if rh is not None and rh >= look and rh not in hs:
+            hs.append(rh)
+        bounds = sorted(hs) + [j]
+        for a, b in zip(bounds[:-1], bounds[1:]):
+            if b - a >= 2:
+                out.add(a + 1 + int(l[a + 1:b].argmin()))
+        res = sorted(out, reverse=True)
+        self._cache[j] = res
+        return res
+
+
+def _atr_at(atr, c, j) -> float:
+    x = atr[j]
+    return max(float(x) if np.isfinite(x) else 0.0, float(c[j]) * 0.005)
+
+
+def entry_stop(c, l, atr, ma5, ma10, ma20, lows: list, j: int) -> dict:
+    """「如果第 j 天收盤買」的停損：強勢延伸 → 20 日線 −1ATR（trail）；否則離現價 ≥1ATR 的最近結構低點（struct）；
+    都沒有 → 現價 −2.5ATR（atr）。回傳 {price, basis, idx（結構低點 index）, sup_idx（最近一個低於現價的結構低點）}"""
+    p = float(c[j]); a = _atr_at(atr, c, j)
+    sup_i = next((i for i in lows if l[i] < p), None)
+    m5, m10, m20 = ma5[j], ma10[j], ma20[j]
+    if sup_i is not None and p - l[sup_i] > 3 * a and p > m5 > m10:
+        t = min(m20 - a, m10 - 0.5 * a, p - 1.5 * a)
+        if t < m10 and t > 0:
+            return {"price": float(t), "basis": "trail", "idx": None, "sup_idx": sup_i}
+    lo = next((i for i in lows if l[i] <= p - ENTRY_MIN_ATR * a), None)
+    if lo is None:
+        return {"price": p - 2.5 * a, "basis": "atr", "idx": None, "sup_idx": sup_i}
+    return {"price": float(l[lo]), "basis": "struct", "idx": int(lo), "sup_idx": sup_i}
+
+
+def raise_candidate(c, h, l, atr, lows: list, j: int) -> Optional[int]:
+    """第 j 天收盤後可以上修到的平台低點 index：最近一個 ≥3 根前、之後收盤沒跌破、之後最高價離它 ≥ RAISE_ATR 倍 ATR、
+    離現價 ≥ ENTRY_MIN_ATR 倍 ATR 的結構低點；沒有回 None"""
+    p = float(c[j]); a = _atr_at(atr, c, j)
+    for i in lows:
+        if i > j - StructLows.K or l[i] > p - ENTRY_MIN_ATR * a:
+            continue
+        if c[i + 1:j + 1].min() >= l[i] and h[i:j + 1].max() - l[i] >= RAISE_ATR * a:
+            return int(i)
+    return None
+
+
+def rolling_stop(df: pd.DataFrame, entry_idx: int, kind: str = "added", trace: bool = False) -> dict:
+    """從進場那根逐日重播的滾動停損（PLAN-STOP.md 第 3 節）。kind＝"cost"（持有：跌破後停住）或 "added"（觀察：跌破後從那天重新起算）。
+    第 j 天先看收盤有沒有跌破「前一天的停損」，沒跌破才用第 j 天的資料看要不要上修（只上不下）。
+    回傳 {price, basis:"roll", entry_date, entry_stop, entry_basis, active_date, active_stop, history, breached, prev, date}；
+    trace=True 多回傳每天收盤後的停損 stops（驗證用）"""
+    df = df.dropna(subset=["close"]).reset_index(drop=True)
+    c = df["close"].values.astype(float); h = df["high"].values.astype(float); l = df["low"].values.astype(float)
+    dates = [str(x) for x in df["date"]]
+    last = len(c) - 1
+    entry_idx = int(min(max(entry_idx, 0, last - 250), last))
+    atr = atr_series(h, l, c)
+    ma = {k: pd.Series(c).rolling(k).mean().values for k in (5, 10, 20)}
+    S = StructLows(h, l, c)
+    fmt = lambda i: dates[i] if i is not None else None
+
+    def _entry(j):
+        e = entry_stop(c, l, atr, ma[5], ma[10], ma[20], S.at(j), j)
+        return e, {"date": dates[j], "price": _r(e["price"]), "kind": "entry", "basis": e["basis"], "low_date": fmt(e["idx"])}
+
+    e0, ev = _entry(entry_idx)
+    stop, history = e0["price"], [ev]
+    active = entry_idx
+    active_stop = stop
+    breached, frozen, prev = None, False, None
+    stops = [stop]
+    for j in range(entry_idx + 1, last + 1):
+        if j == last:
+            prev = stop
+        if not frozen and c[j] < stop:
+            breached = {"date": dates[j], "stop": _r(stop), "close": _r(c[j])}
+            history.append({"date": dates[j], "price": _r(stop), "kind": "breach", "close": _r(c[j])})
+            if kind == "cost":
+                frozen = True
+            else:
+                e, ev = _entry(j)
+                stop, active, active_stop = e["price"], j, e["price"]
+                ev["kind"] = "restart"
+                history.append(ev)
+        elif not frozen:
+            i = raise_candidate(c, h, l, atr, S.at(j), j)
+            if i is not None and l[i] > stop:
+                stop = float(l[i])
+                history.append({"date": dates[j], "price": _r(stop), "kind": "raise", "low_date": dates[i]})
+        stops.append(stop)
+    out = {"price": _r(stop), "basis": "roll", "date": dates[last],
+           "entry_date": dates[entry_idx], "entry_stop": _r(e0["price"]), "entry_basis": e0["basis"],
+           "active_date": dates[active], "active_stop": _r(active_stop),
+           "history": history, "breached": breached, "frozen": frozen, "prev": _r(prev) if prev is not None else None}
+    if trace:
+        out["stops"] = stops
+    return out
+
+
+def roll_label(roll: dict, kind: str) -> str:
+    """滾動停損的說明文字（觀察清單 title、明細、深度分析價位梯共用）"""
+    fd = lambda d: f"{str(d)[4:6]}/{str(d)[6:]}" if d and len(str(d)) == 8 else ""
+    name = "填成本" if kind == "cost" else "加入"
+    parts = []
+    for ev in roll["history"][-6:]:
+        if ev["kind"] == "entry":
+            parts.append(f"{fd(ev['date'])} {name} {ev['price']}")
+        elif ev["kind"] == "raise":
+            parts.append(f"{fd(ev['date'])} 上修 {ev['price']}（{fd(ev['low_date'])} 平台低點）")
+        elif ev["kind"] == "breach":
+            parts.append(f"{fd(ev['date'])} 收盤 {ev['close']} 跌破 {ev['price']}")
+        elif ev["kind"] == "restart":
+            parts.append(f"重新起算 {ev['price']}")
+    tail = "已跌破、停在這裡（持有請出場或更新成本）" if roll.get("frozen") else "只上不下，收盤跌破出場"
+    return "滾動停損：" + " → ".join(parts) + f"；{tail}"
+
+
 def _zones(highs_idx, h, price, tol=0.02):
     """把現價上方的波段高點合併成壓力區（相差 2% 內算同一區），由近到遠"""
     above = sorted(float(h[i]) for i in highs_idx if h[i] > price * 1.005)
@@ -322,42 +461,39 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
         if l[i] < price * 0.995:
             support = {"price": _r(l[i]), "date": fmtd(i), "label": "60 日低點", "kind": "low60"}
 
-    # 停損價（PLAN-LEVELS.md 第 8 節，研究最佳做法）：
-    # - 前低離現價 > 3 ATR 且強勢（收盤 > 5 日線 > 10 日線）→ 撐＝10 日線、損＝20 日線 −1 ATR（移動停損，跟著月線上移）
-    #   （研究：強勢延伸股 40 天 +3.98%、最大回撤 12.7%；用戶原本的 5／10 日線進出 +1.12%、會被洗）
-    # - 其他（含前低 > 3 ATR 但不是強勢）：支撐 −0.5 ATR，至少離現價 2.5 ATR（STOP_MIN_ATR）；沒有支撐用現價 −2.5 ATR
-    #   （10-05 版前低遠又不強勢時不顯示支撐、停損用 現價 −3.5 ATR 風險上限；10-06 用戶：支撐要顯示前低 → 拿掉。
-    #    研究 3.2：前低 −0.5ATR 不設上限 +2.59%、夾 1.5～3.5ATR +2.55%，差不多）
-    # 每次都用當下的均線重算（無狀態），所以只要有支撐，停損一定低於支撐
+    # 停損價（PLAN-STOP.md，B55）：這裡算「如果今天收盤買」的進場停損；觀察清單／持有的滾動停損由 server 用 rolling_stop 重播
+    # - 強勢延伸（最近結構低點離現價 > 3 ATR、收盤 > 5 日線 > 10 日線）→ 撐＝10 日線、損＝20 日線 −1 ATR（沿用）
+    # - 其他：離現價至少 1 倍 ATR 的最近結構低點，收盤跌破出場（研究：比舊的「至少 2.5 ATR」停損距離 11.2% → 8.6%、
+    #   每單位風險報酬 0.32 → 0.40、最差 5% 也較好）；沒有 → 現價 −2.5 ATR
     struct_support = None
     stop = None
     m5, m10, m20 = ma[5][last], ma[10][last], ma[20][last]
-    far = support is not None and price - support["price"] > 3 * a
-    trend = not any(np.isnan(x) for x in (m5, m10, m20)) and price > m5 > m10
-    if far and trend:
-        # 後兩項只在 20 日線偏高的少數情況生效：保證停損 < 10 日線支撐、且離現價至少 1.5 ATR
-        trail_p = min(m20 - a, m10 - 0.5 * a, price - 1.5 * a)
-        if trail_p > 0 and _r(trail_p) < _r(m10):
-            struct_support = support
-            support = {"price": _r(m10), "date": fmtd(last), "label": "10 日線（強勢股的支撐）", "kind": "ma10"}
-            note = "" if trail_p == m20 - a else "（20 日線偏高，往下放到離 10 日線 0.5 ATR／離現價 1.5 ATR）"
-            stop = {"price": _r(trail_p), "basis": "trail",
-                    "label": f"移動停損：20 日線 {m20:.2f} − 1×ATR（{a:.2f}）{note}，跟著 20 日線每天上移，收盤跌破出場；"
-                             f"前低 {struct_support['price']} 離現價超過 3 倍 ATR"}
-    if stop is None:
-        if support:
-            sp = support["price"]
-            raw = sp - 0.5 * a
-            if raw > price - STOP_MIN_ATR * a:
-                stop_p, basis = price - STOP_MIN_ATR * a, "floor"
-                label = f"支撐 {sp} 離現價太近，停損放在現價 − {STOP_MIN_ATR:g}×ATR，避免盤中雜訊洗出場"
-            else:
-                stop_p, basis = raw, "support"
-                label = f"支撐 {sp} − 0.5×ATR（{a:.2f}）" + ("；前低離現價超過 3 倍 ATR，停損比較寬，用部位大小控制風險" if far else "")
+    atr_arr = atr_series(h, l, c)
+    lows_now = StructLows(h, l, c).at(last)
+    es = entry_stop(c, l, atr_arr, ma[5], ma[10], ma[20], lows_now, last)
+    if es["basis"] == "trail":
+        trail_p = es["price"]
+        struct_support = support if support is not None else {"price": _r(l[es["sup_idx"]]), "date": fmtd(es["sup_idx"]),
+                                                              "label": "前低", "kind": "swing"}
+        support = {"price": _r(m10), "date": fmtd(last), "label": "10 日線（強勢股的支撐）", "kind": "ma10"}
+        note = "" if trail_p == m20 - a else "（20 日線偏高，往下放到離 10 日線 0.5 ATR／離現價 1.5 ATR）"
+        stop = {"price": _r(trail_p), "basis": "trail",
+                "label": f"移動停損：20 日線 {m20:.2f} − 1×ATR（{a:.2f}）{note}，跟著 20 日線每天上移，收盤跌破出場；"
+                         f"前低 {struct_support['price']} 離現價超過 3 倍 ATR"}
+    elif es["basis"] == "struct":
+        sp_ = _r(es["price"])
+        d_ = fmtd(es["idx"])
+        if support is not None and support["price"] == sp_:
+            label = f"收盤跌破支撐 {sp_}（{d_[4:6]}/{d_[6:]} 低點）出場"
+        elif support is not None and support["price"] > sp_:
+            label = (f"支撐 {support['price']} 離現價不到 1 倍 ATR（{a:.2f}），太近容易被洗，"
+                     f"停損放在下一個結構低點 {sp_}（{d_[4:6]}/{d_[6:]}），收盤跌破出場")
         else:
-            stop_p, basis = price - 2.5 * a, "atr"
-            label = "近一年沒有低於現價的低點可當支撐，停損用現價 − 2.5×ATR"
-        stop = {"price": _r(stop_p), "basis": basis, "label": label + "，收盤跌破出場"} if stop_p > 0 else None
+            label = f"結構低點 {sp_}（{d_[4:6]}/{d_[6:]}），收盤跌破出場"
+        stop = {"price": sp_, "basis": "struct", "label": label, "low_date": d_}
+    elif es["price"] > 0:
+        stop = {"price": _r(es["price"]), "basis": "atr",
+                "label": "近一年沒有離現價 1 倍 ATR 以上的結構低點，停損用現價 − 2.5×ATR，收盤跌破出場"}
 
     # 附近均線（±3% 內）
     ma_near = []

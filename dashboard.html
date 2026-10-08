@@ -1978,11 +1978,13 @@ function _levelsCell(s) {
         const held = lv.entry && lv.entry.kind === 'cost';
         const al = lv.alerts || {};
         const flag = al.stop_hit ? `<br><b style="color:#fff;background:#dc2626;border-radius:4px;padding:0 4px;font-size:.68rem" title="今天價格跌破昨天的停損線 ${al.stop_ref}">已跌破停損</b>`
+          : al.breached_on ? `<br><b style="color:#fca5a5;border:1px solid #dc2626;border-radius:4px;padding:0 4px;font-size:.68rem" title="持有中：這天收盤跌破滾動停損，停損停在這裡（出場或更新成本）">${String(al.breached_on).slice(4, 6)}/${String(al.breached_on).slice(6)} 已跌破</b>`
           : al.target_hit ? `<br><b style="color:#fff;background:#ea580c;border-radius:4px;padding:0 4px;font-size:.68rem" title="今天最高碰到昨天的目標價 ${al.target_ref}">已到目標</b>` : '';
         return `<span style="font-size:.74rem;line-height:1.45;display:inline-block;white-space:nowrap">
           ${held ? `<span title="持有中：成本 ${lv.entry.price}（${lv.entry.pnl_pct > 0 ? '+' : ''}${lv.entry.pnl_pct}%）">💼</span>` : ''}${lv.target != null ? `<span style="color:#ef4444;font-weight:700">標 ${lv.target}</span>` : '<span class="muted">標 —</span>'}${icon}
           <br>${p1 != null ? `<span style="color:#f59e0b">壓 ${p1}${p2 != null ? ' · ' + p2 : ''}</span>` : '<span class="muted">無前高</span>'}
-          <br><span style="color:#4ade80">撐 ${sup ?? '—'}</span> · <span style="color:#22c55e;font-weight:700">損 ${stop ? stop.price : '—'}</span>${lv.stop && lv.stop.basis === 'trail' ? '<span style="font-size:.66rem;color:#a78bfa" title="強勢股離前低太遠：撐看 10 日線，停損＝20 日線 − 1 ATR，跟著月線上移"> 移動</span>'
+          <br><span style="color:#4ade80">撐 ${sup ?? '—'}</span> · <span style="color:#22c55e;font-weight:700">損 ${stop ? stop.price : '—'}</span>${lv.stop && lv.stop.basis === 'roll' ? `<span style="font-size:.66rem;color:#38bdf8" title="${_esc(lv.stop.label || '')}"> 滾動</span>`
+            : lv.stop && lv.stop.basis === 'trail' ? '<span style="font-size:.66rem;color:#a78bfa" title="強勢股離前低太遠：撐看 10 日線，停損＝20 日線 − 1 ATR，跟著月線上移"> 移動</span>'
             : lv.stop && lv.stop.basis === 'risk' ? '<span class="muted" style="font-size:.66rem" title="前低太遠、又不是強勢：附近沒有可靠支撐，停損用現價 − 3.5 ATR"> 風險上限</span>'
             : lv.stop && lv.stop.basis === 'entry10' ? `<span style="font-size:.66rem;color:#f472b6" title="停損不低於${held ? '成本' : '加入價'} ${lv.entry.price} 的 −10%"> ${held ? '成本' : '加入'}−10%</span>` : ''}${flag}</span>`;
       })();
@@ -2025,6 +2027,8 @@ async function showLevels(sid) {
     + item('🟢', '支撐價', sup ? sup.price : '—', '#4ade80', sup ? `${_esc(sup.label)}${sup.kind === 'ma5' || sup.kind === 'ma10' ? '' : ' ' + fmtD(sup.date)}`
         : lv.struct_support ? '前低離現價超過 3 倍 ATR、又不是強勢，附近沒有可靠支撐（前低見下方參考）' : '近一年找不到低於現價的低點')
     + item('🛑', '停損價', stp ? stp.price : '—', '#22c55e', stp ? _esc(stp.label || '') : '')
+    + (lv.stop_today && lv.stop_today.price != null && stp && lv.stop_today.price !== stp.price
+        ? `<div class="muted" style="font-size:.74rem;margin-left:22px;line-height:1.5">如果今天才買：停損 <b style="color:var(--text)">${lv.stop_today.price}</b>（${_esc(lv.stop_today.label || '')}）</div>` : '')
     + (lv.rr != null ? `<div style="margin-top:6px">⚖️ 報酬風險比 <b style="color:${lv.rr >= 2 ? '#ef4444' : lv.rr >= 1 ? '#f59e0b' : '#94a3b8'}">${lv.rr}</b> <span class="muted" style="font-size:.76rem">（目標 ${lv.upside_pct != null ? '+' + lv.upside_pct + '%' : '—'} ／ 停損 ${lv.downside_pct != null ? lv.downside_pct + '%' : '—'}）</span></div>` : '');
   const ss = lv.struct_support;
   const structRow = ss ? `<div>· <b>${ss.price}</b> <span class="muted">${_esc(ss.label)} ${fmtD(ss.date)}（離現價超過 3 倍 ATR）</span></div>` : '';
@@ -2118,7 +2122,7 @@ async function _drawLevelLines(series, sid) {
   const basis = lv.stop && lv.stop.basis;
   if (lv.support) add(lv.support.price, '#4ade80', basis === 'trail' ? '10日線' : '支撐');
   const sp = _levelsPrimaryStop(lv);
-  if (sp) add(sp.price, '#22c55e', basis === 'trail' ? '移動停損' : basis === 'risk' ? '風險上限'
+  if (sp) add(sp.price, '#22c55e', basis === 'roll' ? '滾動停損' : basis === 'trail' ? '移動停損' : basis === 'risk' ? '風險上限'
     : basis === 'entry10' ? (lv.entry && lv.entry.kind === 'cost' ? '成本−10%' : '加入−10%') : '停損', 0, 2);
   const st = lv.stops || {};
   if (st.uptrend_exit) add(st.uptrend_exit.price, '#a78bfa', '破此出場', 1);
