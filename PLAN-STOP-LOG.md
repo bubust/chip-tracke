@@ -46,3 +46,4 @@ Round 1 dispositions (plan updated accordingly):
   - F3 low _levels_df 無上限 → 採用：超過 120 檔清掉 10 分鐘沒用到的
 - Groq 第 3 批（前端、unadjust_fix、測試 diff）：429 每日額度用完（要等 50 分鐘）→ **未審**；這部分 Gemini 第 1 輪已審過 APPROVED
 - 修正後 Gemini 2.5（新的一輪）重審最終 server diff：**APPROVED**
+- 線上（19:49）：unadjust_fix zero_volume_removed 13,038 列；群創 損 48.55 roll、36 檔都有停損、playwright 無 JS 錯誤
