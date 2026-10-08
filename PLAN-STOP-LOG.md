@@ -40,3 +40,9 @@ Round 1 dispositions (plan updated accordingly):
   - F2 low sup_i 用 < 要改 <= → 不採用：支撐定義就是「低於現價」，≥1ATR 的條件另外照計畫
   - F3 low active_stop 上修後沒更新 → 不採用：計畫定義 active_stop＝重新起算時的起點，目前停損是 price
 - Groq 第 2 批（server diff）：429 每日 token 上限（TPD 200k）→ 等額度
+- Groq 第 2 批（server diff，等 20 分鐘額度）：REVISE
+  - F1 high _watch_refs 改 3 元組會弄壞舊呼叫 → 不成立：全專案 4 個呼叫點都交給 _levels_with_ref（2／3 元組都吃）
+  - F2 medium 日期格式不一致 → 實際都是 YYYYMMDD，但採用（_apply_roll 比對前統一成 YYYYMMDD，成本低）
+  - F3 low _levels_df 無上限 → 採用：超過 120 檔清掉 10 分鐘沒用到的
+- Groq 第 3 批（前端、unadjust_fix、測試 diff）：429 每日額度用完（要等 50 分鐘）→ **未審**；這部分 Gemini 第 1 輪已審過 APPROVED
+- 修正後 Gemini 2.5（新的一輪）重審最終 server diff：**APPROVED**

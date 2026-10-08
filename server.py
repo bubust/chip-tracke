@@ -3385,6 +3385,9 @@ def _levels_for(sid: str, fresh: bool = False) -> dict:
     _levels_cache[sid] = (_t.time(), res)
     if df is not None and not df.empty and not res.get("error"):
         _levels_df[sid] = df
+        if len(_levels_df) > 120:              # 深度分析看過的股票也會進來：超過 120 檔就清掉 10 分鐘沒用到的
+            for k in [k for k in _levels_df if k not in _levels_cache or _t.time() - _levels_cache[k][0] > 600]:
+                _levels_df.pop(k, None)
     else:
         _levels_df.pop(sid, None)
     return res
@@ -3417,7 +3420,7 @@ def _apply_roll(lv: dict, df, entry_date: str, kind: str) -> dict:
     不改快取裡的 lv（回傳新的）"""
     import copy
     from price_levels import rolling_stop, roll_label
-    dates = [str(x) for x in df["date"]]
+    dates = [str(x)[:10].replace("-", "") for x in df["date"]]
     idx = max((i for i, d in enumerate(dates) if d <= entry_date), default=0)   # 最後一根 ≤ 進場日；早於資料 → 第 0 根
     roll = rolling_stop(df, idx, kind)
     out = copy.deepcopy(lv)
