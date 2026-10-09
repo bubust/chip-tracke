@@ -381,6 +381,71 @@ def _note_fail(sid: str, reason: str):
         _fetch_fail_reason[sid] = reason
 
 
+# ── 盤中掃描：今天那根用鉅亨即時報價補（B63）──────────────────────────────────
+# 盤中目標日＝今天，price_daily 只到昨天 → 以前每檔都去打 Yahoo，Yahoo 擋（429）就算失敗（10-09 盤中 7 成失敗）。
+# 改成掃描開始時一次抓全市場鉅亨即時報價（一批 40 檔），快取到昨天的直接補上今天這根，不打 Yahoo。
+_scan_rt: dict = {}
+
+
+def _prefetch_rt_for_scan(sids: list, day: str) -> dict:
+    """鉅亨即時報價（開高低收量）→ {sid: {"date","open","high","low","close","volume"}}，只收日期＝day、開高低都有的"""
+    out = {}
+    url = "https://ws.api.cnyes.com/ws/api/v1/quote/quotes/"
+    hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+            "Referer": "https://www.cnyes.com/", "Origin": "https://www.cnyes.com"}
+
+    def num(v):
+        try:
+            x = float(str(v).replace(",", ""))
+            return x if x > 0 else None
+        except Exception:
+            return None
+    import datetime as _dt
+    with httpx.Client(timeout=10, headers=hdrs, follow_redirects=True) as c:
+        for i in range(0, len(sids), 40):
+            chunk = sids[i:i + 40]
+            try:
+                r = c.get(url + ",".join(f"TWS:{x}:STOCK" for x in chunk))
+                for x in (r.json().get("data") or []):
+                    key = str(x.get("0") or "").split(":")                   # "TWS:2449:STOCK"
+                    sid = str(x.get("200010") or (key[1] if len(key) >= 2 else ""))
+                    ts = x.get("200007")
+                    try:
+                        d = _dt.datetime.fromtimestamp(float(ts), _dt.timezone(_dt.timedelta(hours=8))).strftime("%Y%m%d")
+                    except Exception:
+                        d = None
+                    bar = {"date": d, "open": num(x.get("19")), "high": num(x.get("12")), "low": num(x.get("13")),
+                           "close": num(x.get("6")), "volume": num(x.get("200013")) or 0}
+                    if sid in chunk and d == day and None not in (bar["open"], bar["high"], bar["low"], bar["close"]):
+                        out[sid] = bar
+            except Exception as e:
+                print(f"[SCAN] 鉅亨即時報價失敗（{i}）: {e}")
+            time.sleep(0.15)
+    return out
+
+
+def _latest_trade_date() -> str | None:
+    """鉅亨大型股最後成交的日期（休市日＝前一個交易日）；抓不到回 None"""
+    import datetime as _dt
+    try:
+        r = httpx.get("https://ws.api.cnyes.com/ws/api/v1/quote/quotes/TWS:2330:STOCK,TWS:2317:STOCK,TWS:2454:STOCK",
+                      headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.cnyes.com/"}, timeout=8)
+        ds = [_dt.datetime.fromtimestamp(float(x["200007"]), _dt.timezone(_dt.timedelta(hours=8))).strftime("%Y%m%d")
+              for x in (r.json().get("data") or []) if x.get("200007")]
+        return max(ds) if ds else None
+    except Exception:
+        return None
+
+
+def _with_live_bar(sid: str, cached: pd.DataFrame, target_date: str):
+    """快取到昨天＋今天有即時報價 → 補上今天那根；沒有就回 None"""
+    q = _scan_rt.get(sid)
+    if not q or q["date"] != target_date or cached.empty or str(cached.iloc[-1]["date"]) >= target_date:
+        return None
+    row = {"date": q["date"], "open": q["open"], "high": q["high"], "low": q["low"], "close": q["close"], "volume": q["volume"]}
+    return pd.concat([cached, pd.DataFrame([row])], ignore_index=True)
+
+
 def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
     """
     同步版 fetch（供 ThreadPoolExecutor worker 呼叫）：
@@ -403,6 +468,10 @@ def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
             if last_date >= target_date:
                 # Cache 已達目標日期，直接用，跳過 Yahoo
                 return cached
+            # 盤中：快取到前一個交易日＋鉅亨今天的即時 K 棒 → 補上直接用（不打 Yahoo）
+            live = _with_live_bar(sid, cached, target_date)
+            if live is not None:
+                return live
             # Cache 落後目標 → 嘗試 Yahoo；4 天內的 cache 保留備援
             today_m4 = (_now.date() - _dt.timedelta(days=4)).strftime("%Y%m%d")
             if last_date >= today_m4:
@@ -434,6 +503,8 @@ def _fetch_for_scan(sid: str, market: str) -> pd.DataFrame:
                                  timeout=20)
                     if r.status_code == 429:
                         _note_fail(sid, "throttled")
+                        if not _cached_fallback.empty:      # 被擋就先用快取（4 天內），不要整檔算失敗
+                            return _cached_fallback
                         return pd.DataFrame()   # 快速放棄，讓 retry pass 處理
                 if r.status_code == 404:
                     _note_fail(sid, "not_found")
@@ -682,6 +753,7 @@ async def run_market_scan(strategy_params: dict = None):
     _scan_status["target_date"]    = _scan_cache_target_date
     _scan_status["target_hits"]    = 0   # 最後一根 K 棒已達目標日的股數
     print(f"[SCAN] 目標日 {_scan_cache_target_date}（台灣時間 {_tw_now():%Y-%m-%d %H:%M}）")
+    _scan_rt.clear()
 
     try:
         stocks = get_stock_list()
@@ -706,6 +778,26 @@ async def run_market_scan(strategy_params: dict = None):
 
         print(f"[SCAN] 全市場掃描：共 {len(tasks)} 支，{_SCAN_WORKERS} workers")
         _scan_status["total"] = len(tasks)
+
+        # 盤中（目標日＝今天、price_daily 還沒有今天）：先抓全市場鉅亨即時 K 棒，掃描時補上今天那根
+        try:
+            from price_cache import DB_PATH as _PDB
+            import sqlite3 as _sq
+            _cn = _sq.connect(str(_PDB))
+            _maxd = str(_cn.execute("SELECT MAX(date) FROM price_daily").fetchone()[0] or "")
+            _cn.close()
+            if _scan_cache_target_date == _tw_now().strftime("%Y%m%d") and _maxd < _scan_cache_target_date:
+                _last = _latest_trade_date()
+                if _last and _last < _scan_cache_target_date:
+                    # 今天休市（例：2026-10-09 國慶彈性放假）→ 目標日改成最後交易日，直接用快取
+                    print(f"[SCAN] 今天沒有交易（最後成交 {_last}），目標日改成 {_last}")
+                    _scan_cache_target_date = _last
+                    _scan_status["target_date"] = _last
+                else:
+                    _scan_rt.update(_prefetch_rt_for_scan([sid for sid, _ in tasks], _scan_cache_target_date))
+                    print(f"[SCAN] 鉅亨即時 K 棒 {len(_scan_rt)}/{len(tasks)} 檔（今天 {_scan_cache_target_date}）")
+        except Exception as _rte:
+            print(f"[SCAN] 即時 K 棒預抓失敗（改走原本流程）: {_rte}")
 
         _scan_status["phase"] = "yahoo"
 

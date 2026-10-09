@@ -55,3 +55,15 @@ def test_pool_excludes_recent_ex_rights_gap():
     vol.attrs["open"] = close.copy()
     p = linkage._pool(close, vol)
     assert bool(p["1111"]) and not bool(p["2222"])      # 2222 第 100 根 90→30（配股除權）→ 60 根內不進股票池
+
+
+def test_scan_live_bar_appends_only_missing_day():
+    import yahoo_price as y
+    c = pd.DataFrame({"date": ["20261006", "20261007"], "open": [1.0, 1.0], "high": [1.0, 1.0], "low": [1.0, 1.0], "close": [1.0, 1.0], "volume": [1.0, 1.0]})
+    y._scan_rt.clear()
+    y._scan_rt["2330"] = {"date": "20261008", "open": 10.0, "high": 11.0, "low": 9.0, "close": 10.5, "volume": 100.0}
+    out = y._with_live_bar("2330", c, "20261008")
+    assert len(out) == 3 and out.iloc[-1]["close"] == 10.5
+    assert y._with_live_bar("2330", out, "20261008") is None          # 已經有今天 → 不重複補
+    assert y._with_live_bar("2317", c, "20261008") is None            # 沒有即時報價
+    y._scan_rt.clear()
