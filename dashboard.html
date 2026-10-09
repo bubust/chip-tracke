@@ -416,6 +416,75 @@ details.guide[open]>summary::before{content:'▾ ';}
     main { padding: 10px 8px; }
     .card { padding: 14px 12px; border-radius: 12px; }
   }
+
+  /* 🔗 連動頁（B65）：每個產業一張卡 */
+  .lk-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(400px,1fr)); gap:12px; }
+  @media (max-width:700px) { .lk-grid { grid-template-columns:1fr; } }
+  .lk-card { background:var(--card2); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; display:flex; flex-direction:column; gap:8px; }
+  .lk-card.first { border-left:4px solid var(--up); }
+  .lk-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .lk-sec { font-weight:800; font-size:1.02rem; }
+  .lk-date { margin-left:auto; font-size:.74rem; color:var(--muted); }
+  .lk-badge { font-size:.72rem; padding:1px 9px; border-radius:999px; white-space:nowrap; }
+  .lk-badge.new { color:var(--up); background:rgba(239,68,68,.12); border:1px solid rgba(239,68,68,.35); }
+  .lk-badge.old { color:var(--muted); background:rgba(100,116,139,.12); border:1px solid rgba(100,116,139,.3); }
+  .lk-badge.warn { color:#f59e0b; background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.35); }
+  .lk-badge.ok { color:var(--down); background:rgba(34,197,94,.12); border:1px solid rgba(34,197,94,.35); }
+  .lk-leader { background:rgba(239,68,68,.07); border:1px solid rgba(239,68,68,.18); border-radius:8px; padding:8px 10px; }
+  .lk-lbl { font-size:.74rem; color:var(--muted); margin-bottom:3px; }
+  .lk-lead-main { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:1.02rem; }
+  .lk-big { font-size:1.2rem; font-weight:800; }
+  .lk-vr { font-size:.78rem; color:var(--muted); }
+  .lk-chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .lk-chip { display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:999px; background:#232736; border:1px solid var(--border); font-size:.8rem; }
+  .lk-tbl { width:100%; border-collapse:collapse; font-size:.84rem; }
+  .lk-tbl th { font-size:.72rem; color:var(--muted); font-weight:600; text-align:left; padding:2px 4px; }
+  .lk-tbl td { padding:5px 4px; border-top:1px solid var(--border); vertical-align:middle; }
+  .lk-tbl td.num { text-align:right; white-space:nowrap; }
+  .lk-barbg { display:inline-block; width:56px; height:6px; border-radius:3px; background:#2a2d3a; margin-right:6px; vertical-align:middle; overflow:hidden; }
+  .lk-bar { display:block; height:100%; background:var(--accent); border-radius:3px; }
+  .lk-cmp { padding:1px 7px !important; font-size:.78rem !important; }
+  .lk-empty { font-size:.8rem; color:var(--muted); padding:4px 0; }
+  .lk-research > summary { cursor:pointer; list-style:none; font-size:.8rem; display:inline-flex; gap:6px; align-items:center; }
+  .lk-research > summary::-webkit-details-marker { display:none; }
+  .lk-research[open] > summary { margin-bottom:4px; }
+  .lk-research .lk-rbody { font-size:.8rem; color:#cbd5e1; border-left:3px solid #f59e0b; padding:4px 10px; background:rgba(127,127,127,.06); border-radius:0 6px 6px 0; }
+  .lk-research.ok .lk-rbody { border-left-color:var(--up); }
+  .lk-sub { border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; margin-top:10px; background:var(--card2); }
+  .lk-sub-h { display:flex; align-items:center; gap:8px; font-weight:700; margin-bottom:6px; }
+  .lk-count { font-size:.72rem; color:var(--muted); font-weight:600; background:#232736; border-radius:999px; padding:0 8px; }
+  /* ⚠出貨日徽章、📋 講義訊號卡（B66） */
+  .dist-badge { margin-left:4px; font-size:.68rem; color:#f59e0b; border:1px solid #f59e0b66; background:#f59e0b18; border-radius:3px; padding:0 4px; white-space:nowrap; cursor:help; }
+  .cs-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:10px; margin-top:8px; }
+  @media (max-width:700px) { .cs-grid { grid-template-columns:1fr; } }
+  .cs-box { background:var(--card2); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; }
+  .cs-box.alert { border-color:#ef4444; box-shadow:0 0 0 1px #ef444455 inset; }
+  .cs-h { display:flex; align-items:center; gap:6px; font-weight:700; margin-bottom:6px; flex-wrap:wrap; }
+  .cs-h .lk-badge { font-weight:600; }
+  .cs-note { font-size:.74rem; color:var(--muted); margin-top:6px; line-height:1.5; }
+  .cs-chip { display:inline-block; padding:1px 7px; border-radius:999px; background:#232736; border:1px solid var(--border); font-size:.74rem; margin:2px 3px 2px 0; }
+  .cs-chip.hot { color:#f59e0b; border-color:#f59e0b66; }
+  .cs-cols { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  @media (max-width:500px) { .cs-cols { grid-template-columns:1fr; } }
+  #course-card .dp-open-btn .t { display:none; }
+  #course-card .dp-open-btn { padding:0 5px !important; font-size:.74rem; }
+  #course-card .lk-tbl td { white-space:normal; }
+  .sector-alert { border:1px solid #ef4444; background:rgba(239,68,68,.08); border-radius:8px; padding:6px 10px; margin-bottom:8px; font-size:.84rem; }
+  /* ⇅ 兩檔對比（B65） */
+  .cmp-bar { display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid #1e2435; flex-wrap:wrap; }
+  .cmp-bar input { width:130px; background:#0f1523; border:1px solid #2a2e39; color:#d1d4dc; border-radius:6px; padding:4px 8px; }
+  .cmp-pane { flex:1; min-height:0; display:flex; flex-direction:column; border-bottom:1px solid #2a2e39; }
+  .cmp-head { display:flex; align-items:center; gap:10px; padding:4px 14px; font-size:.9rem; color:#d1d4dc; flex-wrap:wrap; background:#0f1523; }
+  .cmp-head .rng { font-size:.8rem; color:#9598a1; }
+  .cmp-chart { flex:1; min-height:0; position:relative; }
+  @media (max-width:700px) {
+    .cmp-bar { gap:5px; padding:6px 8px; }
+    .cmp-bar .cmp-hint, .cmp-bar .cmp-title { display:none; }
+    .cmp-bar input { width:84px; }
+    .cmp-head { padding:3px 8px; font-size:.82rem; }
+  }
+  #tab-link .dp-open-btn .t { display:none; }
+  #tab-link .dp-open-btn { padding:0 5px !important; font-size:.74rem; margin-left:2px; }
 </style>
 </head>
 <body>
@@ -670,6 +739,7 @@ details.guide[open]>summary::before{content:'▾ ';}
 <!-- ═══════════════════════ 策略篩選 ═══════════════════════ -->
 <div id="tab-screen" class="tab">
   <div class="card" id="crash-card" style="display:none"></div>
+  <div class="card" id="course-card" style="display:none"></div>
 
   <div class="card">
     <!-- Cache 預熱狀態列 -->
@@ -698,7 +768,7 @@ details.guide[open]>summary::before{content:'▾ ';}
       <button class="btn ghost screen-strat-btn" data-s="S5"       onclick="viewStrategy('S5')">S5 站上均線 <span class="strat-cnt" id="cnt-S5"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S10"      onclick="viewStrategy('S10')">S10 漲停 <span class="strat-cnt" id="cnt-S10"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_FBD"   onclick="viewStrategy('S_FBD')">🪤 假跌破 <span class="strat-cnt" id="cnt-S_FBD"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="S_THUNDER" onclick="viewStrategy('S_THUNDER')" title="盤整 90 天（區間 ≤15%）後帶量 2.5 倍突破；回檔 ≤0.618 時目標價＝第一段高點−突破點＋回檔低點">⚡ 平地一聲雷 <span class="strat-cnt" id="cnt-S_THUNDER"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_THUNDER" onclick="viewStrategy('S_THUNDER')" title="合併版：①盤整 90 天（區間 ≤15%）後帶量 2.5 倍突破（回檔 ≤0.618 時目標價＝第一段高點−突破點＋回檔低點）②底部量滾量（跌深後站上季線＋連續爆量）">⚡ 平地一聲雷 <span class="strat-cnt" id="cnt-S_THUNDER"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_XIANREN" onclick="viewStrategy('S_XIANREN')" title="盤整後上攻收長上影線（第一次出量）→ 繼續盤整 1～10 天不破低、沒過頂 → 今天第二次出量收紅；停損＝仙人指路那根的低點">🧙 仙人指路 <span class="strat-cnt" id="cnt-S_XIANREN"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_WARRANT_TOP" onclick="viewStrategy('S_WARRANT_TOP')">📈 認購前十大 <span class="strat-cnt" id="cnt-S_WARRANT_TOP"></span></button>
       <div class="strat-divider" style="flex-basis:100%;font-size:.74rem;color:var(--muted);margin-top:6px">📚 上課筆記策略（做多 14 個；⛔ 之後 7 個是做空／出場警訊）· 籌碼類（投信、融券、大戶）在全市場掃描最後另外抓資料計算</div>
@@ -708,14 +778,16 @@ details.guide[open]>summary::before{content:'▾ ';}
       <button class="btn ghost screen-strat-btn" data-s="S_RSI_HOT" onclick="viewStrategy('S_RSI_HOT')" title="RSI(6) ≥ 80 連 3 天（第一次），打橫盤整靠近 5 日線介入，跌破 5 日線出場">🔥 RSI6 高檔鈍化 <span class="strat-cnt" id="cnt-S_RSI_HOT"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_BB1" onclick="viewStrategy('S_BB1')" title="布林標準差改 1：開布林大漲、收在上軌外續抱，跌回上軌內出場">🎈 布林(20,1)飆股 <span class="strat-cnt" id="cnt-S_BB1"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_GAP_BOTTOM" onclick="viewStrategy('S_GAP_BOTTOM')" title="急跌後爆數年不見的天量，之後第一個向上跳空缺口不補；缺口下緣停損">🕳️ 天量＋向上缺口 <span class="strat-cnt" id="cnt-S_GAP_BOTTOM"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="S_LIMIT_OPEN" onclick="viewStrategy('S_LIMIT_OPEN')" title="真利多連續跳空漲停，漲停板爆大量打開當天分批介入；爆量日低點停損">🚪 漲停爆量打開 <span class="strat-cnt" id="cnt-S_LIMIT_OPEN"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_LIMIT_OPEN" onclick="viewStrategy('S_LIMIT_OPEN')" title="連續 ≥ 2 天跳空漲停後爆量（≥ 昨量 3 倍）打開（盤中打開也算）；標月營收年增（業績前提）；收盤跌破打開當天最低就出。盤中會即時偵測推播">🚪 漲停爆量打開 <span class="strat-cnt" id="cnt-S_LIMIT_OPEN"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_TRUST5" onclick="viewStrategy('S_TRUST5')" title="投信連續買超（中小型電子勝率高），強勢股回測 5 日線打橫 2~3 天不破介入；跌破 10／20 日線出場">🏦 投信連買＋5日線打橫 <span class="strat-cnt" id="cnt-S_TRUST5"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_SHORT_UP" onclick="viewStrategy('S_SHORT_UP')" title="強勢股上漲中融券持續大增：軋空／套利熱絡，還有高點，拉回是買點">🩳 融券大增強勢股 <span class="strat-cnt" id="cnt-S_SHORT_UP"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_BIGHOLD" onclick="viewStrategy('S_BIGHOLD')" title="千張大戶持股比率上升、散戶持股比率下降（創新低更強）＝籌碼集中">🐋 大戶增散戶減 <span class="strat-cnt" id="cnt-S_BIGHOLD"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_KDJ_LOW" onclick="viewStrategy('S_KDJ_LOW')" title="大跌修正後 K、D < 20 且 J 曾 < 0，J 往上穿越 K、D；開口小就多看一天；停損前波最低點">🪝 KDJ低檔金叉 <span class="strat-cnt" id="cnt-S_KDJ_LOW"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_BREAKBOTTOM" onclick="viewStrategy('S_BREAKBOTTOM')" title="跌深後長黑收最低，隔天守住長黑低點沒再破底；停損長黑最低點">🔻 破底翻 <span class="strat-cnt" id="cnt-S_BREAKBOTTOM"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_NBREAK" onclick="viewStrategy('S_NBREAK')" title="大漲→拉回整理→長紅帶量實體突破前波高點（頸線）；或回測頸線守住；跌回頸線下停損">📐 關鍵價突破N字 <span class="strat-cnt" id="cnt-S_NBREAK"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="S_VOLROLL" onclick="viewStrategy('S_VOLROLL')" title="長期跌深盤整後重新站上季線＋連續爆量（前期均量 2 倍以上）；跌破季線或爆量K低點停損">🌋 底部量滾量 <span class="strat-cnt" id="cnt-S_VOLROLL"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_STRONG" onclick="viewStrategy('S_STRONG')" title="講義：強勢股高低點不重疊（拉回低點都在前高之上）；最近 2 個波段低點都高於前高，今天收盤突破最近高點；停損＝最近波段低點">💪 強勢股 <span class="strat-cnt" id="cnt-S_STRONG"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_FIB" onclick="viewStrategy('S_FIB')" title="講義：黃金切割回檔。漲 ≥ 30% 的一段後回檔碰到 0.618、收盤沒跌破，出現止跌紅 K；停損＝收盤跌破 0.618">✨ 黃金切割回檔 <span class="strat-cnt" id="cnt-S_FIB"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_DBREAK" onclick="viewStrategy('S_DBREAK')" title="講義 d 點放空：反彈高點出來後，收盤第一次跌破前一個波段低點、量 ≥ 1.5 倍、在季線下；停損＝反彈高點">🔽 跌破前低 <span class="strat-cnt" id="cnt-S_DBREAK"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_W60_BREAK" onclick="viewStrategy('S_W60_BREAK')" title="週 K 跌破 60 週均線即翻空">⛔ 跌破60週線 <span class="strat-cnt" id="cnt-S_W60_BREAK"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_MA_ALLDOWN" onclick="viewStrategy('S_MA_ALLDOWN')" title="跌破 5/10/20/60 日線且均線下彎：翻空">⛔ 跌破所有均線 <span class="strat-cnt" id="cnt-S_MA_ALLDOWN"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_DANGER" onclick="viewStrategy('S_DANGER')" title="近期量觸及歷史高點量、高點不過＝預警；高檔第一個往下跳空缺口＝強烈賣訊">☠️ 危險量＋空方缺口 <span class="strat-cnt" id="cnt-S_DANGER"></span></button>
@@ -1760,7 +1832,7 @@ function switchTab(name) {
   if (name === 'sector') { const sf = document.getElementById('sector-iframe'); if (sf && !sf.dataset.loaded) { sf.dataset.loaded = '1'; sf.src = '/sector/'; } }
   if (name === 'relationship') { const rf2 = document.getElementById('relationship-iframe'); if (rf2 && !rf2.dataset.loaded) { rf2.dataset.loaded = '1'; rf2.src = '/relationship/'; } }
   if (name === 'link') { linkOnShow(); }
-  if (name === 'screen') { loadCrashCard(); }
+  if (name === 'screen') { loadCrashCard(); loadCourseCard(); }
   if (name === 'treasury') { tbOnShow(); }
   if (name === 'mna') { mnaOnShow(); }
   if (name === 'cb') { cbOnShow(); }
@@ -3065,8 +3137,24 @@ function _dpBtn(sid, name) {
   return `<button class="btn sm ghost dp-open-btn" title="深度分析" onclick="event.stopPropagation();openDeepPanel('${sid}','${n}')">🔬<span class="t"> 分析</span></button>`;
 }
 
+// ⚠出貨日（PLAN-COURSE 項目 7）：最近 3 個交易日有「下跌出量／量大不漲」的股票；資料晚到 → 先放空位，載入後補上
+let _distMap = null;
+function distBadge(sid) {
+  const xs = _distMap && _distMap[sid];
+  const inner = xs && xs.length ? `<span class="dist-badge" title="出貨日（講義：高檔下跌出量／量大不漲）：${_esc(xs.map(x => `${String(x.date).slice(4, 6)}/${String(x.date).slice(6)} ${x.type_name}`).join('、'))}。5 年研究：之後 20 天大跌機率略高，不是可靠的賣出訊號">⚠出貨日</span>` : '';
+  return `<span class="dist-slot" data-sid="${_esc(sid)}">${inner}</span>`;
+}
+async function loadDistMap() {
+  try {
+    const r = await api('GET', '/api/course/dist');
+    const m = {};
+    (r.items || []).forEach(x => { (m[x.stock_id] = m[x.stock_id] || []).push(x); });
+    _distMap = m;
+    document.querySelectorAll('.dist-slot').forEach(el => { el.outerHTML = distBadge(el.dataset.sid); });
+  } catch (e) {}
+}
 function nameCell(s) {
-  return `<span class="view-name">${s.name ? _esc(s.name) : '<span style="color:var(--muted)">—</span>'}${typeof tbBadge === 'function' ? tbBadge(s.stock_id) : ''}</span>
+  return `<span class="view-name">${s.name ? _esc(s.name) : '<span style="color:var(--muted)">—</span>'}${typeof tbBadge === 'function' ? tbBadge(s.stock_id) : ''}${distBadge(s.stock_id)}</span>
     <input class="inline-edit" type="text" value="${_esc(s.name || '')}"
       style="width:90px" onblur="saveName('${s.stock_id}', this.value)"
       onkeydown="if(event.key==='Enter') this.blur(); if(event.key==='Escape') this.parentElement.classList.remove('editing');"
@@ -4204,7 +4292,10 @@ const STRATEGY_LABELS = {
   S5: 'S5 站上均線做多（今日量 ≥ 昨日3倍）', S10: 'S10 漲停',
   S_FBD: '🪤 假跌破買進（跌破MA10後快速收復，洗盤完成）',
   S_WARRANT_TOP: '📈 認購權證前十大（最近交易日認購成交額最高的標的股）',
-  S_THUNDER: '⚡ 平地一聲雷（長期盤整後帶量突破，回檔不破才買）',
+  S_THUNDER: '⚡ 平地一聲雷（合併：長期盤整後帶量突破＋底部量滾量站上季線；看「階段」欄的子型）',
+  S_STRONG: '💪 強勢股（講義：高低點不重疊，突破最近波段高點；停損＝最近波段低點）',
+  S_FIB: '✨ 黃金切割回檔（漲 ≥ 30% 後回檔到 0.618 止跌紅 K；停損＝收盤跌破 0.618）',
+  S_DBREAK: '🔽 跌破前低放空（講義 d 點：反彈高點後收盤跌破前低、量增、季線下；停損＝反彈高點）',
   S_XIANREN: '🧙 仙人指路（盤整完上攻收長上影線，之後繼續盤整，今天第二次出量＝要進攻；停損＝仙人指路那根的低點）',
   S_WMACD: '📅 週MACD大波段（週 K、MACD(10,20,50)：大跌後重新站上 20 週線且週柱由綠翻紅）',
   S_BIAS: '🧲 負乖離抄底（季線（60BIAS）負乖離 ≤ −20%）',
@@ -4212,7 +4303,7 @@ const STRATEGY_LABELS = {
   S_RSI_HOT: '🔥 RSI6 高檔鈍化（RSI(6) ≥ 80 連 3 天（第一次），打橫盤整靠近 5 日線介入，跌破 5 日線出場）',
   S_BB1: '🎈 布林(20,1)飆股（布林標準差改 1：開布林大漲、收在上軌外續抱，跌回上軌內出場）',
   S_GAP_BOTTOM: '🕳️ 天量＋向上缺口（急跌後爆數年不見的天量，之後第一個向上跳空缺口不補）',
-  S_LIMIT_OPEN: '🚪 漲停爆量打開（真利多連續跳空漲停，漲停板爆大量打開當天分批介入）',
+  S_LIMIT_OPEN: '🚪 漲停爆量打開（連續跳空漲停後爆量打開；先看業績前提：月營收年增 ≥ 20%；盤中打開會即時推播）',
   S_TRUST5: '🏦 投信連買＋5日線打橫（投信連續買超（中小型電子勝率高），強勢股回測 5 日線打橫 2~3 天不破介入）',
   S_SHORT_UP: '🩳 融券大增強勢股（強勢股上漲中融券持續大增：軋空／套利熱絡，還有高點，拉回是買點）',
   S_BIGHOLD: '🐋 大戶增散戶減（千張大戶持股比率上升、散戶持股比率下降（創新低更強）＝籌碼集中）',
@@ -4239,7 +4330,10 @@ const COURSE_COLS = {
   S_RSI_HOT: [['RSI6', 'rsi6'], ['鈍化天數', 'hot_days'], ['5日線(出場)', 'ma5']],
   S_BB1: [['上軌(出場)', 'bb_upper'], ['上軌外天數', 'above_days'], ['帶寬擴大', 'width_x', v => v + '倍']],
   S_GAP_BOTTOM: [['天量日', 'big_vol_date', _dF], ['天量倍數', 'big_vol_x', v => v + '倍'], ['缺口日', 'gap_date', _dF], ['缺口下緣(停損)', 'gap_low']],
-  S_LIMIT_OPEN: [['連續漲停', 'limit_days', v => v + '天'], ['打開量', 'vol_x', v => v + '倍'], ['停損(當日低)', 'stop']],
+  S_LIMIT_OPEN: [['連續漲停', 'limit_days', v => v + '天'], ['打開量', 'vol_x', v => v + '倍'], ['月營收年增', 'rev_yoy', v => v + '%'], ['業績前提', 'fund_ok', v => v ? '✅ 成立' : '⚠ 不成立'], ['停損(當日低)', 'stop']],
+  S_STRONG: [['突破的前高', 'prev_high'], ['停損(波段低)', 'stop'], ['到停損', 'risk_pct', v => v + '%']],
+  S_FIB: [['波段低', 'wave_low'], ['波段高', 'wave_high'], ['0.382', 'fib382'], ['0.5', 'fib500'], ['停損(0.618)', 'stop']],
+  S_DBREAK: [['跌破的前低', 'd_point'], ['停損(反彈高)', 'stop'], ['季線', 'ma60']],
   S_W60_BREAK: [['60週線', 'ma60w'], ['低於線', 'below_pct', _pctF]],
   S_MA_ALLDOWN: [['60日線', 'ma60'], ['最高均線', 'stop']],
   S_DANGER: [['等級', 'level'], ['量÷歷史最大量', 'vol_vs_max'], ['一年高點', 'year_high'], ['空方缺口', 'gap_date', _dF]],
@@ -4265,6 +4359,9 @@ const STRATEGY_SHORT = {
   S_FBD: '🪤 假跌破',
   S_WARRANT_TOP: '📈 認購前十大',
   S_THUNDER: '⚡ 平地一聲雷',
+  S_STRONG: '💪 強勢股',
+  S_FIB: '✨ 黃金切割回檔',
+  S_DBREAK: '🔽 跌破前低',
   S_XIANREN: '🧙 仙人指路',
   S_WMACD: '📅 週MACD大波段',
   S_BIAS: '🧲 負乖離抄底',
@@ -4722,12 +4819,42 @@ function _renderBatch(r) {
 
 // ── 📊 每個策略的 5 年回測（PLAN-BEST2）＋📉 大跌買點 ──
 let _best2 = null;
+let _courseRes = null;
+function _courseResearchHtml(strategy) {
+  const c = ((_courseRes || {}).strategies || {})[strategy];
+  if (!c) return '';
+  const pct = x => x == null ? '—' : `${x >= 0 ? '+' : ''}${(x * 100).toFixed(1)}%`;
+  const pw = x => x == null ? '—' : `${Math.round(x * 100)}%`;
+  const col = x => x == null ? '' : x > 0 ? 'color:var(--up)' : x < 0 ? 'color:var(--down)' : '';
+  const p = c.pick || {}, rd = c.random || {};
+  const tag = c.useful ? '<span class="lk-badge ok">✅ 回測通過</span>' : c.explore ? '<span class="lk-badge warn">🔎 探索性（樣本少）</span>' : '<span class="lk-badge warn">⚠ 5 年回測沒通過</span>';
+  let body = '';
+  if (c.text) body += `<div style="margin-top:6px">${_esc(c.text)}</div>`;
+  if (p.desc) body += `<div class="tbl-wrap" style="margin-top:6px"><table style="font-size:.8rem"><thead><tr><th>研究挑出的做法（樣本內挑）</th><th>樣本內 勝率／平均</th><th>樣本外 勝率／平均</th><th>隨機進場 樣本外</th></tr></thead><tbody>
+      <tr><td style="white-space:normal;min-width:220px">${_esc(p.desc)}；${_esc(p.filter || '')}；${_esc(p.exit || '')}</td><td>${pw(p.is_win)}／<span style="${col(p.is_mean)}">${pct(p.is_mean)}</span>（${p.is_n ?? '—'} 筆）</td>
+      <td>${pw(p.oos_win)}／<span style="${col(p.oos_mean)}">${pct(p.oos_mean)}</span>（${p.oos_n ?? '—'} 筆）</td><td>${rd.win != null ? `${pw(rd.win)}／${pct(rd.mean)}` : '—'}</td></tr>
+      ${c.top_win ? `<tr><td style="white-space:normal;min-width:220px">只看勝率：${_esc(c.top_win.desc)}；${_esc(c.top_win.filter || '')}；${_esc(c.top_win.exit)}</td><td>—</td><td>${pw(c.top_win.oos_win)}／<span style="${col(c.top_win.oos_mean)}">${pct(c.top_win.oos_mean)}</span></td><td>—</td></tr>` : ''}
+    </tbody></table></div>`;
+  if (c.merge && c.merge.length) {
+    const g0 = Object.keys(c.merge[0].groups);
+    const gl = g => g.startsWith('orig:') ? '原本 ' + g.slice(5) : g.startsWith('new:') ? '講義新版' : g === 'merged' ? '合併' : g;
+    body += `<details style="margin-top:6px"><summary style="cursor:pointer" class="muted">原本 vs 新版（同一個出場比，樣本外 勝率／平均／筆數）</summary><div class="tbl-wrap"><table style="font-size:.78rem"><thead><tr><th>濾網／出場</th>${g0.map(g => `<th>${_esc(gl(g))}</th>`).join('')}</tr></thead><tbody>
+      ${c.merge.map(m => `<tr><td>${_esc(m.filter)}／${_esc(m.exit)}</td>${g0.map(g => { const x = m.groups[g] || {}; return `<td>${pw(x.win)}／<span style="${col(x.mean)}">${pct(x.mean)}</span>（${x.n ?? 0}）</td>`; }).join('')}</tr>`).join('')}</tbody></table></div></details>`;
+  }
+  if ((c.reasons || []).length) body += `<div class="muted" style="font-size:.76rem;margin-top:4px">沒通過的原因：${_esc(c.reasons.join('；'))}</div>`;
+  if (c.decision) body += `<div style="font-size:.8rem;margin-top:4px"><b>網站怎麼做：</b>${_esc(c.decision)}</div>`;
+  return `<details style="border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-top:6px">
+    <summary style="cursor:pointer;font-weight:700">📚 講義版本 5 年回測　${tag}</summary>${body}
+    <div class="muted" style="font-size:.72rem;margin-top:4px">樣本內 2021-10～2024-06 挑、樣本外 2024-07～2026-08 驗；隨機進場＝同出場、同月份筆數。完整報告：research/course/results/REPORT.md</div></details>`;
+}
 async function _renderStratResearch(strategy) {
   const el = document.getElementById('strat-research');
   if (!el) return;
   if (_best2 === null) { try { _best2 = await api('GET', '/api/best2/strategies'); } catch (e) { _best2 = {}; } }
+  if (_courseRes === null) { try { _courseRes = await api('GET', '/api/course/research'); } catch (e) { _courseRes = {}; } }
   const r = (_best2.strategies || {})[strategy];
-  if (!r) { el.style.display = 'none'; return; }
+  const courseHtml = _courseResearchHtml(strategy);
+  if (!r) { if (courseHtml) { el.style.display = 'block'; el.innerHTML = courseHtml; } else el.style.display = 'none'; return; }
   const b = r.baseline || {}, p = r.pick, e7 = r.e7_10;
   const pct = x => x == null ? '—' : `${x >= 0 ? '+' : ''}${(x * 100).toFixed(2)}%`;
   const pw = x => x == null ? '—' : `${Math.round(x * 100)}%`;
@@ -4744,7 +4871,69 @@ async function _renderStratResearch(strategy) {
       ${p ? `<tr><td>改良候選：${_esc(p.filter)}；${_esc(p.exit)}</td><td>${pw(p.is_win)}／<span style="${col(p.is_mean)}">${pct(p.is_mean)}</span></td><td>${pw(p.oos_win)}／<span style="${col(p.oos_mean)}">${pct(p.oos_mean)}</span></td><td>${p.all_days != null ? p.all_days.toFixed(0) + ' 天' : '—'}</td><td>${r.port ? `${pct(r.port.pick.cagr)}／${pct(r.port.pick.mdd)}` : '—'}</td></tr>` : ''}
       ${e7 ? `<tr><td>固定停損 10%、沒跌破一直抱（收盤判斷）</td><td colspan="2">勝率 ${pw(e7.win)}、平均每筆 <span style="${col(e7.mean)}">${pct(e7.mean)}</span>；60 天內被洗出場 ${pw(e7.wash60)}</td><td>${e7.days != null ? e7.days.toFixed(0) + ' 天' : '—'}</td><td>${pct(e7.port_cagr)}／${pct(e7.port_mdd)}</td></tr>` : ''}
     </tbody></table></div>
-    <div class="muted" style="font-size:.74rem;margin-top:4px">5 年官方資料（含下市、含股利）、每筆扣 0.785% 成本；改良候選是用樣本內（2021-10～2024-06）勝率最高挑的，樣本外（2024-07～2026-08）有真的比較好、而且勝過隨機進場才算「建議改用」。同期加權年化 +23%。</div></details>`;
+    <div class="muted" style="font-size:.74rem;margin-top:4px">5 年官方資料（含下市、含股利）、每筆扣 0.785% 成本；改良候選是用樣本內（2021-10～2024-06）勝率最高挑的，樣本外（2024-07～2026-08）有真的比較好、而且勝過隨機進場才算「建議改用」。同期加權年化 +23%。</div></details>` + courseHtml;
+}
+
+// ── 📋 講義訊號（PLAN-COURSE）：大盤出貨日、主流族群、當沖名單、漲停打開、出貨日 ──
+let _courseToday = null;
+async function loadCourseCard(force) {
+  const el = document.getElementById('course-card');
+  if (!el) return;
+  let r;
+  try { r = await api('GET', '/api/course/today'); } catch (e) { return; }
+  _courseToday = r;
+  if (r.research) _courseRes = _courseRes || r.research;
+  const items = (r.research || {}).items || {};
+  const pct = (x, d = 1) => x == null ? '—' : `${x >= 0 ? '+' : ''}${(x * 100).toFixed(d)}%`;
+  const col = x => x == null ? '' : x > 0 ? 'color:var(--up)' : x < 0 ? 'color:var(--down)' : '';
+  const md = x => x ? `${String(x).slice(4, 6)}/${String(x).slice(6, 8)}` : '';
+  const stock = (id, name, list, src) => _linkStock(id, name, list, src);
+  const note = k => items[k] ? `<details class="lk-research"><summary><span class="lk-badge warn">⚠ 回測沒有優勢</span><span class="muted">5 年研究（點開）</span></summary><div class="lk-rbody">${_esc(items[k].text || '')}</div></details>` : '';
+  const m = r.market || {}, s = r.sector || {}, d = r.daytrade || {}, lim = r.limit || {}, ds = r.dist || {}, live = r.live || {};
+  // 大盤出貨日
+  const oh = (m.overheat || []).filter(x => x.ratio != null).slice(-5);
+  const mBox = `<div class="cs-box${m.dist_day ? ' alert' : ''}"><div class="cs-h">🚨 大盤出貨日 ${m.dist_day ? '<span class="lk-badge new">今天成立</span>' : '<span class="lk-badge old">沒有</span>'}<span class="lk-date">${md(m.date)}</span></div>
+    <div style="font-size:.85rem">加權 <b>${m.taiex ?? '—'}</b>　d 點 ${m.d_point ?? '—'}${m.dbreak ? ' <b style="color:var(--down)">今天跌破</b>' : ''}</div>
+    <div style="margin-top:4px">過熱指數（成交÷委買，> 0.5 過熱）：${oh.map(x => `<span class="cs-chip${x.ratio > 0.5 ? ' hot' : ''}">${md(x.date)} ${x.ratio.toFixed(2)}</span>`).join('') || '<span class="muted">—</span>'}</div>
+    <div class="cs-note">講義：最近 5 天過熱 > 0.5，加上加權收盤跌破 d 點（前一個波段低點）＝出貨日，減碼／避險。成立時 Telegram 通知。</div>${note('market')}</div>`;
+  // 主流族群
+  const sBox = `<div class="cs-box${(s.crash || []).length ? ' alert' : ''}"><div class="cs-h">📉 主流族群同步大跌 ${(s.crash || []).length ? `<span class="lk-badge new">${s.crash.length} 個族群</span>` : '<span class="lk-badge old">沒有</span>'}<span class="lk-date">${md(s.date)}</span></div>
+    <table class="lk-tbl"><thead><tr><th>主流族群（成交金額前 5）</th><th style="text-align:right">今天等權</th><th style="text-align:right">跌 ≥ 3% 比例</th></tr></thead><tbody>
+    ${(s.main || []).map(x => `<tr${x.crash ? ' style="background:rgba(239,68,68,.08)"' : ''}><td>${x.crash ? '⚠ ' : ''}${_esc(x.sector)} <small class="muted">${(x.share * 100).toFixed(0)}%</small></td><td class="num" style="${col(x.ew)}">${pct(x.ew)}</td><td class="num">${Math.round((x.breadth || 0) * 100)}%</td></tr>`).join('')}</tbody></table>
+    <div class="cs-note">同步大跌＝族群 ≥ 60% 成員跌 ≥ 3%、等權 ≤ −3%、量 ≥ 1.2 倍；成立時 Telegram 通知。</div>${note('sector')}</div>`;
+  // 當沖名單
+  const dl = (xs, side) => xs && xs.length ? `<table class="lk-tbl"><tbody>${xs.map(x => `<tr><td>${stock(x.stock_id, x.name, xs.map(y => ({ id: y.stock_id, name: y.name })), '當沖名單')}${x.futures ? ' <small class="muted" title="有個股期貨">期</small>' : ''}</td><td class="num" style="${col(x.chg)}">${pct(x.chg)}</td><td class="num"><small class="muted">量${x.vol_x}倍</small></td></tr>`).join('')}</tbody></table>` : `<div class="lk-empty">沒有${side}</div>`;
+  const mk = d.market || {};
+  const dBox = `<div class="cs-box" style="grid-column:1/-1"><div class="cs-h">⚡ 盤前當沖名單 <span class="lk-date">${d.date ? md(d.date) + ' 收盤算、下一個交易日用' : ''}</span></div>
+    <div style="font-size:.82rem;margin-bottom:6px">加權 ${mk.taiex ?? '—'}，${mk.side === '多' ? '<b style="color:var(--up)">在 5 日線上 → 順勢偏多</b>' : mk.side === '空' ? '<b style="color:var(--down)">在 5 日線下 → 順勢偏空</b>' : '—'}</div>
+    <div class="cs-cols"><div><div class="lk-lbl">🔴 多方（昨天剛起漲：漲 ≥ 3%、收最高附近、創 20 日新高、量 ≥ 1.5 倍）</div>${dl(d.long, '多方')}</div>
+    <div><div class="lk-lbl">🟢 空方（昨天剛起跌：鏡像）</div>${dl(d.short, '空方')}</div></div>
+    <div class="cs-note">股票池：個股期貨標的＋成交金額前 100 名、股價 ≥ 20。每天 08:30 Telegram。講義紀律：跟大盤方向做、進場同時設停損、單日虧損 ≤ 資金 2%、一天只出手 1～2 次。</div>${note('daytrade')}</div>`;
+  // 漲停打開
+  const rv = x => x.revenue && x.revenue.yoy != null ? `<span style="${x.revenue.yoy >= 20 ? 'color:var(--up)' : 'color:var(--muted)'}">營收年增 ${x.revenue.yoy >= 0 ? '+' : ''}${Math.round(x.revenue.yoy)}%</span>` : '<span class="muted">查無月營收</span>';
+  const lAll = (lim.candidates || []).concat(lim.opened_close || []).map(x => ({ id: x.stock_id, name: x.name }));
+  const lBox = `<div class="cs-box${(live.opened || []).length ? ' alert' : ''}"><div class="cs-h">🚪 漲停打開（短線爆擊） <span class="lk-date">${live.checked ? '盤中 ' + live.checked + ' 檢查' : md(lim.date)}</span></div>
+    ${(live.opened || []).length ? `<div class="lk-lbl">🔔 今天盤中已打開</div><table class="lk-tbl"><tbody>${live.opened.map(x => `<tr><td>${stock(x.stock_id, x.name, lAll, '漲停打開')}</td><td class="num">${x.time}</td><td class="num" style="${col(x.chg)}">${pct(x.chg)}</td><td class="num">量${x.vol_x}倍</td><td>${rv(x)}</td></tr>`).join('')}</tbody></table>` : ''}
+    <div class="lk-lbl">盯盤候選（連續 ≥ 2 天跳空漲停，明天盤中打開會通知）</div>
+    ${(lim.candidates || []).length ? `<table class="lk-tbl"><tbody>${lim.candidates.slice(0, 15).map(x => `<tr><td>${stock(x.stock_id, x.name, lAll, '漲停候選')}</td><td class="num">連 ${x.streak} 天</td><td class="num"><small class="muted">漲停 ${x.limit_next}</small></td><td>${rv(x)}</td></tr>`).join('')}</tbody></table>` : '<div class="lk-empty">沒有</div>'}
+    ${(lim.opened_close || []).length ? `<div class="lk-lbl" style="margin-top:6px">${md(lim.date)} 收盤已打開</div><table class="lk-tbl"><tbody>${lim.opened_close.map(x => `<tr><td>${stock(x.stock_id, x.name, lAll, '漲停打開')}</td><td class="num" style="${col(x.chg)}">${pct(x.chg)}</td><td class="num">量${x.vol_x}倍</td><td>${rv(x)}</td></tr>`).join('')}</tbody></table>` : ''}
+    <div class="cs-note">講義：真利多（業績好）＋連續跳空漲停後爆量打開＝小金額短線；停損＝打開當天最低（收盤跌破就出，最多 10 天）。月營收年增 ≥ 20% 才算業績前提成立。</div>
+    ${((_courseRes || {}).strategies || {}).S_LIMIT_OPEN ? `<details class="lk-research"><summary><span class="lk-badge warn">🔎 探索性結果</span><span class="muted">5 年研究（點開）</span></summary><div class="lk-rbody">${_esc(_courseRes.strategies.S_LIMIT_OPEN.text || '')}</div></details>` : ''}</div>`;
+  // 出貨日
+  const today = ds.date;
+  const dt = (ds.items || []).filter(x => x.date === today);
+  const dBox2 = `<div class="cs-box"><div class="cs-h">⚠ 出貨日（全部股票） <span class="lk-badge old">${md(today)} ${dt.length} 檔</span></div>
+    <div style="font-size:.8rem">股票名稱旁的 <span class="dist-badge">⚠出貨日</span> 就是這個（掃描結果、觀察清單、K 線標題都會標；觀察／持有股觸發時 Telegram）。</div>
+    <details style="margin-top:4px"><summary style="cursor:pointer" class="muted">今天全部 ${dt.length} 檔</summary><div style="max-height:260px;overflow:auto"><table class="lk-tbl"><tbody>
+    ${dt.slice(0, 120).map(x => `<tr><td>${stock(x.stock_id, x.name, dt.map(y => ({ id: y.stock_id, name: y.name })), '出貨日')}</td><td>${_esc(x.type_name)}</td><td class="num" style="${col(x.chg)}">${pct(x.chg)}</td><td class="num">量${x.vol_x}倍</td></tr>`).join('')}</tbody></table></div></details>
+    <div class="cs-note">高檔（收盤 ≥ 60 日最高 × 0.9、波段漲 ≥ 20%）出現「下跌出量」（跌 ≥ 1.5%、量 ≥ 1.5 倍且比昨天大）或「量大不漲」（量 ≥ 2 倍、漲跌 ±1% 內或長上影收黑）。</div>${note('dist')}</div>`;
+  el.style.display = 'block';
+  el.style.borderColor = (m.dist_day || (s.crash || []).length || (live.opened || []).length) ? '#ef4444' : '';
+  const alerts = [m.dist_day ? '大盤出貨日' : '', (s.crash || []).length ? '主流族群大跌' : '', (live.opened || []).length ? `漲停打開 ${live.opened.length} 檔` : ''].filter(Boolean);
+  el.innerHTML = `<details ${alerts.length ? 'open' : ''}><summary style="cursor:pointer"><b>📋 講義訊號</b>
+      ${alerts.length ? `<b style="color:var(--up)">🔔 ${alerts.join('、')}</b>` : '<span class="muted">大盤出貨日／主流族群大跌／當沖名單／漲停打開／出貨日（點開）</span>'}
+      <span class="muted" style="font-size:.74rem">　每晚掃描後更新；盤中每分鐘看漲停打開</span></summary>
+    <div class="cs-grid">${mBox}${sBox}${lBox}${dBox2}${dBox}</div></details>`;
 }
 
 async function loadCrashCard() {
@@ -4783,10 +4972,11 @@ function linkOnShow() {
   _linkLoadMovers(); _linkLoadDisposal();
 }
 function _researchBox(r, title) {
-  if (!r) return `<span class="muted">（${title}：研究結果還沒放上來）</span>`;
-  const tag = r.useful ? '<b style="color:var(--up)">✅ 回測有效</b>' : '<b style="color:#f59e0b">⚠ 回測沒有優勢</b>';
-  return `<div style="border-left:3px solid ${r.useful ? 'var(--up)' : '#f59e0b'};padding:4px 10px;background:rgba(127,127,127,.06)">${tag}　${_esc(r.text || '')}
-    ${r.detail ? `<details style="margin-top:4px"><summary style="cursor:pointer" class="muted">怎麼算的</summary><div class="muted" style="font-size:.78rem;white-space:pre-wrap">${_esc(r.detail)}</div></details>` : ''}</div>`;
+  if (!r) return `<span class="muted" style="font-size:.78rem">（${title}：研究結果還沒放上來）</span>`;
+  const tag = r.useful ? '<span class="lk-badge ok">✅ 回測有效</span>' : '<span class="lk-badge warn">⚠ 回測沒有優勢</span>';
+  return `<details class="lk-research${r.useful ? ' ok' : ''}"><summary>${tag}<span class="muted">${_esc(title)}的 5 年研究結論（點開）</span></summary>
+    <div class="lk-rbody">${_esc(r.text || '')}
+    ${r.detail ? `<details style="margin-top:4px"><summary style="cursor:pointer" class="muted">怎麼算的</summary><div class="muted" style="font-size:.78rem;white-space:pre-wrap">${_esc(r.detail)}</div></details>` : ''}</div></details>`;
 }
 async function _linkLoadMovers() {
   const el = document.getElementById('link-movers');
@@ -4794,15 +4984,37 @@ async function _linkLoadMovers() {
     const r = await api('GET', '/api/link/movers');
     document.getElementById('link-research-follow').innerHTML = _researchBox(r.research, '跟進第二名');
     const ms = r.movers || [];
-    if (!ms.length) { el.innerHTML = '<div class="muted">今天沒有產業出現「先發動」</div>'; return; }
-    el.innerHTML = ms.map(m => {
+    let warn = '';
+    try {
+      const ct = _courseToday || await api('GET', '/api/course/today');
+      const cr = ((ct || {}).sector || {}).crash || [];
+      if (cr.length) warn = `<div class="sector-alert">📉 <b>主流族群同步大跌</b>：${cr.map(x => `${_esc(x.sector)} ${(x.ew * 100).toFixed(1)}%（${Math.round(x.breadth * 100)}% 成員跌 ≥ 3%）`).join('、')}　<span class="muted">講義：主流股一起大跌＝出貨訊號；5 年研究：之後方向不穩定，當提醒</span></div>`;
+    } catch (e) {}
+    if (!ms.length) { el.innerHTML = warn + '<div class="muted">今天沒有產業出現「先發動」</div>'; return; }
+    const md = x => x ? `${String(x).slice(4, 6)}/${String(x).slice(6, 8)}` : '';
+    el.innerHTML = warn + '<div class="lk-grid">' + ms.map(m => {
       const list = m.movers.concat(m.candidates);
-      return `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
-        <div><b>${_esc(m.sector)}</b> ${m.first ? '<span style="color:var(--up);font-size:.75rem">（10 天來第一個發動）</span>' : '<span class="muted" style="font-size:.75rem">（近 10 天已有人發動）</span>'}</div>
-        <div style="margin-top:3px">🚀 ${m.movers.map(x => `${_linkStock(x.id, x.name, list, '連動：' + m.sector)} <b style="${_lcol(x.chg)}">${_lp(x.chg)}</b> <small class="muted">量 ${x.vr} 倍</small>`).join('　')}</div>
-        <div style="margin-top:3px">👉 跟進候選：${m.candidates.length ? m.candidates.map(x => `${_linkStock(x.id, x.name, list, '連動：' + m.sector)} <small class="muted">相關 ${x.corr}</small> <span style="${_lcol(x.chg)}">${_lp(x.chg)}</span>`).join('　') : '<span class="muted">沒有（同產業沒有高相關又還沒漲的）</span>'}</div>
+      const src = '連動：' + m.sector;
+      const lead = m.movers[0];
+      const others = m.movers.slice(1);
+      return `<div class="lk-card${m.first ? ' first' : ''}">
+        <div class="lk-head"><span class="lk-sec">${_esc(m.sector)}</span>
+          ${m.first ? '<span class="lk-badge new">🆕 10 天來第一個發動</span>' : '<span class="lk-badge old">近 10 天已有人發動</span>'}
+          <span class="lk-date">${md(m.date)}</span></div>
+        <div class="lk-leader"><div class="lk-lbl">🚀 先發動（龍頭）</div>
+          <div class="lk-lead-main"><span>${_linkStock(lead.id, lead.name, list, src)}</span>
+            <span class="lk-big" style="${_lcol(lead.chg)}">${_lp(lead.chg)}</span><span class="lk-vr">量 ${lead.vr} 倍</span></div>
+          ${others.length ? `<div class="lk-lbl" style="margin-top:6px">同產業也發動</div><div class="lk-chips">${others.map(x => `<span class="lk-chip">${_linkStock(x.id, x.name, list, src)} <b style="${_lcol(x.chg)}">${_lp(x.chg)}</b></span>`).join('')}</div>` : ''}
+        </div>
+        <div><div class="lk-lbl">👉 跟進候選（同產業、跟龍頭高相關、今天還沒跟上）</div>
+        ${m.candidates.length ? `<table class="lk-tbl"><thead><tr><th>股票</th><th>60 日相關</th><th style="text-align:right">今天</th><th></th></tr></thead><tbody>
+          ${m.candidates.map(x => `<tr><td>${_linkStock(x.id, x.name, list, src)}</td>
+            <td><span class="lk-barbg"><span class="lk-bar" style="width:${Math.max(0, Math.min(100, Math.round((x.corr || 0) * 100)))}%"></span></span>${x.corr}</td>
+            <td class="num" style="${_lcol(x.chg)}">${_lp(x.chg)}</td>
+            <td class="num"><button class="btn sm ghost lk-cmp" title="跟龍頭 ${lead.id} 上下對比 K 線" onclick="openCompare('${lead.id}','${x.id}')">⇅ 對比</button></td></tr>`).join('')}</tbody></table>`
+          : '<div class="lk-empty">沒有（同產業沒有高相關又還沒漲的）</div>'}</div>
       </div>`;
-    }).join('');
+    }).join('') + '</div>';
   } catch (e) { el.innerHTML = `<div class="muted">載入失敗：${_esc(e.message)}</div>`; }
 }
 function _pairChips(ps) {
@@ -4821,17 +5033,23 @@ async function _linkLoadDisposal() {
       <tr><td>第一次處置</td>${rdt.map(x => `<td style="${_lcol(x.first_mean)}">${_lp(x.first_mean)}<br><small class="muted">${x.first_red != null ? Math.round(x.first_red * 100) + '%紅' : ''}</small></td>`).join('')}</tr>
       <tr><td>再次處置</td>${rdt.map(x => `<td style="${_lcol(x.repeat_mean)}">${_lp(x.repeat_mean)}<br><small class="muted">${x.repeat_red != null ? Math.round(x.repeat_red * 100) + '%紅' : ''}</small></td>`).join('')}</tr></table></div>
       <div class="muted" style="font-size:.74rem">當天收盤對前一天收盤（含除權息）。這是事後觀察（探索性），不是驗證過的買賣規則。</div></details>` : '');
-    const tbl = (rows, cols) => rows.length ? `<div class="tbl-wrap"><table style="font-size:.82rem"><thead><tr>${cols.map(c => `<th>${c[0]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${cols.map(c => `<td>${c[1](r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '<div class="muted">（無）</div>';
+    const tbl = (rows, cols) => rows.length ? `<div class="tbl-wrap"><table class="lk-tbl"><thead><tr>${cols.map(c => `<th>${c[0]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${cols.map(c => `<td>${c[1](r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '<div class="lk-empty">（無）</div>';
     const md = x => x ? `${x.slice(4, 6)}/${x.slice(6, 8)}` : '';
     const all = (d.active || []).concat(d.releasing || []).concat(d.near || []).map(x => ({ id: x.stock_id, name: x.name }));
+    const nearR = (d.near || []).filter(x => x.risk);
+    const sec2 = d.second || [];
+    const dres = (((_courseRes || {}).items || {}).disp2 || {}).text || '';
     el.innerHTML = `
-      <div style="font-weight:700;margin:6px 0">⚠ 快被處置（注意股累計）</div>
-      ${tbl((d.near || []).filter(x => x.risk), [['股票', r => _linkStock(r.stock_id, r.name, all, '快被處置')], ['連續注意', r => r.consec + ' 天'], ['10 日內', r => r.n10 + ' 次'], ['30 日內', r => r.n30 + ' 次'], ['提醒', r => `<span style="color:#f59e0b">${_esc(r.hint || '')}</span>`], ['雙刀候選（同產業高相關）', r => _pairChips(r.pairs)]])}
-      <div style="font-weight:700;margin:10px 0 6px">⛓ 處置中／明天開始</div>
-      ${tbl(d.active || [], [['股票', r => _linkStock(r.stock_id, r.name, all, '處置股')], ['狀態', r => r.status], ['期間', r => `${md(r.start)}～${md(r.end)}`], ['第幾次', r => `${_esc(r.times)}${r.first ? '' : ' <span style="color:var(--down)">（再犯）</span>'}`], ['撮合', r => _esc(r.freq || '')], ['雙刀候選', r => _pairChips(r.pairs)]])}
-      <div style="font-weight:700;margin:10px 0 6px">🔓 今天出關（明天恢復正常交易）</div>
-      ${tbl(d.releasing || [], [['股票', r => _linkStock(r.stock_id, r.name, all, '出關股')], ['期間', r => `${md(r.start)}～${md(r.end)}`], ['第幾次', r => _esc(r.times)], ['配對', r => _pairChips(r.pairs)]])}
-      <div class="muted" style="font-size:.75rem;margin-top:6px">偏差率＝處置股 ÷ 配對股 的股價比值，跟 60 日平均比：正＝處置股相對貴（講義：處置前找正偏差放空、出關後找負偏差買）。處置期間委託要預收款券，散戶多半空不到，放空請自己評估。</div>`;
+      <div class="lk-sub"><div class="lk-sub-h">🎯 二次處置候選（第一次處置後連漲 5 天）<span class="lk-count">${sec2.length}</span></div>
+      ${tbl(sec2, [['股票', r => _linkStock(r.stock_id, r.name, all, '二次處置候選')], ['狀態', r => `<span class="lk-badge old">${_esc(r.status)}</span>`], ['處置期間', r => `${md(r.start)}～${md(r.end)}`], ['5 天漲幅', r => `<span style="color:var(--up)">${_lp(r.up5)}</span>`], ['收盤', r => r.close]])}
+      <div class="cs-note">講義：第一次處置沒跌、又連漲 5 天 → 容易被二次處置，可在門檻附近找空點。${dres ? '5 年研究：' + _esc(dres) : ''}</div></div>
+      <div class="lk-sub"><div class="lk-sub-h">⚠ 快被處置（注意股累計）<span class="lk-count">${nearR.length}</span></div>
+      ${tbl(nearR, [['股票', r => _linkStock(r.stock_id, r.name, all, '快被處置')], ['連續注意', r => r.consec + ' 天'], ['10 日內', r => r.n10 + ' 次'], ['30 日內', r => r.n30 + ' 次'], ['提醒', r => `<span class="lk-badge warn">${_esc(r.hint || '')}</span>`], ['雙刀候選（同產業高相關）', r => _pairChips(r.pairs)]])}</div>
+      <div class="lk-sub"><div class="lk-sub-h">⛓ 處置中／明天開始<span class="lk-count">${(d.active || []).length}</span></div>
+      ${tbl(d.active || [], [['股票', r => _linkStock(r.stock_id, r.name, all, '處置股')], ['狀態', r => `<span class="lk-badge ${/明天/.test(r.status || '') ? 'new' : 'old'}">${_esc(r.status || '')}</span>`], ['期間', r => `${md(r.start)}～${md(r.end)}`], ['第幾次', r => `${_esc(r.times)}${r.first ? '' : ' <span class="lk-badge warn">再犯</span>'}`], ['撮合', r => _esc(r.freq || '')], ['雙刀候選', r => _pairChips(r.pairs)]])}</div>
+      <div class="lk-sub"><div class="lk-sub-h">🔓 今天出關（明天恢復正常交易）<span class="lk-count">${(d.releasing || []).length}</span></div>
+      ${tbl(d.releasing || [], [['股票', r => _linkStock(r.stock_id, r.name, all, '出關股')], ['期間', r => `${md(r.start)}～${md(r.end)}`], ['第幾次', r => _esc(r.times)], ['配對', r => _pairChips(r.pairs)]])}</div>
+      <div class="muted" style="font-size:.75rem;margin-top:8px">偏差率＝處置股 ÷ 配對股 的股價比值，跟 60 日平均比：正＝處置股相對貴（講義：處置前找正偏差放空、出關後找負偏差買）。處置期間委託要預收款券，散戶多半空不到，放空請自己評估。</div>`;
   } catch (e) { el.innerHTML = `<div class="muted">載入失敗：${_esc(e.message)}</div>`; }
 }
 async function linkQuery(sid) {
@@ -4849,11 +5067,12 @@ function _linkPeersHtml(r, sid) {
   if (!ps.length) return `<div class="muted">${_esc(r.note || '沒有資料')}</div>`;
   const list = [{ id: sid, name: _chartNames[sid] || '' }].concat(ps);
   return `<div class="muted" style="font-size:.78rem;margin-bottom:4px">${sid} ${_esc(_chartNames[sid] || '')}　產業：${_esc(r.sector || '—')}　資料 ${r.date || ''}　今天 <span style="${_lcol(r.chg)}">${_lp(r.chg)}</span></div>
-    <div class="tbl-wrap"><table style="font-size:.82rem"><thead><tr><th>連動股</th><th>60 日相關</th><th>同產業</th><th>股價比值（今天／60 日平均）</th><th>偏差率</th><th>誰先動</th><th>今天</th></tr></thead><tbody>
+    <div class="tbl-wrap"><table style="font-size:.82rem"><thead><tr><th>連動股</th><th>60 日相關</th><th>同產業</th><th>股價比值（今天／60 日平均）</th><th>偏差率</th><th>誰先動</th><th>今天</th><th></th></tr></thead><tbody>
     ${ps.map(p => `<tr><td>${_linkStock(p.id, p.name, list, '連動：' + sid)}</td><td><b>${p.corr}</b></td><td>${p.same_sector ? '✅' : ''}</td>
       <td>${p.ratio}／${p.ratio_mean}</td><td style="${_lcol(p.dev)}">${_lp(p.dev)}</td>
       <td>${p.lead > 0.05 ? `<span style="color:var(--up)">${sid} 先動</span>` : p.lead < -0.05 ? `<span style="color:#f59e0b">${p.id} 先動</span>` : '<span class="muted">差不多</span>'}</td>
-      <td style="${_lcol(p.chg)}">${_lp(p.chg)}</td></tr>`).join('')}</tbody></table></div>
+      <td style="${_lcol(p.chg)}">${_lp(p.chg)}</td>
+      <td><button class="btn sm ghost lk-cmp" title="${sid} 跟 ${p.id} 上下對比 K 線" onclick="openCompare('${sid}','${p.id}')">⇅ 對比</button></td></tr>`).join('')}</tbody></table></div>
     <div class="muted" style="font-size:.74rem;margin-top:4px">誰先動＝前一天的漲跌跟對方隔天漲跌的相關（120 日）比較；偏差率正＝${sid} 相對對方貴。只是描述，不是買賣訊號。</div>`;
 }
 async function showLinkPeers(sid) {
@@ -5089,7 +5308,7 @@ function renderScreenTable(strategy, data) {
     return `<tr>
       <td class="muted">${i + 1}</td>
       <td><b class="link" onclick="openScreenChart('${row.stock_id}')" style="cursor:pointer;color:var(--accent)">${row.stock_id}</b></td>
-      <td style="white-space:nowrap;cursor:pointer" onclick="openScreenChart('${row.stock_id}')"><span style="display:inline-block;max-width:100px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle">${row.name || '—'}</span>${typeof tbBadge === 'function' ? tbBadge(row.stock_id) : ''}${row.vol_ratio != null && row.vol_ratio >= 2 ? `<span style="margin-left:4px;font-size:.68rem;background:#3fb95022;color:#3fb950;border:1px solid #3fb95055;border-radius:3px;padding:0 4px">量×${row.vol_ratio}</span>` : ''}${_dpBtn(row.stock_id, row.name)}</td>
+      <td style="white-space:nowrap;cursor:pointer" onclick="openScreenChart('${row.stock_id}')"><span style="display:inline-block;max-width:100px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle">${row.name || '—'}</span>${typeof tbBadge === 'function' ? tbBadge(row.stock_id) : ''}${distBadge(row.stock_id)}${row.vol_ratio != null && row.vol_ratio >= 2 ? `<span style="margin-left:4px;font-size:.68rem;background:#3fb95022;color:#3fb950;border:1px solid #3fb95055;border-radius:3px;padding:0 4px">量×${row.vol_ratio}</span>` : ''}${_dpBtn(row.stock_id, row.name)}</td>
       <td>${(() => {
         if (row.close == null) return '—';
         const d = row.last_date || '';
@@ -5138,6 +5357,7 @@ async function warmupServer() {
 
 (async function init() {
   await warmupServer();
+  loadDistMap();
   startCacheWarmupPolling();
 
   // 恢復上次掃描狀態標誌（只有最終結果才存 localStorage，重整後仍顯示）
@@ -5978,7 +6198,7 @@ async function openChart(stockId, savedRange = null) {
     const _dirBadge = stockId.startsWith('__idx_') ? '' :
       ` <span title="方向分數（1空→10多）：BB位置+籌碼訊號+均線趨勢" style="font-size:.72rem;padding:1px 8px;border-radius:8px;border:1px solid ${_dirColor}44;background:${_dirColor}18;color:${_dirColor};margin-left:4px">🎯 ${_dirScore} ${_dirLabel}</span>`;
 
-    title.innerHTML = `${stockId}${_chartStockName ? ' ' + _chartStockName : ''} K 線圖` + _dirBadge +
+    title.innerHTML = `${stockId}${_chartStockName ? ' ' + _chartStockName : ''} K 線圖` + _dirBadge + (stockId.startsWith('__idx_') ? '' : distBadge(stockId)) +
       (_trading ? ' <span style="font-size:.72rem;color:#22c55e;background:rgba(34,197,94,.12);padding:1px 8px;border-radius:8px;border:1px solid rgba(34,197,94,.3)">🔴 盤中 · 每分鐘更新</span>' : '');
 
     container.style.display = 'flex';
@@ -6212,6 +6432,163 @@ async function openChart(stockId, savedRange = null) {
   } catch(e) {
     container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--red)">載入失敗：${e.message}</div>`;
   }
+}
+
+// ── ⇅ 兩檔上下對比（B65）：各自 K 線＋MA5/20/60＋成交量；時間軸用「日期」同步（停牌日不同也不會錯位），十字線依日期對到另一張 ──
+const _cmp = { a: '', b: '', iv: '1d', charts: [], panes: [], syncing: false };
+function openCompare(a, b) {
+  _cmp.a = String(a || '').trim(); _cmp.b = String(b || '').trim();
+  document.getElementById('cmp-in-a').value = _cmp.a;
+  document.getElementById('cmp-in-b').value = _cmp.b;
+  document.getElementById('cmp-modal').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  if (_cmp.a && _cmp.b) _cmpRender();
+  else {
+    _cmpClear();
+    document.getElementById('cmp-a').innerHTML = `<div class="muted" style="padding:20px">在上面輸入${_cmp.a ? '下面那檔的' : '兩檔的'}代號，按「對比」</div>`;
+    setTimeout(() => document.getElementById(_cmp.a ? 'cmp-in-b' : 'cmp-in-a').focus(), 50);
+  }
+}
+function closeCompare() {
+  _cmpClear();
+  document.getElementById('cmp-modal').style.display = 'none';
+  if (document.getElementById('chart-modal').style.display !== 'flex') document.body.style.overflow = '';
+}
+function cmpApply() {
+  _cmp.a = document.getElementById('cmp-in-a').value.trim();
+  _cmp.b = document.getElementById('cmp-in-b').value.trim();
+  if (!_cmp.a || !_cmp.b) return;
+  _cmpRender();
+}
+function cmpSwap() {
+  const a = document.getElementById('cmp-in-a'), b = document.getElementById('cmp-in-b');
+  [a.value, b.value] = [b.value, a.value];
+  cmpApply();
+}
+function cmpInterval(iv) {
+  _cmp.iv = iv;
+  document.querySelectorAll('.cmp-iv').forEach(x => x.classList.toggle('active', x.dataset.iv === iv));
+  if (_cmp.a && _cmp.b) _cmpRender();
+}
+function _cmpClear() {
+  _cmp.charts.forEach(c => { try { c.remove(); } catch (e) {} });
+  _cmp.charts = []; _cmp.panes = [];
+  ['cmp-a', 'cmp-b'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+}
+async function _cmpName(sid) {
+  if (_chartNames[sid]) return _chartNames[sid];
+  try {
+    const hits = await api('GET', `/api/search?q=${encodeURIComponent(sid)}`);
+    const h = (hits || []).find(x => x.stock_id === sid);
+    if (h && h.name) { _chartNames[sid] = h.name; return h.name; }
+  } catch (e) {}
+  return '';
+}
+async function _cmpRender() {
+  _cmpClear();
+  const ids = [_cmp.a, _cmp.b];
+  ['cmp-a', 'cmp-b'].forEach(id => document.getElementById(id).innerHTML = '<div class="muted" style="padding:20px"><span class="spinner"></span> 載入中…</div>');
+  try {
+    await _loadLWC();
+    const [da, db, na, nb] = await Promise.all([
+      api('GET', `/api/stock/${encodeURIComponent(ids[0])}/ohlcv?interval=${_cmp.iv}`),
+      api('GET', `/api/stock/${encodeURIComponent(ids[1])}/ohlcv?interval=${_cmp.iv}`),
+      _cmpName(ids[0]), _cmpName(ids[1])]);
+    const data = [da || [], db || []], names = [na, nb];
+    ['cmp-a', 'cmp-b'].forEach((pid, k) => _cmpPane(pid, ids[k], names[k], data[k]));
+    // 時間軸同步（用日期）
+    _cmp.charts.forEach((ch, k) => {
+      ch.timeScale().subscribeVisibleTimeRangeChange(rg => {
+        _cmp.panes[k].updRange(rg);
+        if (_cmp.syncing || !rg) return;
+        _cmp.syncing = true;
+        try { _cmp.charts[1 - k].timeScale().setVisibleRange(rg); } catch (e) {}
+        _cmp.syncing = false;
+      });
+      ch.subscribeCrosshairMove(p => {
+        if (_cmp.xsync) return;                         // 另一張設十字線時不要再回頭設（避免來回觸發）
+        const o = _cmp.panes[1 - k];
+        _cmp.panes[k].updLeg(p && p.time != null ? _cmp.panes[k].byTime[_cmpKey(p.time)] : null);
+        if (!p || p.time == null || !p.point) { try { _cmp.charts[1 - k].clearCrosshairPosition(); } catch (e) {} o.updLeg(null); return; }
+        const r = o.byTime[_cmpKey(p.time)];
+        _cmp.xsync = true;
+        try {
+          if (r) _cmp.charts[1 - k].setCrosshairPosition(r.close, p.time, o.series);
+          else _cmp.charts[1 - k].clearCrosshairPosition();
+        } catch (e) {}
+        _cmp.xsync = false;
+        o.updLeg(r || null);
+      });
+    });
+    // 預設看最近 120 根（手機 60 根；以上面那檔為準，下面跟著）
+    const a = data[0];
+    if (a.length) {
+      const nb = window.innerWidth < 700 ? 60 : 120;
+      const from = _rt(a[Math.max(0, a.length - nb)]), to = _rt(a[a.length - 1]);
+      _cmp.charts[0].timeScale().setVisibleRange({ from, to });
+      _cmp.charts[1].timeScale().setVisibleRange({ from, to });
+    }
+  } catch (e) {
+    document.getElementById('cmp-a').innerHTML = `<div class="muted" style="padding:20px">載入失敗：${_esc(e.message)}</div>`;
+  }
+}
+function _cmpKey(t) { return typeof t === 'object' && t ? `${t.year}-${String(t.month).padStart(2, '0')}-${String(t.day).padStart(2, '0')}` : String(t); }
+function _cmpPane(pid, sid, name, ohlcv) {
+  const host = document.getElementById(pid);
+  const last = ohlcv[ohlcv.length - 1], prev = ohlcv[ohlcv.length - 2];
+  const chg = last && prev ? (last.close / prev.close - 1) * 100 : null;
+  const col = v => v == null || v === 0 ? '#d1d4dc' : v > 0 ? '#ef5350' : '#26a69a';
+  host.innerHTML = `<div class="cmp-head"><a style="cursor:pointer;color:var(--accent);font-weight:800" onclick="closeCompare();openChart('${sid}')" title="開完整 K 線">${_esc(sid)} ${_esc(name || '')}</a>
+    ${last ? `<span>收 <b style="color:${col(chg)}">${_fmtN(last.close)}</b> <b style="color:${col(chg)}">${chg == null ? '' : (chg > 0 ? '+' : '') + chg.toFixed(2) + '%'}</b></span>` : '<span class="muted">沒有資料</span>'}
+    <span class="rng" id="${pid}-rng"></span></div><div class="cmp-chart" id="${pid}-c"></div>`;
+  const el = document.getElementById(`${pid}-c`);
+  const ch = LightweightCharts.createChart(el, {
+    width: el.offsetWidth, height: el.offsetHeight,
+    layout: { background: { color: '#131722' }, textColor: '#9598a1', fontSize: window.innerWidth >= 1200 ? 13 : 11 },
+    grid: { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
+    crosshair: { mode: 0 }, rightPriceScale: { borderColor: '#2a2e39', scaleMargins: { top: 0.08, bottom: 0.22 } },
+    timeScale: { borderColor: '#2a2e39' },
+  });
+  _cmp.charts.push(ch);
+  new ResizeObserver(() => { try { ch.applyOptions({ width: el.offsetWidth, height: el.offsetHeight }); } catch (e) {} }).observe(el);
+  const s = ch.addCandlestickSeries({ upColor: '#ef5350', downColor: '#26a69a', borderUpColor: '#ef5350', borderDownColor: '#26a69a',
+    wickUpColor: '#ef5350', wickDownColor: '#26a69a', priceLineVisible: false, lastValueVisible: true });
+  s.setData(ohlcv.map(r => ({ time: _rt(r), open: r.open, high: r.high, low: r.low, close: r.close })));
+  const closes = ohlcv.map(r => r.close);
+  const mas = [[5, '#4caf50'], [20, '#e91e63'], [60, '#ff9800']].map(([p, c]) => {
+    const ma = _calcMA(closes, p);
+    const ls = ch.addLineSeries({ color: c, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+    ls.setData(ohlcv.map((r, i) => isNaN(ma[i]) ? null : { time: _rt(r), value: ma[i] }).filter(Boolean));
+    return ma;
+  });
+  const vs = ch.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol', priceLineVisible: false, lastValueVisible: false });
+  ch.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+  vs.setData(ohlcv.map(r => ({ time: _rt(r), value: r.volume, color: r.close >= r.open ? 'rgba(239,83,80,.55)' : 'rgba(38,166,154,.55)' })));
+  const byTime = {}, idxOf = {};
+  ohlcv.forEach((r, i) => { const k = _cmpKey(_rt(r)); byTime[k] = r; idxOf[k] = i; });
+  const leg = _mkLegend(el);
+  leg.style.fontSize = 'var(--leg-main-fs)';
+  const updLeg = r => {
+    r = r || last;
+    if (!r) { leg.innerHTML = ''; return; }
+    const i = idxOf[_cmpKey(_rt(r))];
+    const pc = i > 0 ? ohlcv[i - 1].close : null;
+    const c2 = pc ? (r.close / pc - 1) * 100 : null;
+    leg.innerHTML = `<span style="color:#9598a1">${String(r.date).slice(0, 4)}/${String(r.date).slice(4, 6)}/${String(r.date).slice(6, 8)}</span>　開 <b>${_fmtN(r.open)}</b>　高 <b>${_fmtN(r.high)}</b>　低 <b>${_fmtN(r.low)}</b>　收 <b style="color:${col(c2)}">${_fmtN(r.close)}</b>` +
+      (c2 != null ? `　<b style="color:${col(c2)}">${c2 > 0 ? '+' : ''}${c2.toFixed(2)}%</b>` : '') + `　<span style="color:#9598a1">量 ${_fmtVol(r.volume)}</span><br>` +
+      `<span style="color:#4caf50">MA5:${_fmtN(mas[0][i])}</span>　<span style="color:#e91e63">MA20:${_fmtN(mas[1][i])}</span>　<span style="color:#ff9800">MA60:${_fmtN(mas[2][i])}</span>`;
+  };
+  const rngEl = document.getElementById(`${pid}-rng`);
+  const updRange = rg => {
+    if (!rg || !rngEl) return;
+    const f = _cmpKey(rg.from), t = _cmpKey(rg.to);
+    const inR = ohlcv.filter(r => { const k = _cmpKey(_rt(r)); return k >= f && k <= t; });
+    if (inR.length < 2) { rngEl.textContent = ''; return; }
+    const p = (inR[inR.length - 1].close / inR[0].close - 1) * 100;
+    rngEl.innerHTML = `區間 ${String(inR[0].date).slice(4, 6)}/${String(inR[0].date).slice(6, 8)}～${String(inR[inR.length - 1].date).slice(4, 6)}/${String(inR[inR.length - 1].date).slice(6, 8)}：<b style="color:${col(p)}">${p > 0 ? '+' : ''}${p.toFixed(1)}%</b>`;
+  };
+  updLeg(null);
+  _cmp.panes.push({ series: s, byTime, updLeg, updRange });
 }
 
 function closeChart() {
@@ -6481,6 +6858,7 @@ async function saveAllStratParams() {
       <button id="chart-bt-btn" class="btn sm ghost" onclick="openBacktest()" style="color:#f59e0b;white-space:nowrap">📊 回測</button>
       <button id="chart-dp-btn" class="btn sm ghost" onclick="chartShowDeep()" title="換成這檔的深度分析" style="color:#a78bfa;white-space:nowrap">🔬 <span class="dp-only">只看</span>分析</button>
       <button id="chart-split-btn" class="btn sm ghost dp-split-btn" onclick="dpSplitOn()" title="K 線跟分析並排同時看" style="color:#d29922;white-space:nowrap">◫ 同時看</button>
+      <button id="chart-cmp-btn" class="btn sm ghost" onclick="openCompare(_chartStockId, '')" title="跟另一檔上下對比（時間軸、十字線同步）" style="color:#f472b6;white-space:nowrap">⇅ 對比</button>
       <button id="chart-link-btn" class="btn sm ghost" onclick="showLinkPeers()" title="這檔的連動股：相關係數、同產業、偏差率、誰先動" style="color:#38bdf8;white-space:nowrap">🔗 連動</button>
       <button class="btn sm ghost" onclick="closeChart()">✕ 關閉</button>
     </div>
@@ -6527,6 +6905,28 @@ async function saveAllStratParams() {
       <span style="font-size:.8rem;color:#4ade80" title="相鄰兩個小高點（左右各 3 根）之間的最低點，跟支撐、滾動停損同一套">●綠 前低</span>
     </div>
     <div id="chart-tv-container" style="flex:1;overflow:hidden"></div>
+  </div>
+</div>
+
+<!-- ⇅ 兩檔對比（B65）-->
+<div id="cmp-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:10001;align-items:center;justify-content:center;padding:8px" onclick="if(event.target===this)closeCompare()">
+  <div style="background:#131722;border-radius:var(--radius);width:min(calc(100vw - 16px),2000px);height:calc(100vh - 16px);overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 60px #000c">
+    <div class="cmp-bar">
+      <strong class="cmp-title" style="color:#d1d4dc">⇅ 兩檔上下對比</strong>
+      <input id="cmp-in-a" placeholder="上：代號" onkeydown="if(event.key==='Enter')cmpApply()">
+      <input id="cmp-in-b" placeholder="下：代號，例 2303" onkeydown="if(event.key==='Enter')cmpApply()">
+      <button class="btn sm" onclick="cmpApply()">對比</button>
+      <button class="btn sm ghost" onclick="cmpSwap()" title="上下交換">⇅ 交換</button>
+      <span style="display:flex;gap:3px">
+        <button class="btn sm ghost chart-period-btn cmp-iv active" data-iv="1d" onclick="cmpInterval('1d')" style="padding:2px 8px;font-size:.75rem">日</button>
+        <button class="btn sm ghost chart-period-btn cmp-iv" data-iv="1wk" onclick="cmpInterval('1wk')" style="padding:2px 8px;font-size:.75rem">週</button>
+      </span>
+      <span class="muted cmp-hint" style="font-size:.75rem">拖曳、縮放、十字線兩張一起動；標題的「區間」＝畫面上第一根到最後一根的漲跌</span>
+      <span style="flex:1"></span>
+      <button class="btn sm ghost" onclick="closeCompare()">✕<span class="cmp-hint"> 關閉</span></button>
+    </div>
+    <div id="cmp-a" class="cmp-pane"></div>
+    <div id="cmp-b" class="cmp-pane" style="border-bottom:none"></div>
   </div>
 </div>
 

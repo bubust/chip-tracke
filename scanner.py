@@ -1098,6 +1098,34 @@ STRATEGIES.update(_COURSE_STRATEGIES)
 STRATEGY_PARAMS_SCHEMA.update(_COURSE_PARAMS)
 PRICE_STRATEGY_FNS.update(_COURSE_FNS)
 SHORT_STRATEGIES |= _COURSE_SHORT
+# ── 講義策略（PLAN-COURSE，course2.py：研究跟掃描同一份函式）──
+import course2 as _c2  # noqa: E402
+STRATEGIES.update(_c2.COURSE2_STRATEGIES)
+STRATEGY_PARAMS_SCHEMA.update(_c2.COURSE2_PARAMS)
+PRICE_STRATEGY_FNS.update(_c2.COURSE2_FNS)
+SHORT_STRATEGIES |= _c2.COURSE2_SHORT
+PRICE_STRATEGY_FNS["S_LIMIT_OPEN"] = _c2.screen_limit_open2       # 盤中打開也算＋月營收年增（業績前提）
+
+
+def screen_sthunder_merged(prices: dict, names: dict = None, params: dict = None) -> list:
+    """平地一聲雷（合併版，PLAN-COURSE 項目 2）：原「盤整後帶量突破」＋原「底部量滾量站上季線」（S_VOLROLL）。
+    講義的「底部起漲（爆量→量縮平台→帶量突破）」也測了，5 年回測比原本差 → 沒併入（research/course/results/REPORT.md）"""
+    from scanner_course import screen_volroll
+    out = screen_sthunder(prices, names, params)
+    for r in out:
+        r["sub"] = "盤整突破"
+    have = {r["stock_id"] for r in out}
+    for r in screen_volroll(prices, names, {"min_price": (params or {}).get("min_price", 10)}):
+        if r["stock_id"] in have:
+            continue
+        r.update(strategy="S_THUNDER", sub="底部量滾量",
+                 stage=f"🌋 底部量滾量：跌深後重新站上季線＋連續爆量 {r.get('vol_x')} 倍；停損 {r.get('stop')}",
+                 base_top=r.get("ma60"), breakout_vol_ratio=r.get("vol_x"), pullback_low=r.get("vol_low"))
+        out.append(r)
+    return out
+
+
+PRICE_STRATEGY_FNS["S_THUNDER"] = screen_sthunder_merged
 from chip_course import CHIP_PARAMS as _CHIP_PARAMS, CHIP_STRATEGIES as _CHIP_STRATEGIES  # noqa: E402
 STRATEGIES.update(_CHIP_STRATEGIES)          # 籌碼型：掃描後由 chip_course.run_all 另外算（不在 PRICE_STRATEGY_FNS）
 STRATEGY_PARAMS_SCHEMA.update(_CHIP_PARAMS)

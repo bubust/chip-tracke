@@ -743,6 +743,25 @@ async def lifespan(app: FastAPI):
                            id="positions_intraday", replace_existing=True)
         _pos_watch.add_job(lambda: _pos_job("close"), "cron", day_of_week="mon-fri", hour=14, minute=40,
                            id="positions_close", replace_existing=True)
+        # 📋 講義訊號（PLAN-COURSE）：盤中每分鐘看漲停候選有沒有爆量打開；08:30 推當沖名單
+        def _course_tick():
+            try:
+                import course_live as _cl
+                _cl.limit_tick()
+            except Exception as _ce:
+                import logging as _lg2
+                _lg2.getLogger(__name__).warning(f"[course] limit_tick: {_ce}")
+        def _course_pre():
+            try:
+                import course_live as _cl
+                _cl.push_premarket()
+            except Exception as _ce:
+                import logging as _lg2
+                _lg2.getLogger(__name__).warning(f"[course] premarket: {_ce}")
+        _pos_watch.add_job(_course_tick, "cron", day_of_week="mon-fri", hour="9-13", minute="*",
+                           id="course_limit_tick", replace_existing=True, max_instances=1, coalesce=True)
+        _pos_watch.add_job(_course_pre, "cron", day_of_week="mon-fri", hour=8, minute=30,
+                           id="course_premarket", replace_existing=True)
         _pos_watch.start()
         global _POS_SCHED
         _POS_SCHED = _pos_watch
@@ -793,6 +812,12 @@ async def lifespan(app: FastAPI):
                         lg.info(f"[crash] {push_crash()}")
                     except Exception as _ce:
                         lg.warning(f"[crash] 推播失敗: {_ce}")
+                    # 📋 講義訊號（PLAN-COURSE）：出貨日、族群大跌、當沖名單、漲停候選、大盤出貨日
+                    try:
+                        import course_live as _cl
+                        lg.info(f"[course] {_cl.nightly()}")
+                    except Exception as _cle:
+                        lg.warning(f"[course] 失敗: {_cle}")
                 else:
                     lg.info("[scan_scheduler] 掃描進行中，跳過 Step 1")
             except Exception as _e1:
@@ -1078,6 +1103,8 @@ from link_routes import router as link_router  # noqa: E402  🔗 連動／處�
 app.include_router(link_router)
 from crash_routes import router as crash_router  # noqa: E402  📉 大跌買點＋策略回測建議（PLAN-BEST2）
 app.include_router(crash_router)
+from course_routes import router as course_router  # noqa: E402  📋 講義訊號（PLAN-COURSE）
+app.include_router(course_router)
 app.mount("/discuss/static", StaticFiles(directory=str(BASE_DIR / "discuss-frontend")), name="discuss_static")
 
 app.add_middleware(

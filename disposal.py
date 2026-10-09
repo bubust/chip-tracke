@@ -111,6 +111,45 @@ def _pairs(sid: str, min_corr: float = 0.6) -> list:
     return ps[:3]
 
 
+def _closes(sid: str, upto: str, n: int = 6) -> list:
+    try:
+        from chip_tracker_v2 import DB_PATH
+        import sqlite3
+        c = sqlite3.connect(str(DB_PATH))
+        rows = c.execute("SELECT close FROM price_daily WHERE stock_id=? AND date<=? AND close IS NOT NULL ORDER BY date DESC LIMIT ?",
+                         (sid, upto, n)).fetchall()
+        c.close()
+        return [float(r[0]) for r in rows[::-1]]
+    except Exception:
+        return []
+
+
+def second_candidates(disp: list, tdays: list) -> list:
+    """二次處置候選（講義：第一次處置沒跌、又連漲 5 天，就容易被二次處置；可以在門檻附近找空點）：
+    第一次處置期間、或出關後 10 個交易日內，收盤連漲 5 天（PLAN-COURSE 項目 8，研究見 research/course）"""
+    if not tdays:
+        return []
+    today_s = tdays[-1]
+    out, seen = [], set()
+    for d in disp:
+        if not d.get("start") or not d.get("end") or d["stock_id"] in seen:
+            continue
+        first = ("第一次" in d["times"] or "初" in d["times"]) and not re.search("第二次|再次", d["times"])
+        if not first or d["start"] > today_s:
+            continue
+        after = [x for x in tdays if x > d["end"]]
+        if len(after) > 10:
+            continue
+        cl = _closes(d["stock_id"], today_s)
+        if len(cl) == 6 and all(cl[i] > cl[i - 1] for i in range(1, 6)):
+            seen.add(d["stock_id"])
+            out.append({"stock_id": d["stock_id"], "name": d["name"], "start": d["start"], "end": d["end"],
+                        "status": "處置中" if d["end"] >= today_s else f"出關第 {len(after)} 天",
+                        "up5": round(cl[-1] / cl[0] - 1, 4), "close": cl[-1]})
+    out.sort(key=lambda x: -x["up5"])
+    return out
+
+
 def today(force: bool = False) -> dict:
     if not force and _CACHE["data"] and time.time() - _CACHE["t"] < TTL:
         return _CACHE["data"]
@@ -160,7 +199,11 @@ def today(force: bool = False) -> dict:
                               "30 日內再 1 次就可能被處置（12 次）" if n30 == 11 else ""),
                      "pairs": _pairs(sid) if risk else []})
     near.sort(key=lambda x: (not x["risk"], -x["consec"], -x["n10"]))
+    try:
+        second = second_candidates(disp, tdays)
+    except Exception:
+        second = []
     data = {"date": today_s, "updated": datetime.now().strftime("%Y-%m-%d %H:%M"), "active": active, "releasing": releasing,
-            "near": near[:60]}
+            "near": near[:60], "second": second}
     _CACHE.update(t=time.time(), data=data)
     return data
