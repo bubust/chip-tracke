@@ -47,3 +47,5 @@ Final inspection round 1 dispositions:
 - Groq C-F3 (sanitiser import timing): REJECTED. _clean imports server lazily at request time, when server is already loaded (same pattern as best_routes).
 - Groq B (disposal.py): APPROVED.
 - 第 2 輪（第 1 輪之後的修改：linkage._pool 除權缺口、link_routes 鎖）：Gemini **gemini-3.5-flash-lite** APPROVED（2.5-flash 當天 20 次免費額度用完、2.5-flash-lite／2.0-flash 已下架）C:/Users/牆泥袋溥/AppData/Local/Temp/claude/C--Users------Desktop/63f6090b-1913-4610-a964-29bd921ba75c/scratchpad/link/review/inspect2.json；Groq 當天 token 額度用完，背景重試中（結果補記）。
+- 第 2 輪 Groq（背景重試後）REVISE C:/Users/牆泥袋溥/AppData/Local/Temp/claude/C--Users------Desktop/63f6090b-1913-4610-a964-29bd921ba75c/scratchpad/link/review/inspect2_groq.json：F1 股票池空的時候要擋（ACCEPTED：< 3 檔回錯誤）、F2／F3 NaN 四捨五入（ACCEPTED：_r() 非有限值 → None；Python round(nan) 其實不會丟錯）、F4 說明文字（ACCEPTED）。
+- 上線後發現：正式站（512MB）第一次算連動股時 pandas pivot_table 把記憶體吃爆、機器重啟（fly logs 01:12:42Z 大量 connection reset）→ load_panel 改成 numpy 逐列填陣列、只讀 4 碼股、130 天；本機結果完全一樣（717 檔、2408↔2344 0.905／+6.37%），1 秒算完。這兩項是檢查輪數用完後的修改，另送 Gemini 3.5-flash-lite 看（結果補記）。

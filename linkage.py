@@ -36,21 +36,35 @@ def _init(c):
     c.execute("CREATE TABLE IF NOT EXISTS link_meta (k TEXT PRIMARY KEY, v TEXT)")
 
 
-def load_panel(days: int = 260):
-    """price_daily 最近 days 個交易日（4 碼普通股）→ close、volume 寬表（日期 × 股票）"""
+def load_panel(days: int = 130):
+    """price_daily 最近 days 個交易日（4 碼普通股）→ close、volume 寬表（日期 × 股票）；open 放在 volume.attrs["open"]。
+    直接填 numpy 陣列（正式站記憶體小，pandas pivot_table 會爆 → 2026-10-09 實際把機器弄重啟過）"""
     c = _conn()
     ds = [r[0] for r in c.execute("SELECT DISTINCT date FROM price_daily ORDER BY date DESC LIMIT ?", (days,)).fetchall()]
     if not ds:
         c.close()
         return None, None, {}
-    df = pd.read_sql("SELECT date, stock_id, name, open, close, volume FROM price_daily WHERE date >= ?", c, params=(min(ds),))
+    ds = sorted(ds)
+    di = {d: i for i, d in enumerate(ds)}
+    q = "FROM price_daily WHERE date >= ? AND stock_id GLOB '[1-9][0-9][0-9][0-9]'"
+    ids = sorted(r[0] for r in c.execute(f"SELECT DISTINCT stock_id {q}", (ds[0],)))
+    names = {r[0]: r[1] for r in c.execute(
+        "SELECT stock_id, name FROM price_daily WHERE date = ? AND stock_id GLOB '[1-9][0-9][0-9][0-9]'", (ds[-1],))}
+    si = {s_: j for j, s_ in enumerate(ids)}
+    O = np.full((len(ds), len(ids)), np.nan, dtype=np.float32)
+    C = O.copy(); V = O.copy()
+    for d, sid, o, cl, v in c.execute(f"SELECT date, stock_id, open, close, volume {q}", (ds[0],)):   # 逐列讀，不整批載入
+        i, j = di.get(d), si.get(sid)
+        if i is None or j is None:
+            continue
+        O[i, j] = o if o is not None else np.nan
+        C[i, j] = cl if cl is not None else np.nan
+        V[i, j] = v if v is not None else np.nan
     c.close()
-    df = df[df.stock_id.str.fullmatch(r"[1-9]\d{3}")]
-    names = df.drop_duplicates("stock_id", keep="last").set_index("stock_id")["name"].to_dict()
-    close = df.pivot_table(index="date", columns="stock_id", values="close").sort_index()
-    vol = df.pivot_table(index="date", columns="stock_id", values="volume").sort_index()
-    opn = df.pivot_table(index="date", columns="stock_id", values="open").sort_index().reindex_like(close)
-    vol.attrs["open"] = opn                     # 除權缺口檢查用（_pool）
+    idx = pd.Index(ds)
+    close = pd.DataFrame(C.astype(float), index=idx, columns=ids)
+    vol = pd.DataFrame(V.astype(float), index=idx, columns=ids)
+    vol.attrs["open"] = pd.DataFrame(O.astype(float), index=idx, columns=ids)
     return close, vol, names
 
 
@@ -66,7 +80,7 @@ def sector_map() -> dict:
 
 
 def gap_recent(close: pd.DataFrame, opn: pd.DataFrame | None, bars: int = 60) -> pd.Series:
-    """最近 bars 根有沒有單日跳動 > 10.5%（台股漲跌幅 10% → 一定是除權息／減資／面額變更）；
+    """每檔（回傳 bool Series）最近 bars 根有沒有單日跳動 > 10.5%（台股漲跌幅 10% → 一定是除權息／減資／面額變更）；
     有的話不還原價的報酬、相關係數都被扭曲，不放進股票池（研究 engine.features 的 gap60 同一套）"""
     pc = close.shift(1)
     j = (close / pc - 1).abs() > 0.105
@@ -95,11 +109,13 @@ def _corr_matrix(R: np.ndarray) -> np.ndarray:
 
 
 def compute_all(save: bool = True) -> dict:
-    close, vol, names = load_panel(260)
+    close, vol, names = load_panel(130)
     if close is None or len(close) < WIN_LEAD + 2:
         return {"error": "價格資料不夠"}
     pool = _pool(close, vol)
     ids = list(pool[pool].index)
+    if len(ids) < 3:
+        return {"error": f"股票池只有 {len(ids)} 檔，資料不夠"}
     C = close[ids]
     R = (C / C.shift(1) - 1).to_numpy()
     day = str(close.index[-1])
@@ -125,11 +141,11 @@ def compute_all(save: bool = True) -> dict:
         for j in dict.fromkeys(top + same):
             ratio = cl[:, i] / cl[:, j]
             mean = float(np.nanmean(ratio))
-            peers.append({"id": ids[j], "name": names.get(ids[j], ""), "corr": round(float(cm[i, j]), 3),
+            peers.append({"id": ids[j], "name": names.get(ids[j], ""), "corr": _r(cm[i, j], 3),
                           "same_sector": bool(sec and secs.get(ids[j]) == sec),
-                          "ratio": round(float(ratio[-1]), 4), "ratio_mean": round(mean, 4),
-                          "dev": round(float(ratio[-1] / mean - 1), 4) if mean else None,
-                          "lead": round(float(lead_diff[i, j]), 3), "chg": round(float(chg[j]), 4) if np.isfinite(chg[j]) else None})
+                          "ratio": _r(ratio[-1], 4), "ratio_mean": _r(mean, 4),
+                          "dev": _r(ratio[-1] / mean - 1, 4) if mean else None,
+                          "lead": _r(lead_diff[i, j], 3), "chg": _r(chg[j], 4)})
         out[sid] = {"date": day, "sector": sec, "chg": round(float(chg[i]), 4) if np.isfinite(chg[i]) else None, "peers": peers}
     if save:
         c = _conn()
@@ -141,6 +157,15 @@ def compute_all(save: bool = True) -> dict:
         c.close()
     log.info(f"[link] {day} 連動股 {len(out)} 檔")
     return {"date": day, "n": len(out)}
+
+
+def _r(x, nd):
+    """有限值才四捨五入，NaN／inf → None（存 JSON、網頁顯示「—」）"""
+    try:
+        x = float(x)
+    except (TypeError, ValueError):
+        return None
+    return round(x, nd) if np.isfinite(x) else None
 
 
 def _std(A: np.ndarray) -> np.ndarray:
