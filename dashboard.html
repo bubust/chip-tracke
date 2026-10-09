@@ -62,6 +62,12 @@
   .strat-cnt { display:inline-block;min-width:18px;padding:0 4px;background:var(--accent);color:#fff;border-radius:8px;font-size:.72rem;font-weight:700;margin-left:4px;text-align:center; }
   .strat-cnt:empty { display:none; }
   .draw-btn.active { border-color:#a78bfa!important;color:#a78bfa!important;background:rgba(167,139,250,.12)!important; }
+  /* K 線圖字級（B60：價位、均線那行放大；大螢幕再大一點） */
+  :root { --leg-fs: 13px; --leg-main-fs: 15px; --lwc-axis-fs: 12; }
+  @media (min-width: 1700px) { :root { --leg-fs: 14px; --leg-main-fs: 17px; } }
+  @media (max-width: 700px)  { :root { --leg-fs: 11px; --leg-main-fs: 12.5px; } }
+  .chart-overlay-btn { font-size: .8rem !important; padding: 3px 8px !important; }
+  @media (max-width: 700px) { .chart-overlay-btn { font-size: .72rem !important; padding: 2px 6px !important; } }
   .chart-period-btn.active { background:var(--accent);color:#fff; }
   .chart-overlay-btn { opacity:.4; }
   .chart-overlay-btn.active { opacity:1; }
@@ -5082,75 +5088,264 @@ let _chartStockName = '';  // 目前開啟的股名
 let _chartSource = '';   // 開啟圖表時的來源（策略名 / 全市場排行 / 空=觀察清單）
 let _chartNames = {};  // stock_id → name 快取
 
-// ── 繪圖工具狀態 ──────────────────────────────────────────────────────────
-let _drawMode    = null;  // null | 'hline' | 'tline'
-let _drawPoints  = [];    // 趨勢線第一點暫存
-let _drawings    = [];    // [{type, priceLine|series}]
+// ── 繪圖工具（B60）──────────────────────────────────────────────────────────
+// 資料（_drawings）跟圖上物件（_drawObjs）分開：重畫圖（換週期、盤中每分鐘更新）只拆物件、不刪資料；
+// 時間存 unix 秒，畫的時候對到目前週期最近的 K 棒（日／週／月／分 K 都畫得出來）。
+// 單擊才算點（拖曳移動圖表不會多一條線）；畫完一條自動退出；拖水平線上下移、拖趨勢線端點；雙擊一條線刪掉那一條；Esc 取消
+let _drawMode    = null;  // null | 'hline' | 'tline' | 'fib'
+let _drawPoints  = [];    // 趨勢線／黃金切割第一點 {t, price}
+let _drawings    = [];    // [{id, type:'hline', price} | {id, type:'tline'|'fib', p1:{t,price}, p2:{t,price}}]
+let _drawObjs    = [];    // [{id, pls:[priceLine], ser:[lineSeries]}]
+let _drawHint    = null;  // 第一點的提示線
 let _drawChart   = null;  // 目前繪圖用的主圖 chart 實例
-let _drawSeries  = null;  // 目前繪圖用的蠟燭 series 實例
+let _drawSeries  = null;  // 目前繪圖用的蠟燭 series 實例（座標換算用）
+let _drawHost    = null;  // 放畫線價位線的隱形 series（不參與自動縮放，畫線不會把 K 線壓扁）
+let _drawBars    = [];    // [{t: unix 秒, time: K 棒原本的 time}]（排序）
+let _drawDrag    = null;  // 拖曳中 {id, part:'line'|'p1'|'p2'}
+let _drawDown    = null;  // 按下位置（分辨單擊／拖曳）
+const FIB_RET = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+const FIB_EXT = [1.382, 1.618];
+const DRAW_TIPS = { hline: '點一下 K 線放水平線', tline: '點起點、再點終點', fib: '黃金切割：先點起漲（或起跌）點、再點高點（或低點）' };
+
+function _drawT(time) {             // K 棒 time（'YYYY-MM-DD' 或 unix 秒或 {year,month,day}）→ unix 秒
+  if (typeof time === 'number') return time;
+  if (typeof time === 'string') { const [y, m, d] = time.split('-').map(Number); return Date.UTC(y, m - 1, d) / 1000; }
+  if (time && time.year) return Date.UTC(time.year, time.month - 1, time.day) / 1000;
+  return null;
+}
+function _drawSnap(t) {             // 對到 ≤ t 的最後一根 K 棒（比第一根早 → 第一根）
+  if (!_drawBars.length || t == null) return null;
+  let lo = 0, hi = _drawBars.length - 1, k = 0;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (_drawBars[m].t <= t) { k = m; lo = m + 1; } else hi = m - 1; }
+  return _drawBars[k].time;
+}
+function _fibLevels(p1, p2) {
+  const d = p2.price - p1.price;
+  return FIB_RET.map(r => ({ r, price: p2.price - r * d, ext: false }))
+    .concat(FIB_EXT.map(r => ({ r, price: p1.price + r * d, ext: true })));
+}
 
 function setDrawMode(mode) {
-  _drawMode = (_drawMode === mode) ? null : mode;
+  _drawMode = (mode && _drawMode !== mode) ? mode : null;
   _drawPoints = [];
-  document.querySelectorAll('.draw-btn').forEach(b => b.classList.remove('active'));
-  if (_drawMode) {
-    const el = document.getElementById('draw-btn-' + mode);
-    if (el) el.classList.add('active');
-  }
-  // 指標切換
+  _drawClearHint();
+  document.querySelectorAll('.draw-btn').forEach(b => b.classList.toggle('active', !!_drawMode && b.id === 'draw-btn-' + _drawMode));
   const container = document.getElementById('chart-tv-container');
   if (container) container.style.cursor = _drawMode ? 'crosshair' : '';
+  const tip = document.getElementById('draw-tip');
+  if (tip) tip.textContent = _drawMode ? DRAW_TIPS[_drawMode] + '（Esc 取消）' : '';
 }
 
-function clearDrawings() {
-  _drawings.forEach(d => {
-    try {
-      if ((d.type === 'hline' || d.type === '_hint') && _drawSeries) _drawSeries.removePriceLine(d.priceLine);
-      if (d.type === 'tline' && _drawChart) _drawChart.removeSeries(d.series);
-    } catch(e) {}
+function _drawClearHint() {
+  if (_drawHint && _drawHost) { try { _drawHost.removePriceLine(_drawHint); } catch (e) {} }
+  _drawHint = null;
+}
+
+function _drawDetach() {            // 只拆圖上物件（資料留著）
+  _drawObjs.forEach(o => {
+    o.pls.forEach(pl => { try { _drawHost && _drawHost.removePriceLine(pl); } catch (e) {} });
+    o.ser.forEach(se => { try { _drawChart && _drawChart.removeSeries(se); } catch (e) {} });
   });
+  _drawObjs = [];
+  _drawClearHint();
+}
+
+function _drawKey(sid) { return 'chip_draw_' + sid; }
+function _drawLoad(sid) {
+  _drawings = [];
+  let data;
+  try { data = JSON.parse(localStorage.getItem(_drawKey(sid)) || 'null'); } catch (e) { data = null; }
+  if (!data) return;
+  if (Array.isArray(data.items)) { _drawings = data.items; return; }
+  // 舊格式 {hlines:[{price}], tlines:[{p1:{time,price},p2}]}
+  let id = 1;
+  (data.hlines || []).forEach(h => _drawings.push({ id: id++, type: 'hline', price: +h.price }));
+  (data.tlines || []).forEach(l => _drawings.push({ id: id++, type: 'tline',
+    p1: { t: _drawT(l.p1.time), price: +l.p1.price }, p2: { t: _drawT(l.p2.time), price: +l.p2.price } }));
+}
+function _drawSave() {
+  if (!_chartStockId) return;
+  try {
+    if (_drawings.length) localStorage.setItem(_drawKey(_chartStockId), JSON.stringify({ items: _drawings }));
+    else localStorage.removeItem(_drawKey(_chartStockId));
+  } catch (e) {}
+}
+
+function _drawRenderOne(d) {
+  if (!_drawChart || !_drawSeries || !_drawHost) return;
+  const o = { id: d.id, pls: [], ser: [] };
+  if (d.type === 'hline') {
+    o.pls.push(_drawHost.createPriceLine({ price: d.price, color: '#f97316', lineWidth: 2, lineStyle: 0,
+      axisLabelVisible: true, title: _fmtN(d.price) }));
+  } else if (d.type === 'tline' || d.type === 'fib') {
+    const t1 = _drawSnap(d.p1.t), t2 = _drawSnap(d.p2.t);
+    if (t1 != null && t2 != null && _drawT(t1) !== _drawT(t2)) {
+      const ls = _drawChart.addLineSeries({ color: d.type === 'fib' ? 'rgba(234,179,8,.8)' : '#c084fc',
+        lineWidth: 2, lineStyle: d.type === 'fib' ? 2 : 0, autoscaleInfoProvider: () => null,
+        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+      const pts = [{ time: t1, value: d.p1.price }, { time: t2, value: d.p2.price }];
+      pts.sort((x, y) => _drawT(x.time) - _drawT(y.time));
+      ls.setData(pts);
+      o.ser.push(ls);
+    }
+    if (d.type === 'fib') {
+      _fibLevels(d.p1, d.p2).forEach(({ r, price, ext }) => {
+        const key = r === 0.382 || r === 0.618;
+        o.pls.push(_drawHost.createPriceLine({ price,
+          color: ext ? 'rgba(192,132,252,.85)' : key ? '#eab308' : r === 0.5 ? '#f59e0b' : 'rgba(234,179,8,.55)',
+          lineWidth: key || r === 0.5 ? 2 : 1, lineStyle: r === 0 || r === 1 ? 0 : 2, axisLabelVisible: true,
+          title: `${ext ? '目標 ' : ''}${r === 0 ? '0' : r === 1 ? '1' : r} ${_fmtN(price)}` }));
+      });
+    }
+  }
+  _drawObjs.push(o);
+}
+function _drawRenderAll() { _drawDetach(); _drawings.forEach(_drawRenderOne); }
+
+function clearDrawings() {          // 🗑：這檔全部刪掉
+  if (_drawings.length && !confirm(`刪掉這檔的 ${_drawings.length} 條畫線？（只刪一條：雙擊那條線）`)) return;
+  _drawDetach();
   _drawings = [];
   _drawPoints = [];
-  if (_chartStockId) localStorage.removeItem('chip_draw_' + _chartStockId);
+  _drawSave();
 }
 
-function _saveDrawings(sid) {
-  if (!sid) return;
-  const data = {
-    hlines: _drawings.filter(d => d.type === 'hline').map(d => ({ price: d.priceLine.options ? d.priceLine.options().price : d._price })),
-    tlines: _drawings.filter(d => d.type === 'tline').map(d => ({ p1: d.p1, p2: d.p2 })),
+// ── 滑鼠：命中判斷 ──
+function _drawXY(e, el) { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function _drawPx(p) {               // 點 → 畫面座標
+  const t = _drawSnap(p.t);
+  const x = t == null ? null : _drawChart.timeScale().timeToCoordinate(t);
+  const y = _drawSeries.priceToCoordinate(p.price);
+  return x == null || y == null ? null : { x, y };
+}
+function _segDist(px, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy;
+  const u = L ? Math.max(0, Math.min(1, ((px.x - a.x) * dx + (px.y - a.y) * dy) / L)) : 0;
+  return Math.hypot(px.x - (a.x + u * dx), px.y - (a.y + u * dy));
+}
+function _drawHit(xy, forDelete) {  // 回傳 {id, part} 或 null（端點優先）
+  if (!_drawChart || !_drawSeries) return null;
+  for (let k = _drawings.length - 1; k >= 0; k--) {
+    const d = _drawings[k];
+    if (d.type === 'hline') {
+      const y = _drawSeries.priceToCoordinate(d.price);
+      if (y != null && Math.abs(xy.y - y) <= 6) return { id: d.id, part: 'line' };
+      continue;
+    }
+    const a = _drawPx(d.p1), b = _drawPx(d.p2);
+    if (a && Math.hypot(xy.x - a.x, xy.y - a.y) <= 9) return { id: d.id, part: 'p1' };
+    if (b && Math.hypot(xy.x - b.x, xy.y - b.y) <= 9) return { id: d.id, part: 'p2' };
+    if (a && b && _segDist(xy, a, b) <= 6) return { id: d.id, part: forDelete ? 'line' : 'seg' };
+    if (d.type === 'fib' && forDelete) {
+      for (const lv of _fibLevels(d.p1, d.p2)) {
+        const y = _drawSeries.priceToCoordinate(lv.price);
+        if (y != null && Math.abs(xy.y - y) <= 5) return { id: d.id, part: 'line' };
+      }
+    }
+  }
+  return null;
+}
+
+function _drawAttach(chart, series, el, ohlcv) {
+  _drawChart = chart;
+  _drawSeries = series;
+  _drawHost = chart.addLineSeries({ autoscaleInfoProvider: () => null, priceLineVisible: false, lastValueVisible: false,
+    crosshairMarkerVisible: false, color: 'rgba(0,0,0,0)' });
+  _drawHost.setData(ohlcv.length ? [{ time: ohlcv[ohlcv.length - 1].ts != null ? ohlcv[ohlcv.length - 1].ts : _toDate(ohlcv[ohlcv.length - 1].date), value: ohlcv[ohlcv.length - 1].close }] : []);
+  _drawBars = ohlcv.map(r => { const time = r.ts != null ? r.ts : _toDate(r.date); return { t: _drawT(time), time }; })
+    .filter(b => b.t != null).sort((x, y) => x.t - y.t);
+  _drawObjs = [];
+  _drawHint = null;
+  _drawLoad(_chartStockId);
+  _drawRenderAll();
+
+  el.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    const xy = _drawXY(e, el);
+    _drawDown = xy;
+    if (_drawMode) return;
+    const hit = _drawHit(xy, false);
+    if (!hit || hit.part === 'seg') return;
+    _drawDrag = hit;
+    chart.applyOptions({ handleScroll: false, handleScale: false });   // 拖線時圖不要跟著跑
+    try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    e.preventDefault(); e.stopPropagation();
+  }, true);
+
+  el.addEventListener('pointermove', e => {
+    const xy = _drawXY(e, el);
+    if (_drawDrag) {
+      const d = _drawings.find(x => x.id === _drawDrag.id);
+      const price = series.coordinateToPrice(xy.y);
+      if (!d || price == null) return;
+      if (d.type === 'hline') d.price = +price.toFixed(2);
+      else {
+        const time = chart.timeScale().coordinateToTime(xy.x);
+        const p = d[_drawDrag.part];
+        p.price = +price.toFixed(2);
+        if (time != null) p.t = _drawT(time);
+      }
+      _drawRenderAll();
+      e.stopPropagation();
+      return;
+    }
+    if (_drawMode) return;
+    const hit = _drawHit(xy, false);
+    el.style.cursor = !hit ? '' : hit.part === 'line' ? 'ns-resize' : hit.part === 'seg' ? 'pointer' : 'move';
+  }, true);
+
+  const endDrag = e => {
+    if (!_drawDrag) return;
+    _drawDrag = null;
+    chart.applyOptions({ handleScroll: true, handleScale: true });
+    _drawSave();
+    e.stopPropagation();
   };
-  try { localStorage.setItem('chip_draw_' + sid, JSON.stringify(data)); } catch(e) {}
+  el.addEventListener('pointerup', endDrag, true);
+  el.addEventListener('pointercancel', endDrag, true);
+
+  el.addEventListener('click', e => {
+    if (!_drawMode) return;
+    const xy = _drawXY(e, el);
+    if (_drawDown && Math.hypot(xy.x - _drawDown.x, xy.y - _drawDown.y) > 5) return;   // 拖曳不是點
+    const price = series.coordinateToPrice(xy.y);
+    if (price == null) return;
+    const id = Date.now();
+    if (_drawMode === 'hline') {
+      const d = { id, type: 'hline', price: +price.toFixed(2) };
+      _drawings.push(d); _drawRenderOne(d); _drawSave();
+      setDrawMode(null);
+      return;
+    }
+    const time = chart.timeScale().coordinateToTime(xy.x);
+    if (time == null) return;
+    _drawPoints.push({ t: _drawT(time), price: +price.toFixed(2) });
+    if (_drawPoints.length === 1) {
+      _drawHint = _drawHost.createPriceLine({ price, color: '#c084fc', lineWidth: 1, lineStyle: 3, axisLabelVisible: false, title: '起點' });
+      return;
+    }
+    const [p1, p2] = _drawPoints;
+    if (p1.t === p2.t && _drawMode === 'tline') { _drawPoints = [p1]; return; }
+    const d = { id, type: _drawMode, p1, p2 };
+    _drawings.push(d);
+    _drawClearHint();
+    _drawRenderOne(d); _drawSave();
+    setDrawMode(null);
+  });
+
+  el.addEventListener('dblclick', e => {
+    if (_drawMode) return;
+    const hit = _drawHit(_drawXY(e, el), true);
+    if (!hit) return;
+    _drawings = _drawings.filter(x => x.id !== hit.id);
+    _drawRenderAll(); _drawSave();
+    e.stopPropagation();
+  }, true);
 }
 
-function _restoreDrawings(sid) {
-  if (!sid || !_drawChart || !_drawSeries) return;
-  let data;
-  try { data = JSON.parse(localStorage.getItem('chip_draw_' + sid) || 'null'); } catch(e) { return; }
-  if (!data) return;
-  (data.hlines || []).forEach(h => {
-    try {
-      const pl = _drawSeries.createPriceLine({
-        price: h.price, color: '#f97316', lineWidth: 2, lineStyle: 1,
-        axisLabelVisible: true, title: Number(h.price).toFixed(2),
-      });
-      _drawings.push({ type: 'hline', priceLine: pl });
-    } catch(e) {}
-  });
-  (data.tlines || []).forEach(t => {
-    try {
-      const ls = _drawChart.addLineSeries({
-        color: '#c084fc', lineWidth: 2, lineStyle: 0,
-        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
-      });
-      ls.setData([
-        { time: t.p1.time, value: t.p1.price },
-        { time: t.p2.time, value: t.p2.price },
-      ]);
-      _drawings.push({ type: 'tline', series: ls, p1: t.p1, p2: t.p2 });
-    } catch(e) {}
-  });
-}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && _drawMode) { setDrawMode(null); e.stopPropagation(); }
+}, true);
 
 function _resetChartPeriod() {
   _chartInterval = '1d';
@@ -5471,8 +5666,8 @@ function _fmtVol(lots) {
 
 function _mkLegend(el) {
   const d = document.createElement('div');
-  d.style.cssText = 'position:absolute;top:5px;left:8px;z-index:10;font-size:11px;' +
-    'line-height:1.8;pointer-events:none;color:#d1d4dc;white-space:nowrap;' +
+  d.style.cssText = 'position:absolute;top:5px;left:8px;z-index:10;font-size:var(--leg-fs);' +
+    'line-height:1.7;pointer-events:none;color:#d1d4dc;white-space:nowrap;' +
     'background:rgba(19,23,34,0.75);padding:2px 8px;border-radius:3px';
   el.appendChild(d);
   return d;
@@ -5483,10 +5678,11 @@ async function openChart(stockId, savedRange = null) {
   const title     = document.getElementById('chart-modal-title');
   const container = document.getElementById('chart-tv-container');
 
-  // 切換股票時清除舊畫線
-  clearDrawings();
+  // 重畫（換股、換週期、盤中更新）：只拆圖上的畫線物件，資料存在 localStorage、畫好圖再載回來
+  _drawDetach();
   _drawChart  = null;
   _drawSeries = null;
+  _drawHost   = null;
 
   _lwcCharts.forEach(c => { try { c.remove(); } catch(e){} });
   _lwcCharts = [];
@@ -5595,7 +5791,7 @@ async function openChart(stockId, savedRange = null) {
       <div id="lwc-macd2" style="width:100%;flex:2;min-height:0;border-top:1px solid #2a2e39;position:relative"></div>`;
 
     const BASE = {
-      layout: { background: { color: '#131722' }, textColor: '#9598a1' },
+      layout: { background: { color: '#131722' }, textColor: '#9598a1', fontSize: window.innerWidth >= 1200 ? 13 : 11 },
       grid:   { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
       crosshair: { mode: 1 },
       rightPriceScale: { borderColor: '#2a2e39' },
@@ -5626,54 +5822,9 @@ async function openChart(stockId, savedRange = null) {
       time: r.ts != null ? r.ts : _toDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close
     })));
 
-    // 儲存繪圖用參考
-    _drawChart  = cChart;
-    _drawSeries = cSeries;
-    _restoreDrawings(_chartStockId);
+    // 畫線（水平線、趨勢線、黃金切割）：載入這檔存的、掛上滑鼠事件
+    _drawAttach(cChart, cSeries, cEl, ohlcv);
     _drawLevelLines(cSeries, _chartStockId);
-
-    // ── 繪圖點擊事件 ──────────────────────────────────────────────────────
-    cEl.addEventListener('click', e => {
-      if (!_drawMode) return;
-      const rect  = cEl.getBoundingClientRect();
-      const x     = e.clientX - rect.left;
-      const y     = e.clientY - rect.top;
-      const price = cSeries.coordinateToPrice(y);
-      if (price == null) return;
-
-      if (_drawMode === 'hline') {
-        const pl = cSeries.createPriceLine({
-          price, color: '#f97316', lineWidth: 2, lineStyle: 1,
-          axisLabelVisible: true, title: price.toFixed(2),
-        });
-        _drawings.push({ type: 'hline', priceLine: pl });
-        _saveDrawings(_chartStockId);
-      } else if (_drawMode === 'tline') {
-        const time = cChart.timeScale().coordinateToTime(x);
-        if (!time) return;
-        _drawPoints.push({ time, price });
-        if (_drawPoints.length === 2) {
-          const [p1, p2] = _drawPoints.sort((a, b) => a.time < b.time ? -1 : 1);
-          const ls = cChart.addLineSeries({
-            color: '#c084fc', lineWidth: 2, lineStyle: 0,
-            priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
-          });
-          ls.setData([
-            { time: p1.time, value: p1.price },
-            { time: p2.time, value: p2.price },
-          ]);
-          _drawings.push({ type: 'tline', series: ls, p1, p2 });
-          _saveDrawings(_chartStockId);
-          _drawPoints = [];
-        } else {
-          const hint = cSeries.createPriceLine({
-            price, color: '#c084fc', lineWidth: 1, lineStyle: 3,
-            axisLabelVisible: false, title: '①',
-          });
-          _drawings.push({ type: '_hint', priceLine: hint });
-        }
-      }
-    });
 
     // MA 線 (依切換狀態顯示)
     const MA_CFG = [
@@ -5711,6 +5862,7 @@ async function openChart(stockId, savedRange = null) {
 
     // 蠟燭 legend：滑鼠停在哪根就顯示那天的 開／高／低／收、漲跌（對前一根收盤）；第二行均線
     const cLeg = _mkLegend(cEl);
+    cLeg.style.fontSize = 'var(--leg-main-fs)';     // 開高低收、均線那兩行（最常看）放大
     const _legDay = r => r.ts != null ? new Date(r.ts * 1000).toISOString().slice(5, 16).replace('T', ' ').replace('-', '/')
       : `${String(r.date).slice(4, 6)}/${String(r.date).slice(6, 8)}`;
     function updateCLeg(idx) {
@@ -5866,10 +6018,12 @@ async function openChart(stockId, savedRange = null) {
 function closeChart() {
   _stopChartAutoRefresh();
   _chartStockId = null;
+  _drawDetach();
   _drawings = [];
   _drawPoints = [];
   _drawChart  = null;
   _drawSeries = null;
+  _drawHost   = null;
   setDrawMode(null);
   document.getElementById('chart-modal').style.display = 'none';
   _lwcCharts.forEach(c => { try { c.remove(); } catch(e){} });
@@ -6142,9 +6296,11 @@ async function saveAllStratParams() {
       </span>
       <span style="width:1px;height:16px;background:#2a2e39;margin:0 4px"></span>
       <span style="display:flex;gap:4px;align-items:center">
-        <button id="draw-btn-hline" class="btn sm ghost draw-btn" onclick="setDrawMode('hline')" title="水平線（點K線加上）" style="font-size:.8rem;padding:3px 8px">📏 水平線</button>
-        <button id="draw-btn-tline" class="btn sm ghost draw-btn" onclick="setDrawMode('tline')" title="趨勢線（點兩個K線點）" style="font-size:.8rem;padding:3px 8px">📐 趨勢線</button>
-        <button class="btn sm ghost" onclick="clearDrawings()" title="清除所有畫線" style="font-size:.8rem;padding:3px 8px">🗑️</button>
+        <button id="draw-btn-hline" class="btn sm ghost draw-btn" onclick="setDrawMode('hline')" title="水平線：點一下放上去；之後可以拖著上下移，雙擊刪掉" style="font-size:.85rem;padding:3px 9px">📏 水平線</button>
+        <button id="draw-btn-tline" class="btn sm ghost draw-btn" onclick="setDrawMode('tline')" title="趨勢線：點起點、再點終點；之後可以拖兩個端點，雙擊刪掉" style="font-size:.85rem;padding:3px 9px">📐 趨勢線</button>
+        <button id="draw-btn-fib" class="btn sm ghost draw-btn" onclick="setDrawMode('fib')" title="黃金切割率：先點起漲（起跌）點、再點高點（低點）→ 0.236／0.382／0.5／0.618／0.786 回檔＋1.382／1.618 目標；雙擊任一條刪掉整組" style="font-size:.85rem;padding:3px 9px;color:#eab308">✨ 黃金切割</button>
+        <button class="btn sm ghost" onclick="clearDrawings()" title="刪掉這檔全部畫線（只刪一條：雙擊那條線）" style="font-size:.85rem;padding:3px 9px">🗑️</button>
+        <span id="draw-tip" style="font-size:.78rem;color:#c084fc;white-space:nowrap"></span>
       </span>
       <span style="width:1px;height:16px;background:#2a2e39;margin:0 4px"></span>
       <span style="display:flex;gap:3px;align-items:center">
