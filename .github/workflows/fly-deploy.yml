@@ -27,6 +27,6 @@ jobs:
           if [ $# -gt 0 ]; then flyctl secrets set "$@" --stage; else echo "no secrets to sync"; fi
 
       - name: Deploy
-        run: flyctl deploy --remote-only
+        run: flyctl deploy --remote-only --ha=false   # 只要 1 台：SQLite 在 volume 上，2 台會各有一份資料（2026-10-09 自動多開過一台）
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
