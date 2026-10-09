@@ -5509,6 +5509,19 @@ function toggleFakeBdPivot() {
 
 function openWlChart(sid)     { _frozenChartList = [..._wlChartList];     _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = '';             _chartOhlcvUrl = null; _resetChartPeriod(); openChart(sid); }
 function openMktChart(sid)    { _frozenChartList = [..._mktChartList];    _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = '全市場排行';   _chartOhlcvUrl = null; _resetChartPeriod(); openChart(sid); }
+// 內嵌頁（產業輪動等）開主網站 K 線：list＝[{id,name}] 給上一檔／下一檔用
+function openChartExternal(sid, name, list, source) {
+  (list || []).forEach(x => { if (x && x.id && x.name) _chartNames[x.id] = x.name; });
+  if (name) _chartNames[sid] = name;
+  const ids = (list || []).map(x => x.id).filter(Boolean);
+  _frozenChartList = ids.length ? ids : [sid];
+  _frozenChartIdx = Math.max(0, _frozenChartList.indexOf(sid));
+  _chartSource = source || '';
+  _chartOhlcvUrl = null;
+  _resetChartPeriod();
+  openChart(sid);
+}
+
 function openScreenChart(sid) { _frozenChartList = [..._screenChartList]; _frozenChartIdx = _frozenChartList.indexOf(sid); _chartSource = (_viewingStrategy ? (STRATEGY_LABELS[_viewingStrategy] || _viewingStrategy).replace(/[（(][^）)]{10,}[）)]/g,'').trim() : ''); _chartOhlcvUrl = null; _resetChartPeriod(); openChart(sid); }
 
 function chartNav(dir) {

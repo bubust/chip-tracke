@@ -289,6 +289,33 @@ async function loadExpandStocks(sectorId, domId) {
   }
 }
 
+// ── 成份股連到主網站的 K 線圖／深度分析（B61）；單獨開 /sector/ 時退回這頁自己的小 K 線 ──
+function _mainApp() {
+  try { return window.parent !== window && typeof window.parent.openChartExternal === 'function' ? window.parent : null; } catch (e) { return null; }
+}
+function _tableList(el) {
+  const t = el && el.closest('table');
+  return t ? [...t.querySelectorAll('[data-sid]')].map(x => ({ id: x.dataset.sid, name: x.dataset.name || '' })) : [];
+}
+function openMainChart(sid, name, el) {
+  const p = _mainApp();
+  if (!p) return openKline(sid, name);
+  p.openChartExternal(sid, name, _tableList(el), '產業輪動');
+}
+function openMainDeep(sid, name) {
+  const p = _mainApp();
+  if (p && typeof p.openDeepPanel === 'function') p.openDeepPanel(sid, name);
+  else openKline(sid, name);
+}
+function _stockCells(sid, name) {
+  const n = String(name || '').replace(/['"\<>&]/g, '');
+  return `<a class="stock-link" data-sid="${sid}" data-name="${escHtml(n)}" title="開 K 線圖" style="cursor:pointer;font-weight:600;color:var(--accent);text-decoration:underline dotted" onclick="openMainChart('${sid}','${n}',this)">${sid}</a>`;
+}
+function _deepBtn(sid, name) {
+  const n = String(name || '').replace(/['"\<>&]/g, '');
+  return `<button class="btn sm ghost" title="深度分析" style="padding:1px 6px;font-size:.72rem;margin-left:4px" onclick="event.stopPropagation();openMainDeep('${sid}','${n}')">🔬</button>`;
+}
+
 function renderStocksTable(stocks) {
   if (!stocks || stocks.length === 0) return '<div style="color:var(--muted);font-size:.8rem">無資料</div>';
   const rows = stocks.map(s => {
@@ -297,8 +324,8 @@ function renderStocksTable(stocks) {
     const retStr = ret === null ? '—' : (ret > 0 ? '+' : '') + ret.toFixed(2) + '%';
     const vol = s.volume ? (s.volume >= 10000 ? (s.volume/10000).toFixed(1)+'萬' : s.volume.toLocaleString()) : '—';
     return `<tr>
-      <td style="font-weight:600;color:var(--accent)">${s.stock_id}</td>
-      <td style="color:var(--text-dim)">${escHtml(s.name || '—')}</td>
+      <td>${_stockCells(s.stock_id, s.name)}</td>
+      <td style="color:var(--text-dim);white-space:nowrap">${escHtml(s.name || '—')}${_deepBtn(s.stock_id, s.name)}</td>
       <td style="text-align:right">${s.close != null ? s.close.toFixed(2) : '—'}</td>
       <td style="text-align:right;color:var(--muted)">${vol}</td>
       <td class="${retCls}" style="text-align:right;font-weight:600">${retStr}</td>
@@ -970,8 +997,8 @@ function renderStocksTablePanel(stocks) {
     const vol = s.volume ? (s.volume >= 10000 ? (s.volume/10000).toFixed(1)+'萬' : s.volume.toLocaleString()) : '—';
     const sname = escHtml(s.name || '');
     return `<tr style="border-bottom:1px solid var(--border)">
-      <td style="padding:6px 8px"><a class="stock-link" onclick="openKline('${s.stock_id}','${sname}')">${s.stock_id}</a></td>
-      <td style="padding:6px 8px;color:var(--text-dim)">${sname}</td>
+      <td style="padding:6px 8px">${_stockCells(s.stock_id, s.name)}</td>
+      <td style="padding:6px 8px;color:var(--text-dim);white-space:nowrap">${sname}${_deepBtn(s.stock_id, s.name)}</td>
       <td style="padding:6px 8px;text-align:right">${s.close != null ? s.close.toFixed(2) : '—'}</td>
       <td style="padding:6px 8px;text-align:right;color:var(--muted)">${vol}</td>
       <td style="padding:6px 8px;text-align:right;${retStyle};font-weight:600">${retStr}</td>
