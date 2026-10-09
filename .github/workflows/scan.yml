@@ -1,9 +1,9 @@
 name: 全市場策略掃描
 
 on:
-  workflow_dispatch:   # 手動觸發
-  schedule:
-    - cron: '0 10 * * 1-5'   # 台灣時間 18:00（UTC 10:00），週一到週五
+  workflow_dispatch:   # 手動觸發（備援用）
+  # 2026-10-09 停用每日排程：GitHub 跑掃描時資料庫是空的、每檔都打 Yahoo（現在 GitHub IP 也被擋，07:55 那次失敗 1115），
+  # 結果還會蓋掉 Supabase scan_latest；每天 18:00 改由 Fly 正式站自己的排程掃（有完整價格快取＋鉅亨即時 K 棒）
 
 jobs:
   scan:
