@@ -763,7 +763,7 @@ async def run_market_scan(strategy_params: dict = None):
         # ── 預過濾殭屍股（> 60 天無更新）──
         try:
             from price_cache import get_stale_stocks
-            stale_set = get_stale_stocks(days_threshold=60)
+            stale_set = get_stale_stocks(days_threshold=60, universe={sid for sid, _ in tasks})
             if stale_set and len(stale_set) > len(tasks) * 0.25:
                 print(f"[SCAN] 殭屍股 {len(stale_set)} 支超過四分之一，疑似快取異常，本次不過濾")
                 stale_set = set()
@@ -772,7 +772,7 @@ async def run_market_scan(strategy_params: dict = None):
                 before = len(tasks)
                 tasks = [(sid, mkt) for sid, mkt in tasks if sid not in stale_set]
                 _scan_status["skipped_stale"] = before - len(tasks)
-                print(f"[SCAN] 跳過殭屍股 {_scan_status['skipped_stale']} 支（> 60 天無更新）")
+                print(f"[SCAN] 跳過殭屍股 {_scan_status['skipped_stale']} 支（> 60 天無更新或價格表沒有資料）")
         except Exception as _stale_e:
             print(f"[SCAN] 殭屍過濾失敗（非致命）: {_stale_e}")
 

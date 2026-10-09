@@ -628,8 +628,10 @@ def get_stocks_with_history(min_days: int = 100) -> int:
     conn.close()
     return result
 
-def get_stale_stocks(days_threshold: int = 60) -> set:
+def get_stale_stocks(days_threshold: int = 60, universe=None) -> set:
     """回傳最後成交日距今超過 days_threshold 天的股票 ID 集合（殭屍股：下市、長期停牌）。
+    universe（掃描清單）有給時，清單裡「價格表完全沒有資料」的也算（下市多年、官方日行情 2 年來都沒有；
+    2026-10-09 正式站掃描 170 檔失敗裡 169 檔是這種）；價格表不到 1,000 檔（還沒建好）時不算這類。
     price_daily.date 格式為 YYYYMMDD（舊版誤用 YYYY-MM-DD 比較，字串永遠比門檻大，一支都抓不到）。
     以快取裡最新的市場日期為基準而非今天：快取本身沒更新時不會把全市場誤判成殭屍股；
     快取最新日期落後今天超過 10 天時直接不過濾。"""
@@ -649,7 +651,12 @@ def get_stale_stocks(days_threshold: int = 60) -> set:
             "SELECT stock_id FROM price_daily GROUP BY stock_id HAVING MAX(date) < ?",
             (threshold,)
         ).fetchall()
-        return {r[0] for r in rows}
+        out = {r[0] for r in rows}
+        if universe:
+            have = {r[0] for r in conn.execute("SELECT DISTINCT stock_id FROM price_daily")}
+            if len(have) >= 1000:
+                out |= set(universe) - have
+        return out
     except Exception as e:
         print(f"[PRICE] get_stale_stocks: {e}")
         return set()

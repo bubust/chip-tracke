@@ -67,3 +67,18 @@ def test_scan_live_bar_appends_only_missing_day():
     assert y._with_live_bar("2330", out, "20261008") is None          # 已經有今天 → 不重複補
     assert y._with_live_bar("2317", c, "20261008") is None            # 沒有即時報價
     y._scan_rt.clear()
+
+
+def test_stale_includes_universe_without_rows(tmp_path, monkeypatch):
+    import sqlite3, datetime as dt
+    import price_cache as pc
+    db = tmp_path / "c.db"
+    monkeypatch.setattr(pc, "DB_PATH", db)
+    pc.init_price_db()
+    today = dt.date.today().strftime("%Y%m%d")
+    con = sqlite3.connect(str(db))
+    con.executemany("INSERT INTO price_daily (stock_id, date, open, high, low, close, volume) VALUES (?,?,1,1,1,1,1)",
+                    [(f"{1000 + i}", today) for i in range(1000)] + [("9999", "20200101")])
+    con.commit(); con.close()
+    assert pc.get_stale_stocks(60) == {"9999"}
+    assert pc.get_stale_stocks(60, universe={"1000", "8888"}) == {"9999", "8888"}   # 8888 價格表沒有 → 跳過
