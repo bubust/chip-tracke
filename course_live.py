@@ -421,12 +421,20 @@ def overheat_series(days: list) -> dict:
     return {d: have.get(d) for d in days}
 
 
-def calc_market() -> dict:
+def calc_market(trade_days=None) -> dict:
+    """trade_days：價格表的交易日（加權指數表偶爾有週末的假資料，例 2026-10-04 星期日 → 只留真的交易日）"""
     from best_strategy import taiex_series
     s = taiex_series()
     if s is None or len(s) < 60:
         return {"error": "加權指數資料不夠"}
     s = s.sort_index()
+    s.index = s.index.astype(str)
+    if trade_days:
+        td = set(trade_days)
+        s = s[[d in td or d > max(td) for d in s.index]]
+    s = s[[datetime.strptime(d, "%Y%m%d").weekday() < 5 for d in s.index]]
+    if len(s) < 60:
+        return {"error": "加權指數資料不夠"}
     days = [str(d) for d in s.index[-40:]]
     oh = overheat_series(days[-10:])
     close = s.to_numpy(float)[-40:]
@@ -476,12 +484,13 @@ def nightly(push: bool = True) -> dict:
             log.warning(f"[course] daytrade: {e}")
             res["daytrade"] = f"失敗：{e}"
         try:
-            d = calc_market()
+            d = calc_market(P["dates"])
             if not d.get("error"):
                 save("market", d["date"], d)
             res["market"] = d.get("dist_day", d.get("error"))
         except Exception as e:
             log.warning(f"[course] market: {e}")
+            res["market"] = f"失敗：{e}"
         del P
         if push:
             try:
