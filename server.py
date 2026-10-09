@@ -781,6 +781,18 @@ async def lifespan(app: FastAPI):
                         lg.info(f"[best] 訊號推播 {push_best_signals()}；出場推播 {len(push_best_exits())} 則")
                     except Exception as _be:
                         lg.warning(f"[best] 推播失敗: {_be}")
+                    # 🔗 連動股重算＋處置股清單更新（PLAN-LINK）
+                    try:
+                        from link_routes import refresh_all as _link_refresh
+                        lg.info(f"[link] 連動股 {_link_refresh()}")
+                    except Exception as _le:
+                        lg.warning(f"[link] 更新失敗: {_le}")
+                    # 📉 大跌買點：深跌條件第一次成立 → Telegram（同一波只推一次）
+                    try:
+                        from crash_routes import push_crash
+                        lg.info(f"[crash] {push_crash()}")
+                    except Exception as _ce:
+                        lg.warning(f"[crash] 推播失敗: {_ce}")
                 else:
                     lg.info("[scan_scheduler] 掃描進行中，跳過 Step 1")
             except Exception as _e1:
@@ -1062,6 +1074,10 @@ app.mount("/notes/static", StaticFiles(directory=str(BASE_DIR / "notes-frontend"
 app.include_router(discuss_router)
 from best_routes import router as best_router  # noqa: E402  🏆 研究最佳（PLAN-BEST）
 app.include_router(best_router)
+from link_routes import router as link_router  # noqa: E402  🔗 連動／處置股（PLAN-LINK）
+app.include_router(link_router)
+from crash_routes import router as crash_router  # noqa: E402  📉 大跌買點＋策略回測建議（PLAN-BEST2）
+app.include_router(crash_router)
 app.mount("/discuss/static", StaticFiles(directory=str(BASE_DIR / "discuss-frontend")), name="discuss_static")
 
 app.add_middleware(

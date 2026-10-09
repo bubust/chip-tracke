@@ -449,6 +449,7 @@ details.guide[open]>summary::before{content:'▾ ';}
   <button onclick="switchTab('regime')">📊 總經面板</button>
   <button onclick="switchTab('sector')">🔄 產業輪動</button>
   <button onclick="switchTab('relationship')">📊 市場關聯</button>
+  <button onclick="switchTab('link')">🔗 連動／處置</button>
   <button onclick="switchTab('treasury')">🏦 庫藏股</button>
   <button onclick="switchTab('mna')">🤝 收購併購</button>
   <button onclick="switchTab('cb')">🎫 可轉債</button>
@@ -668,6 +669,7 @@ details.guide[open]>summary::before{content:'▾ ';}
 
 <!-- ═══════════════════════ 策略篩選 ═══════════════════════ -->
 <div id="tab-screen" class="tab">
+  <div class="card" id="crash-card" style="display:none"></div>
 
   <div class="card">
     <!-- Cache 預熱狀態列 -->
@@ -741,6 +743,7 @@ details.guide[open]>summary::before{content:'▾ ';}
       <button class="btn" style="font-size:.8rem;padding:5px 12px" onclick="openStrategyBacktest()">🔬 批量回測此策略</button>
     </div>
     <div id="best-explain" style="display:none;margin-bottom:14px"></div>
+    <div id="strat-research" style="display:none;margin-bottom:12px"></div>
     <div class="tbl-wrap">
       <table>
         <thead id="screen-thead">
@@ -907,6 +910,32 @@ details.guide[open]>summary::before{content:'▾ ';}
 <!-- ═══════════════════════ 市場關聯研究 ═══════════════════════ -->
 <div id="tab-relationship" class="tab">
   <iframe id="relationship-iframe" src="" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
+</div>
+
+<!-- ═══════════════════════ 🔗 連動／處置（PLAN-LINK）═══════════════════════ -->
+<div id="tab-link" class="tab">
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <strong style="font-size:1.05rem">🔗 股票連動・處置股雙刀</strong>
+      <span class="muted" style="font-size:.8rem">數值用前一個交易日收盤算（盤中不更新）；研究：5 年官方資料、樣本外驗證，結論標在每一區</span>
+      <span style="flex:1"></span>
+      <input id="link-q" type="text" placeholder="輸入代號看連動股，例 2408" style="width:190px" onkeydown="if(event.key==='Enter')linkQuery()">
+      <button class="btn sm" onclick="linkQuery()">查詢</button>
+    </div>
+    <div id="link-query-out" style="margin-top:10px"></div>
+  </div>
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><strong>🚀 今天誰先發動（各產業）＋跟進候選</strong>
+      <span class="muted" style="font-size:.78rem">先發動＝漲 ≥ 5%、創 20 日新高、量 ≥ 2 倍；候選＝同產業、60 日相關 ≥ 0.5、今天還沒跟上（漲幅 < 一半）</span></div>
+    <div id="link-research-follow" style="font-size:.82rem;margin-bottom:8px"></div>
+    <div id="link-movers"><div class="muted">載入中…</div></div>
+  </div>
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><strong>⛓ 處置股（雙刀）</strong>
+      <span id="link-disp-date" class="muted" style="font-size:.78rem"></span></div>
+    <div id="link-research-disp" style="font-size:.82rem;margin-bottom:8px"></div>
+    <div id="link-disposal"><div class="muted">載入中…</div></div>
+  </div>
 </div>
 
 <!-- ═══════════════════════ 可轉債 ═══════════════════════ -->
@@ -1723,13 +1752,15 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  const idx = { watchlist: 0, market: 1, screen: 2, warrant: 3, regime: 4, sector: 5, relationship: 6, treasury: 7, mna: 8, cb: 9, notes: 10, discuss: 11, settings: 12 };
+  const idx = { watchlist: 0, market: 1, screen: 2, warrant: 3, regime: 4, sector: 5, relationship: 6, link: 7, treasury: 8, mna: 9, cb: 10, notes: 11, discuss: 12, settings: 13 };
   const navIdx = idx[name];
   if (navIdx !== undefined) document.querySelectorAll('nav button')[navIdx].classList.add('active');
   if (name === 'settings') { _doSwitchSettings(); }
   if (name === 'regime') { const rf = document.getElementById('regime-iframe'); if (rf && !rf.dataset.loaded) { rf.dataset.loaded = '1'; rf.src = '/regime/'; } }
   if (name === 'sector') { const sf = document.getElementById('sector-iframe'); if (sf && !sf.dataset.loaded) { sf.dataset.loaded = '1'; sf.src = '/sector/'; } }
   if (name === 'relationship') { const rf2 = document.getElementById('relationship-iframe'); if (rf2 && !rf2.dataset.loaded) { rf2.dataset.loaded = '1'; rf2.src = '/relationship/'; } }
+  if (name === 'link') { linkOnShow(); }
+  if (name === 'screen') { loadCrashCard(); }
   if (name === 'treasury') { tbOnShow(); }
   if (name === 'mna') { mnaOnShow(); }
   if (name === 'cb') { cbOnShow(); }
@@ -4689,6 +4720,160 @@ function _renderBatch(r) {
     </table></div>`;
 }
 
+// ── 📊 每個策略的 5 年回測（PLAN-BEST2）＋📉 大跌買點 ──
+let _best2 = null;
+async function _renderStratResearch(strategy) {
+  const el = document.getElementById('strat-research');
+  if (!el) return;
+  if (_best2 === null) { try { _best2 = await api('GET', '/api/best2/strategies'); } catch (e) { _best2 = {}; } }
+  const r = (_best2.strategies || {})[strategy];
+  if (!r) { el.style.display = 'none'; return; }
+  const b = r.baseline || {}, p = r.pick, e7 = r.e7_10;
+  const pct = x => x == null ? '—' : `${x >= 0 ? '+' : ''}${(x * 100).toFixed(2)}%`;
+  const pw = x => x == null ? '—' : `${Math.round(x * 100)}%`;
+  const col = x => x == null ? '' : x > 0 ? 'color:var(--up)' : x < 0 ? 'color:var(--down)' : '';
+  const pc = r.port && r.port.pick ? r.port.pick.cagr : null;
+  const verdict = r.improved
+    ? `<b style="color:var(--up)">✅ 建議改用：${_esc(p.filter)}；${_esc(p.exit)}</b>${pc != null && pc < 0 ? `<span style="color:#f59e0b">（每筆比原本好，但整個帳戶照做 5 年年化仍是 ${pct(pc)}）</span>` : ''}`
+    : `<b style="color:#f59e0b">⚠ 回測找不到穩定更好的出場（${_esc((r.reasons || []).slice(0, 2).join('；') || '樣本內沒有合格組合')}）</b>`;
+  el.style.display = 'block';
+  el.innerHTML = `<details ${r.improved ? 'open' : ''} style="border:1px solid var(--border);border-radius:8px;padding:8px 12px">
+    <summary style="cursor:pointer;font-weight:700">📊 5 年回測：原本 vs 改良　<span style="font-weight:400;font-size:.85rem">${verdict}</span></summary>
+    <div class="tbl-wrap" style="margin-top:6px"><table style="font-size:.82rem"><thead><tr><th>做法</th><th>樣本內 勝率／平均每筆</th><th>樣本外 勝率／平均每筆</th><th>平均抱</th><th>帳戶年化／最大回撤（10 檔）</th></tr></thead><tbody>
+      <tr><td>原本（網站 K 線回測預設：2ATR 停損＋2.5ATR 移動停損、最多 60 天）</td><td>${pw(b.is_win)}／<span style="${col(b.is_mean)}">${pct(b.is_mean)}</span></td><td>${pw(b.oos_win)}／<span style="${col(b.oos_mean)}">${pct(b.oos_mean)}</span></td><td>${b.all_days != null ? b.all_days.toFixed(0) + ' 天' : '—'}</td><td>${r.port ? `${pct(r.port.base.cagr)}／${pct(r.port.base.mdd)}` : '—'}</td></tr>
+      ${p ? `<tr><td>改良候選：${_esc(p.filter)}；${_esc(p.exit)}</td><td>${pw(p.is_win)}／<span style="${col(p.is_mean)}">${pct(p.is_mean)}</span></td><td>${pw(p.oos_win)}／<span style="${col(p.oos_mean)}">${pct(p.oos_mean)}</span></td><td>${p.all_days != null ? p.all_days.toFixed(0) + ' 天' : '—'}</td><td>${r.port ? `${pct(r.port.pick.cagr)}／${pct(r.port.pick.mdd)}` : '—'}</td></tr>` : ''}
+      ${e7 ? `<tr><td>固定停損 10%、沒跌破一直抱（收盤判斷）</td><td colspan="2">勝率 ${pw(e7.win)}、平均每筆 <span style="${col(e7.mean)}">${pct(e7.mean)}</span>；60 天內被洗出場 ${pw(e7.wash60)}</td><td>${e7.days != null ? e7.days.toFixed(0) + ' 天' : '—'}</td><td>${pct(e7.port_cagr)}／${pct(e7.port_mdd)}</td></tr>` : ''}
+    </tbody></table></div>
+    <div class="muted" style="font-size:.74rem;margin-top:4px">5 年官方資料（含下市、含股利）、每筆扣 0.785% 成本；改良候選是用樣本內（2021-10～2024-06）勝率最高挑的，樣本外（2024-07～2026-08）有真的比較好、而且勝過隨機進場才算「建議改用」。同期加權年化 +23%。</div></details>`;
+}
+
+async function loadCrashCard() {
+  const el = document.getElementById('crash-card');
+  if (!el) return;
+  let r;
+  try { r = await api('GET', '/api/crash/today'); } catch (e) { return; }
+  const t = r.today || {}, h = r.history || {};
+  if (t.error) return;
+  const deepOn = Object.entries(t.deep || {}).filter(([, v]) => v).map(([k]) => (t.labels || {})[k]);
+  const pct = x => x == null ? '—' : `${x >= 0 ? '+' : ''}${(x * 100).toFixed(1)}%`;
+  const evRows = (h.events || []).map(e => `<tr><td>${e.date.slice(0, 4)}/${e.date.slice(4, 6)}/${e.date.slice(6)}</td>${['0050', '2330', '2454', 'TOP10'].map(inst => {
+      const x = (e.rows || []).find(y => y.inst === inst) || {};
+      return `<td>${['H20', 'H60', 'H120'].map(k => `<span style="${x[k] > 0 ? 'color:var(--up)' : x[k] < 0 ? 'color:var(--down)' : ''}">${pct(x[k])}</span>`).join('／')}</td>`; }).join('')}</tr>`).join('');
+  el.style.display = 'block';
+  el.style.borderColor = deepOn.length ? '#ef4444' : '';
+  el.innerHTML = `<details ${deepOn.length ? 'open' : ''}><summary style="cursor:pointer"><b>📉 大跌買點</b>
+      ${deepOn.length ? `<b style="color:var(--up)">🔔 深跌條件成立：${deepOn.map(_esc).join('、')} → 過去滿期的 4 波裡 3 波，買 0050／台積電抱 60～120 天是賺的（建議分批）</b>` : '<span class="muted">今天沒有深跌</span>'}
+      <span class="muted" style="font-size:.8rem">　加權 ${t.taiex}（比 60 日最高 ${pct(t.dd)}、比季線 ${pct(t.bias)}）　負乖離抄底 ${t.bias_count ?? '—'} 檔　${t.date ? t.date.slice(4, 6) + '/' + t.date.slice(6) : ''}</span></summary>
+    <div style="font-size:.84rem;margin:6px 0">${_esc(h.text || '')}</div>
+    <div class="tbl-wrap"><table style="font-size:.8rem"><thead><tr><th>深跌訊號日</th><th>0050 抱 20／60／120 天</th><th>台積電</th><th>聯發科</th><th>前 10 大成交金額股</th></tr></thead><tbody>${evRows}</tbody></table></div>
+    <div class="muted" style="font-size:.74rem;margin-top:4px">深跌＝加權比 60 日最高跌 ≥ 15%、或低於 60 日線 ≥ 10%、或負乖離抄底（季線乖離 ≤ −20%）≥ 100 檔；隔天開盤買、扣成本、含股利。5 年只有 4～5 波，不做顯著性保證；跌 8～10% 的中度回檔回測跟隨便挑日子買差不多。深跌第一天會推 Telegram。</div></details>`;
+}
+
+// ── 🔗 連動／處置（PLAN-LINK）──
+let _linkLoaded = 0;
+const _lp = x => x == null ? '—' : `${x > 0 ? '+' : ''}${(x * 100).toFixed(1)}%`;
+const _lcol = x => x == null ? '' : x > 0 ? 'color:var(--up)' : x < 0 ? 'color:var(--down)' : '';
+function _linkStock(id, name, list, src) {
+  const ls = JSON.stringify((list || []).map(x => ({ id: x.id, name: x.name || '' }))).replace(/"/g, '&quot;');
+  return `<a style="cursor:pointer;color:var(--accent);font-weight:700" onclick='openChartExternal("${id}", "${_esc(name || '')}", JSON.parse(this.dataset.l), "${src}")' data-l="${ls}">${id}</a> <span>${_esc(name || '')}</span>${_dpBtn(id, name)}`;
+}
+function linkOnShow() {
+  if (Date.now() - _linkLoaded < 5 * 60 * 1000) return;
+  _linkLoaded = Date.now();
+  _linkLoadMovers(); _linkLoadDisposal();
+}
+function _researchBox(r, title) {
+  if (!r) return `<span class="muted">（${title}：研究結果還沒放上來）</span>`;
+  const tag = r.useful ? '<b style="color:var(--up)">✅ 回測有效</b>' : '<b style="color:#f59e0b">⚠ 回測沒有優勢</b>';
+  return `<div style="border-left:3px solid ${r.useful ? 'var(--up)' : '#f59e0b'};padding:4px 10px;background:rgba(127,127,127,.06)">${tag}　${_esc(r.text || '')}
+    ${r.detail ? `<details style="margin-top:4px"><summary style="cursor:pointer" class="muted">怎麼算的</summary><div class="muted" style="font-size:.78rem;white-space:pre-wrap">${_esc(r.detail)}</div></details>` : ''}</div>`;
+}
+async function _linkLoadMovers() {
+  const el = document.getElementById('link-movers');
+  try {
+    const r = await api('GET', '/api/link/movers');
+    document.getElementById('link-research-follow').innerHTML = _researchBox(r.research, '跟進第二名');
+    const ms = r.movers || [];
+    if (!ms.length) { el.innerHTML = '<div class="muted">今天沒有產業出現「先發動」</div>'; return; }
+    el.innerHTML = ms.map(m => {
+      const list = m.movers.concat(m.candidates);
+      return `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
+        <div><b>${_esc(m.sector)}</b> ${m.first ? '<span style="color:var(--up);font-size:.75rem">（10 天來第一個發動）</span>' : '<span class="muted" style="font-size:.75rem">（近 10 天已有人發動）</span>'}</div>
+        <div style="margin-top:3px">🚀 ${m.movers.map(x => `${_linkStock(x.id, x.name, list, '連動：' + m.sector)} <b style="${_lcol(x.chg)}">${_lp(x.chg)}</b> <small class="muted">量 ${x.vr} 倍</small>`).join('　')}</div>
+        <div style="margin-top:3px">👉 跟進候選：${m.candidates.length ? m.candidates.map(x => `${_linkStock(x.id, x.name, list, '連動：' + m.sector)} <small class="muted">相關 ${x.corr}</small> <span style="${_lcol(x.chg)}">${_lp(x.chg)}</span>`).join('　') : '<span class="muted">沒有（同產業沒有高相關又還沒漲的）</span>'}</div>
+      </div>`;
+    }).join('');
+  } catch (e) { el.innerHTML = `<div class="muted">載入失敗：${_esc(e.message)}</div>`; }
+}
+function _pairChips(ps) {
+  if (!ps || !ps.length) return '<span class="muted">—</span>';
+  return ps.map(p => `${_linkStock(p.id, p.name, ps, '雙刀配對')} <small class="muted">相關 ${p.corr}｜偏差 </small><small style="${_lcol(p.dev)}">${_lp(p.dev)}</small>`).join('<br>');
+}
+async function _linkLoadDisposal() {
+  const el = document.getElementById('link-disposal');
+  try {
+    const d = await api('GET', '/api/disposal/today');
+    document.getElementById('link-disp-date').textContent = `資料 ${d.date || ''}，更新 ${d.updated || ''}`;
+    const rdt = (d.research && d.research.relative_days) || [];
+    document.getElementById('link-research-disp').innerHTML = _researchBox(d.research, '處置股') + (rdt.length ? `
+      <details style="margin-top:6px"><summary style="cursor:pointer;font-weight:600">📅 處置前後每天的平均漲跌／紅 K 比例（5 年、樣本內外很接近）</summary>
+      <div class="tbl-wrap"><table style="font-size:.78rem;text-align:center"><tr><th>相對日</th>${rdt.map(x => `<th>${x.rel}</th>`).join('')}</tr>
+      <tr><td>第一次處置</td>${rdt.map(x => `<td style="${_lcol(x.first_mean)}">${_lp(x.first_mean)}<br><small class="muted">${x.first_red != null ? Math.round(x.first_red * 100) + '%紅' : ''}</small></td>`).join('')}</tr>
+      <tr><td>再次處置</td>${rdt.map(x => `<td style="${_lcol(x.repeat_mean)}">${_lp(x.repeat_mean)}<br><small class="muted">${x.repeat_red != null ? Math.round(x.repeat_red * 100) + '%紅' : ''}</small></td>`).join('')}</tr></table></div>
+      <div class="muted" style="font-size:.74rem">當天收盤對前一天收盤（含除權息）。這是事後觀察（探索性），不是驗證過的買賣規則。</div></details>` : '');
+    const tbl = (rows, cols) => rows.length ? `<div class="tbl-wrap"><table style="font-size:.82rem"><thead><tr>${cols.map(c => `<th>${c[0]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${cols.map(c => `<td>${c[1](r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '<div class="muted">（無）</div>';
+    const md = x => x ? `${x.slice(4, 6)}/${x.slice(6, 8)}` : '';
+    const all = (d.active || []).concat(d.releasing || []).concat(d.near || []).map(x => ({ id: x.stock_id, name: x.name }));
+    el.innerHTML = `
+      <div style="font-weight:700;margin:6px 0">⚠ 快被處置（注意股累計）</div>
+      ${tbl((d.near || []).filter(x => x.risk), [['股票', r => _linkStock(r.stock_id, r.name, all, '快被處置')], ['連續注意', r => r.consec + ' 天'], ['10 日內', r => r.n10 + ' 次'], ['30 日內', r => r.n30 + ' 次'], ['提醒', r => `<span style="color:#f59e0b">${_esc(r.hint || '')}</span>`], ['雙刀候選（同產業高相關）', r => _pairChips(r.pairs)]])}
+      <div style="font-weight:700;margin:10px 0 6px">⛓ 處置中／明天開始</div>
+      ${tbl(d.active || [], [['股票', r => _linkStock(r.stock_id, r.name, all, '處置股')], ['狀態', r => r.status], ['期間', r => `${md(r.start)}～${md(r.end)}`], ['第幾次', r => `${_esc(r.times)}${r.first ? '' : ' <span style="color:var(--down)">（再犯）</span>'}`], ['撮合', r => _esc(r.freq || '')], ['雙刀候選', r => _pairChips(r.pairs)]])}
+      <div style="font-weight:700;margin:10px 0 6px">🔓 今天出關（明天恢復正常交易）</div>
+      ${tbl(d.releasing || [], [['股票', r => _linkStock(r.stock_id, r.name, all, '出關股')], ['期間', r => `${md(r.start)}～${md(r.end)}`], ['第幾次', r => _esc(r.times)], ['配對', r => _pairChips(r.pairs)]])}
+      <div class="muted" style="font-size:.75rem;margin-top:6px">偏差率＝處置股 ÷ 配對股 的股價比值，跟 60 日平均比：正＝處置股相對貴（講義：處置前找正偏差放空、出關後找負偏差買）。處置期間委託要預收款券，散戶多半空不到，放空請自己評估。</div>`;
+  } catch (e) { el.innerHTML = `<div class="muted">載入失敗：${_esc(e.message)}</div>`; }
+}
+async function linkQuery(sid) {
+  sid = (sid || document.getElementById('link-q').value || '').trim();
+  const out = document.getElementById('link-query-out');
+  if (!/^\d{4}$/.test(sid)) { out.innerHTML = '<div class="muted">請輸入 4 碼代號</div>'; return; }
+  out.innerHTML = '<div class="muted">載入中…</div>';
+  try {
+    const r = await api('GET', `/api/link/stock/${sid}`);
+    out.innerHTML = _linkPeersHtml(r, sid);
+  } catch (e) { out.innerHTML = `<div class="muted">${_esc(e.message)}</div>`; }
+}
+function _linkPeersHtml(r, sid) {
+  const ps = r.peers || [];
+  if (!ps.length) return `<div class="muted">${_esc(r.note || '沒有資料')}</div>`;
+  const list = [{ id: sid, name: _chartNames[sid] || '' }].concat(ps);
+  return `<div class="muted" style="font-size:.78rem;margin-bottom:4px">${sid} ${_esc(_chartNames[sid] || '')}　產業：${_esc(r.sector || '—')}　資料 ${r.date || ''}　今天 <span style="${_lcol(r.chg)}">${_lp(r.chg)}</span></div>
+    <div class="tbl-wrap"><table style="font-size:.82rem"><thead><tr><th>連動股</th><th>60 日相關</th><th>同產業</th><th>股價比值（今天／60 日平均）</th><th>偏差率</th><th>誰先動</th><th>今天</th></tr></thead><tbody>
+    ${ps.map(p => `<tr><td>${_linkStock(p.id, p.name, list, '連動：' + sid)}</td><td><b>${p.corr}</b></td><td>${p.same_sector ? '✅' : ''}</td>
+      <td>${p.ratio}／${p.ratio_mean}</td><td style="${_lcol(p.dev)}">${_lp(p.dev)}</td>
+      <td>${p.lead > 0.05 ? `<span style="color:var(--up)">${sid} 先動</span>` : p.lead < -0.05 ? `<span style="color:#f59e0b">${p.id} 先動</span>` : '<span class="muted">差不多</span>'}</td>
+      <td style="${_lcol(p.chg)}">${_lp(p.chg)}</td></tr>`).join('')}</tbody></table></div>
+    <div class="muted" style="font-size:.74rem;margin-top:4px">誰先動＝前一天的漲跌跟對方隔天漲跌的相關（120 日）比較；偏差率正＝${sid} 相對對方貴。只是描述，不是買賣訊號。</div>`;
+}
+async function showLinkPeers(sid) {
+  sid = sid || _chartStockId;
+  if (!sid) return;
+  let box = document.getElementById('link-pop');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'link-pop';
+    box.style.cssText = 'position:fixed;right:16px;top:70px;z-index:2000;width:min(760px,calc(100vw - 32px));max-height:75vh;overflow:auto;background:var(--card,#121826);border:1px solid var(--border);border-radius:10px;padding:12px;box-shadow:0 10px 40px rgba(0,0,0,.5)';
+    document.body.appendChild(box);
+  }
+  box.style.display = 'block';
+  box.innerHTML = '<div class="muted">載入連動股…</div>';
+  try {
+    const r = await api('GET', `/api/link/stock/${sid}`);
+    box.innerHTML = `<div style="display:flex;align-items:center;margin-bottom:6px"><b>🔗 ${sid} ${_esc(_chartNames[sid] || '')} 的連動股</b><span style="flex:1"></span><button class="btn sm ghost" onclick="document.getElementById('link-pop').style.display='none'">✕</button></div>` + _linkPeersHtml(r, sid);
+  } catch (e) { box.innerHTML = `<div class="muted">${_esc(e.message)}</div>`; }
+}
+
 // ── 🔬 研究結果（PLAN-BEST）：說明頁（全過關＝🏆 研究最佳；沒有全過＝🔬 研究候選＋警告）──
 let _bestSummary = null;
 const _bp = x => x == null ? '—' : `${(x * 100).toFixed(1)}%`;
@@ -4821,6 +5006,7 @@ function renderScreenTable(strategy, data) {
   document.getElementById('screen-result-title').textContent = STRATEGY_LABELS[strategy] || strategy;
   const _be = document.getElementById('best-explain');
   if (_be) { _be.style.display = strategy === 'S_BEST' ? 'block' : 'none'; if (strategy === 'S_BEST') _renderBestExplain(); }
+  _renderStratResearch(strategy);
   document.getElementById('screen-result-count').textContent = `共 ${data.length} 支`;
 
   // 計算跨策略：每支股票還符合哪些其他策略
@@ -6295,6 +6481,7 @@ async function saveAllStratParams() {
       <button id="chart-bt-btn" class="btn sm ghost" onclick="openBacktest()" style="color:#f59e0b;white-space:nowrap">📊 回測</button>
       <button id="chart-dp-btn" class="btn sm ghost" onclick="chartShowDeep()" title="換成這檔的深度分析" style="color:#a78bfa;white-space:nowrap">🔬 <span class="dp-only">只看</span>分析</button>
       <button id="chart-split-btn" class="btn sm ghost dp-split-btn" onclick="dpSplitOn()" title="K 線跟分析並排同時看" style="color:#d29922;white-space:nowrap">◫ 同時看</button>
+      <button id="chart-link-btn" class="btn sm ghost" onclick="showLinkPeers()" title="這檔的連動股：相關係數、同產業、偏差率、誰先動" style="color:#38bdf8;white-space:nowrap">🔗 連動</button>
       <button class="btn sm ghost" onclick="closeChart()">✕ 關閉</button>
     </div>
     <!-- 第二行：均線按鈕 + 畫線工具 -->
