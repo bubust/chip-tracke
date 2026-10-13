@@ -1454,8 +1454,10 @@ function _dpMd(md) {
     if (!line || /^(-{3,}|\*{3,})$/.test(line)) { close(); continue; }
     if ((m = line.match(/^(#{1,6})\s+(.*)$/))) {
       close();
-      const tag = m[1].length <= 2 ? 'h2' : 'h3';
-      out.push(`<${tag}>${inline(m[2].replace(/\*\*/g, ''))}</${tag}>`);
+      const txt = m[2].replace(/\*\*/g, '').trim();
+      if (!out.length && /報告/.test(txt) && !/^[一二三四五六]、/.test(txt)) continue;   // AI 自己加的總標題（視窗標題已經有）
+      const tag = /^[一二三四五六]、/.test(txt) ? 'h2' : 'h3';                            // 章節一律大標，不管 AI 用幾個 #
+      out.push(`<${tag}>${inline(txt)}</${tag}>`);
     } else if ((m = line.match(/^[-*•]\s+(.*)$/))) {
       if (list !== 'ul') { close(); out.push('<ul>'); list = 'ul'; }
       out.push(`<li>${inline(m[1])}</li>`);
