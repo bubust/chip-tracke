@@ -8,7 +8,8 @@ deep_data.py — 深度分析的資料來源（PLAN-DEEP2 §4，2026-10-07）
 - 官方整包表（免 token）：本益比、月營收、最新一季綜合損益、公司基本資料（上市 TWSE openapi／上櫃 TPEX openapi）
   模組層快取（本益比 3 小時、其他 12 小時），網路錯誤重試 1 次，失敗沿用上一份成功的表、沒有就負快取 10 分鐘
 - 三大法人／融資融券：chip_course 每天累積的 inst_daily／margin_bal（掃描時更新）；該股不到 5 天才用 FinMind 備援
-- 近 8 季 EPS：FinMind TaiwanStockFinancialStatements（選配，快取 24 小時，額度用完就不顯示）
+- 近 8 季 EPS＋營收／毛利率／營益率：FinMind TaiwanStockFinancialStatements（選配，快取 24 小時，額度用完就不顯示）
+- 近 12 個月營收與年增率：FinMind TaiwanStockMonthRevenue（選配，快取 12 小時；B67 參考宏爺月營收圖）
 所有函式都是同步的（server 用 asyncio.to_thread 呼叫），失敗回 None，不丟例外。
 """
 from __future__ import annotations
@@ -286,28 +287,67 @@ def finmind_inst(rows) -> list:
 
 
 def eps_history(sid: str, fresh: bool = False) -> dict | None:
-    """FinMind TaiwanStockFinancialStatements（type=EPS，單季）→ 近 8 季、最新一季 YoY、近四季合計"""
+    """FinMind TaiwanStockFinancialStatements（單季）→ 近 8 季 EPS／營收／毛利率／營益率、最新一季 YoY、近四季合計
+    （B67：毛利率趨勢跟 EPS 同一次呼叫，不多花額度；金融業沒有 Revenue／GrossProfit → 那幾欄是 None）"""
     if is_etf(sid):
         return None
     start = (datetime.now(_TW).date() - timedelta(days=800)).isoformat()
     rows = _finmind("TaiwanStockFinancialStatements", sid, start, 24 * 3600, fresh)
     if not rows:
         return None
-    q = {}
+    by: dict = {}
     for x in rows:
-        if x.get("type") == "EPS":
-            v = num(x.get("value"))
-            d = str(x.get("date") or "")[:10]
-            if v is not None and len(d) == 10:
-                q[d] = v
+        t = x.get("type")
+        if t not in ("EPS", "Revenue", "GrossProfit", "OperatingIncome"):
+            continue
+        v = num(x.get("value"))
+        d = str(x.get("date") or "")[:10]
+        if v is not None and len(d) == 10:
+            by.setdefault(d, {})[t] = v
+    q = {d: v["EPS"] for d, v in by.items() if "EPS" in v}
     if not q:
         return None
     ds = sorted(q)[-8:]
-    out = {"quarters": [{"q": f"{d[:4]}Q{(int(d[5:7]) - 1) // 3 + 1}", "eps": q[d]} for d in ds]}
+
+    def _qrow(d):
+        v = by[d]
+        rev = v.get("Revenue")
+        pct = lambda k: round(v[k] / rev * 100, 1) if rev and v.get(k) is not None else None   # noqa: E731
+        return {"q": f"{d[:4]}Q{(int(d[5:7]) - 1) // 3 + 1}", "eps": q[d],
+                "rev": round(rev / 1e8, 2) if rev else None, "gm": pct("GrossProfit"), "om": pct("OperatingIncome")}
+    out = {"quarters": [_qrow(d) for d in ds]}
     if len(ds) >= 4:
         out["ttm"] = round(sum(q[d] for d in ds[-4:]), 2)
     if len(ds) >= 5 and q[ds[-5]]:
         out["eps_yoy"] = round((q[ds[-1]] - q[ds[-5]]) / abs(q[ds[-5]]) * 100, 1)
+    return out
+
+
+def revenue_history(sid: str, fresh: bool = False) -> dict | None:
+    """FinMind TaiwanStockMonthRevenue（元）→ 近 12 個月營收（億）與年增率、近 3 個月累計年增、是否創新高（B67）"""
+    if is_etf(sid):
+        return None
+    start = (datetime.now(_TW).date() - timedelta(days=800)).replace(day=1).isoformat()
+    rows = _finmind("TaiwanStockMonthRevenue", sid, start, 12 * 3600, fresh)
+    if not rows:
+        return None
+    m = {}
+    for x in rows:
+        y, mo, v = num(x.get("revenue_year")), num(x.get("revenue_month")), num(x.get("revenue"))
+        if y and mo and v is not None:
+            m[(int(y), int(mo))] = v
+    if not m:
+        return None
+    keys = sorted(m)[-12:]
+    yoy = lambda a, b: round((a / b - 1) * 100, 1) if b else None   # noqa: E731
+    out = {"months": [{"ym": f"{y}-{mo:02d}", "rev": round(m[(y, mo)] / 1e8, 2), "yoy": yoy(m[(y, mo)], m.get((y - 1, mo)))}
+                      for y, mo in keys]}
+    last3 = keys[-3:]
+    prev3 = [(y - 1, mo) for y, mo in last3]
+    if len(last3) == 3 and all(k in m for k in prev3):
+        out["yoy3"] = yoy(sum(m[k] for k in last3), sum(m[k] for k in prev3))
+    out["span"] = len(m)                                   # 拿到幾個月（創新高要看這麼多個月）
+    out["is_high"] = len(m) >= 13 and m[keys[-1]] >= max(m.values())
     return out
 
 
@@ -325,30 +365,38 @@ def _streak(vals) -> int:
 
 
 def chip(sid: str, fresh: bool = False) -> dict:
-    """三大法人近 20 日＋融資融券；回 {"error": ...} 表示沒資料"""
+    """三大法人近 20 日（分數用）＋近 30 日序列（畫圖）＋融資融券；回 {"error": ...} 表示沒資料"""
     import chip_course
-    ser = chip_course.inst_series(sid, 20)
+    ser = chip_course.inst_series(sid, 30)
     source = "證交所／櫃買每日（本機）"
     if len(ser) < 5:
-        start = (datetime.now(_TW).date() - timedelta(days=45)).isoformat()
-        fm = finmind_inst(_finmind("TaiwanStockInstitutionalInvestorsBuySell", sid, start, 6 * 3600, fresh))[-20:]
+        start = (datetime.now(_TW).date() - timedelta(days=50)).isoformat()
+        fm = finmind_inst(_finmind("TaiwanStockInstitutionalInvestorsBuySell", sid, start, 6 * 3600, fresh))[-30:]
         if len(fm) >= len(ser) and fm:
             ser, source = fm, "FinMind"
     if not ser:
         return {"error": "沒有法人買賣資料（本機還沒累積、FinMind 額度用完或沒有這檔）"}
     lots = [(d, f / 1000, t / 1000, de / 1000) for d, f, t, de in ser]
-    out = {"source": source, "date": lots[-1][0], "days": len(lots),
-           "daily": [{"date": d, "foreign": round(f), "trust": round(t), "dealer": round(de)} for d, f, t, de in lots[-10:]]}
-    for i, k in enumerate(("foreign", "trust", "dealer"), start=1):
-        vals = [x[i] for x in lots]
-        out[k] = {"d1": round(vals[-1]), "d5": round(sum(vals[-5:])), "d20": round(sum(vals)), "streak": _streak(vals)}
-    ms = chip_course.margin_series(sid, 6)
+    last20 = lots[-20:]
+    out = {"source": source, "date": lots[-1][0], "days": len(last20), "span": len(lots),
+           "daily": [{"date": d, "foreign": round(f), "trust": round(t), "dealer": round(de)} for d, f, t, de in lots[-10:]],
+           "series": [{"date": d, "foreign": round(f), "trust": round(t), "dealer": round(de)} for d, f, t, de in lots]}
+    cols = {"foreign": [x[1] for x in lots], "trust": [x[2] for x in lots], "dealer": [x[3] for x in lots]}
+    cols["main"] = [a + b + c for a, b, c in zip(cols["foreign"], cols["trust"], cols["dealer"])]   # 主力合計（宏爺）
+    for k, vals in cols.items():
+        v20 = vals[-20:]
+        out[k] = {"d1": round(vals[-1]), "d5": round(sum(vals[-5:])), "d20": round(sum(v20)),
+                  "dall": round(sum(vals)), "streak": _streak(vals)}
+    ms = chip_course.margin_series(sid, 30)
     if ms:
-        last, first = ms[-1], ms[0]
+        recent = ms[-6:]
+        last, first, first_all = recent[-1], recent[0], ms[0]
+        chg = lambda a, b, i: (a[i] - b[i]) if a[i] is not None and b[i] is not None else None   # noqa: E731
         out["margin"] = {"date": last[0], "margin": last[1], "short": last[2],
-                         "margin_chg": (last[1] - first[1]) if last[1] is not None and first[1] is not None else None,
-                         "short_chg": (last[2] - first[2]) if last[2] is not None and first[2] is not None else None,
-                         "span": len(ms) - 1}
+                         "margin_chg": chg(last, first, 1), "short_chg": chg(last, first, 2), "span": len(recent) - 1,
+                         "margin_chg_all": chg(last, first_all, 1), "short_chg_all": chg(last, first_all, 2),
+                         "span_all": len(ms) - 1,
+                         "series": [{"date": d, "margin": mg, "short": sh} for d, mg, sh in ms]}
     return out
 
 

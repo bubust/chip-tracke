@@ -1870,12 +1870,14 @@ def _deep_strategies_today(stock_id: str) -> dict:
         return {"date": None, "items": []}
 
 
-async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False):
+async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False, return_df: bool = False):
+    """return_df=True → (資料, 日 K DataFrame)；AI 解盤要用同一份日 K 做近 30 日表"""
     import math
     import pandas as pd
     from scanner import calc_macd, calc_bb_score, classify_stage, _change_pct
     from yahoo_price import get_stock_list
     import deep_data
+    import deep_patterns
     import deep_verdict
 
     try:
@@ -1896,8 +1898,9 @@ async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False):
     except Exception:
         df = None
     if df is None or len(df) < 10:
-        return {"error": "price_unavailable",
-                "detail": f"{stock_id} 價格資料不足（建議先執行「全系統更新」補齊歷史資料）"}
+        err = {"error": "price_unavailable",
+               "detail": f"{stock_id} 價格資料不足（建議先執行「全系統更新」補齊歷史資料）"}
+        return (err, None) if return_df else err
     df = df.copy()
     df.columns = [c.lower() for c in df.columns]
     df = df.dropna(subset=["close"]).reset_index(drop=True)
@@ -1945,6 +1948,7 @@ async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False):
             asyncio.to_thread(deep_data.income, stock_id, mkt, fresh),
             asyncio.to_thread(deep_data.eps_history, stock_id, fresh),
             _deep_news(stock_id),
+            asyncio.to_thread(deep_data.revenue_history, stock_id, fresh),
             asyncio.to_thread(_deep_sector, stock_id, dates[-1] if dates else None, dates[-30:]),
             asyncio.to_thread(_kpct),
             asyncio.to_thread(_deep_strategies_today, stock_id),
@@ -1953,7 +1957,7 @@ async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False):
     for i, r in enumerate(res):
         if isinstance(r, BaseException):
             log.warning(f"[deep-analysis] {stock_id} job {i}: {type(r).__name__} {r}")
-    (levels, chip, val, rev, inc, eps_hist, news, sector, kp, strats, regime) = (
+    (levels, chip, val, rev, inc, eps_hist, news, rev_hist, sector, kp, strats, regime) = (
         None if isinstance(r, BaseException) else r for r in res)
     if chip is None:
         chip = {"error": "籌碼資料讀取失敗"}
@@ -1967,7 +1971,16 @@ async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False):
     if verdict.get("ok"):
         verdict["market"] = regime
 
-    return {
+    # ── 宏爺：K 線型態（近 3 根）＋MA20／MA100 格局，附回測（deep_patterns，B67）──
+    kbars = deep_patterns.kbar_chain(df, 3)
+    trend = deep_patterns.trend_info(df)
+    if trend:
+        trend["stat"] = deep_patterns.box_stat(trend["box"], (verdict.get("bucket") or {}).get("key"))
+    patterns = {"kbars": kbars, "trend": trend, "period": deep_patterns.HONGYE_PERIOD,
+                "box_all": {k: v[1] for k, v in deep_patterns.BOX_STATS.items()},
+                "kbar_stat": deep_patterns.kbar_stat(kbars[-1]["type"], trow["pos52"]) if kbars else None}
+
+    data = {
         "stock_id": stock_id,
         "name": stock_name,
         "market": mkt,
@@ -2002,10 +2015,55 @@ async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False):
         "revenue": rev,
         "income": inc,
         "eps_history": eps_hist,
+        "revenue_history": rev_hist,
+        "patterns": patterns,
         "news": news or {"items": []},
         "sector": sector,
         "strategies_today": strats or {"date": None, "items": []},
     }
+    return (data, df) if return_df else data
+
+
+# ── 🤖 AI 解盤（deep_ai，B67；參考宏爺 AI 戰情室五章報告）─────────────────────
+
+@app.get("/api/stock/{stock_id}/deep-ai")
+async def api_stock_deep_ai_get(stock_id: str):
+    """這檔最近一份 AI 解盤（沒有回 report=None）＋今天用量"""
+    import deep_ai
+    sid = _check_sid(stock_id)
+    rep_ = await asyncio.to_thread(deep_ai.latest, sid)
+    return JSONResponse(content={"report": rep_, "status": deep_ai.status()})
+
+
+@app.post("/api/stock/{stock_id}/deep-ai")
+async def api_stock_deep_ai_start(stock_id: str, force: int = 0):
+    """產生 AI 解盤：同一根 K 棒已經有報告、又不是 force → 直接回舊的；不然開背景工作回 job_id"""
+    import deep_ai
+    sid = _check_sid(stock_id)
+    if not deep_ai.status()["has_key"]:
+        raise HTTPException(400, "還沒設定 Gemini 金鑰（Fly secret GEMINI_API_KEY）")
+    data, df = await _api_stock_deep_analysis_impl(sid, False, return_df=True)
+    if data.get("error"):
+        raise HTTPException(400, data.get("detail") or data["error"])
+    kdate = str((data.get("technical") or {}).get("date") or "")
+    old = await asyncio.to_thread(deep_ai.latest, sid)
+    if old and not force and old.get("kdate") == kdate:
+        return JSONResponse(content={"report": old, "cached": True})
+    rows = deep_ai.kline_rows(df, data.get("chip"), 30)
+    try:
+        jid = deep_ai.start_job(sid, kdate, _sanitize_for_json(data), rows)
+    except OverflowError as e:
+        raise HTTPException(429, str(e))
+    return JSONResponse(content={"job_id": jid})
+
+
+@app.get("/api/deep-ai/job/{jid}")
+async def api_deep_ai_job(jid: str):
+    import deep_ai
+    j = deep_ai.job(jid)
+    if not j:
+        raise HTTPException(404, "找不到這個工作（伺服器可能重開了，請重新產生）")
+    return JSONResponse(content=j)
 
 
 def _added_prices(rows) -> dict:

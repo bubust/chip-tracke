@@ -1263,6 +1263,25 @@ function _doSwitchSettings() {
   #deep-panel .dp-comp .r { font-size:.76rem;color:#c9d1d9;padding:2px 0 }
   #deep-panel .dp-bar { height:5px;background:#21262d;border-radius:3px;overflow:hidden;margin:3px 0 5px }
   #deep-panel .dp-bar > div { height:100% }
+  /* 小圖（B67）：一個數列一個 Y 軸；滑過看數字（SVG title） */
+  #deep-panel .dp-svg { width:100%;height:auto;display:block;overflow:visible }
+  #deep-panel .dp-svg text { font-size:9px;fill:#8b949e }
+  #deep-panel .dp-svg .col:hover .m { opacity:.7 }
+  #deep-panel .dp-svg .col:hover .hit { fill:#ffffff0d }
+  #deep-panel .dp-cap { font-size:.72rem;color:#8b949e;margin:8px 0 2px;display:flex;justify-content:space-between;gap:8px }
+  #deep-panel .dp-cap:first-child { margin-top:0 }
+  #deep-panel .k-up { color:#f85149;font-weight:600 } #deep-panel .k-dn { color:#3fb950;font-weight:600 } #deep-panel .k-x { color:#d29922;font-weight:600 }
+  /* 🤖 AI 解盤報告 */
+  #deep-panel .dp-ai { max-width:900px;margin:0 auto;font-size:.88rem;line-height:1.8;color:#e6edf3 }
+  #deep-panel .dp-ai h2 { font-size:1.02rem;color:#d29922;margin:20px 0 6px;padding-bottom:4px;border-bottom:1px solid #30363d }
+  #deep-panel .dp-ai h2:first-child { margin-top:4px }
+  #deep-panel .dp-ai h3 { font-size:.92rem;color:#58a6ff;margin:12px 0 4px }
+  #deep-panel .dp-ai p { margin:6px 0 }
+  #deep-panel .dp-ai ul, #deep-panel .dp-ai ol { margin:4px 0 8px 1.3em;padding:0 }
+  #deep-panel .dp-ai li { margin:3px 0 }
+  #deep-panel .dp-ai b { color:#fff }
+  #deep-panel .dp-ai-src { max-width:900px;margin:14px auto 0;font-size:.72rem;color:#8b949e;line-height:1.7 }
+  #deep-panel .dp-ai-src a { color:#58a6ff;text-decoration:none;margin-right:10px;white-space:nowrap }
   #deep-overlay { display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:999 }
   #deep-panel { position:fixed;inset:0;margin:auto;width:min(calc(100vw - 16px),2000px);height:calc(100vh - 16px);
     background:#161b22;border:1px solid #30363d;border-radius:var(--radius);
@@ -1328,6 +1347,7 @@ function _doSwitchSettings() {
   <!-- Tab 切換 -->
   <div style="display:flex;border-bottom:1px solid #30363d;flex-shrink:0;overflow-x:auto">
     <button class="dp-tab" onclick="dpTab('sum')"  id="dp-tab-sum"  style="flex:1;min-width:52px;padding:8px 3px;font-size:.74rem;border:none;background:none;color:#58a6ff;border-bottom:2px solid #58a6ff;cursor:pointer;white-space:nowrap">🎯 總評</button>
+    <button class="dp-tab" onclick="dpTab('ai')"   id="dp-tab-ai"   style="flex:1;min-width:52px;padding:8px 3px;font-size:.74rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap" title="AI 寫的五章解盤報告（參考宏爺 AI 戰情室）">🤖 AI</button>
     <button class="dp-tab" onclick="dpTab('tech')" id="dp-tab-tech" style="flex:1;min-width:52px;padding:8px 3px;font-size:.74rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">📊 技術</button>
     <button class="dp-tab" onclick="dpTab('chip')" id="dp-tab-chip" style="flex:1;min-width:52px;padding:8px 3px;font-size:.74rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">🏦 籌碼</button>
     <button class="dp-tab" onclick="dpTab('fund')" id="dp-tab-fund" style="flex:1;min-width:52px;padding:8px 3px;font-size:.74rem;border:none;background:none;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap">📋 基本</button>
@@ -1367,6 +1387,86 @@ const _dpCell = (l, v, s = '', cls = '') => `<div class="dp-cell"><div class="l"
 const _dpMsg = (ico, msg) => `<div style="padding:28px 12px;text-align:center;color:#8b949e;font-size:.85rem"><div style="font-size:1.6rem;margin-bottom:6px">${ico}</div>${msg}</div>`;
 const _dpDate = s => { s = String(s || ''); return /^\d{8}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6)}` : s; };
 const _dpStreak = n => !n ? '—' : (n > 0 ? `連買 ${n} 天` : `連賣 ${-n} 天`);
+// K 線型態上色：紅K 紅、黑K 綠、十字／T 字／一字 黃
+const _dpKCls = t => /紅K/.test(t || '') ? 'k-up' : /黑K/.test(t || '') ? 'k-dn' : 'k-x';
+const _dpBoxCls = b => b === '多頭' || b === '多箱' ? 'dp-up' : b === '空頭' || b === '空箱' ? 'dp-dn' : '';
+
+// 小長條圖（B67）：一個數列、一個 Y 軸。items=[{x, v, tip}]；signed＝正紅負綠（台股慣例），不然一律藍
+function _dpBars(items, o = {}) {
+  const vs = items.map(x => x.v).filter(v => v != null && isFinite(v));
+  if (!vs.length) return '';
+  const W = 320, H = o.h || 80, T = 12, B = 13, n = items.length;
+  const max = Math.max(0, ...vs), min = Math.min(0, ...vs), span = (max - min) || 1;
+  const y = v => T + (max - v) / span * (H - T - B);
+  const cw = W / n, bw = Math.max(2, cw - Math.min(5, cw * .3));
+  const fmt = o.fmt || (v => _dpN(v, 1));
+  const cols = items.map((it, i) => {
+    const ok = it.v != null && isFinite(it.v);
+    const col = o.signed ? (it.v >= 0 ? '#f85149' : '#3fb950') : (o.color || '#58a6ff');
+    const y1 = ok ? y(Math.max(it.v, 0)) : 0, y2 = ok ? y(Math.min(it.v, 0)) : 0;
+    return `<g class="col"><title>${_esc(it.tip || `${it.x}：${ok ? fmt(it.v) : '—'}`)}</title>
+      <rect class="hit" x="${(i * cw).toFixed(1)}" y="0" width="${cw.toFixed(1)}" height="${H - B}" fill="transparent"/>
+      ${ok ? `<rect class="m" x="${(i * cw + (cw - bw) / 2).toFixed(1)}" y="${y1.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1, y2 - y1).toFixed(1)}" rx="1.5" fill="${col}"/>` : ''}</g>`;
+  }).join('');
+  return `<svg class="dp-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${_esc(o.label || '')}">
+    <line x1="0" x2="${W}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="#30363d"/>${cols}${_dpXLab(items, cw, H)}
+    <text x="0" y="8">${_esc(o.signed && min < 0 ? `最高 ${fmt(max)}　最低 ${fmt(min)}` : `最高 ${fmt(max)}`)}</text></svg>`;
+}
+// 小折線圖：一條線、最後一點加圓點
+function _dpLine(items, o = {}) {
+  const vs = items.map(x => x.v).filter(v => v != null && isFinite(v));
+  if (vs.length < 2) return '';
+  const W = 320, H = o.h || 64, T = 12, B = 13, n = items.length;
+  const lo = Math.min(...vs), hi = Math.max(...vs), pad = (hi - lo) * .12 || Math.abs(hi) * .05 || 1;
+  const max = hi + pad, min = lo - pad, cw = W / n;
+  const X = i => i * cw + cw / 2, Y = v => T + (max - v) / (max - min) * (H - T - B);
+  const fmt = o.fmt || (v => _dpN(v, 1));
+  const pts = items.map((it, i) => it.v != null && isFinite(it.v) ? `${X(i).toFixed(1)},${Y(it.v).toFixed(1)}` : null).filter(Boolean);
+  const li = items.map(x => x.v != null && isFinite(x.v)).lastIndexOf(true);
+  const hits = items.map((it, i) => `<g class="col"><title>${_esc(it.tip || `${it.x}：${it.v != null && isFinite(it.v) ? fmt(it.v) : '—'}`)}</title>
+      <rect class="hit" x="${(i * cw).toFixed(1)}" y="0" width="${cw.toFixed(1)}" height="${H - B}" fill="transparent"/></g>`).join('');
+  const col = o.color || '#58a6ff';
+  return `<svg class="dp-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${_esc(o.label || '')}">
+    <polyline points="${pts.join(' ')}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${X(li).toFixed(1)}" cy="${Y(items[li].v).toFixed(1)}" r="4" fill="${col}" stroke="#161b22" stroke-width="2"/>
+    ${hits}${_dpXLab(items, cw, H)}<text x="0" y="8">${_esc(`${fmt(lo)}～${fmt(hi)}`)}</text></svg>`;
+}
+function _dpXLab(items, cw, H) {
+  const n = items.length, idx = [...new Set([0, Math.floor((n - 1) / 2), n - 1])];
+  return idx.map(i => `<text x="${i === 0 ? 0 : i === n - 1 ? 320 : (i * cw + cw / 2).toFixed(1)}" y="${H - 2}" text-anchor="${i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}">${_esc(items[i].x)}</text>`).join('');
+}
+
+// AI 報告的 Markdown → HTML（先跳脫再轉，只支援標題、條列、粗體）；K 線名稱、格局、買賣超上色
+function _dpMd(md) {
+  const inline = t => _esc(t)
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/倒鎚紅K\(墓碑線-上漲\)|紅K鎚子\(吊人線-上漲\)|(?:大|中|小|紡錘)紅K/g, m => `<span class="k-up">${m}</span>`)
+    .replace(/倒鎚黑K\(墓碑線-下跌\)|黑K鎚子\(吊人線-下跌\)|(?:大|中|小|紡錘)黑K/g, m => `<span class="k-dn">${m}</span>`)
+    .replace(/十字線|倒T線|T字線|一字線/g, m => `<span class="k-x">${m}</span>`)
+    .replace(/多頭|多箱|買超/g, m => `<span class="dp-up">${m}</span>`)
+    .replace(/空頭|空箱|賣超/g, m => `<span class="dp-dn">${m}</span>`);
+  const out = [];
+  let list = null;
+  const close = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  for (const raw of String(md || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    let m;
+    if (!line || /^(-{3,}|\*{3,})$/.test(line)) { close(); continue; }
+    if ((m = line.match(/^(#{1,6})\s+(.*)$/))) {
+      close();
+      const tag = m[1].length <= 2 ? 'h2' : 'h3';
+      out.push(`<${tag}>${inline(m[2].replace(/\*\*/g, ''))}</${tag}>`);
+    } else if ((m = line.match(/^[-*•]\s+(.*)$/))) {
+      if (list !== 'ul') { close(); out.push('<ul>'); list = 'ul'; }
+      out.push(`<li>${inline(m[1])}</li>`);
+    } else if ((m = line.match(/^\d+(?:\.\s+|、|\)\s*)(.*)$/))) {
+      if (list !== 'ol') { close(); out.push('<ol>'); list = 'ol'; }
+      out.push(`<li>${inline(m[1])}</li>`);
+    } else { close(); out.push(`<p>${inline(line)}</p>`); }
+  }
+  close();
+  return out.join('');
+}
 
 function openDeepPanel(stock_id, stock_name, fresh) {
   let panel, overlay;
@@ -1565,6 +1665,17 @@ function _dpSum(d) {
       ${ok ? (c.reasons || []).map(r => `<div class="r">${r.pts > 0 ? '✅' : '⚠️'} ${_esc(r.text)}</div>`).join('') : `<div class="r" style="color:#8b949e">${_esc(c.note || '')}</div>`}
     </div>`;
   }).join('');
+  const pat = d.patterns || {}, tr = pat.trend, kb = pat.kbars || [], ks = pat.kbar_stat;
+  const hy = [];
+  if (tr) {
+    const ib = (tr.stat || {}).in_bucket;
+    hy.push(`格局 <b class="${_dpBoxCls(tr.box)}">${_esc(tr.box)}</b>：${_esc(tr.desc)}` +
+      (tr.stat ? `；20 天平均比同期 <b class="${_dpC(tr.stat.x20)}">${_dpS(tr.stat.x20, 2)}%</b>` : '') +
+      (ib ? `（技術${_esc(bk.label)}又是${_esc(tr.box)}：${_dpS(ib.x20, 2)}%）` : ''));
+  }
+  if (kb.length) hy.push(`K 線「${kb.map(k => `<span class="${_dpKCls(k.type)}">${_esc(k.type)}</span>`).join(' → ')}」` +
+      (ks ? `；今天這種 K 線之後 20 天 ${_dpS(ks.x20, 2)}%${ks.base_x20 != null ? `（${_esc(ks.band_label.replace(/（.*/, ''))}平均 ${_dpS(ks.base_x20, 2)}%）` : ''}` : '') +
+      (ks && ks.claim ? `<br><span style="color:#d29922">⚠️ 一般當「${_esc(ks.claim)}」訊號，回測不成立（看 📊 技術）</span>` : ''));
   const st = d.strategies_today || {};
   const strat = (st.items || []).length
     ? (st.items || []).map(x => `<span style="display:inline-block;font-size:.74rem;padding:2px 8px;margin:2px 4px 2px 0;background:#1f2a3a;border:1px solid #1f6feb;border-radius:10px;color:#79c0ff">${_esc(x.label)}</span>`).join('') +
@@ -1577,6 +1688,8 @@ function _dpSum(d) {
     <div class="dp-box dp-advice">${(v.advice || []).map(x => `<div>${_esc(x)}</div>`).join('')}</div>
     <div class="dp-sec">技術分類回測</div>
     <div class="dp-box" style="font-size:.8rem;line-height:1.6">${statLine}</div>
+    ${hy.length ? `<div class="dp-sec">宏爺格局／K 線（已回測，不計分）</div>
+    <div class="dp-box" style="font-size:.8rem;line-height:1.7">${hy.join('<br>')}</div>` : ''}
     <div class="dp-sec">分項分數</div>
     ${comps}
     <div class="dp-sec">今天符合的選股策略</div>
@@ -1589,10 +1702,34 @@ function _dpTech(d) {
   const t = d.technical || {}, m = t.macd || {}, ma = t.ma || {}, r = t.ret || {}, v = d.verdict || {};
   const maRow = (lbl, val, above) => val == null ? '' : _dpRow(lbl, `${_esc(val)} <span style="font-size:.72rem;font-weight:400" class="${above ? 'dp-up' : 'dp-dn'}">${above ? '站上' : '跌破'}</span>`);
   const bk = v.bucket || {};
+  const pat = d.patterns || {}, tr = pat.trend, kb = pat.kbars || [], ks = pat.kbar_stat;
+  const arrow = up => up == null ? '' : up ? '<span class="dp-up" style="font-size:.72rem">↗ 上彎</span>' : '<span class="dp-dn" style="font-size:.72rem">↘ 下彎</span>';
+  const ba = pat.box_all || {};
+  const trendHtml = tr ? `<div class="dp-sec">趨勢格局（宏爺：月線 MA20／百日線 MA100）</div>
+    <div class="dp-box">
+      ${_dpRow('格局', `<b class="${_dpBoxCls(tr.box)}">${_esc(tr.box)}</b> <span class="dp-mu" style="font-size:.72rem;font-weight:400">${_esc(tr.desc)}</span>`)}
+      ${_dpRow('MA20（月線）', `${_esc(tr.ma20)} ${arrow(tr.ma20_up)}　<span class="${_dpC(tr.bias20)}" style="font-size:.74rem">乖離 ${_dpS(tr.bias20, 2)}%</span>`)}
+      ${_dpRow('MA100（百日線）', `${_esc(tr.ma100)} ${arrow(tr.ma100_up)}　<span class="${_dpC(tr.bias100)}" style="font-size:.74rem">乖離 ${_dpS(tr.bias100, 2)}%</span>`)}
+      ${tr.stat ? `<div class="dp-note" style="margin-top:4px">回測（${_esc(pat.period)}）20 天平均比同期：` +
+        ['多頭', '多箱', '空箱', '空頭'].filter(k => ba[k] != null).map(k => k === tr.box ? `<b class="${_dpBoxCls(k)}">${k} ${_dpS(ba[k], 2)}%</b>` : `${k} ${_dpS(ba[k], 2)}%`).join('、') +
+        (tr.stat.in_bucket ? `；技術${_esc(bk.label)}又是${_esc(tr.box)} <b>${_dpS(tr.stat.in_bucket.x20, 2)}%</b>` : '') +
+        `。強勢股站上月線（多頭）比跌破月線（多箱）多一倍，格局可以補技術分類。</div>` : ''}
+    </div>` : `<div class="dp-sec">趨勢格局（宏爺 MA20／MA100）</div><div class="dp-note">K 線不到 100 根，沒有百日線</div>`;
+  const kHtml = kb.length ? `<div class="dp-sec">K 線型態（近 ${kb.length} 根，宏爺 16 種定義）</div>
+    <div class="dp-box">
+      <div style="font-size:.86rem;font-weight:600;margin-bottom:4px">「${kb.map(k => `<span class="${_dpKCls(k.type)}">${_esc(k.type)}</span>`).join(' → ')}」</div>
+      ${kb.slice().reverse().map(k => _dpRow(`${_esc(_dpDate(k.date).slice(5))} <span class="${_dpC(k.chg)}" style="font-size:.72rem">${_dpS(k.chg, 2)}%</span>`,
+        `<span class="${_dpKCls(k.type)}">${_esc(k.type)}</span><div style="font-size:.7rem;color:#8b949e;font-weight:400">${_esc(k.meaning)}</div>`)).join('')}
+      ${ks ? `<div class="dp-note" style="margin-top:6px">回測：今天這種 K 線在${_esc(ks.band_label)}出現後，5 天平均比同期 <b class="${_dpC(ks.x5)}">${_dpS(ks.x5, 2)}%</b>、20 天 <b class="${_dpC(ks.x20)}">${_dpS(ks.x20, 2)}%</b>（${_dpN(ks.n)} 筆）` +
+        (ks.base_x20 != null ? `；同位置所有股票 20 天 ${_dpS(ks.base_x20, 2)}%` : '') + '</div>' : ''}
+      ${ks && ks.claim ? `<div class="dp-note" style="margin-top:4px;color:#d29922">⚠️ 宏爺把${ks.band === 'hi' ? '高檔' : '低檔'}的這種 K 線當「${_esc(ks.claim)}」訊號，回測剛好相反（之後平均${ks.band === 'hi' ? '還是續漲' : '還是續跌'}），不要單靠它${ks.band === 'hi' ? '賣' : '買'}。</div>` : ''}
+      <div class="dp-note" style="margin-top:4px">K 線型態主要反映位置：高檔的大紅K、倒T、墓碑線之後平均續漲；低檔的鎚子、T字之後平均續跌，跟一般「見頂／止跌」說法相反。只顯示、不計分。</div>
+    </div>` : '';
   return `
     <div class="dp-box" style="font-size:.82rem">技術分類：<b>${_esc(bk.label || '—')}</b>
       ${t.tech_raw != null ? `<span class="dp-mu">（原始 ${_esc(t.tech_raw)} / 40；≥32 強勢、&lt;8 弱勢）</span>` : '<span class="dp-mu">（K 線不足，不分類）</span>'}
       <div class="dp-note" style="margin-top:4px">只用回測有效的「趨勢＋動能」：均線排列、60 日線方向、DIF、52 週位置、半年漲跌。</div></div>
+    ${trendHtml}${kHtml}
     <div class="dp-sec">均線</div>
     <div class="dp-box">
       ${maRow('10 日線', ma.ma10, ma.above_ma10)}${maRow('20 日線', ma.ma20, ma.above_ma20)}${maRow('60 日線', ma.ma60, ma.above_ma60)}
@@ -1637,17 +1774,30 @@ function _dpChip(d) {
   const daily = (c.daily || []).slice().reverse().map(x => `<tr><td>${_esc(x.date.slice(5))}</td>
       <td class="${_dpC(x.foreign)}">${_dpS(x.foreign)}</td><td class="${_dpC(x.trust)}">${_dpS(x.trust)}</td><td class="${_dpC(x.dealer)}">${_dpS(x.dealer)}</td></tr>`).join('');
   const mg = c.margin;
+  const mser = (mg && mg.series) || [];
+  const chgAll = v => mg.span_all > mg.span && v != null ? `　<span class="${_dpC(v)}" style="font-size:.74rem">${mg.span_all} 日 ${_dpS(v)}</span>` : '';
   const mgHtml = mg ? `<div class="dp-sec">融資融券（張）</div><div class="dp-box">
-      ${_dpRow('融資餘額', `${_dpN(mg.margin)}　<span class="${_dpC(mg.margin_chg)}" style="font-size:.74rem">${mg.span} 日 ${_dpS(mg.margin_chg)}</span>`)}
-      ${_dpRow('融券餘額', `${_dpN(mg.short)}　<span class="${_dpC(mg.short_chg)}" style="font-size:.74rem">${mg.span} 日 ${_dpS(mg.short_chg)}</span>`)}
+      ${_dpRow('融資餘額', `${_dpN(mg.margin)}　<span class="${_dpC(mg.margin_chg)}" style="font-size:.74rem">${mg.span} 日 ${_dpS(mg.margin_chg)}</span>${chgAll(mg.margin_chg_all)}`)}
+      ${_dpRow('融券餘額', `${_dpN(mg.short)}　<span class="${_dpC(mg.short_chg)}" style="font-size:.74rem">${mg.span} 日 ${_dpS(mg.short_chg)}</span>${chgAll(mg.short_chg_all)}`)}
+      ${mser.length >= 5 ? `<div class="dp-cap"><span>融資餘額走勢（近 ${mser.length} 天）</span></div>` +
+        _dpLine(mser.map(x => ({ x: String(x.date).slice(5), v: x.margin, tip: `${x.date} 融資 ${_dpN(x.margin)} 張・融券 ${_dpN(x.short)} 張` })), { color: '#d29922', fmt: v => _dpN(v), label: '融資餘額' }) : ''}
       <div class="dp-note" style="margin-top:4px">融資大增＝散戶追價、融券大增＝有人放空（軋空題材）；只顯示、不計分。資料日期 ${_esc(mg.date)}</div></div>` : '';
+  const ser = c.series || [];
+  const flowHtml = ser.length >= 5 ? `<div class="dp-sec">近 ${ser.length} 個交易日買賣超（張，紅＝買超、綠＝賣超）</div><div class="dp-box">` +
+    [['foreign', '外資'], ['trust', '投信'], ['main', '主力合計（外資＋投信＋自營）']].map(([k, lbl]) => {
+      const val = x => k === 'main' ? x.foreign + x.trust + x.dealer : x[k];
+      return `<div class="dp-cap"><span>${lbl}</span><span>${ser.length} 日合計 <b class="${_dpC((c[k] || {}).dall)}">${_dpS((c[k] || {}).dall)}</b></span></div>` +
+        _dpBars(ser.map(x => ({ x: String(x.date).slice(5), v: val(x), tip: `${x.date} ${lbl.replace(/（.*/, '')} ${_dpS(val(x))} 張` })), { signed: true, h: 52, fmt: v => _dpS(v), label: lbl });
+    }).join('') + '</div>' : '';
   return `
     <div class="dp-note" style="margin-bottom:6px">來源：${_esc(c.source)}　資料日期 ${_esc(c.date)}（盤後約 16:00 公布）</div>
     <div class="dp-sec" style="margin-top:4px">三大法人買賣超（張）</div>
     <div class="dp-box"><table class="dp-t">
       <tr><th></th><th>最新一天</th><th>近 5 日</th><th>近 ${_esc(c.days)} 日</th><th>連續</th></tr>
       ${row('外資', c.foreign || {})}${row('投信', c.trust || {})}${row('自營商', c.dealer || {})}
+      ${c.main ? row('<b>主力合計</b>', c.main) : ''}
     </table></div>
+    ${flowHtml}
     <div class="dp-sec">近 10 個交易日（張）</div>
     <div class="dp-box"><table class="dp-t"><tr><th>日期</th><th>外資</th><th>投信</th><th>自營商</th></tr>${daily}</table></div>
     ${big}${mgHtml}`;
@@ -1682,7 +1832,7 @@ function _dpFund(d) {
 function _dpFin(d) {
   const rv = d.revenue, inc = d.income, eh = d.eps_history, f = d.valuation || {};
   if (f.etf) return _dpMsg('💰', 'ETF 沒有財報');
-  if (!rv && !inc) return _dpMsg('💰', '沒有營收／財報資料（金融保險業的財報格式不同，或剛上市）');
+  if (!rv && !inc && !(d.revenue_history || {}).months && !(eh || {}).quarters) return _dpMsg('💰', '沒有營收／財報資料（金融保險業的財報格式不同，或剛上市）');
   const yi = (v) => `<span class="${_dpC(v)}">${_dpS(v, 1)}%</span>`;
   const bil = v => v == null ? '—' : (v / 1e5 >= 1 ? _dpN(v / 1e5, 2) + ' 億' : _dpN(v / 1e3, 1) + ' 百萬');   // 千元 → 億
   const rvHtml = rv ? `<div class="dp-sec">月營收（${_esc(rv.ym || '')}）</div><div class="dp-box">
@@ -1698,12 +1848,28 @@ function _dpFin(d) {
       ${_dpCell('淨利率', inc.net_margin != null ? _esc(inc.net_margin) + '%' : '—')}
       ${_dpCell('營收', bil(inc.revenue))}
     </div>` : '';
-  const ehHtml = eh && (eh.quarters || []).length ? `<div class="dp-sec">近幾季 EPS（單季，FinMind）</div><div class="dp-box">
-      <table class="dp-t"><tr>${eh.quarters.map(q => `<th>${_esc(q.q)}</th>`).join('')}</tr>
-      <tr>${eh.quarters.map(q => `<td class="${_dpC(q.eps)}">${_esc(q.eps)}</td>`).join('')}</tr></table>
-      ${eh.ttm != null ? _dpRow('近四季合計', `${_esc(eh.ttm)} 元`) : ''}${eh.eps_yoy != null ? _dpRow('最新一季比去年同季', yi(eh.eps_yoy)) : ''}</div>`
-    : '<div class="dp-note" style="margin-top:10px">近幾季 EPS 走勢要用 FinMind，今天額度用完時不顯示</div>';
-  return rvHtml + incHtml + ehHtml;
+  const qs = (eh && eh.quarters) || [];
+  const hasRev = qs.some(q => q.rev != null), hasGm = qs.some(q => q.gm != null);
+  const hasOm = qs.some(q => q.om != null);
+  const qcell = (v, fmt) => `<td>${v == null ? '—' : fmt(v)}</td>`;
+  const ehHtml = qs.length ? `<div class="dp-sec">近 ${qs.length} 季（單季，FinMind）</div><div class="dp-box">
+      <table class="dp-t"><tr><th>季</th><th>EPS</th>${hasRev ? '<th>營收(億)</th>' : ''}${hasGm ? '<th>毛利率</th>' : ''}${hasOm ? '<th>營益率</th>' : ''}</tr>
+      ${qs.slice().reverse().map(q => `<tr><td>${_esc(q.q)}</td><td class="${_dpC(q.eps)}">${_esc(q.eps)}</td>` +
+        (hasRev ? qcell(q.rev, v => _dpN(v, v >= 100 ? 0 : 1)) : '') + (hasGm ? qcell(q.gm, v => _dpN(v, 1) + '%') : '') +
+        (hasOm ? qcell(q.om, v => _dpN(v, 1) + '%') : '') + '</tr>').join('')}</table>
+      ${hasRev ? `<div class="dp-cap" style="margin-top:10px"><span>季營收（億）</span></div>` + _dpBars(qs.map(q => ({ x: q.q, v: q.rev, tip: `${q.q} 營收 ${_dpN(q.rev, 2)} 億・EPS ${q.eps}` })), { h: 70, fmt: v => _dpN(v, v >= 100 ? 0 : 1), label: '季營收' }) : ''}
+      ${hasGm ? `<div class="dp-cap"><span>毛利率（%）</span></div>` + _dpLine(qs.map(q => ({ x: q.q, v: q.gm, tip: `${q.q} 毛利率 ${q.gm == null ? '—' : q.gm + '%'}・營益率 ${q.om == null ? '—' : q.om + '%'}` })), { fmt: v => _dpN(v, 1) + '%', label: '毛利率' }) : ''}
+      ${eh.ttm != null ? _dpRow('近四季 EPS 合計', `${_esc(eh.ttm)} 元`) : ''}${eh.eps_yoy != null ? _dpRow('最新一季 EPS 比去年同季', yi(eh.eps_yoy)) : ''}</div>`
+    : '<div class="dp-note" style="margin-top:10px">近幾季 EPS／毛利率要用 FinMind，今天額度用完時不顯示</div>';
+  const rh = d.revenue_history, ms = (rh && rh.months) || [];
+  const ymLbl = ym => String(ym).slice(2).replace('-', '/');
+  const rhHtml = ms.length >= 3 ? `<div class="dp-sec">近 ${ms.length} 個月營收（FinMind）</div><div class="dp-box">
+      <div class="dp-cap"><span>月營收（億）</span>${rh.is_high ? `<b class="dp-up">最新月營收創 ${_esc(rh.span)} 個月新高</b>` : ''}</div>
+      ${_dpBars(ms.map(x => ({ x: ymLbl(x.ym), v: x.rev, tip: `${x.ym}：${_dpN(x.rev, 2)} 億（年增 ${_dpS(x.yoy, 1)}%）` })), { h: 72, fmt: v => _dpN(v, v >= 100 ? 0 : 1), label: '月營收' })}
+      ${ms.some(x => x.yoy != null) ? `<div class="dp-cap"><span>年增率（%）</span>${rh.yoy3 != null ? `<span>近 3 個月累計 <b class="${_dpC(rh.yoy3)}">${_dpS(rh.yoy3, 1)}%</b></span>` : ''}</div>` +
+        _dpBars(ms.map(x => ({ x: ymLbl(x.ym), v: x.yoy, tip: `${x.ym} 年增 ${_dpS(x.yoy, 1)}%` })), { signed: true, h: 56, fmt: v => _dpS(v, 0) + '%', label: '年增率' }) : ''}
+    </div>` : '';
+  return rvHtml + rhHtml + incHtml + ehHtml;
 }
 
 // 每個 .dp-sec 小標題連同下面的內容包成一組，寬螢幕分兩欄時不會被切開；第一個小標題前的內容橫跨兩欄
@@ -1727,10 +1893,98 @@ function _dpColumns(body) {
   body.appendChild(wrap);
 }
 
+// ── 🤖 AI 解盤（B67，deep_ai.py；參考宏爺 AI 戰情室五章報告）────────────────────
+let _dpAi = { sid: '' };
+function _dpAiReset(sid) {
+  if (_dpAi.sid !== sid) _dpAi = { sid, report: null, status: null, job: '', err: '', loaded: false, loading: false, elapsed: 0 };
+}
+function _dpAiPaint() {
+  if (_dpTab === 'ai' && _dpSid === _dpAi.sid) document.getElementById('dp-body').innerHTML = _dpAiHtml();
+}
+function _dpAiLoad(sid) {
+  _dpAiReset(sid);
+  if (_dpAi.loaded || _dpAi.loading) return;
+  _dpAi.loading = true;
+  api('GET', `/api/stock/${encodeURIComponent(sid)}/deep-ai`)
+    .then(r => { if (_dpAi.sid === sid) { _dpAi.report = r.report; _dpAi.status = r.status; } })
+    .catch(e => { if (_dpAi.sid === sid) _dpAi.err = e.message; })
+    .finally(() => { if (_dpAi.sid === sid) { _dpAi.loaded = true; _dpAi.loading = false; _dpAiPaint(); } });
+}
+function dpAiStart(force) {
+  const sid = _dpAi.sid;
+  if (!sid || _dpAi.job) return;
+  _dpAi.err = ''; _dpAi.job = 'starting'; _dpAi.elapsed = 0;
+  _dpAiPaint();
+  api('POST', `/api/stock/${encodeURIComponent(sid)}/deep-ai${force ? '?force=1' : ''}`)
+    .then(r => {
+      if (_dpAi.sid !== sid) return;
+      if (r.report) { _dpAi.report = r.report; _dpAi.job = ''; _dpAiPaint(); return; }   // 同一根 K 棒已經有
+      _dpAi.job = r.job_id;
+      _dpAiPoll(sid, r.job_id, 0);
+    })
+    .catch(e => { if (_dpAi.sid === sid) { _dpAi.job = ''; _dpAi.err = e.message; _dpAiPaint(); } });
+}
+function _dpAiPoll(sid, jid, fails) {
+  setTimeout(() => {
+    if (_dpAi.sid !== sid || _dpAi.job !== jid) return;
+    api('GET', `/api/deep-ai/job/${jid}`).then(j => {
+      if (_dpAi.sid !== sid || _dpAi.job !== jid) return;
+      if (j.status === 'running') {
+        _dpAi.elapsed = j.elapsed;
+        const el = document.getElementById('dp-ai-el');
+        if (el) el.textContent = j.elapsed; else _dpAiPaint();
+        if (j.elapsed > 420) { _dpAi.job = ''; _dpAi.err = '等太久了（超過 7 分鐘），請稍後再按一次'; _dpAiPaint(); return; }
+        _dpAiPoll(sid, jid, 0);
+        return;
+      }
+      _dpAi.job = '';
+      if (j.status === 'error') { _dpAi.err = j.error || 'AI 解盤失敗'; _dpAiPaint(); return; }
+      _dpAi.loaded = false;
+      _dpAiLoad(sid);                         // 完成：重新讀存好的報告（含今天用量）
+    }).catch(e => {
+      if (_dpAi.sid !== sid || _dpAi.job !== jid) return;
+      if (fails < 3 && !/找不到/.test(e.message)) { _dpAiPoll(sid, jid, fails + 1); return; }   // 網路閃斷再試
+      _dpAi.job = ''; _dpAi.err = e.message; _dpAiPaint();
+    });
+  }, 3000);
+}
+function _dpAiHtml() {
+  const a = _dpAi, st = a.status || {}, rp = a.report;
+  let head;
+  if (a.job) {
+    head = `<div class="dp-box" style="text-align:center;padding:18px;font-size:.86rem;max-width:900px;margin:0 auto 10px">⏳ AI 正在寫報告（查網路＋整理系統資料，約 30～90 秒）… <span id="dp-ai-el">${_esc(a.elapsed || 0)}</span> 秒
+      <div class="dp-note" style="margin-top:4px">可以先看其他分頁，回來就會看到</div></div>`;
+  } else {
+    const noKey = st.has_key === false;
+    head = `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;max-width:900px;margin:0 auto 10px">
+      <button class="btn sm" onclick="dpAiStart(${rp ? 1 : 0})" ${noKey ? 'disabled' : ''} style="background:#1f6feb;color:#fff;border:none">${rp ? '🔄 重新產生' : '🤖 產生 AI 解盤'}</button>
+      <span class="dp-note">${noKey ? '還沒設定 Gemini 金鑰（Fly secret GEMINI_API_KEY）' : `今天已用 ${_esc(st.today ?? '—')}／${_esc(st.limit ?? '—')} 次`}</span>
+      ${rp ? `<span class="dp-note">報告 ${_esc(rp.created_at)}・K 線 ${_esc(_dpDate(rp.kdate))}・${_esc(rp.model)}${rp.searched ? '＋Google 搜尋' : '（沒查網路）'}</span>` : ''}
+    </div>`;
+  }
+  const err = a.err ? `<div class="dp-box" style="border-color:#f8514955;color:#f85149;font-size:.82rem;max-width:900px;margin:0 auto 10px">⚠️ ${_esc(a.err)}</div>` : '';
+  let body = '';
+  if (rp) {
+    const kd = String(((_dpData || {}).technical || {}).date || '');
+    const stale = rp.kdate && kd && rp.kdate !== kd;
+    const src = (rp.sources || []).filter(x => /^https?:\/\//.test(x.uri || ''));
+    body = (stale ? `<div class="dp-note" style="color:#d29922;max-width:900px;margin:0 auto 6px">這份是 ${_esc(_dpDate(rp.kdate))} 的報告，K 線已經更新到 ${_esc(_dpDate(kd))}，可以按「重新產生」。</div>` : '') +
+      `<div class="dp-ai">${_dpMd(rp.text)}</div>` +
+      (src.length ? `<div class="dp-ai-src">🔎 Google 搜尋來源：${src.map(x => `<a href="${_esc(x.uri)}" target="_blank" rel="noopener">${_esc(x.title || '來源')}</a>`).join('')}</div>` : '') +
+      `<div class="dp-ai-src">AI 依系統資料（官方行情、法人、營收、季報、回測）撰寫，產業消息與目標價來自 Google 搜尋，可能有錯；數字以其他分頁為準，價位只用系統關鍵價位。</div>`;
+  } else if (!a.job && a.loaded) {
+    body = _dpMsg('🤖', '還沒有這檔的 AI 解盤，按上面按鈕產生。<br>五章：K 線型態、均線格局、籌碼、產業與基本面（會查網路）、操作策略；<br>支撐／壓力／停損只用系統回測過的價位（參考宏爺 AI 戰情室）');
+  } else if (!a.job) {
+    body = _dpMsg('⏳', '讀取中…');
+  }
+  return head + err + body;
+}
+
 function renderDpBody(tab, d) {
   const body = document.getElementById('dp-body');
   try {
     if (tab === 'sum') body.innerHTML = _dpSum(d);
+    else if (tab === 'ai') { _dpAiLoad(d.stock_id); body.innerHTML = _dpAiHtml(); return; }
     else if (tab === 'tech') body.innerHTML = _dpTech(d);
     else if (tab === 'chip') body.innerHTML = _dpChip(d);
     else if (tab === 'fund') body.innerHTML = _dpFund(d);
