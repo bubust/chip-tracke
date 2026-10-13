@@ -144,6 +144,47 @@ def trend_box(close, ma20, ma100) -> str | None:
     return "多箱" if above100 else "空箱"
 
 
+# ── 月線斜率分級（B71）：0.4%、1%、3% 來自權證小哥（商周財富網、CMoney 筆記），負的對稱 ──
+# 回測 research/course/mslope.py（40 萬筆、2025-04～2026-09）：之後 20 天平均比同期，兩段同方向
+MSLOPE_TIERS = [   # (下限, 名稱, 白話, 20 天超額 %)
+    (3.0, "妖股", "月線極陡往上（權證小哥：>3% 妖股）", 3.46),
+    (1.0, "強勢", "月線陡升（權證小哥：>1% 強勢股）", 2.19),
+    (0.4, "上揚", "月線穩定往上", 0.92),
+    (-0.4, "走平", "月線幾乎沒動，方向不明", -0.49),
+    (-1.0, "下彎", "月線往下", -0.97),
+    (float("-inf"), "急跌", "月線急跌（跌深之後常有反彈）", 0.80),
+]
+
+
+def mslope_tier(v) -> dict | None:
+    if v is None or (isinstance(v, float) and math.isnan(v)):
+        return None
+    # ≥3 妖股、≥1 強勢、≥0.4 上揚、>−0.4 走平、>−1 下彎、≤−1 急跌（跟回測分組一樣）
+    i = 0 if v >= 3 else 1 if v >= 1 else 2 if v >= 0.4 else 3 if v > -0.4 else 4 if v > -1 else 5
+    _, name, desc, x20 = MSLOPE_TIERS[i]
+    return {"tier": name, "desc": desc, "x20": x20}
+
+
+def mslope_info(closes, n: int = 30) -> dict | None:
+    """月線斜率全套：今天斜率、分級、月線連續上揚／下彎天數（+／−）、近 n 天月線與斜率（畫走勢用）；不到 21 根回 None"""
+    c = [float(x) for x in closes if x is not None and x == x]
+    if len(c) < 21:
+        return None
+    ma = [sum(c[i - 19:i + 1]) / 20 for i in range(19, len(c))]                 # 每天的月線
+    sl = [round((ma[i] / ma[i - 1] - 1) * 100, 2) for i in range(1, len(ma)) if ma[i - 1] > 0]
+    if not sl:
+        return None
+    streak, sign = 0, 0
+    for v in reversed(sl):
+        sg = (v > 0) - (v < 0)
+        if sg == 0 or (sign and sg != sign):
+            break
+        sign, streak = sg, streak + 1
+    t = mslope_tier(sl[-1]) or {}
+    return {"slope": sl[-1], **t, "streak": streak * sign,
+            "ma20": [round(x, 2) for x in ma[-n:]], "slopes": sl[-n:]}
+
+
 def month_slope(closes) -> float | None:
     """權證小哥月線斜率（%）＝(今天 MA20 − 昨天 MA20) ÷ 昨天 MA20 × 100；>1% 強勢、>3% 妖股；不到 21 根回 None"""
     c = [float(x) for x in closes if x is not None and x == x]
@@ -172,6 +213,7 @@ def trend_info(df: pd.DataFrame) -> dict | None:
         "ma20_up": (ma20 > ma20_prev) if ma20_prev else None,
         "ma100_up": (ma100 > ma100_prev) if ma100_prev else None,
         "mslope": month_slope(c.tail(21).tolist()),
+        "ms": mslope_info(c.tail(60).tolist()),
     }
 
 

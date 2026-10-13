@@ -267,8 +267,8 @@ def _bb_live(sid: str, price, qdate: "str | None") -> "float | None":
     if not hit or hit[1] != qdate or _t.time() - hit[0] > 600:
         try:
             from price_cache import get_stock_ohlcv
-            df = get_stock_ohlcv(sid, days=45)
-            closes = [float(c) for d, c in zip(df["date"], df["close"]) if str(d) < qdate and c == c][-20:]
+            df = get_stock_ohlcv(sid, days=80)
+            closes = [float(c) for d, c in zip(df["date"], df["close"]) if str(d) < qdate and c == c][-50:]   # 月斜率走勢要 50 根
         except Exception:
             closes = []
         hit = (_t.time(), qdate, closes)
@@ -281,9 +281,10 @@ def _bb_live(sid: str, price, qdate: "str | None") -> "float | None":
     return round((price - m) / (2 * sd) * 10, 1) if sd > 0 else None
 
 
-def _mslope_live(sid: str, price, qdate: "str | None") -> "float | None":
-    """權證小哥月線斜率（%）：今天月線＝報價日前 19 根＋現價、昨天月線＝報價日前 20 根（跟 _bb_live 共用快取，B70）"""
-    from deep_patterns import month_slope
+def _mslope_live(sid: str, price, qdate: "str | None") -> "dict | None":
+    """月線斜率（B71）：報價日前 50 根＋現價 → deep_patterns.mslope_info（今天斜率、分級、連續天數、近 30 天月線）
+    今天月線＝前 19 根＋現價、昨天月線＝前 20 根（跟 _bb_live 共用快取）"""
+    from deep_patterns import mslope_info
     price = _sf_price(price)
     if price is None or not qdate:
         return None
@@ -291,7 +292,7 @@ def _mslope_live(sid: str, price, qdate: "str | None") -> "float | None":
     hit = _BB_BASE.get(sid)
     if not hit or hit[1] != qdate or len(hit[2]) < 20:
         return None
-    return month_slope(hit[2][-20:] + [price])
+    return mslope_info(hit[2] + [price])
 
 
 def _append_live_bar(sid: str, df):
@@ -1683,7 +1684,7 @@ async def api_watchlist_prices():
             q["bb_score"] = bb
         ms = _mslope_live(sid, q["close"], q.get("date"))
         if ms is not None:
-            q["mslope"] = ms
+            q["mslope"], q["ms"] = ms["slope"], ms
     missing = [sid for sid in stock_ids if sid not in result]
     if missing:
         old = await _watchlist_prices_fallback(missing, mkt_map)
@@ -2209,7 +2210,7 @@ async def api_watchlist_summary():
             latest_prices[sid]["bb_score"] = bb
         ms = _mslope_live(sid, q["close"], q.get("date"))
         if ms is not None:
-            latest_prices[sid]["mslope"] = ms
+            latest_prices[sid]["mslope"], latest_prices[sid]["ms"] = ms["slope"], ms
 
     added_px = _added_prices(rows)
 
@@ -2233,6 +2234,7 @@ async def api_watchlist_summary():
             "change_pct": price_info.get("change_pct"),
             "bb_score":   price_info.get("bb_score"),  # None → 前端顯示 "—"（MIS/FinMind fallback 無OHLCV無法計算BB）
             "mslope":     price_info.get("mslope"),    # 權證小哥月線斜率 %（B70）
+            "ms":         price_info.get("ms"),        # 月線斜率全套：分級、連續天數、近 30 天月線（B71）
             "stage":      price_info.get("stage", {"code": "unknown", "label": "—", "color": "muted", "desc": "無法取得價格資料"}),
         }
         if records:
@@ -2586,7 +2588,7 @@ async def api_market_scan(top: int = 50, refresh: int = 0, side: str = "buy", so
 
     # 策略訊號（同舊版：最近一次掃描命中）＋法人買賣超基本訊號
     sig_map = {"S10": (10, "🚀", "漲停", 3), "S1": (8, "📈", "雙MACD多", 2), "S2": (7, "📈", "W底再攻擊", 2),
-               "S_XIANREN": (7, "🧙", "仙人指路", 2), "S5": (6, "📈", "量增3倍", 2), "S_MSLOPE": (6, "📐", "月線斜率", 2),
+               "S_XIANREN": (7, "🧙", "仙人指路", 2), "S5": (6, "📈", "量增3倍", 2),
                "S1_SHORT": (5, "📉", "雙MACD空", 2)}
     all_sig: dict = {}
     try:

@@ -77,8 +77,11 @@ if __name__ == "__main__":
     S["x20"] = S.f20 - S.groupby("date").f20.transform("mean")
     print("samples", len(S))
     out = {"buckets": {}, "combos": {}}
+    # B71：月線強弱分級（跟畫面一樣：≤−1 急跌、−1～−0.4 下彎、−0.4～0.4 走平、0.4～1 上揚、1～3 強勢、≥3 妖股），另留舊的 <0、0～0.4
     for name, m in [("<0", S.slope < 0), ("0~0.4", (S.slope >= 0) & (S.slope < 0.4)), ("0.4~1", (S.slope >= 0.4) & (S.slope < 1)),
-                    ("1~3", (S.slope >= 1) & (S.slope < 3)), (">3", S.slope >= 3)]:
+                    ("1~3", (S.slope >= 1) & (S.slope < 3)), (">3", S.slope >= 3),
+                    ("<=-1", S.slope <= -1), ("-1~-0.4", (S.slope > -1) & (S.slope <= -0.4)),
+                    ("-0.4~0.4", (S.slope > -0.4) & (S.slope < 0.4))]:
         out["buckets"][name] = st(S, m)
         print(f"斜率 {name:6s}", out["buckets"][name])
     for name, lim in (("C3", 3), ("C5", 5)):

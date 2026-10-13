@@ -174,7 +174,10 @@ def _data_block(d: dict, rows: list) -> str:
         L.append(f"格局：{tr['box']}（{tr['desc']}）；MA20 {_n(tr['ma20'])}（{'上彎' if tr.get('ma20_up') else '下彎'}）、"
                  f"MA100 {_n(tr['ma100'])}（{'上彎' if tr.get('ma100_up') else '下彎'}）；"
                  f"乖離 MA20 {_s(tr['bias20'], 2)}%、MA100 {_s(tr['bias100'], 2)}%"
-                 + (f"；月線斜率 {_s(tr.get('mslope'), 2)}%（權證小哥：>1% 強勢、>3% 妖股；回測斜率 >1% 之後 20 天平均比同期 +2.19%）"
+                 + (f"；月線斜率 {_s(tr.get('mslope'), 2)}%（{(tr.get('ms') or {}).get('tier', '')}："
+                    f"{(tr.get('ms') or {}).get('desc', '')}；"
+                    f"{'月線連續上揚' if ((tr.get('ms') or {}).get('streak') or 0) > 0 else '月線連續下降'} {abs((tr.get('ms') or {}).get('streak') or 0)} 天；"
+                    f"回測這個強弱之後 20 天平均比同期 {_s((tr.get('ms') or {}).get('x20'), 2)}%）"
                     if tr.get("mslope") is not None else ""))
         bs = tr.get("stat")
         if bs:

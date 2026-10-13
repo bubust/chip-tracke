@@ -665,7 +665,7 @@ details.guide[open]>summary::before{content:'▾ ';}
             <th>7日累計 (張)</th>
             <th>連續天數</th>
             <th title="布林軌道分級：上軌=+10 中軌=0 下軌=-10">BB位置</th>
-            <th title="權證小哥月線斜率＝（今天 20 日線 − 昨天 20 日線）÷ 昨天 20 日線；>1% 強勢股、>3% 妖股。回測：斜率 >1% 之後 20 天平均比大盤多 2.19%；「斜率 >1% 又靠近月線」進場法沒有優勢">月斜率</th>
+            <th title="月線（20 日線）斜率＝（今天月線 − 昨天月線）÷ 昨天月線。小圖＝近 30 天月線走勢。≥3% 妖股、1～3% 強勢、0.4～1% 上揚、±0.4% 走平、−0.4～−1% 下彎、≤−1% 急跌（權證小哥）">月線斜率</th>
             <th title="集保所千張大戶持股%，點擊查看歷史趨勢" style="cursor:help">千張大戶</th>
             <th title="系統依MA10/MA60自動判斷，不可手動修改">🔦 狀態</th>
             <th>最新日期</th>
@@ -816,7 +816,6 @@ details.guide[open]>summary::before{content:'▾ ';}
       <button class="btn ghost screen-strat-btn" data-s="S_TRUST5" onclick="viewStrategy('S_TRUST5')" title="投信連續買超（中小型電子勝率高），強勢股回測 5 日線打橫 2~3 天不破介入；跌破 10／20 日線出場">🏦 投信連買＋5日線打橫 <span class="strat-cnt" id="cnt-S_TRUST5"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_SHORT_UP" onclick="viewStrategy('S_SHORT_UP')" title="強勢股上漲中融券持續大增：軋空／套利熱絡，還有高點，拉回是買點">🩳 融券大增強勢股 <span class="strat-cnt" id="cnt-S_SHORT_UP"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_BIGHOLD" onclick="viewStrategy('S_BIGHOLD')" title="千張大戶持股比率上升、散戶持股比率下降（創新低更強）＝籌碼集中">🐋 大戶增散戶減 <span class="strat-cnt" id="cnt-S_BIGHOLD"></span></button>
-      <button class="btn ghost screen-strat-btn" data-s="S_MSLOPE" onclick="viewStrategy('S_MSLOPE')" title="權證小哥：月線（20 日線）斜率 >1% 是強勢股、>3% 妖股，股價靠近月線（乖離 0～5%）時進場。⚠ 回測：這個進場組合沒有優勢（20 天平均 +0.59%、信賴區間含 0）；斜率 >1% 本身之後 20 天平均 +2.19%">📐 月線斜率 <span class="strat-cnt" id="cnt-S_MSLOPE"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_KDJ_LOW" onclick="viewStrategy('S_KDJ_LOW')" title="大跌修正後 K、D < 20 且 J 曾 < 0，J 往上穿越 K、D；開口小就多看一天；停損前波最低點">🪝 KDJ低檔金叉 <span class="strat-cnt" id="cnt-S_KDJ_LOW"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_BREAKBOTTOM" onclick="viewStrategy('S_BREAKBOTTOM')" title="跌深後長黑收最低，隔天守住長黑低點沒再破底；停損長黑最低點">🔻 破底翻 <span class="strat-cnt" id="cnt-S_BREAKBOTTOM"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_NBREAK" onclick="viewStrategy('S_NBREAK')" title="大漲→拉回整理→長紅帶量實體突破前波高點（頸線）；或回測頸線守住；跌回頸線下停損">📐 關鍵價突破N字 <span class="strat-cnt" id="cnt-S_NBREAK"></span></button>
@@ -1432,9 +1431,34 @@ const _dpDate = s => { s = String(s || ''); return /^\d{8}$/.test(s) ? `${s.slic
 const _dpStreak = n => !n ? '—' : (n > 0 ? `連買 ${n} 天` : `連賣 ${-n} 天`);
 // K 線型態上色：紅K 紅、黑K 綠、十字／T 字／一字 黃
 const _dpKCls = t => /紅K/.test(t || '') ? 'k-up' : /黑K/.test(t || '') ? 'k-dn' : 'k-x';
-// 權證小哥月線斜率：≥3% 妖股、≥1% 強勢、<0 下彎（回測：斜率 >1% 之後 20 天平均比同期 +2.19%）
-const _dpMslope = v => v == null ? '—' : `<b class="${v >= 1 ? 'dp-up' : v < 0 ? 'dp-dn' : ''}">${_dpS(v, 2)}%</b>` +
-  (v >= 3 ? ' <span class="dp-tag" style="color:#c084fc;border-color:#7e22ce">妖股</span>' : v >= 1 ? ' <span class="dp-tag" style="color:#f85149;border-color:#f8514966">強勢</span>' : '');
+// ── 月線斜率（B71）：月線＝20 日均線；斜率＝(今天月線 − 昨天月線) ÷ 昨天月線 × 100%
+// 分級 0.4%／1%／3% 來自權證小哥，負的對稱；x20＝回測之後 20 天平均比大盤（research/course/mslope.py）
+const _MS_TIERS = [
+  { min: 3,    name: '妖股', color: '#c084fc', desc: '月線極陡往上', x20: 3.46 },
+  { min: 1,    name: '強勢', color: '#ef5350', desc: '月線陡升', x20: 2.19 },
+  { min: 0.4,  name: '上揚', color: '#f28b82', desc: '月線穩定往上', x20: 0.92 },
+  { min: -0.4, name: '走平', color: '#8b949e', desc: '月線幾乎沒動', x20: -0.49, open: true },
+  { min: -1,   name: '下彎', color: '#6fcf97', desc: '月線往下', x20: -0.97, open: true },
+  { min: -Infinity, name: '急跌', color: '#26a69a', desc: '月線急跌（跌深常有反彈）', x20: 0.80 },
+];
+function _msTier(v) {
+  if (v == null || !isFinite(v)) return null;
+  return _MS_TIERS.find(t => t.open ? v > t.min : v >= t.min) || _MS_TIERS[_MS_TIERS.length - 1];
+}
+// 迷你走勢線（月線近 30 天）；顏色＝今天的分級
+function _msSpark(arr, color, w = 64, h = 20) {
+  const a = (arr || []).filter(v => v != null && isFinite(v));
+  if (a.length < 2) return '';
+  const lo = Math.min(...a), hi = Math.max(...a), sp = (hi - lo) || 1;
+  const pts = a.map((v, i) => `${(i / (a.length - 1) * (w - 4) + 2).toFixed(1)},${(h - 2 - (v - lo) / sp * (h - 4)).toFixed(1)}`);
+  const last = pts[pts.length - 1].split(',');
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="vertical-align:middle;overflow:visible"><polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linejoin="round"/><circle cx="${last[0]}" cy="${last[1]}" r="2.2" fill="${color}"/></svg>`;
+}
+const _msStreakTxt = n => !n ? '' : n > 0 ? `連升 ${n} 天` : `連降 ${-n} 天`;
+const _dpMslope = v => {
+  const t = _msTier(v);
+  return v == null ? '—' : `<b style="color:${t.color}">${_dpS(v, 2)}%</b> <span class="dp-tag" style="color:${t.color};border-color:${t.color}66">${t.name}</span>`;
+};
 const _dpBoxCls = b => b === '多頭' || b === '多箱' ? 'dp-up' : b === '空頭' || b === '空箱' ? 'dp-dn' : '';
 
 // 小長條圖（B67）：一個數列、一個 Y 軸。items=[{x, v, tip}]；signed＝正紅負綠（台股慣例），不然一律藍
@@ -1767,6 +1791,9 @@ function _dpTech(d) {
       ${_dpRow('MA20（月線）', `${_esc(tr.ma20)} ${arrow(tr.ma20_up)}　<span class="${_dpC(tr.bias20)}" style="font-size:.74rem">乖離 ${_dpS(tr.bias20, 2)}%</span>`)}
       ${_dpRow('MA100（百日線）', `${_esc(tr.ma100)} ${arrow(tr.ma100_up)}　<span class="${_dpC(tr.bias100)}" style="font-size:.74rem">乖離 ${_dpS(tr.bias100, 2)}%</span>`)}
       ${tr.mslope != null ? _dpRow('月線斜率', `${_dpMslope(tr.mslope)}`) : ''}
+      ${tr.ms ? (() => { const t = _msTier(tr.ms.slope); return `<div style="display:flex;align-items:center;gap:10px;padding:4px 0 6px;border-bottom:1px solid #21262d">
+        ${_msSpark(tr.ms.ma20, t.color, 130, 34)}<div class="dp-note" style="line-height:1.5">近 30 天月線走勢・<b style="color:${t.color}">${_esc(_msStreakTxt(tr.ms.streak) || '方向剛轉')}</b><br>
+        ${_esc(t.desc)}；這個強弱之後 20 天平均比大盤 <b class="${_dpC(t.x20)}">${_dpS(t.x20, 2)}%</b></div></div>`; })() : ''}
       ${tr.stat ? `<div class="dp-note" style="margin-top:4px">回測（${_esc(pat.period)}）20 天平均比同期：` +
         ['多頭', '多箱', '空箱', '空頭'].filter(k => ba[k] != null).map(k => k === tr.box ? `<b class="${_dpBoxCls(k)}">${k} ${_dpS(ba[k], 2)}%</b>` : `${k} ${_dpS(ba[k], 2)}%`).join('、') +
         (tr.stat.in_bucket ? `；技術${_esc(bk.label)}又是${_esc(tr.box)} <b>${_dpS(tr.stat.in_bucket.x20, 2)}%</b>` : '') +
@@ -2415,7 +2442,7 @@ function renderWatchlist() {
         <td class="muted">—</td>
         <td class="muted">—</td>
         ${ndBbCell}
-        ${_msCell(s.stock_id, s.mslope)}
+        ${_msCell(s.stock_id, s.ms || s.mslope)}
         ${ndKpctCell}
         ${ndStageCell}
         <td class="muted">—</td>
@@ -2486,7 +2513,7 @@ function renderWatchlist() {
       <td class="${c7 >= 0 ? 'pos' : 'neg'}">${fmtNum(c7)}</td>
       ${consecCell}
       ${bbCell}
-      ${_msCell(s.stock_id, s.mslope)}
+      ${_msCell(s.stock_id, s.ms || s.mslope)}
       ${kpctCell}
       ${stageCell}
       <td class="muted">${s.date || '—'}</td>
@@ -2811,17 +2838,20 @@ function _bbCell(sid, bb) {
     <span style="color:${numColor};font-weight:700;font-size:.85rem">${bb > 0 ? '+' : ''}${bb}</span><br><span style="font-size:.66rem;color:var(--muted)">${zone}</span>
   </td>`;
 }
-// 月斜率欄（B70，權證小哥）：≥3% 妖股、≥1% 強勢、<0 下彎
-function _msCell(sid, v) {
-  if (v === null || v === undefined) return `<td id="ms-${sid}" class="muted">—</td>`;
-  const tag = v >= 3 ? '妖股' : v >= 1 ? '強勢' : v < 0 ? '下彎' : '';
-  const col = v >= 3 ? '#c084fc' : v >= 1 ? '#f85149' : v < 0 ? '#3fb950' : '#8b949e';
-  return `<td id="ms-${sid}" style="white-space:nowrap;line-height:1.25" title="月線斜率 ${v}%（>1% 強勢、>3% 妖股）">
-    <span style="color:${col};font-weight:${v >= 1 ? 800 : 600};font-size:.85rem">${v > 0 ? '+' : ''}${v}%</span>${tag ? `<br><span style="font-size:.66rem;color:${col}">${tag}</span>` : ''}</td>`;
+// 月斜率欄（B71）：月線近 30 天走勢線＋今天斜率＋強弱分級＋連升／連降天數；ms＝後端 mslope_info（舊資料只有數字也能顯示）
+function _msCell(sid, ms) {
+  const o = ms && typeof ms === 'object' ? ms : (ms != null ? { slope: ms } : null);
+  const t = o ? _msTier(o.slope) : null;
+  if (!t) return `<td id="ms-${sid}" class="muted">—</td>`;
+  const tip = `月線（20 日線）斜率 ${o.slope}%：${t.desc}${o.streak ? '，' + _msStreakTxt(o.streak) : ''}。分級：≥3% 妖股、1～3% 強勢、0.4～1% 上揚、±0.4% 走平、−0.4～−1% 下彎、≤−1% 急跌（權證小哥）。回測這個強弱之後 20 天平均比大盤 ${t.x20 > 0 ? '+' : ''}${t.x20}%`;
+  return `<td id="ms-${sid}" style="white-space:nowrap;line-height:1.2" title="${_esc(tip)}">
+    ${_msSpark(o.ma20, t.color)}
+    <span style="color:${t.color};font-weight:800;font-size:.85rem;margin-left:4px">${o.slope > 0 ? '+' : ''}${o.slope}%</span>
+    <br><span style="font-size:.68rem;color:${t.color};font-weight:700">${t.name}</span>${o.streak ? `<span style="font-size:.66rem;color:var(--muted);margin-left:4px">${_msStreakTxt(o.streak)}</span>` : ''}</td>`;
 }
-function _renderMsCell(sid, v) {
+function _renderMsCell(sid, ms) {
   const td = document.getElementById(`ms-${sid}`);
-  if (td && v != null) td.outerHTML = _msCell(sid, v);
+  if (td && ms != null) td.outerHTML = _msCell(sid, ms);
 }
 function _renderBbCell(sid, bb) {
   const td = document.getElementById(`bb-${sid}`);
@@ -2872,7 +2902,7 @@ async function refreshPricesOnly(force = false) {
     for (const [sid, info] of Object.entries(data)) {
       _renderPriceCell(sid, info.close, info.change_pct);
       if (info.bb_score != null) _renderBbCell(sid, info.bb_score);
-      if (info.mslope != null) _renderMsCell(sid, info.mslope);
+      if (info.ms || info.mslope != null) _renderMsCell(sid, info.ms || info.mslope);
       const item = _wlData.find(x => x.stock_id === sid);
       if (item) {
         item.close = info.close; item.change_pct = info.change_pct;
@@ -4652,7 +4682,6 @@ const STRATEGY_LABELS = {
   S_DANGER: '☠️ 危險量＋空方缺口（近期量觸及歷史高點量、高點不過＝預警）',
   S_SHORT_EBB: '🌊 融券退潮（高檔強勢股融券從高點連續減少：拉回不再是買點，減碼／出場）',
   S_KDJ_LOW: '🪝 KDJ低檔金叉（大跌後 K、D < 20、J < 0，J 往上穿越 K、D）',
-  S_MSLOPE: '📐 月線斜率 >1%＋靠近月線（權證小哥；⚠ 回測沒有優勢，斜率本身有用）',
   S_BREAKBOTTOM: '🔻 破底翻（跌深後長黑收最低，隔天守住長黑低點不再破底）',
   S_NBREAK: '📐 關鍵價突破N字（大漲→拉回→長紅帶量突破頸線，或回測頸線守住）',
   S_VOLROLL: '🌋 底部量滾量（跌深盤整後重新站上季線＋連續爆量）',
@@ -4681,7 +4710,6 @@ const COURSE_COLS = {
   S_TRUST5: [['投信連買', 'trust_days', v => v + '天'], ['投信買超(張)', 'trust_lots'], ['5日線', 'ma5'], ['停損', 'stop'], ['出場(10日線)', 'exit_ma10']],
   S_SHORT_UP: [['融券餘額', 'short_now'], ['5日增加', 'short_chg5'], ['增幅', 'short_chg5_pct', _pctF], ['狀態', 'pullback'], ['防守', 'stop']],
   S_SHORT_EBB: [['融券餘額', 'short_now'], ['融券高點', 'short_peak'], ['距高點', 'from_peak_pct', _pctF], ['連減天數', 'down_days']],
-  S_MSLOPE: [['月線斜率', 'mslope', v => (v > 0 ? '+' : '') + v + '%'], ['月線乖離', 'bias20', v => (v > 0 ? '+' : '') + v + '%'], ['月線', 'ma20'], ['類型', 'tag']],
   S_KDJ_LOW: [['K', 'k'], ['D', 'd'], ['J', 'j'], ['J開口', 'j_open'], ['量', 'big_vol'], ['停損(前波低)', 'stop'], ['今天低點', 'day_low']],
   S_BREAKBOTTOM: [['長黑跌幅', 'black_pct', _pctF], ['波段跌幅', 'drop_pct', v => v + '%'], ['停損(長黑低)', 'stop']],
   S_NBREAK: [['階段', 'stage'], ['頸線(停損)', 'neckline'], ['突破日', 'break_date', _dF], ['高於頸線', 'above_pct', _pctF]],
@@ -4720,7 +4748,6 @@ const STRATEGY_SHORT = {
   S_DANGER: '☠️ 危險量＋空方缺口',
   S_SHORT_EBB: '🌊 融券退潮',
   S_KDJ_LOW: '🪝 KDJ低檔金叉',
-  S_MSLOPE: '📐 月線斜率',
   S_BREAKBOTTOM: '🔻 破底翻',
   S_NBREAK: '📐 關鍵價突破N字',
   S_VOLROLL: '🌋 底部量滾量',
@@ -6594,6 +6621,7 @@ async function openChart(stockId, savedRange = null) {
     container.innerHTML = `
       <div id="lwc-candle" style="width:100%;flex:5;min-height:0;position:relative"></div>
       <div id="lwc-vol"    style="width:100%;flex:1;min-height:0;border-top:1px solid #2a2e39;position:relative"></div>
+      ${_chartInterval === '1d' && !stockId.startsWith('__idx_') ? '<div id="lwc-ms" style="width:100%;flex:1.3;min-height:0;border-top:1px solid #2a2e39;position:relative"></div>' : ''}
       <div id="lwc-macd"  style="width:100%;flex:2;min-height:0;border-top:1px solid #2a2e39;position:relative"></div>
       <div id="lwc-macd2" style="width:100%;flex:2;min-height:0;border-top:1px solid #2a2e39;position:relative"></div>`;
 
@@ -6614,6 +6642,9 @@ async function openChart(stockId, savedRange = null) {
     const ma10 = _calcMA(closes, 10);
     const ma20 = _calcMA(closes, 20);
     const ma60 = _calcMA(closes, 60);
+    // 月線斜率（%）＝(今天 MA20 ÷ 昨天 MA20 − 1) × 100（B71）
+    const msl = ma20.map((v, i) => (i > 0 && !isNaN(v) && !isNaN(ma20[i - 1]) && ma20[i - 1] > 0) ? (v / ma20[i - 1] - 1) * 100 : NaN);
+    const msStreak = i => { let k = 0, sg = 0; for (let j = i; j > 0 && !isNaN(msl[j]); j--) { const g = Math.sign(msl[j]); if (!g || (sg && g !== sg)) break; sg = g; k++; } return k * sg; };
 
     // ── 蠟燭圖 ──
     const cEl = document.getElementById('lwc-candle');
@@ -6684,7 +6715,8 @@ async function openChart(stockId, savedRange = null) {
         (chg != null ? `　<b style="color:${chgColor}">${chg > 0 ? '+' : ''}${chg.toFixed(2)}%</b>` : '') + '<br>' +
         `<span style="color:#4caf50">MA5:${_fmtN(ma5[i])}</span>　` +
         `<span style="color:#ffeb3b">MA10:${_fmtN(ma10[i])}</span>　` +
-        `<span style="color:#e91e63">MA20:${_fmtN(ma20[i])}</span>　` +
+        `<span style="color:#e91e63">MA20:${_fmtN(ma20[i])}</span>` +
+        (_chartInterval === '1d' && _msTier(msl[i]) ? ` <span style="color:${_msTier(msl[i]).color};font-size:.9em">${msl[i] >= 0 ? '↗' : '↘'}${msl[i] > 0 ? '+' : ''}${msl[i].toFixed(2)}% ${_msTier(msl[i]).name}</span>` : '') + '　' +
         `<span style="color:#ff9800">MA60:${_fmtN(ma60[i])}</span>`;
     }
     updateCLeg(n - 1);
@@ -6708,6 +6740,29 @@ async function openChart(stockId, savedRange = null) {
       vLeg.innerHTML = `<span style="color:#9598a1">成交量：${_fmtVol(ohlcv[i].volume)}</span>`;
     }
     updateVLeg(n - 1);
+
+    // ── 月線斜率副圖（B71，只有日線）：柱子＝每天月線斜率 %，顏色＝強弱分級；參考線 ±1%、0.4%、0 ──
+    const msEl = document.getElementById('lwc-ms');
+    let msChart = null, msSeries = null, updateMsLeg = () => {};
+    if (msEl) {
+      msChart = LightweightCharts.createChart(msEl, { ...BASE, width: msEl.offsetWidth, height: msEl.offsetHeight });
+      _lwcCharts.push(msChart);
+      // 刻度至少涵蓋 −1%～+1%：斜率小的股票柱子就小，碰到 1% 線＝強勢，一眼看出強弱（不會被自動放大）
+      msSeries = msChart.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false, priceFormat: { type: 'custom', formatter: v => v.toFixed(2) + '%' },
+        autoscaleInfoProvider: orig => { const r = orig(); const lo = Math.min(-1.2, r?.priceRange?.minValue ?? 0), hi = Math.max(1.2, r?.priceRange?.maxValue ?? 0);
+          return { priceRange: { minValue: lo, maxValue: hi } }; } });
+      msSeries.setData(ohlcv.map((r, i) => isNaN(msl[i]) ? { time: _rt(r) } : { time: _rt(r), value: msl[i], color: _msTier(msl[i]).color }));
+      [[1, 'rgba(239,83,80,.55)', '強勢 1%'], [0.4, 'rgba(242,139,130,.35)', '上揚 0.4%'], [0, 'rgba(255,255,255,.4)', ''], [-1, 'rgba(38,166,154,.55)', '急跌 −1%']]
+        .forEach(([p, c, t]) => msSeries.createPriceLine({ price: p, color: c, lineWidth: 1, lineStyle: p === 0 ? 0 : 2, axisLabelVisible: false, title: t }));
+      const msLeg = _mkLegend(msEl);
+      updateMsLeg = idx => {
+        const i = Math.min(Math.max(idx, 0), n - 1), t = _msTier(msl[i]);
+        msLeg.innerHTML = !t ? '<span style="color:#9598a1">月線斜率：—</span>' :
+          `<span style="color:#9598a1">月線斜率</span> <b style="color:${t.color}">${msl[i] > 0 ? '+' : ''}${msl[i].toFixed(2)}% ${t.name}</b>　` +
+          `<span style="color:#9598a1">${_msStreakTxt(msStreak(i)) || ''}${msStreak(i) ? '　' : ''}回測之後 20 天 ${t.x20 > 0 ? '+' : ''}${t.x20}%</span>`;
+      };
+      updateMsLeg(n - 1);
+    }
 
     // ── 小MACD (12,26,9) ──
     const mEl = document.getElementById('lwc-macd');
@@ -6768,8 +6823,8 @@ async function openChart(stockId, savedRange = null) {
     updateM2Leg(n - 1);
 
     // ── 同步時間軸 + crosshair（主副圖垂直線一起顯示）──
-    const charts = [cChart, vChart, mChart, m2Chart];
-    const primarySeries = [cSeries, vSeries, hSeries, h2Series];
+    const charts = [cChart, vChart, mChart, m2Chart].concat(msChart ? [msChart] : []);
+    const primarySeries = [cSeries, vSeries, hSeries, h2Series].concat(msSeries ? [msSeries] : []);
 
     // 建立時間 → 各圖數值對照表，供 setCrosshairPosition 使用
     const _tMap = {};
@@ -6779,11 +6834,12 @@ async function openChart(stockId, savedRange = null) {
         vol:   r.volume,
         macd:  hist1[i],
         macd2: hist2[i],
+        ms:    isNaN(msl[i]) ? 0 : msl[i],
       };
     });
     const _priceFor = (ti, t) => {
       const d = _tMap[t]; if (!d) return 0;
-      return [d.close, d.vol, d.macd, d.macd2][ti] ?? 0;
+      return [d.close, d.vol, d.macd, d.macd2, d.ms][ti] ?? 0;
     };
 
     charts.forEach((src, si) => {
@@ -6794,7 +6850,7 @@ async function openChart(stockId, savedRange = null) {
       src.subscribeCrosshairMove(param => {
         const idx = (param.logical !== null && param.logical !== undefined)
           ? Math.round(param.logical) : n - 1;
-        updateCLeg(idx); updateVLeg(idx); updateMLeg(idx); updateM2Leg(idx);
+        updateCLeg(idx); updateVLeg(idx); updateMLeg(idx); updateM2Leg(idx); updateMsLeg(idx);
 
         // 同步其他圖的垂直準線
         charts.forEach((tgt, ti) => {

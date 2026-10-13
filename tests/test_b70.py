@@ -1,4 +1,4 @@
-"""B70：週 K、月線斜率、AI 兩段式新聞、連動跨產業候選、法人買賣超排行、S_MSLOPE（PLAN-B70.md §6）"""
+"""B70：週 K、月線斜率、AI 兩段式新聞、連動跨產業候選、法人買賣超排行（PLAN-B70.md §6；S_MSLOPE 策略 B71 已刪）"""
 import datetime
 import os
 import sys
@@ -65,20 +65,6 @@ def test_month_slope_matches_article_example():
     assert dp.month_slope(c) == 1.18
     assert dp.month_slope([10] * 20) is None
     assert dp.month_slope([10] * 21) == 0.0
-
-
-def test_screen_mslope():
-    import scanner_course as sc
-    up = np.r_[np.full(40, 100.0), np.linspace(100, 135, 25)]
-    d = pd.DataFrame({"date": [f"d{i}" for i in range(len(up))], "open": up, "high": up * 1.01, "low": up * 0.99,
-                      "close": up, "volume": [5000] * len(up)})
-    ma = pd.Series(up).rolling(20).mean()
-    slope = (ma.iloc[-1] / ma.iloc[-2] - 1) * 100
-    bias = (up[-1] / ma.iloc[-1] - 1) * 100
-    res = sc.screen_mslope({"1234": d}, {"1234": "測試"}, {"near_pct": 20})
-    assert slope > 1 and bias <= 20 and len(res) == 1 and res[0]["mslope"] == round(slope, 2)
-    assert sc.screen_mslope({"1234": d}, {}, {"near_pct": 0.5}) == []          # 離月線太遠
-    assert "S_MSLOPE" in __import__("scanner").PRICE_STRATEGY_FNS
 
 
 # ── AI 兩段式新聞 ────────────────────────────────────────────────────────────
@@ -223,7 +209,7 @@ def test_bb_live_and_mslope_live(monkeypatch):
     import price_cache
     closes = [100 + i for i in range(30)]
     df = pd.DataFrame({"date": [f"202609{i + 1:02d}" for i in range(30)], "close": closes})
-    monkeypatch.setattr(price_cache, "get_stock_ohlcv", lambda sid, days=45: df)
+    monkeypatch.setattr(price_cache, "get_stock_ohlcv", lambda sid, days=80: df)
     server._BB_BASE.clear()
     bb = server._bb_live("1234", 131, "20261001")
     arr = closes[-19:] + [131]
@@ -231,7 +217,8 @@ def test_bb_live_and_mslope_live(monkeypatch):
     sd = (sum((v - m) ** 2 for v in arr) / 20) ** 0.5
     assert bb == round((131 - m) / (2 * sd) * 10, 1)
     ms = server._mslope_live("1234", 131, "20261001")
-    assert ms == dp.month_slope(closes[-20:] + [131])
+    assert ms["slope"] == dp.month_slope(closes[-20:] + [131]) and ms["tier"] and ms["streak"] > 0
+    assert len(ms["ma20"]) == len(closes) + 1 - 19 and ms["ma20"][-1] == round(sum(closes[-19:] + [131]) / 20, 2)
     assert server._mslope_live("1234", None, "20261001") is None
 
 
@@ -277,3 +264,20 @@ def test_deep_news_falls_back_without_when(monkeypatch):
     out = asyncio.run(server._deep_news("3481", "群創"))
     assert [x["title"] for x in out["items"]] == ["新消息"]                 # 90 天前的被濾掉
     assert calls[0]["q"] == "群創 3481 when:30d" and calls[1]["q"] == "群創 3481"   # 第一次沒結果 → 不帶 when 再查
+
+
+
+# ── B71 月線斜率分級 ─────────────────────────────────────────────────────────
+
+def test_mslope_tiers_and_info():
+    tier = lambda v: dp.mslope_tier(v)["tier"]     # noqa: E731
+    assert [tier(v) for v in (3, 2.99, 1, 0.99, 0.4, 0.39, -0.39, -0.4, -0.99, -1, -5)] ==         ["妖股", "強勢", "強勢", "上揚", "上揚", "走平", "走平", "下彎", "下彎", "急跌", "急跌"]
+    assert dp.mslope_tier(None) is None
+    up = [100 + i for i in range(40)] + [139, 138, 137]        # 一路漲、最後三天跌一點
+    info = dp.mslope_info(up)
+    ma = [sum(up[i - 19:i + 1]) / 20 for i in range(19, len(up))]
+    assert info["slope"] == round((ma[-1] / ma[-2] - 1) * 100, 2)
+    assert info["streak"] > 0 and len(info["ma20"]) == min(30, len(ma)) and len(info["slopes"]) <= 30
+    down = [100 - i * 0.5 for i in range(40)]
+    assert dp.mslope_info(down)["streak"] < 0
+    assert dp.mslope_info([10] * 20) is None

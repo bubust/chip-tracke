@@ -620,30 +620,6 @@ def screen_kdj_div(prices, names=None, params=None):
     return out
 
 
-def screen_mslope(prices, names=None, params=None):
-    """B70 權證小哥月線斜率：(今天 MA20 − 昨天 MA20) ÷ 昨天 MA20 > 1%（強勢股）且股價靠近月線（0 ≤ 乖離 ≤ 5%）
-    回測（research/course/mslope.py）：這個進場組合 20 天平均比同期 +0.59%、信賴區間含 0 → 沒有優勢；斜率 >1% 本身 +2.19%"""
-    p = params or {}
-    th = float(p.get("slope_pct", 1))
-    near = float(p.get("near_pct", 5))
-    out = []
-    for sid, df in prices.items():
-        if not _ok_price(df, p, 22):
-            continue
-        c = df["close"].astype(float)
-        ma = calc_ma(c, 20)
-        if pd.isna(ma.iloc[-1]) or pd.isna(ma.iloc[-2]) or ma.iloc[-2] <= 0:
-            continue
-        slope = (ma.iloc[-1] / ma.iloc[-2] - 1) * 100
-        bias = (c.iloc[-1] / ma.iloc[-1] - 1) * 100
-        if slope <= th or not (0 <= bias <= near):
-            continue
-        out.append(_base(sid, df, names, "S_MSLOPE", mslope=_r(slope, 2), bias20=_r(bias, 2), ma20=_r(ma.iloc[-1], 2),
-                         tag="妖股" if slope >= 3 else "強勢"))
-    out.sort(key=lambda x: -(x.get("mslope") or 0))
-    return out
-
-
 COURSE_STRATEGIES = {
     "S_WMACD":      "📅 週MACD大波段（站回20週線＋週柱翻紅）",
     "S_BIAS":       "🧲 負乖離抄底（季線乖離 ≤ −20%）",
@@ -661,7 +637,6 @@ COURSE_STRATEGIES = {
     "S_VOLROLL":    "🌋 底部量滾量站上季線",
     "S_KDJ_HIGH":   "🎢 KDJ 高檔死叉（先賣一半）",
     "S_KDJ_DIV":    "📉 KDJ 高檔背離",
-    "S_MSLOPE":     "📐 月線斜率 >1%＋靠近月線（權證小哥）",
 }
 
 COURSE_FNS = {
@@ -670,7 +645,6 @@ COURSE_FNS = {
     "S_W60_BREAK": screen_w60_break, "S_MA_ALLDOWN": screen_ma_alldown, "S_DANGER": screen_danger,
     "S_KDJ_LOW": screen_kdj_low, "S_BREAKBOTTOM": screen_breakbottom, "S_NBREAK": screen_nbreak,
     "S_VOLROLL": screen_volroll, "S_KDJ_HIGH": screen_kdj_high, "S_KDJ_DIV": screen_kdj_div,
-    "S_MSLOPE": screen_mslope,
 }
 COURSE_SHORT = {"S_W60_BREAK", "S_MA_ALLDOWN", "S_DANGER", "S_KDJ_HIGH", "S_KDJ_DIV"}
 
@@ -720,8 +694,6 @@ COURSE_PARAMS = {
                    {"key": "level", "label": "K、D 高於", "type": "number", "default": 80, "min": 70, "max": 90, "step": 1},
                    {"key": "j_level", "label": "J 曾高於", "type": "number", "default": 100, "min": 80, "max": 120, "step": 5},
                    {"key": "j_within", "label": "J 過熱在近幾天內", "type": "number", "default": 3, "min": 1, "max": 10, "step": 1}],
-    "S_MSLOPE": [_MP, {"key": "slope_pct", "label": "月線斜率%（>）", "type": "number", "default": 1, "min": 0.2, "max": 5, "step": 0.1},
-                 {"key": "near_pct", "label": "靠近月線：乖離%（0～）", "type": "number", "default": 5, "min": 1, "max": 15, "step": 1}],
     "S_KDJ_DIV": [_MP, {"key": "look", "label": "前波高點回看天數", "type": "number", "default": 60, "min": 20, "max": 120, "step": 5},
                   {"key": "k_high", "label": "前波 K 值高點（≥，高檔）", "type": "number", "default": 80, "min": 60, "max": 95, "step": 5},
                   {"key": "k_gap", "label": "這次 K 高點比前波低（≥）", "type": "number", "default": 5, "min": 1, "max": 30, "step": 1},
