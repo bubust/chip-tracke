@@ -60,6 +60,62 @@ def get_stock_list() -> pd.DataFrame:
     return _stocks_df
 
 
+# stocks.csv 只有一般股票（2,119 支）：ETF（0050）、新上市（7855）沒有股名 → 從證交所／櫃買每日收盤表補（B69）
+_OFFICIAL_NAME_URLS = (
+    ("twse", "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", "Code", "Name"),
+    ("tpex", "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes", "SecuritiesCompanyCode", "CompanyName"),
+)
+_official_names = {"t": 0.0, "fail_t": 0.0, "map": {}}
+_official_lock = threading.Lock()
+
+
+def parse_official_names(rows, code_key: str, name_key: str, market: str) -> dict:
+    out = {}
+    for r in rows if isinstance(rows, list) else []:
+        sid, name = str(r.get(code_key) or "").strip(), str(r.get(name_key) or "").strip()
+        if sid and name:
+            out[sid] = (name, market)
+    return out
+
+
+def official_names(max_age: int = 12 * 3600) -> dict:
+    """{代號: (股名, twse／tpex)}，含 ETF 與新上市；12 小時快取，失敗 10 分鐘內不重抓、沿用上一份（可能是空的）"""
+    now = time.time()
+    ent = _official_names
+    if ent["map"] and now - ent["t"] < max_age:
+        return ent["map"]
+    if now - ent["fail_t"] < 600:
+        return ent["map"]
+    with _official_lock:
+        if _official_names["map"] and time.time() - _official_names["t"] < max_age:
+            return _official_names["map"]
+        merged = {}
+        for market, url, ck, nk in _OFFICIAL_NAME_URLS:
+            try:
+                with httpx.Client(timeout=20.0, verify=False, follow_redirects=True,
+                                  headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"}) as c:
+                    r = c.get(url)
+                    r.raise_for_status()
+                    for k, v in parse_official_names(r.json(), ck, nk, market).items():
+                        merged.setdefault(k, v)          # 上市優先
+            except Exception as e:      # noqa: BLE001
+                print(f"[names] {market} 官方股名表失敗: {type(e).__name__} {e}")
+        if merged:
+            _official_names.update(t=time.time(), map=merged)
+        else:
+            _official_names["fail_t"] = time.time()
+    return _official_names["map"]
+
+
+def stock_name_market(sid: str) -> tuple:
+    """(股名, 市場)：stocks.csv → 官方收盤表；都沒有回 ("", None)"""
+    df = get_stock_list()
+    hit = df[df["stock_id"] == sid]
+    if len(hit):
+        return str(hit.iloc[0]["stock_name"]), str(hit.iloc[0]["type"])
+    return official_names().get(sid, ("", None))
+
+
 # ── Yahoo Finance async fetch ─────────────────────────────────────────────────
 
 # Yahoo 把台股配股、減資、分割都當成「split」：事件日之前的開高低收除過比例、量乘過比例（＝還原價）。

@@ -225,3 +225,18 @@ def test_start_job_reuses_running_job(monkeypatch):
     monkeypatch.setattr(deep_ai, "_jobs", {"abc": {"status": "running", "sid": "2330", "t": deep_ai.time.time()}})
     monkeypatch.setattr(deep_ai, "_daily", {"date": deep_ai.tw_today(), "n": 999})   # 額度滿了也回同一個
     assert deep_ai.start_job("2330", "20261013", _payload(), []) == "abc"
+
+
+# ── B69：stocks.csv 沒有的股名（ETF、新上市）從官方收盤表補 ─────────────────────
+
+def test_official_names_parse_and_fallback(monkeypatch):
+    import yahoo_price as yp
+    rows = [{"Code": "0050", "Name": "元大台灣50"}, {"Code": "7855", "Name": "新股"}, {"Code": "", "Name": "x"}]
+    m = yp.parse_official_names(rows, "Code", "Name", "twse")
+    assert m == {"0050": ("元大台灣50", "twse"), "7855": ("新股", "twse")}
+    assert yp.parse_official_names({"error": 1}, "Code", "Name", "twse") == {}
+    monkeypatch.setattr(yp, "official_names", lambda max_age=0: m)
+    assert yp.stock_name_market("0050") == ("元大台灣50", "twse")
+    assert yp.stock_name_market("9999") == ("", None)
+    sid, name, mkt = yp.get_stock_list().iloc[0][["stock_id", "stock_name", "type"]]
+    assert yp.stock_name_market(sid) == (name, mkt)            # stocks.csv 有的不查官方表

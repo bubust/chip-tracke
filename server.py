@@ -1886,8 +1886,13 @@ async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False, retu
         mkt_map = dict(zip(stocks_df["stock_id"], stocks_df["type"]))
     except Exception:
         name_map, mkt_map = {}, {}
-    stock_name = name_map.get(stock_id, stock_id)
-    mkt = str(mkt_map.get(stock_id, "twse"))
+    stock_name = name_map.get(stock_id)
+    mkt = mkt_map.get(stock_id)
+    if not stock_name:                        # ETF／新上市：stocks.csv 沒有 → 官方收盤表（B69）
+        from yahoo_price import stock_name_market
+        _n, _m = await asyncio.to_thread(stock_name_market, stock_id)
+        stock_name, mkt = _n or stock_id, mkt or _m
+    mkt = str(mkt or "twse")
     if fresh:
         _levels_cache.pop(stock_id, None)
         deep_data.clear_stock_cache(stock_id)
@@ -2128,17 +2133,23 @@ async def api_watchlist_summary():
 
     stock_ids = [r["stock_id"] for r in rows]
 
-    # 補空白名稱：DB 有就用 DB，否則從 stocks.csv 補
+    # 補空白名稱：DB 有就用 DB，否則從 stocks.csv 補；ETF／新上市 stocks.csv 沒有 → 官方收盤表（B69）
     names: dict[str, str] = {}
     to_update: list[tuple[str, str]] = []
+    official = {}
+    if any(not (r["name"] or "").strip() and r["stock_id"] not in csv_names for r in rows):
+        from yahoo_price import official_names
+        official = await asyncio.to_thread(official_names)
     for r in rows:
         sid   = r["stock_id"]
         db_n  = (r["name"] or "").strip()
-        csv_n = csv_names.get(sid, "")
+        csv_n = csv_names.get(sid, "") or (official.get(sid) or ("", None))[0]
         resolved = db_n or csv_n
         names[sid] = resolved
         if not db_n and csv_n:
             to_update.append((csv_n, sid))
+        if sid not in mkt_map and official.get(sid):
+            mkt_map[sid] = official[sid][1]
 
     # 把補到的名稱同步回 DB
     if to_update:
