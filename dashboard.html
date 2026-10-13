@@ -4669,6 +4669,7 @@ async function runScreen() {
 
 let _ghPollTimer = null;
 let _ghScanStartedAt = null;
+let _ghFullAt = null, _ghFollowTimer = null;   // 進度第一次到 100% 的時間；之後在背景等整理（權證前十大、籌碼型策略）跑完
 
 // 持久狀態標誌（存 localStorage，頁面重整後仍顯示）
 // isOk: true=成功(綠), false=失敗(紅), undefined=進行中(灰) — transient 狀態不存 localStorage
@@ -4730,6 +4731,7 @@ async function triggerGithubScan() {
       // 正常啟動，或已有掃描在執行（直接追蹤進度）
       toast('⚡ ' + res.message);
       _ghScanStartedAt = Date.now();
+      _ghFullAt = null;
       window._ghResultsPreloaded = false;
       btn.textContent = '⚡ 掃描中...';
       document.getElementById('screen-progress-text').textContent = '掃描進行中，稍後顯示進度...';
@@ -4749,6 +4751,33 @@ async function triggerGithubScan() {
   }
 }
 
+// 進度 100% 時先顯示結果並解鎖按鈕，但權證前十大、籌碼型策略（投信連買等）還在算：
+// 背景每 10 秒看一次，掃描真的結束後再抓一次結果、更新策略數字與目前這個策略的清單、失敗數
+function _ghFollowUntilDone() {
+  if (_ghFollowTimer) clearInterval(_ghFollowTimer);
+  const t0 = Date.now();
+  _ghFollowTimer = setInterval(async () => {
+    try {
+      const s = await api('GET', '/api/screen/status');
+      if (s.running && Date.now() - t0 < 20 * 60 * 1000) {
+        const b = document.getElementById('gh-scan-last-badge');
+        if (b && !/整理中/.test(b.textContent)) b.textContent += '（籌碼型策略整理中…）';
+        return;
+      }
+      clearInterval(_ghFollowTimer); _ghFollowTimer = null;
+      if (s.running) return;
+      const r = await api('GET', '/api/screen/results');
+      if (!r || !r.results || !Object.values(r.results).some(a => (a || []).length)) return;
+      _screenAllResults = r.results;
+      lsSaveScreen(_screenAllResults);
+      renderStratBar();
+      if (_viewingStrategy) viewStrategy(_viewingStrategy);
+      const _ts = new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'});
+      _ghBadgeSet(`${_ts} ✅ ${_screenHitSummary(_screenAllResults).text} · 成功${s.yahoo_ok}/失敗${s.yahoo_fail}/跳過${s.skipped_stale||0}`, true);
+    } catch (e) { /* 網路閃斷：下一輪再試 */ }
+  }, 10000);
+}
+
 async function _pollGhProgress() {
   const btn = document.getElementById('btn-trigger-gh');
   try {
@@ -4760,8 +4789,9 @@ async function _pollGhProgress() {
       const pct = s.total > 0 ? Math.round(s.progress / s.total * 100) : 0;
       document.getElementById('screen-progress-bar').style.width = pct + '%';
       if (pct >= 100) {
-        // 整理重試超時（>10分鐘）→ 強制解鎖（兜底）
-        if (elapsed > 600) {
+        if (!_ghFullAt) _ghFullAt = Date.now();
+        // 到 100% 之後整理超過 10 分鐘 → 強制解鎖（兜底；正常會在下面預先載入結果後就解鎖）
+        if (Date.now() - _ghFullAt > 600000) {
           clearInterval(_ghPollTimer); _ghPollTimer = null;
           btn.disabled = false; btn.textContent = '⚡ 全市場掃描';
           document.getElementById('screen-progress-text').textContent = '';
@@ -4789,6 +4819,7 @@ async function _pollGhProgress() {
             const _ts = new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'});
             _ghBadgeSet(`${_ts} ${badgeMsg || msg}`, badgeOk !== undefined ? badgeOk : !isErr);
             toast(msg, isErr || false);
+            _ghFollowUntilDone();
           };
           // 30 秒 fallback（即使 fetch 掛住也能解鎖）
           setTimeout(() => _unlockGhBtn('掃描完成（載入逾時，請重新整理）', true,
@@ -5637,6 +5668,7 @@ async function warmupServer() {
       _ghBtn.disabled = true; _ghBtn.textContent = '⚡ 掃描中...';
       document.getElementById('screen-progress-bar-wrap').style.display = 'block';
       _ghScanStartedAt = Date.now();  // 以重連時間為基準（顯示重連後 elapsed）
+      _ghFullAt = null;
       window._ghResultsPreloaded = false;
       if (_ghPollTimer) clearInterval(_ghPollTimer);
       _ghPollTimer = setInterval(_pollGhProgress, 5000);
