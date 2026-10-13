@@ -296,6 +296,50 @@ def refresh(progress=None) -> dict:
     return {"messages": msgs}
 
 
+def refresh_inst(n_days: int = 3) -> dict:
+    """B70：只補最近 n 個平日的三大法人（上市 T86＋櫃買），全市場排行「更新今日資料」用；不抓融資券、集保。
+    已成功抓過的日期／市場跳過（fetch_log），還沒公布的今天回空 → 不記錄"""
+    from cb.fetcher import client as _client
+    c = get_conn()
+    msgs, got = [], 0
+    try:
+        with _client() as cl:
+            have_t = {r[0] for r in c.execute("SELECT DISTINCT date FROM inst_trust")}
+            got_i = _logged(c, "inst")
+            for d in _weekdays_back(n_days):
+                ds = d.isoformat()
+                if (ds, "twse") not in got_i or ds not in have_t:
+                    try:
+                        j = cl.get("https://www.twse.com.tw/rwd/zh/fund/T86",
+                                   params={"date": d.strftime("%Y%m%d"), "selectType": "ALLBUT0999", "response": "json"}).json()
+                        m, mi = parse_t86(j), parse_t86_inst(j)
+                        if mi:
+                            c.executemany("INSERT OR REPLACE INTO inst_trust VALUES (?,?,?)", [(ds, s, v) for s, v in m.items()])
+                            c.executemany("INSERT OR REPLACE INTO inst_daily VALUES (?,?,?,?,?)", [(ds, s, *v) for s, v in mi.items()])
+                            _log(c, "inst", ds, "twse", len(mi))
+                            got += 1
+                    except Exception as e:      # noqa: BLE001
+                        msgs.append(f"T86 {ds}：{type(e).__name__}")
+                    time.sleep(0.6)
+                if (ds, "tpex") not in got_i:
+                    try:
+                        dd, mi = parse_tpex_insti_daily(cl.get("https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade",
+                                                              params={"type": "Daily", "sect": "EW", "date": d.strftime("%Y/%m/%d"),
+                                                                      "response": "json"}).json())
+                        if mi and dd == ds:
+                            c.executemany("INSERT OR REPLACE INTO inst_daily VALUES (?,?,?,?,?)", [(ds, s, *v) for s, v in mi.items()])
+                            c.executemany("INSERT OR REPLACE INTO inst_trust VALUES (?,?,?)", [(ds, s, v[1]) for s, v in mi.items()])
+                            _log(c, "inst", ds, "tpex", len(mi))
+                            got += 1
+                    except Exception as e:      # noqa: BLE001
+                        msgs.append(f"櫃買法人 {ds}：{type(e).__name__}")
+                    time.sleep(0.6)
+                c.commit()
+    finally:
+        c.close()
+    return {"fetched": got, "messages": msgs}
+
+
 # ── 深度分析讀取（PLAN-DEEP2 §4）────────────────────────────────────────────
 
 def inst_series(sid: str, n: int = 20) -> list:

@@ -144,6 +144,15 @@ def trend_box(close, ma20, ma100) -> str | None:
     return "多箱" if above100 else "空箱"
 
 
+def month_slope(closes) -> float | None:
+    """權證小哥月線斜率（%）＝(今天 MA20 − 昨天 MA20) ÷ 昨天 MA20 × 100；>1% 強勢、>3% 妖股；不到 21 根回 None"""
+    c = [float(x) for x in closes if x is not None and x == x]
+    if len(c) < 21:
+        return None
+    today, yday = sum(c[-20:]) / 20, sum(c[-21:-1]) / 20
+    return round((today / yday - 1) * 100, 2) if yday > 0 else None
+
+
 def trend_info(df: pd.DataFrame) -> dict | None:
     """{box, desc, ma20, ma100, bias20, bias100}；K 線不到 100 根回 None"""
     if df is None or len(df) < 100:
@@ -162,6 +171,7 @@ def trend_info(df: pd.DataFrame) -> dict | None:
         "bias20": round((close / ma20 - 1) * 100, 2), "bias100": round((close / ma100 - 1) * 100, 2),
         "ma20_up": (ma20 > ma20_prev) if ma20_prev else None,
         "ma100_up": (ma100 > ma100_prev) if ma100_prev else None,
+        "mslope": month_slope(c.tail(21).tolist()),
     }
 
 
@@ -197,4 +207,80 @@ def box_stat(box: str | None, bucket: str | None = None) -> dict | None:
     ib = BOX_IN_BUCKET.get(bucket or "", {}).get(box)
     if ib:
         out["in_bucket"] = {"x5": ib[0], "x20": ib[1], "up": ib[2], "n": ib[3]}
+    return out
+
+
+# ── 週 K（B70：AI 解盤／技術分頁看週線組合）────────────────────────────────────
+
+def weekly_bars(df: pd.DataFrame, today=None) -> list:
+    """日 K → 週 K（ISO 週）：[{wk, start, end, open, high, low, close, days, partial}]，舊→新
+    partial＝最後一根而且是「今天這週」還沒走完（today 預設台灣今天；週六日看的是上週，算完整）"""
+    if df is None or len(df) == 0 or "date" not in df.columns:
+        return []
+    d = df.dropna(subset=["open", "high", "low", "close"])
+    if not len(d):
+        return []
+    dt = pd.to_datetime(d["date"].astype(str).str.replace("-", ""), format="%Y%m%d", errors="coerce")
+    d = d.assign(_dt=dt.values).dropna(subset=["_dt"])
+    iso = d["_dt"].dt.isocalendar()
+    d = d.assign(_wk=(iso.year.astype(int) * 100 + iso.week.astype(int)).values)
+    out = []
+    for wk, g in d.groupby("_wk", sort=True):
+        out.append({"wk": int(wk), "start": g["_dt"].iloc[0].strftime("%Y%m%d"), "end": g["_dt"].iloc[-1].strftime("%Y%m%d"),
+                    "open": float(g["open"].iloc[0]), "high": float(g["high"].max()), "low": float(g["low"].min()),
+                    "close": float(g["close"].iloc[-1]), "days": int(len(g)), "partial": False})
+    if out:
+        if today is None:
+            from datetime import datetime, timedelta, timezone
+            today = datetime.now(timezone(timedelta(hours=8))).date()
+        ty, tw, twd = today.isocalendar()
+        out[-1]["partial"] = bool(out[-1]["wk"] == ty * 100 + tw and twd <= 5)
+    return out
+
+
+def weekly_chain(df: pd.DataFrame, n: int = 4, today=None) -> list:
+    """最近 n 根週 K [{start, end, type, meaning, chg, partial}]；chg＝跟前一週收盤比"""
+    ws = weekly_bars(df, today)
+    out = []
+    for i in range(max(0, len(ws) - n), len(ws)):
+        w = ws[i]
+        t = kbar_type(w["open"], w["high"], w["low"], w["close"])
+        if t is None:
+            continue
+        prev = ws[i - 1]["close"] if i > 0 else None
+        out.append({"start": w["start"], "end": w["end"], "type": t, "meaning": KBAR_MEANING.get(t, ""),
+                    "chg": round((w["close"] / prev - 1) * 100, 2) if prev else None, "partial": w["partial"],
+                    "days": w["days"]})
+    return out
+
+
+KBAR_W_STATS = {          # research/deep/hongye.py --weekly（2025-04～2026-09，只用走完的週，未來 20 個交易日）
+    "紡錘紅K": {"all": (-0.07, 0.27, 48, 27346), "hi": (0.67, 2.55, 51, 8448), "mid": (-0.25, -0.14, 47, 11270), "lo": (-0.62, -1.65, 47, 7628)},
+    "紡錘黑K": {"all": (0.0, -0.46, 48, 26835), "hi": (0.52, 1.66, 49, 4647), "mid": (0.02, -0.28, 48, 12007), "lo": (-0.26, -1.64, 49, 10181)},
+    "十字線": {"all": (-0.13, 0.27, 51, 3258), "hi": (0.83, 3.35, 53, 704), "mid": (-0.41, 0.3, 51, 1386), "lo": (-0.38, -1.62, 50, 1168)},
+    "大黑K": {"all": (-0.15, 0.16, 47, 3137), "hi": (-0.51, -1.77, 41, 278), "mid": (-0.09, 1.07, 47, 1730), "lo": (-0.15, -0.75, 48, 1129)},
+    "大紅K": {"all": (1.17, 3.18, 50, 3019), "hi": (1.86, 4.98, 53, 1845), "mid": (0.34, 0.39, 46, 890), "lo": (-0.71, 0.22, 45, 284)},
+    "中黑K": {"all": (-0.28, -0.98, 49, 2248), "mid": (-0.05, -0.22, 49, 798), "lo": (-0.46, -1.69, 50, 1328)},
+    "倒鎚紅K(墓碑線-上漲)": {"all": (-0.07, -0.97, 42, 1058), "hi": (0.78, -0.03, 44, 247), "mid": (-0.04, -0.6, 41, 484), "lo": (-0.77, -2.24, 41, 327)},
+    "倒鎚黑K(墓碑線-下跌)": {"all": (0.33, -0.01, 47, 849), "mid": (0.33, -0.2, 44, 414), "lo": (0.12, -0.23, 48, 289)},
+    "中紅K": {"all": (-0.08, -1.0, 42, 705), "hi": (-0.51, -2.02, 42, 197), "mid": (0.06, -0.97, 40, 305), "lo": (0.11, -0.06, 44, 203)},
+    "黑K鎚子(吊人線-下跌)": {"all": (-0.23, -0.55, 53, 535), "mid": (0.37, 0.96, 56, 203), "lo": (-0.2, -1.27, 53, 238)},
+    "小黑K": {"all": (-0.37, -1.86, 45, 410), "lo": (-0.39, -2.44, 44, 246)},
+    "紅K鎚子(吊人線-上漲)": {"all": (0.28, -0.11, 50, 277)},
+    "倒T線": {"all": (-0.11, -2.17, 40, 273)},
+}
+BAND_BASE_W = {"hi": (0.71, 2.35, 50, 16973), "mid": (-0.1, -0.12, 47, 29940), "lo": (-0.4, -1.57, 48, 23277)}
+
+
+def kbar_w_stat(ktype: str | None, pos52=None) -> dict | None:
+    """最後一根「完整」週 K 型態的回測；沒有常數回 None（畫面標未回測）"""
+    e = KBAR_W_STATS.get(ktype or "")
+    if not e:
+        return None
+    band = band_of(pos52)
+    key = band if band and band in e else "all"
+    x5, x20, up, n = e[key]
+    out = {"band": key, "band_label": BAND_LABEL.get(key, "全部位置"), "x5": x5, "x20": x20, "up": up, "n": n}
+    if key in BAND_BASE_W:
+        out["base_x20"] = BAND_BASE_W[key][1]
     return out

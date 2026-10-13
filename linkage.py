@@ -6,7 +6,8 @@ linkage.py — 🔗 股票連動性（PLAN-LINK 第 4 節）
 - 股價比值＝A 收盤 ÷ B 收盤；平均比值＝60 日平均；偏差率＝今天比值 ÷ 平均比值 − 1（講義定義：正＝A 相對貴）
 - 領先：corr(A[t−1], B[t]) − corr(B[t−1], A[t])（120 日），> 0.05 → A 領先 B
 每天「先發動」：同產業今天漲幅 ≥ 5%、收盤創 20 日新高、量 ≥ 前 20 日均量 2 倍，而且同產業前 10 天沒人做到（研究同一個定義）；
-跟進候選＝同產業、股票池、跟它 60 日相關 ≥ 0.5、今天漲幅 < 它一半（研究：research/link/follow_study.py）。
+跟進候選＝股票池、跟它 60 日相關 ≥ 0.5、今天漲幅 < 它一半；B70 起「同產業」∪「全市場連動股（link_peers，點進去看到的那份）」，
+每檔標 same_sector（研究：research/link/follow_study.py，跟進第二名沒有優勢）。
 數值都用前一個交易日（含）為止的收盤算，盤中不更新。
 """
 from __future__ import annotations
@@ -184,8 +185,32 @@ def peers_of(sid: str) -> dict | None:
     return json.loads(r["data"]) if r else None
 
 
+def follow_candidates(lead: str, mem: list, R: pd.DataFrame, pool, peers: list | None, today, limit: int = 8) -> list:
+    """跟進候選：同產業（mem）＋全市場連動股（peers＝link_peers 的清單），60 日相關 ≥ 0.5、今天漲幅 < 先發動一半、在股票池；
+    同產業優先、各自依相關排序。回 [(sid, corr, same_sector)]"""
+    lead_chg = R.at[today, lead]
+    rr = R.iloc[-WIN_CORR:]
+
+    def ok(s):
+        return (s != lead and s in R.columns and bool(pool.get(s, False)) and np.isfinite(R.at[today, s])
+                and R.at[today, s] < lead_chg / 2)
+    cs = rr[mem].corrwith(rr[lead]) if mem else pd.Series(dtype=float)
+    same = sorted([(s, float(cs[s])) for s in mem if ok(s) and np.isfinite(cs.get(s, np.nan)) and cs[s] >= 0.5],
+                  key=lambda x: -x[1])
+    seen = {s for s, _ in same}
+    cross = []
+    for pr in peers or []:
+        s, cr = pr.get("id"), pr.get("corr")
+        if s in seen or cr is None or cr < 0.5 or not ok(s):
+            continue
+        cross.append((s, float(cr)))
+        seen.add(s)
+    cross.sort(key=lambda x: -x[1])
+    return ([(s, c, True) for s, c in same] + [(s, c, False) for s, c in cross])[:limit]
+
+
 def movers(close=None, vol=None, names=None) -> list:
-    """今天各產業的「先發動」＋跟進候選（同產業、股票池、60 日相關 ≥ 0.5、今天漲幅 < 它一半）"""
+    """今天各產業的「先發動」＋跟進候選（同產業＋全市場連動股、60 日相關 ≥ 0.5、今天漲幅 < 它一半）"""
     if close is None:
         close, vol, names = load_panel(130)
     if close is None or len(close) < 62:
@@ -209,16 +234,16 @@ def movers(close=None, vol=None, names=None) -> list:
             continue
         prev10 = mover[mem].iloc[-11:-1].to_numpy().any()
         lead = max(m_today, key=lambda s: R.at[today, s])
-        rr = R[mem].iloc[-WIN_CORR:]
-        cs = rr.corrwith(rr[lead])
-        cand = [s for s in mem if s != lead and bool(pool.get(s, False)) and cs.get(s, 0) >= 0.5
-                and np.isfinite(R.at[today, s]) and R.at[today, s] < R.at[today, lead] / 2]
-        cand.sort(key=lambda s: -cs[s])
+        try:
+            peers = (peers_of(lead) or {}).get("peers") or []
+        except Exception:      # noqa: BLE001  link_peers 還沒算 → 只有同產業
+            peers = []
+        cand = follow_candidates(lead, mem, R, pool, peers, today)
         out.append({"sector": sec, "date": str(today), "first": not prev10,
                     "movers": [{"id": s, "name": names.get(s, ""), "chg": round(float(R.at[today, s]), 4),
                                 "vr": round(float(vr.at[today, s]), 1)} for s in sorted(m_today, key=lambda s: -R.at[today, s])],
                     "leader": lead,
-                    "candidates": [{"id": s, "name": names.get(s, ""), "corr": round(float(cs[s]), 3),
-                                    "chg": round(float(R.at[today, s]), 4)} for s in cand[:8]]})
+                    "candidates": [{"id": s, "name": names.get(s, ""), "corr": round(cr, 3), "same_sector": same,
+                                    "sector": secs.get(s), "chg": round(float(R.at[today, s]), 4)} for s, cr, same in cand]})
     out.sort(key=lambda x: (not x["first"], -x["movers"][0]["chg"]))
     return out

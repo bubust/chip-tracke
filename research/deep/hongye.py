@@ -56,6 +56,64 @@ def show(S, key, cats, min_n=200):
               f"| 2025 x20 {a.x20.mean() * 100:+.2f}% / 2026 x20 {b.x20.mean() * 100:+.2f}%")
 
 
+def weekly_rows_of(item):
+    """B70 R2：只用已走完的週（資料最後一週不用）；那週最後一個交易日 t 取樣，看未來 20 個交易日"""
+    from deep_patterns import weekly_bars
+    sid, g = item
+    if sid.startswith("00"):
+        return []
+    ts = tech_series(g)
+    c = g.close.values.astype(float)
+    v = ts["vol20"].values
+    ws = weekly_bars(g, today=__import__("datetime").date(2100, 1, 1))[:-1]
+    pos = {d: i for i, d in enumerate(g.date.astype(str).str.replace("-", ""))}
+    out = []
+    for w in ws:
+        t = pos.get(w["end"])
+        if t is None or t < 130 or t + 20 >= len(g):
+            continue
+        if c[t] < 10 or not v[t] or np.isnan(v[t]) or v[t] < 300:
+            continue
+        out.append({"date": g.date.iloc[t], "f5": c[t + 5] / c[t] - 1, "f20": c[t + 20] / c[t] - 1,
+                    "kbar": kbar_type(w["open"], w["high"], w["low"], w["close"]), "pos52": ts["pos52"].iloc[t]})
+    return out
+
+
+def weekly_main(path):
+    G = load(path)
+    with Pool(8) as pool:
+        S = pd.DataFrame([r for part in pool.map(weekly_rows_of, list(G.items()), chunksize=16) for r in part])
+    S["x5"] = S.f5 - S.groupby("date").f5.transform("mean")
+    S["x20"] = S.f20 - S.groupby("date").f20.transform("mean")
+    print("週 K samples", len(S))
+
+    def st(d):
+        return (round(d.x5.mean() * 100, 2), round(d.x20.mean() * 100, 2), round((d.f20 > 0).mean() * 100), len(d))
+    band = np.where(S.pos52 >= 0.7, "hi", np.where(S.pos52 <= 0.3, "lo", "mid"))
+    band = pd.Series(band, index=S.index).where(S.pos52.notna(), "na")
+    out = {"band_base": {b: st(S[band == b]) for b in ("hi", "mid", "lo")}, "kbar": {}}
+    for k in S.kbar.value_counts().index:
+        m = S.kbar == k
+        if m.sum() < 150:
+            continue
+        e = {"all": st(S[m])}
+        for b in ("hi", "mid", "lo"):
+            if (m & (band == b)).sum() >= 150:
+                e[b] = st(S[m & (band == b)])
+        out["kbar"][k] = e
+        a, b2 = S[m & (S.date < "2026")], S[m & (S.date >= "2026")]
+        print(f"  週 {k:16s} x20 {e['all'][1]:+.2f}% n={e['all'][3]:,}  2025 {a.x20.mean() * 100:+.2f}% / 2026 {b2.x20.mean() * 100:+.2f}%",
+              {b: e[b][1] for b in ("hi", "mid", "lo") if b in e})
+    print("  位置基準", out["band_base"])
+    import json
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "hongye_weekly_result.json"), "w", encoding="utf-8") as f:
+        json.dump(out, f, ensure_ascii=False, indent=1)
+
+
+if __name__ == "__main__" and len(sys.argv) > 2 and sys.argv[2] == "--weekly":
+    weekly_main(sys.argv[1])
+    sys.exit(0)
+
 if __name__ == "__main__":
     G = load(sys.argv[1])
     with Pool(8) as pool:

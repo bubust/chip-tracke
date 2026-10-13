@@ -445,6 +445,36 @@ details.guide[open]>summary::before{content:'▾ ';}
   .lk-bar { display:block; height:100%; background:var(--accent); border-radius:3px; }
   .lk-cmp { padding:1px 7px !important; font-size:.78rem !important; }
   .lk-empty { font-size:.8rem; color:var(--muted); padding:4px 0; }
+  .mkt-ctrl { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; font-size:.84rem; }
+  .mkt-ctrl select { padding:4px 8px; }
+  .mkt-seg .btn { border-radius:0; } .mkt-seg .btn:first-child { border-radius:8px 0 0 8px; } .mkt-seg .btn:last-child { border-radius:0 8px 8px 0; }
+  .mkt-stk { font-size:.68rem; display:block; line-height:1.2; }
+  .lk-top { padding-bottom:12px; }
+  .lk-title { font-size:1.15rem; font-weight:800; }
+  .lk-intro { font-size:.84rem; color:var(--muted); margin:4px 0 10px; line-height:1.6; }
+  .lk-seg { display:flex; gap:6px; flex-wrap:wrap; }
+  .lk-segbtn { padding:7px 14px; border-radius:999px; border:1px solid var(--border); background:#1a1f2b; color:var(--fg); font-size:.86rem; cursor:pointer; }
+  .lk-segbtn.active { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:700; }
+  .lk-howto { font-size:.8rem; color:var(--muted); line-height:1.7; background:#151a24; border:1px solid var(--border); border-radius:8px; padding:8px 12px; margin-bottom:10px; }
+  .lk-tag { display:inline-block; font-size:.7rem; padding:0 7px; border-radius:999px; white-space:nowrap; border:1px solid; }
+  .lk-tag.same { color:#60a5fa; border-color:rgba(96,165,250,.45); background:rgba(96,165,250,.1); }
+  .lk-tag.cross { color:#f59e0b; border-color:rgba(245,158,11,.45); background:rgba(245,158,11,.1); }
+  .lk-list { display:flex; flex-direction:column; gap:10px; }
+  .lk-row { display:grid; grid-template-columns:minmax(220px,300px) 28px 1fr; gap:10px; align-items:stretch; background:var(--card2); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; }
+  .lk-row.first { border-left:4px solid var(--up); }
+  .lk-left { display:flex; flex-direction:column; gap:3px; }
+  .lk-left .lk-sec { font-size:.8rem; color:var(--muted); font-weight:700; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .lk-leadname { font-size:1rem; }
+  .lk-leadnum { display:flex; align-items:baseline; gap:10px; }
+  .lk-arrow { display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:1.3rem; }
+  .lk-cands { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:6px; }
+  .lk-cand { background:#1a1f2b; border:1px solid var(--border); border-radius:8px; padding:6px 8px; font-size:.82rem; display:flex; flex-direction:column; gap:3px; }
+  .lk-cand .r2 { display:flex; align-items:center; gap:6px; font-size:.76rem; color:var(--muted); }
+  .lk-cand .r2 .chg { margin-left:auto; font-weight:700; }
+  .lk-none { font-size:.8rem; color:var(--muted); padding:6px 0; }
+  .lk-qbar { display:flex; gap:8px; }
+  .lk-qbar input { flex:1; max-width:320px; font-size:1rem; padding:8px 12px; }
+  @media (max-width:760px) { .lk-row { grid-template-columns:1fr; } .lk-arrow { transform:rotate(90deg); height:18px; } }
   .lk-research > summary { cursor:pointer; list-style:none; font-size:.8rem; display:inline-flex; gap:6px; align-items:center; }
   .lk-research > summary::-webkit-details-marker { display:none; }
   .lk-research[open] > summary { margin-bottom:4px; }
@@ -635,6 +665,7 @@ details.guide[open]>summary::before{content:'▾ ';}
             <th>7日累計 (張)</th>
             <th>連續天數</th>
             <th title="布林軌道分級：上軌=+10 中軌=0 下軌=-10">BB位置</th>
+            <th title="權證小哥月線斜率＝（今天 20 日線 − 昨天 20 日線）÷ 昨天 20 日線；>1% 強勢股、>3% 妖股。回測：斜率 >1% 之後 20 天平均比大盤多 2.19%；「斜率 >1% 又靠近月線」進場法沒有優勢">月斜率</th>
             <th title="集保所千張大戶持股%，點擊查看歷史趨勢" style="cursor:help">千張大戶</th>
             <th title="系統依MA10/MA60自動判斷，不可手動修改">🔦 狀態</th>
             <th>最新日期</th>
@@ -705,30 +736,33 @@ details.guide[open]>summary::before{content:'▾ ';}
 <!-- ═══════════════════════ 全市場排行 ═══════════════════════ -->
 <div id="tab-market" class="tab">
   <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
       <div>
-        <div class="section-title" style="margin:0">上市股票今日大戶排行</div>
-        <div id="scan-meta" class="muted" style="font-size:.8rem;margin-top:2px">尚未掃描 — 從 TWSE 直接取得全市場資料，無需設定觀察清單</div>
+        <div class="section-title" style="margin:0">🏦 法人買賣超排行（上市＋上櫃）</div>
+        <div class="muted" style="font-size:.8rem;margin-top:2px;line-height:1.6">外資、投信、自營商三大法人當天買賣超；<b>三大合計</b>＝三者相加；<b>連買／連賣</b>＝外資、投信各自連續幾天同方向；<b>占量</b>＝三大合計 ÷ 當天成交量（大型股看張數、小型股看占量）。盤後約 16:00 公布。</div>
+        <div id="scan-meta" class="muted" style="font-size:.78rem;margin-top:2px">還沒載入</div>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="btn green" id="btn-scan" onclick="scanMarket()">🔍 掃描今日全市場</button>
-        <button class="btn ghost" onclick="pushMarketRank()">📨 推播排行</button>
+        <button class="btn green" id="btn-scan" onclick="scanMarket(1)">🔄 更新今日資料</button>
+        <button class="btn ghost" onclick="pushMarket()">📨 推播排行</button>
       </div>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:10px">
-      <button id="pill-buy"  class="btn active" onclick="setView('buyers')">大戶買超 Top 50</button>
-      <button id="pill-sell" class="btn ghost"  onclick="setView('sellers')">大戶賣超 Top 50</button>
-      <span id="mkt-count" class="muted" style="font-size:.82rem;margin-left:auto;align-self:center"></span>
+    <div class="mkt-ctrl">
+      <span class="mkt-seg"><button id="pill-buy" class="btn active" onclick="setView('buyers')">📈 買超</button><button id="pill-sell" class="btn ghost" onclick="setView('sellers')">📉 賣超</button></span>
+      <label>排序 <select id="mkt-sort" onchange="scanMarket(0)"><option value="total">三大合計</option><option value="foreign">外資</option><option value="trust">投信</option><option value="ratio">占成交量%</option><option value="sum5">5 日合計</option></select></label>
+      <label>市場 <select id="mkt-market" onchange="scanMarket(0)"><option value="all">全部</option><option value="twse">上市</option><option value="tpex">上櫃</option></select></label>
+      <label title="ETF（00 開頭）常因申購贖回排在前面，預設不顯示"><input type="checkbox" id="mkt-etf" onchange="scanMarket(0)"> 含 ETF</label>
+      <span id="mkt-count" class="muted" style="font-size:.82rem;margin-left:auto"></span>
     </div>
   </div>
   <div class="card" style="padding:0;overflow:hidden">
     <div class="tbl-wrap">
       <table>
         <thead>
-          <tr><th>#</th><th>代號</th><th>股名</th><th>股價</th><th>訊號</th><th>法人合計 (張)</th><th>外資 (張)</th><th>投信 (張)</th><th>自營商 (張)</th><th>連買連賣</th><th>操作</th></tr>
+          <tr><th>#</th><th>股票</th><th>股價</th><th title="外資＋投信＋自營商（張）">三大合計</th><th title="外資（張）；小字＝連續買／賣天數">外資</th><th title="投信（張）；小字＝連續買／賣天數">投信</th><th>自營商</th><th title="最近 5 個交易日三大合計（張）">5 日合計</th><th title="三大合計 ÷ 當天成交量">占量</th><th>訊號</th><th>操作</th></tr>
         </thead>
         <tbody id="mkt-tbody">
-          <tr><td colspan="10" class="empty">點擊「掃描今日全市場」取得資料</td></tr>
+          <tr><td colspan="11" class="empty">載入中…</td></tr>
         </tbody>
       </table>
     </div>
@@ -782,6 +816,7 @@ details.guide[open]>summary::before{content:'▾ ';}
       <button class="btn ghost screen-strat-btn" data-s="S_TRUST5" onclick="viewStrategy('S_TRUST5')" title="投信連續買超（中小型電子勝率高），強勢股回測 5 日線打橫 2~3 天不破介入；跌破 10／20 日線出場">🏦 投信連買＋5日線打橫 <span class="strat-cnt" id="cnt-S_TRUST5"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_SHORT_UP" onclick="viewStrategy('S_SHORT_UP')" title="強勢股上漲中融券持續大增：軋空／套利熱絡，還有高點，拉回是買點">🩳 融券大增強勢股 <span class="strat-cnt" id="cnt-S_SHORT_UP"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_BIGHOLD" onclick="viewStrategy('S_BIGHOLD')" title="千張大戶持股比率上升、散戶持股比率下降（創新低更強）＝籌碼集中">🐋 大戶增散戶減 <span class="strat-cnt" id="cnt-S_BIGHOLD"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_MSLOPE" onclick="viewStrategy('S_MSLOPE')" title="權證小哥：月線（20 日線）斜率 >1% 是強勢股、>3% 妖股，股價靠近月線（乖離 0～5%）時進場。⚠ 回測：這個進場組合沒有優勢（20 天平均 +0.59%、信賴區間含 0）；斜率 >1% 本身之後 20 天平均 +2.19%">📐 月線斜率 <span class="strat-cnt" id="cnt-S_MSLOPE"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_KDJ_LOW" onclick="viewStrategy('S_KDJ_LOW')" title="大跌修正後 K、D < 20 且 J 曾 < 0，J 往上穿越 K、D；開口小就多看一天；停損前波最低點">🪝 KDJ低檔金叉 <span class="strat-cnt" id="cnt-S_KDJ_LOW"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_BREAKBOTTOM" onclick="viewStrategy('S_BREAKBOTTOM')" title="跌深後長黑收最低，隔天守住長黑低點沒再破底；停損長黑最低點">🔻 破底翻 <span class="strat-cnt" id="cnt-S_BREAKBOTTOM"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_NBREAK" onclick="viewStrategy('S_NBREAK')" title="大漲→拉回整理→長紅帶量實體突破前波高點（頸線）；或回測頸線守住；跌回頸線下停損">📐 關鍵價突破N字 <span class="strat-cnt" id="cnt-S_NBREAK"></span></button>
@@ -986,27 +1021,34 @@ details.guide[open]>summary::before{content:'▾ ';}
 
 <!-- ═══════════════════════ 🔗 連動／處置（PLAN-LINK）═══════════════════════ -->
 <div id="tab-link" class="tab">
-  <div class="card">
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <strong style="font-size:1.05rem">🔗 股票連動・處置股雙刀</strong>
-      <span class="muted" style="font-size:.8rem">數值用前一個交易日收盤算（盤中不更新）；研究：5 年官方資料、樣本外驗證，結論標在每一區</span>
-      <span style="flex:1"></span>
-      <input id="link-q" type="text" placeholder="輸入代號看連動股，例 2408" style="width:190px" onkeydown="if(event.key==='Enter')linkQuery()">
-      <button class="btn sm" onclick="linkQuery()">查詢</button>
+  <div class="card lk-top">
+    <div class="lk-title">🔗 股票連動・處置股</div>
+    <div class="lk-intro">用「平常會一起漲跌的股票」找機會：某檔先大漲，看哪些常跟它一起動、今天還沒跟上；處置股則找可以一多一空的配對。數字用前一個交易日收盤算，盤中不更新。</div>
+    <div class="lk-seg" role="tablist">
+      <button class="lk-segbtn active" data-v="movers" onclick="linkView('movers')">🚀 今天誰先發動</button>
+      <button class="lk-segbtn" data-v="disp" onclick="linkView('disp')">⛓ 處置股雙刀</button>
+      <button class="lk-segbtn" data-v="query" onclick="linkView('query')">🔍 查某檔的連動股</button>
     </div>
-    <div id="link-query-out" style="margin-top:10px"></div>
   </div>
-  <div class="card">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><strong>🚀 今天誰先發動（各產業）＋跟進候選</strong>
-      <span class="muted" style="font-size:.78rem">先發動＝漲 ≥ 5%、創 20 日新高、量 ≥ 2 倍；候選＝同產業、60 日相關 ≥ 0.5、今天還沒跟上（漲幅 < 一半）</span></div>
+  <div id="lk-view-movers" class="card lk-view">
+    <div class="lk-howto"><b>怎麼看</b>：左邊是今天<b>先大漲</b>的股票（漲 ≥ 5%、創 20 日新高、量 ≥ 2 倍）；右邊是平常<b>跟它一起動、今天還沒跟上</b>的股票（60 日相關 ≥ 0.5、今天漲不到它一半）。
+      <span class="lk-tag same">同產業</span>＝同一個產業；<span class="lk-tag cross">常一起動</span>＝不同產業但走勢很像（例如同集團、上下游）。</div>
     <div id="link-research-follow" style="font-size:.82rem;margin-bottom:8px"></div>
     <div id="link-movers"><div class="muted">載入中…</div></div>
   </div>
-  <div class="card">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><strong>⛓ 處置股（雙刀）</strong>
-      <span id="link-disp-date" class="muted" style="font-size:.78rem"></span></div>
+  <div id="lk-view-disp" class="card lk-view" style="display:none">
+    <div class="lk-howto"><b>怎麼看</b>：處置股＝漲太兇被交易所限制（分盤撮合、預收款券）。講義「雙刀」＝處置前放空處置股、買進高相關又比較便宜的配對股；出關後反過來。
+      <span id="link-disp-date" class="muted"></span></div>
     <div id="link-research-disp" style="font-size:.82rem;margin-bottom:8px"></div>
     <div id="link-disposal"><div class="muted">載入中…</div></div>
+  </div>
+  <div id="lk-view-query" class="card lk-view" style="display:none">
+    <div class="lk-qbar">
+      <input id="link-q" type="text" inputmode="numeric" placeholder="輸入股票代號，例 6505" onkeydown="if(event.key==='Enter')linkQuery()">
+      <button class="btn" onclick="linkQuery()">查連動股</button>
+    </div>
+    <div class="lk-howto" style="margin-top:8px">列出全市場跟它 60 天走勢最像的前 10 檔＋同產業前 5 檔。<b>相關</b>越接近 1 越同步；<b>價差偏離</b>正＝這檔相對對方貴；<b>誰先動</b>＝誰的漲跌常常早一天出現。</div>
+    <div id="link-query-out" style="margin-top:10px"></div>
   </div>
 </div>
 
@@ -1277,6 +1319,7 @@ function _doSwitchSettings() {
   #deep-panel .dp-ai h2:first-child { margin-top:4px }
   #deep-panel .dp-ai h3 { font-size:.92rem;color:#58a6ff;margin:12px 0 4px }
   #deep-panel .dp-ai p { margin:6px 0 }
+  #deep-panel .dp-ai-tldr { font-size:.98rem; font-weight:700; color:#fff; background:#1f2a3a; border-left:4px solid #d29922; border-radius:6px; padding:8px 12px; margin:2px 0 10px }
   #deep-panel .dp-ai ul, #deep-panel .dp-ai ol { margin:4px 0 8px 1.3em;padding:0 }
   #deep-panel .dp-ai li { margin:3px 0 }
   #deep-panel .dp-ai b { color:#fff }
@@ -1389,6 +1432,9 @@ const _dpDate = s => { s = String(s || ''); return /^\d{8}$/.test(s) ? `${s.slic
 const _dpStreak = n => !n ? '—' : (n > 0 ? `連買 ${n} 天` : `連賣 ${-n} 天`);
 // K 線型態上色：紅K 紅、黑K 綠、十字／T 字／一字 黃
 const _dpKCls = t => /紅K/.test(t || '') ? 'k-up' : /黑K/.test(t || '') ? 'k-dn' : 'k-x';
+// 權證小哥月線斜率：≥3% 妖股、≥1% 強勢、<0 下彎（回測：斜率 >1% 之後 20 天平均比同期 +2.19%）
+const _dpMslope = v => v == null ? '—' : `<b class="${v >= 1 ? 'dp-up' : v < 0 ? 'dp-dn' : ''}">${_dpS(v, 2)}%</b>` +
+  (v >= 3 ? ' <span class="dp-tag" style="color:#c084fc;border-color:#7e22ce">妖股</span>' : v >= 1 ? ' <span class="dp-tag" style="color:#f85149;border-color:#f8514966">強勢</span>' : '');
 const _dpBoxCls = b => b === '多頭' || b === '多箱' ? 'dp-up' : b === '空頭' || b === '空箱' ? 'dp-dn' : '';
 
 // 小長條圖（B67）：一個數列、一個 Y 軸。items=[{x, v, tip}]；signed＝正紅負綠（台股慣例），不然一律藍
@@ -1464,7 +1510,11 @@ function _dpMd(md) {
     } else if ((m = line.match(/^\d+(?:\.\s+|、|\)\s*)(.*)$/))) {
       if (list !== 'ol') { close(); out.push('<ol>'); list = 'ol'; }
       out.push(`<li>${inline(m[1])}</li>`);
-    } else { close(); out.push(`<p>${inline(line)}</p>`); }
+    } else {
+      close();
+      const first = !out.some(x => x.startsWith('<h'));          // 第一個章節前的段落＝一句話結論
+      out.push(first ? `<div class="dp-ai-tldr">💡 ${inline(line)}</div>` : `<p>${inline(line)}</p>`);
+    }
   }
   close();
   return out.join('');
@@ -1675,7 +1725,11 @@ function _dpSum(d) {
       (tr.stat ? `；20 天平均比同期 <b class="${_dpC(tr.stat.x20)}">${_dpS(tr.stat.x20, 2)}%</b>` : '') +
       (ib ? `（技術${_esc(bk.label)}又是${_esc(tr.box)}：${_dpS(ib.x20, 2)}%）` : ''));
   }
-  if (kb.length) hy.push(`K 線「${kb.map(k => `<span class="${_dpKCls(k.type)}">${_esc(k.type)}</span>`).join(' → ')}」` +
+  const wkS = pat.weekly || [];
+  if (tr && tr.mslope != null) hy.push(`月線斜率 ${_dpMslope(tr.mslope)}`);
+  if (wkS.length) hy.push(`週 K「${wkS.map(w => `<span class="${_dpKCls(w.type)}">${_esc(w.type)}</span>`).join(' → ')}」` +
+      (pat.kbar_w_stat ? `；上一根完整週之後 20 天 ${_dpS(pat.kbar_w_stat.x20, 2)}%` : ''));
+  if (kb.length) hy.push(`日 K「${kb.map(k => `<span class="${_dpKCls(k.type)}">${_esc(k.type)}</span>`).join(' → ')}」` +
       (ks ? `；今天這種 K 線之後 20 天 ${_dpS(ks.x20, 2)}%${ks.base_x20 != null ? `（${_esc(ks.band_label.replace(/（.*/, ''))}平均 ${_dpS(ks.base_x20, 2)}%）` : ''}` : '') +
       (ks && ks.claim ? `<br><span style="color:#d29922">⚠️ 一般當「${_esc(ks.claim)}」訊號，回測不成立（看 📊 技術）</span>` : ''));
   const st = d.strategies_today || {};
@@ -1712,12 +1766,24 @@ function _dpTech(d) {
       ${_dpRow('格局', `<b class="${_dpBoxCls(tr.box)}">${_esc(tr.box)}</b> <span class="dp-mu" style="font-size:.72rem;font-weight:400">${_esc(tr.desc)}</span>`)}
       ${_dpRow('MA20（月線）', `${_esc(tr.ma20)} ${arrow(tr.ma20_up)}　<span class="${_dpC(tr.bias20)}" style="font-size:.74rem">乖離 ${_dpS(tr.bias20, 2)}%</span>`)}
       ${_dpRow('MA100（百日線）', `${_esc(tr.ma100)} ${arrow(tr.ma100_up)}　<span class="${_dpC(tr.bias100)}" style="font-size:.74rem">乖離 ${_dpS(tr.bias100, 2)}%</span>`)}
+      ${tr.mslope != null ? _dpRow('月線斜率', `${_dpMslope(tr.mslope)}`) : ''}
       ${tr.stat ? `<div class="dp-note" style="margin-top:4px">回測（${_esc(pat.period)}）20 天平均比同期：` +
         ['多頭', '多箱', '空箱', '空頭'].filter(k => ba[k] != null).map(k => k === tr.box ? `<b class="${_dpBoxCls(k)}">${k} ${_dpS(ba[k], 2)}%</b>` : `${k} ${_dpS(ba[k], 2)}%`).join('、') +
         (tr.stat.in_bucket ? `；技術${_esc(bk.label)}又是${_esc(tr.box)} <b>${_dpS(tr.stat.in_bucket.x20, 2)}%</b>` : '') +
         `。強勢股站上月線（多頭）比跌破月線（多箱）多一倍，格局可以補技術分類。</div>` : ''}
+      <div class="dp-note" style="margin-top:4px">把月線／百日線拿來當支撐、停損、週線前高當壓力目標，回測（2.1 萬筆）都沒有比現行「前高前低」好，所以關鍵價位不改。</div>
     </div>` : `<div class="dp-sec">趨勢格局（宏爺 MA20／MA100）</div><div class="dp-note">K 線不到 100 根，沒有百日線</div>`;
-  const kHtml = kb.length ? `<div class="dp-sec">K 線型態（近 ${kb.length} 根，宏爺 16 種定義）</div>
+  const wk = pat.weekly || [], kws = pat.kbar_w_stat;
+  const wkHtml = wk.length ? `<div class="dp-sec">週 K 型態（近 ${wk.length} 週）</div>
+    <div class="dp-box">
+      <div style="font-size:.86rem;font-weight:600;margin-bottom:4px">「${wk.map(w => `<span class="${_dpKCls(w.type)}">${_esc(w.type)}</span>${w.partial ? '<span class="dp-mu" style="font-size:.7rem">（本週）</span>' : ''}`).join(' → ')}」</div>
+      ${wk.slice().reverse().map(w => _dpRow(`${_esc(_dpDate(w.start).slice(5))}～${_esc(_dpDate(w.end).slice(5))} <span class="${_dpC(w.chg)}" style="font-size:.72rem">${_dpS(w.chg, 2)}%</span>`,
+        `<span class="${_dpKCls(w.type)}">${_esc(w.type)}</span>${w.partial ? ' <span class="dp-tag">本週到目前</span>' : ''}<div style="font-size:.7rem;color:#8b949e;font-weight:400">${_esc(w.meaning)}</div>`)).join('')}
+      ${kws ? `<div class="dp-note" style="margin-top:6px">回測：最後一根完整週（${_esc(kws.type)}，${_esc(kws.band_label)}）之後 20 個交易日平均比同期 <b class="${_dpC(kws.x20)}">${_dpS(kws.x20, 2)}%</b>（${_dpN(kws.n)} 筆）` +
+        (kws.base_x20 != null ? `；同位置所有股票 ${_dpS(kws.base_x20, 2)}%` : '') + '</div>' : '<div class="dp-note" style="margin-top:6px">這種週 K 樣本太少，沒有回測數字</div>'}
+      <div class="dp-note" style="margin-top:4px">週線跟日線不一樣：週大紅K 之後平均 +3.2%；高檔週墓碑線、週倒T 之後明顯比同位置差，是比較像樣的警訊。本週還沒走完的那根不套回測。</div>
+    </div>` : '';
+  const kHtml = kb.length ? `<div class="dp-sec">日 K 型態（近 ${kb.length} 根，宏爺 16 種定義）</div>
     <div class="dp-box">
       <div style="font-size:.86rem;font-weight:600;margin-bottom:4px">「${kb.map(k => `<span class="${_dpKCls(k.type)}">${_esc(k.type)}</span>`).join(' → ')}」</div>
       ${kb.slice().reverse().map(k => _dpRow(`${_esc(_dpDate(k.date).slice(5))} <span class="${_dpC(k.chg)}" style="font-size:.72rem">${_dpS(k.chg, 2)}%</span>`,
@@ -1731,7 +1797,7 @@ function _dpTech(d) {
     <div class="dp-box" style="font-size:.82rem">技術分類：<b>${_esc(bk.label || '—')}</b>
       ${t.tech_raw != null ? `<span class="dp-mu">（原始 ${_esc(t.tech_raw)} / 40；≥32 強勢、&lt;8 弱勢）</span>` : '<span class="dp-mu">（K 線不足，不分類）</span>'}
       <div class="dp-note" style="margin-top:4px">只用回測有效的「趨勢＋動能」：均線排列、60 日線方向、DIF、52 週位置、半年漲跌。</div></div>
-    ${trendHtml}${kHtml}
+    ${trendHtml}${kHtml}${wkHtml}
     <div class="dp-sec">均線</div>
     <div class="dp-box">
       ${maRow('10 日線', ma.ma10, ma.above_ma10)}${maRow('20 日線', ma.ma20, ma.above_ma20)}${maRow('60 日線', ma.ma60, ma.above_ma60)}
@@ -1972,6 +2038,9 @@ function _dpAiHtml() {
     const src = (rp.sources || []).filter(x => /^https?:\/\//.test(x.uri || ''));
     body = (stale ? `<div class="dp-note" style="color:#d29922;max-width:900px;margin:0 auto 6px">這份是 ${_esc(_dpDate(rp.kdate))} 的報告，K 線已經更新到 ${_esc(_dpDate(kd))}，可以按「重新產生」。</div>` : '') +
       `<div class="dp-ai">${_dpMd(rp.text)}</div>` +
+      (((rp.news || {}).items || []).length ? `<div class="dp-ai-src" style="font-size:.8rem;color:#c9d1d9"><div style="color:#d29922;font-weight:700;margin-bottom:4px">📰 近 30 天消息（Google 搜尋整理）</div>` +
+        rp.news.items.map(x => `<div style="padding:3px 0;border-bottom:1px dashed #21262d"><span class="dp-mu">${_esc(x.date || '')}</span> <b>${_esc(x.title || '')}</b>：${_esc(x.summary || '')} <span class="dp-mu">（${_esc(x.source || '')}）</span></div>`).join('') + '</div>'
+        : (rp.news ? '<div class="dp-ai-src">📰 這次沒有查到近 30 天的網路消息</div>' : '')) +
       (src.length ? `<div class="dp-ai-src">🔎 Google 搜尋來源：${src.map(x => `<a href="${_esc(x.uri)}" target="_blank" rel="noopener">${_esc(x.title || '來源')}</a>`).join('')}</div>` : '') +
       `<div class="dp-ai-src">AI 依系統資料（官方行情、法人、營收、季報、回測）撰寫，產業消息與目標價來自 Google 搜尋，可能有錯；數字以其他分頁為準，價位只用系統關鍵價位。</div>`;
   } else if (!a.job && a.loaded) {
@@ -2088,6 +2157,7 @@ function switchTab(name) {
   if (name === 'sector') { const sf = document.getElementById('sector-iframe'); if (sf && !sf.dataset.loaded) { sf.dataset.loaded = '1'; sf.src = '/sector/'; } }
   if (name === 'relationship') { const rf2 = document.getElementById('relationship-iframe'); if (rf2 && !rf2.dataset.loaded) { rf2.dataset.loaded = '1'; rf2.src = '/relationship/'; } }
   if (name === 'link') { linkOnShow(); }
+  if (name === 'market') { _mktOnShow(); }
   if (name === 'screen') { loadCrashCard(); loadCourseCard(); }
   if (name === 'treasury') { tbOnShow(); }
   if (name === 'mna') { mnaOnShow(); }
@@ -2345,6 +2415,7 @@ function renderWatchlist() {
         <td class="muted">—</td>
         <td class="muted">—</td>
         ${ndBbCell}
+        ${_msCell(s.stock_id, s.mslope)}
         ${ndKpctCell}
         ${ndStageCell}
         <td class="muted">—</td>
@@ -2415,6 +2486,7 @@ function renderWatchlist() {
       <td class="${c7 >= 0 ? 'pos' : 'neg'}">${fmtNum(c7)}</td>
       ${consecCell}
       ${bbCell}
+      ${_msCell(s.stock_id, s.mslope)}
       ${kpctCell}
       ${stageCell}
       <td class="muted">${s.date || '—'}</td>
@@ -2739,6 +2811,18 @@ function _bbCell(sid, bb) {
     <span style="color:${numColor};font-weight:700;font-size:.85rem">${bb > 0 ? '+' : ''}${bb}</span><br><span style="font-size:.66rem;color:var(--muted)">${zone}</span>
   </td>`;
 }
+// 月斜率欄（B70，權證小哥）：≥3% 妖股、≥1% 強勢、<0 下彎
+function _msCell(sid, v) {
+  if (v === null || v === undefined) return `<td id="ms-${sid}" class="muted">—</td>`;
+  const tag = v >= 3 ? '妖股' : v >= 1 ? '強勢' : v < 0 ? '下彎' : '';
+  const col = v >= 3 ? '#c084fc' : v >= 1 ? '#f85149' : v < 0 ? '#3fb950' : '#8b949e';
+  return `<td id="ms-${sid}" style="white-space:nowrap;line-height:1.25" title="月線斜率 ${v}%（>1% 強勢、>3% 妖股）">
+    <span style="color:${col};font-weight:${v >= 1 ? 800 : 600};font-size:.85rem">${v > 0 ? '+' : ''}${v}%</span>${tag ? `<br><span style="font-size:.66rem;color:${col}">${tag}</span>` : ''}</td>`;
+}
+function _renderMsCell(sid, v) {
+  const td = document.getElementById(`ms-${sid}`);
+  if (td && v != null) td.outerHTML = _msCell(sid, v);
+}
 function _renderBbCell(sid, bb) {
   const td = document.getElementById(`bb-${sid}`);
   if (td && bb != null) td.outerHTML = _bbCell(sid, bb);
@@ -2788,6 +2872,7 @@ async function refreshPricesOnly(force = false) {
     for (const [sid, info] of Object.entries(data)) {
       _renderPriceCell(sid, info.close, info.change_pct);
       if (info.bb_score != null) _renderBbCell(sid, info.bb_score);
+      if (info.mslope != null) _renderMsCell(sid, info.mslope);
       const item = _wlData.find(x => x.stock_id === sid);
       if (item) {
         item.close = info.close; item.change_pct = info.change_pct;
@@ -4059,79 +4144,77 @@ async function refreshWatchlistTdcc() {
 let _mkt = lsLoadMkt();   // 頁面重整後從 localStorage 恢復
 let _mktView = 'buyers';
 
-async function scanMarket() {
+let _mktLoadedAt = 0;
+function _mktOnShow() {           // B70：切到這頁自動載入（用現有資料，不重抓）；10 分鐘內不重複
+  if (Date.now() - _mktLoadedAt < 10 * 60 * 1000) return;
+  _mktLoadedAt = Date.now();
+  scanMarket(0);
+}
+async function scanMarket(refresh = 0) {
   const btn = document.getElementById('btn-scan');
   btn.disabled = true;
-  btn.textContent = '⏳ 掃描中...';
+  if (refresh) btn.textContent = '⏳ 更新中（最多約 1 分鐘）...';
   document.getElementById('mkt-tbody').innerHTML =
-    `<tr><td colspan="10" class="empty"><span class="spinner" style="display:inline-block;vertical-align:middle;margin-right:8px"></span>正在抓取 TWSE 資料...</td></tr>`;
+    `<tr><td colspan="11" class="empty"><span class="spinner" style="display:inline-block;vertical-align:middle;margin-right:8px"></span>${refresh ? '抓證交所／櫃買三大法人…' : '載入中…'}</td></tr>`;
+  const q = new URLSearchParams({ top: 50, refresh: refresh ? 1 : 0, sort: document.getElementById('mkt-sort').value,
+    market: document.getElementById('mkt-market').value, etf: document.getElementById('mkt-etf').checked ? 1 : 0 });
   try {
-    const r = await api('GET', '/api/market/scan?top=50');
+    const r = await api('GET', `/api/market/scan?${q}`);
     _mkt.buyers  = r.top_buyers  || [];
     _mkt.sellers = r.top_sellers || [];
     lsSaveMkt(_mkt);
-    const now = new Date().toLocaleTimeString('zh-TW');
-    document.getElementById('scan-meta').textContent =
-      `${r.date} · 共 ${r.total} 支上市股票 · 掃描完成 ${now}`;
+    const d = String(r.date || '');
+    const now = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('scan-meta').innerHTML =
+      `資料日期 <b>${d.slice(0, 4)}/${d.slice(4, 6)}/${d.slice(6, 8)}</b> · 上市 ${(r.markets || {}).twse || 0}／上櫃 ${(r.markets || {}).tpex || 0} 檔 · ${now} 載入` +
+      (r.price_ok ? '' : ' · <span style="color:#d29922">當天股價還沒進資料庫（股價、占量先空白）</span>') +
+      ((r.notes || []).length ? ` · <span class="muted">${_esc(r.notes.join('；'))}</span>` : '');
     renderMarket();
   } catch (e) {
     toast(e.message, true);
     document.getElementById('mkt-tbody').innerHTML =
-      `<tr><td colspan="10" class="empty" style="color:var(--red)">掃描失敗：${e.message}</td></tr>`;
+      `<tr><td colspan="11" class="empty" style="color:var(--red)">載入失敗：${_esc(e.message)}</td></tr>`;
   } finally {
     btn.disabled = false;
-    btn.textContent = '🔍 掃描今日全市場';
+    btn.textContent = '🔄 更新今日資料';
   }
 }
 
 function setView(v) {
   _mktView = v;
-  document.getElementById('pill-buy').classList.toggle('active', v === 'buyers');
-  document.getElementById('pill-sell').classList.toggle('active', v === 'sellers');
+  document.getElementById('pill-buy').className = 'btn ' + (v === 'buyers' ? 'active' : 'ghost');
+  document.getElementById('pill-sell').className = 'btn ' + (v === 'sellers' ? 'active' : 'ghost');
   renderMarket();
 }
 
 function renderMarket() {
   const data  = _mkt[_mktView] || [];
   const tbody = document.getElementById('mkt-tbody');
-  document.getElementById('mkt-count').textContent = data.length ? `顯示 ${data.length} 支` : '';
-
+  document.getElementById('mkt-count').textContent = data.length ? `${_mktView === 'buyers' ? '買超' : '賣超'}前 ${data.length} 檔` : '';
   if (!data.length) {
-    tbody.innerHTML = `<tr><td colspan="10" class="empty">點擊「掃描今日全市場」取得資料</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" class="empty">沒有資料（按「更新今日資料」）</td></tr>`;
     return;
   }
   _mktChartList = data.map(r => r.stock_id);
   data.forEach(r => { if (r.name) _chartNames[r.stock_id] = r.name; });
+  const num = v => `<span class="${(v || 0) >= 0 ? 'pos' : 'neg'}">${fmtNum(v || 0)}</span>`;
+  const stk = n => !n ? '<span class="mkt-stk muted">—</span>' : `<span class="mkt-stk ${n > 0 ? 'pos' : 'neg'}">${n > 0 ? '連買' : '連賣'} ${Math.abs(n)} 天</span>`;
   tbody.innerHTML = data.map((r, i) => {
-    const w  = r.whale_flow_lots  || 0;
-    const dl = r.dealer_lots      || 0;
-    const fl = r.foreign_lots     || 0;
-    const tl = r.trust_lots       || 0;
-    const lv = r.signal_level     || 0;
-    const closeStr = r.close != null ? Number(r.close).toFixed(2) : '—';
-    // 連買連賣（依法人合計正負判斷）
-    const cb = r.consecutive_buy  || 0;
-    const cs = r.consecutive_sell || 0;
-    const consecStr = cb > 0
-      ? `<span class="pos">連買 ${cb}天</span>`
-      : cs > 0
-        ? `<span class="neg">連賣 ${cs}天</span>`
-        : `<span class="muted">—</span>`;
-    const note = '全市場排行';
+    const sid = _esc(r.stock_id), nm = _esc(r.name || '');
+    const px = r.close != null ? `${Number(r.close).toFixed(2)}${r.change_pct != null ? ` <small class="${r.change_pct > 0 ? 'pos' : r.change_pct < 0 ? 'neg' : 'muted'}">${r.change_pct > 0 ? '+' : ''}${r.change_pct}%</small>` : ''}` : '<span class="muted">—</span>';
+    const ratio = r.vol_ratio_pct != null ? `<span class="${r.vol_ratio_pct >= 0 ? 'pos' : 'neg'}">${r.vol_ratio_pct > 0 ? '+' : ''}${r.vol_ratio_pct}%</span>` : '<span class="muted">—</span>';
     return `<tr>
       <td class="muted">${i + 1}</td>
-      <td><b class="link" onclick="openMktChart('${r.stock_id}')" style="cursor:pointer;color:var(--accent)">${r.stock_id}</b></td>
-      <td style="max-width:70px;overflow:hidden;text-overflow:ellipsis">${r.name || '—'}</td>
-      <td>${closeStr}</td>
-      <td><span class="sig-badge sig-${lv}">${r.signal_emoji || '⚪'} ${r.signal_title || '—'}</span></td>
-      <td class="${w  >= 0 ? 'pos' : 'neg'}">${fmtNum(w)}</td>
-      <td class="${fl >= 0 ? 'pos' : 'neg'}">${fmtNum(fl)}</td>
-      <td class="${tl >= 0 ? 'pos' : 'neg'}">${fmtNum(tl)}</td>
-      <td class="${dl >= 0 ? 'pos' : 'neg'}">${fmtNum(dl)}</td>
-      <td>${consecStr}</td>
-      <td onclick="event.stopPropagation()">
-        <button class="btn sm ghost" onclick="addFromMarket('${r.stock_id}','${note}')">+ 加入清單</button>
-      </td>
+      <td style="white-space:nowrap"><b class="link" onclick="openMktChart('${sid}')" style="cursor:pointer;color:var(--accent)">${sid}</b> ${nm}${r.is_etf ? ' <span class="muted" style="font-size:.7rem">ETF</span>' : ''}${_dpBtn(r.stock_id, r.name)}</td>
+      <td style="white-space:nowrap">${px}</td>
+      <td style="font-weight:700">${num(r.total_lots)}</td>
+      <td>${num(r.foreign_lots)}${stk(r.foreign_streak)}</td>
+      <td>${num(r.trust_lots)}${stk(r.trust_streak)}</td>
+      <td>${num(r.dealer_lots)}</td>
+      <td>${num(r.sum5_total)}</td>
+      <td>${ratio}</td>
+      <td><span class="sig-badge sig-${r.signal_level || 0}">${r.signal_emoji || '⚪'} ${_esc(r.signal_title || '—')}</span></td>
+      <td onclick="event.stopPropagation()"><button class="btn sm ghost" onclick="addFromMarket('${sid}','法人買賣超排行')">+ 加入清單</button></td>
     </tr>`;
   }).join('');
 }
@@ -4164,10 +4247,11 @@ async function addFromMarket(sid, note = '') {
 async function pushMarket() {
   const data = _mkt.buyers.slice(0, 20);
   if (!data.length) { toast('請先掃描市場', true); return; }
-  const meta = document.getElementById('scan-meta').textContent.slice(0, 8);
-  const lines = [`<b>📊 大戶買超排行 — ${meta}</b>`, ''];
+  const meta = (document.getElementById('scan-meta').textContent.match(/\d{4}\/\d{2}\/\d{2}/) || [''])[0];
+  const lines = [`<b>🏦 法人買超排行 ${meta}</b>（三大合計，張）`, ''];
   data.forEach((r, i) => {
-    lines.push(`${String(i + 1).padStart(2)}. ${r.signal_emoji} <b>${r.stock_id}</b>  ${fmtNum(r.whale_flow_lots)} 張`);
+    const fs = r.foreign_streak > 1 ? ` 外資連買${r.foreign_streak}` : '', ts = r.trust_streak > 1 ? ` 投信連買${r.trust_streak}` : '';
+    lines.push(`${String(i + 1).padStart(2)}. ${r.signal_emoji || ''} <b>${r.stock_id} ${r.name || ''}</b>  ${fmtNum(r.total_lots ?? r.whale_flow_lots)}${fs}${ts}`);
   });
   try {
     await api('POST', '/api/telegram/push-custom', { text: lines.join('\n') });
@@ -4568,6 +4652,7 @@ const STRATEGY_LABELS = {
   S_DANGER: '☠️ 危險量＋空方缺口（近期量觸及歷史高點量、高點不過＝預警）',
   S_SHORT_EBB: '🌊 融券退潮（高檔強勢股融券從高點連續減少：拉回不再是買點，減碼／出場）',
   S_KDJ_LOW: '🪝 KDJ低檔金叉（大跌後 K、D < 20、J < 0，J 往上穿越 K、D）',
+  S_MSLOPE: '📐 月線斜率 >1%＋靠近月線（權證小哥；⚠ 回測沒有優勢，斜率本身有用）',
   S_BREAKBOTTOM: '🔻 破底翻（跌深後長黑收最低，隔天守住長黑低點不再破底）',
   S_NBREAK: '📐 關鍵價突破N字（大漲→拉回→長紅帶量突破頸線，或回測頸線守住）',
   S_VOLROLL: '🌋 底部量滾量（跌深盤整後重新站上季線＋連續爆量）',
@@ -4596,6 +4681,7 @@ const COURSE_COLS = {
   S_TRUST5: [['投信連買', 'trust_days', v => v + '天'], ['投信買超(張)', 'trust_lots'], ['5日線', 'ma5'], ['停損', 'stop'], ['出場(10日線)', 'exit_ma10']],
   S_SHORT_UP: [['融券餘額', 'short_now'], ['5日增加', 'short_chg5'], ['增幅', 'short_chg5_pct', _pctF], ['狀態', 'pullback'], ['防守', 'stop']],
   S_SHORT_EBB: [['融券餘額', 'short_now'], ['融券高點', 'short_peak'], ['距高點', 'from_peak_pct', _pctF], ['連減天數', 'down_days']],
+  S_MSLOPE: [['月線斜率', 'mslope', v => (v > 0 ? '+' : '') + v + '%'], ['月線乖離', 'bias20', v => (v > 0 ? '+' : '') + v + '%'], ['月線', 'ma20'], ['類型', 'tag']],
   S_KDJ_LOW: [['K', 'k'], ['D', 'd'], ['J', 'j'], ['J開口', 'j_open'], ['量', 'big_vol'], ['停損(前波低)', 'stop'], ['今天低點', 'day_low']],
   S_BREAKBOTTOM: [['長黑跌幅', 'black_pct', _pctF], ['波段跌幅', 'drop_pct', v => v + '%'], ['停損(長黑低)', 'stop']],
   S_NBREAK: [['階段', 'stage'], ['頸線(停損)', 'neckline'], ['突破日', 'break_date', _dF], ['高於頸線', 'above_pct', _pctF]],
@@ -4634,6 +4720,7 @@ const STRATEGY_SHORT = {
   S_DANGER: '☠️ 危險量＋空方缺口',
   S_SHORT_EBB: '🌊 融券退潮',
   S_KDJ_LOW: '🪝 KDJ低檔金叉',
+  S_MSLOPE: '📐 月線斜率',
   S_BREAKBOTTOM: '🔻 破底翻',
   S_NBREAK: '📐 關鍵價突破N字',
   S_VOLROLL: '🌋 底部量滾量',
@@ -5258,6 +5345,12 @@ function linkOnShow() {
   _linkLoaded = Date.now();
   _linkLoadMovers(); _linkLoadDisposal();
 }
+function linkView(v) {
+  document.querySelectorAll('.lk-segbtn').forEach(b => b.classList.toggle('active', b.dataset.v === v));
+  ['movers', 'disp', 'query'].forEach(k => { const el = document.getElementById('lk-view-' + k); if (el) el.style.display = k === v ? '' : 'none'; });
+  if (v === 'query') setTimeout(() => document.getElementById('link-q')?.focus(), 50);
+}
+function linkQueryOf(sid) { linkView('query'); document.getElementById('link-q').value = sid; linkQuery(sid); }
 function _researchBox(r, title) {
   if (!r) return `<span class="muted" style="font-size:.78rem">（${title}：研究結果還沒放上來）</span>`;
   const tag = r.useful ? '<span class="lk-badge ok">✅ 回測有效</span>' : '<span class="lk-badge warn">⚠ 回測沒有優勢</span>';
@@ -5279,29 +5372,34 @@ async function _linkLoadMovers() {
     } catch (e) {}
     if (!ms.length) { el.innerHTML = warn + '<div class="muted">今天沒有產業出現「先發動」</div>'; return; }
     const md = x => x ? `${String(x).slice(4, 6)}/${String(x).slice(6, 8)}` : '';
-    el.innerHTML = warn + '<div class="lk-grid">' + ms.map(m => {
+    const row = m => {
       const list = m.movers.concat(m.candidates);
       const src = '連動：' + m.sector;
-      const lead = m.movers[0];
-      const others = m.movers.slice(1);
-      return `<div class="lk-card${m.first ? ' first' : ''}">
-        <div class="lk-head"><span class="lk-sec">${_esc(m.sector)}</span>
-          ${m.first ? '<span class="lk-badge new">🆕 10 天來第一個發動</span>' : '<span class="lk-badge old">近 10 天已有人發動</span>'}
-          <span class="lk-date">${md(m.date)}</span></div>
-        <div class="lk-leader"><div class="lk-lbl">🚀 先發動（龍頭）</div>
-          <div class="lk-lead-main"><span>${_linkStock(lead.id, lead.name, list, src)}</span>
-            <span class="lk-big" style="${_lcol(lead.chg)}">${_lp(lead.chg)}</span><span class="lk-vr">量 ${lead.vr} 倍</span></div>
-          ${others.length ? `<div class="lk-lbl" style="margin-top:6px">同產業也發動</div><div class="lk-chips">${others.map(x => `<span class="lk-chip">${_linkStock(x.id, x.name, list, src)} <b style="${_lcol(x.chg)}">${_lp(x.chg)}</b></span>`).join('')}</div>` : ''}
+      const lead = m.movers[0], others = m.movers.slice(1);
+      const cands = m.candidates.map(x => `<div class="lk-cand">
+          <div>${_linkStock(x.id, x.name, list, src)}</div>
+          <div class="r2"><span class="lk-tag ${x.same_sector === false ? 'cross' : 'same'}" title="${x.same_sector === false ? _esc(x.sector || '其他產業') : '同產業'}">${x.same_sector === false ? '常一起動' : '同產業'}</span>
+            <span title="跟 ${lead.id} 的 60 日相關（1＝完全同步）"><span class="lk-barbg" style="width:40px"><span class="lk-bar" style="width:${Math.max(0, Math.min(100, Math.round((x.corr || 0) * 100)))}%"></span></span>${x.corr}</span>
+            <span class="chg" style="${_lcol(x.chg)}">${_lp(x.chg)}</span>
+            <button class="btn sm ghost lk-cmp" title="跟 ${lead.id} 上下對比 K 線" onclick="openCompare('${lead.id}','${x.id}')">⇅</button></div>
+        </div>`).join('');
+      return `<div class="lk-row${m.first ? ' first' : ''}">
+        <div class="lk-left">
+          <div class="lk-sec">${_esc(m.sector)} ${m.first ? '<span class="lk-badge new">⭐ 10 天來第一個發動</span>' : ''}<span class="muted" style="font-weight:400">${md(m.date)}</span></div>
+          <div class="lk-leadname">🚀 ${_linkStock(lead.id, lead.name, list, src)}</div>
+          <div class="lk-leadnum"><span class="lk-big" style="${_lcol(lead.chg)}">${_lp(lead.chg)}</span><span class="lk-vr">量 ${lead.vr} 倍</span>
+            <a class="muted" style="font-size:.74rem;cursor:pointer;margin-left:auto" onclick="linkQueryOf('${lead.id}')">全部連動股 →</a></div>
+          ${others.length ? `<div class="lk-vr">同產業也大漲：${others.map(x => `${_linkStock(x.id, x.name, list, src)} <b style="${_lcol(x.chg)}">${_lp(x.chg)}</b>`).join('、')}</div>` : ''}
         </div>
-        <div><div class="lk-lbl">👉 跟進候選（同產業、跟龍頭高相關、今天還沒跟上）</div>
-        ${m.candidates.length ? `<table class="lk-tbl"><thead><tr><th>股票</th><th>60 日相關</th><th style="text-align:right">今天</th><th></th></tr></thead><tbody>
-          ${m.candidates.map(x => `<tr><td>${_linkStock(x.id, x.name, list, src)}</td>
-            <td><span class="lk-barbg"><span class="lk-bar" style="width:${Math.max(0, Math.min(100, Math.round((x.corr || 0) * 100)))}%"></span></span>${x.corr}</td>
-            <td class="num" style="${_lcol(x.chg)}">${_lp(x.chg)}</td>
-            <td class="num"><button class="btn sm ghost lk-cmp" title="跟龍頭 ${lead.id} 上下對比 K 線" onclick="openCompare('${lead.id}','${x.id}')">⇅ 對比</button></td></tr>`).join('')}</tbody></table>`
-          : '<div class="lk-empty">沒有（同產業沒有高相關又還沒漲的）</div>'}</div>
+        <div class="lk-arrow">→</div>
+        <div><div class="lk-lbl">還沒跟上的連動股（${m.candidates.length}）</div>
+          ${m.candidates.length ? `<div class="lk-cands">${cands}</div>` : '<div class="lk-none">今天沒有還沒跟上的連動股（常一起動的都已經漲了，或相關不夠高）</div>'}</div>
       </div>`;
-    }).join('') + '</div>';
+    };
+    const withC = ms.filter(m => m.candidates.length), noC = ms.filter(m => !m.candidates.length);
+    el.innerHTML = warn + `<div class="lk-list">${withC.map(row).join('')}</div>` +
+      (noC.length ? `<details style="margin-top:10px"><summary style="cursor:pointer" class="muted">另外 ${noC.length} 個產業有先發動、但沒有還沒跟上的連動股（點開）</summary>
+        <div class="lk-list" style="margin-top:8px">${noC.map(row).join('')}</div></details>` : '');
   } catch (e) { el.innerHTML = `<div class="muted">載入失敗：${_esc(e.message)}</div>`; }
 }
 function _pairChips(ps) {
@@ -5354,9 +5452,11 @@ function _linkPeersHtml(r, sid) {
   if (!ps.length) return `<div class="muted">${_esc(r.note || '沒有資料')}</div>`;
   const list = [{ id: sid, name: _chartNames[sid] || '' }].concat(ps);
   return `<div class="muted" style="font-size:.78rem;margin-bottom:4px">${sid} ${_esc(_chartNames[sid] || '')}　產業：${_esc(r.sector || '—')}　資料 ${r.date || ''}　今天 <span style="${_lcol(r.chg)}">${_lp(r.chg)}</span></div>
-    <div class="tbl-wrap"><table style="font-size:.82rem"><thead><tr><th>連動股</th><th>60 日相關</th><th>同產業</th><th>股價比值（今天／60 日平均）</th><th>偏差率</th><th>誰先動</th><th>今天</th><th></th></tr></thead><tbody>
-    ${ps.map(p => `<tr><td>${_linkStock(p.id, p.name, list, '連動：' + sid)}</td><td><b>${p.corr}</b></td><td>${p.same_sector ? '✅' : ''}</td>
-      <td>${p.ratio}／${p.ratio_mean}</td><td style="${_lcol(p.dev)}">${_lp(p.dev)}</td>
+    <div class="tbl-wrap"><table style="font-size:.82rem"><thead><tr><th>連動股</th><th title="60 日日報酬相關係數，1＝完全同步">相關</th><th>關係</th><th title="${sid} ÷ 對方 的股價比值，跟 60 日平均比；正＝${sid} 相對貴">價差偏離</th><th>誰先動</th><th>今天</th><th></th></tr></thead><tbody>
+    ${ps.map(p => `<tr><td>${_linkStock(p.id, p.name, list, '連動：' + sid)}</td>
+      <td><span class="lk-barbg" style="width:44px"><span class="lk-bar" style="width:${Math.max(0, Math.min(100, Math.round((p.corr || 0) * 100)))}%"></span></span><b>${p.corr}</b></td>
+      <td>${p.same_sector ? '<span class="lk-tag same">同產業</span>' : '<span class="lk-tag cross">常一起動</span>'}</td>
+      <td style="${_lcol(p.dev)}" title="股價比值 今天 ${p.ratio}／60 日平均 ${p.ratio_mean}">${_lp(p.dev)}</td>
       <td>${p.lead > 0.05 ? `<span style="color:var(--up)">${sid} 先動</span>` : p.lead < -0.05 ? `<span style="color:#f59e0b">${p.id} 先動</span>` : '<span class="muted">差不多</span>'}</td>
       <td style="${_lcol(p.chg)}">${_lp(p.chg)}</td>
       <td><button class="btn sm ghost lk-cmp" title="${sid} 跟 ${p.id} 上下對比 K 線" onclick="openCompare('${sid}','${p.id}')">⇅ 對比</button></td></tr>`).join('')}</tbody></table></div>
@@ -7232,7 +7332,7 @@ async function saveAllStratParams() {
 <script src="/treasury/static/treasury.js?v=20261005f"></script>
 <script src="/mna/static/mna.js?v=20261005f"></script>
 <script src="/cb/static/cb.js?v=20261005f"></script>
-<script src="/notes/static/notes.js?v=20261007a"></script>
+<script src="/notes/static/notes.js?v=20261013b"></script>
 <script src="/discuss/static/discuss.js?v=20261007a"></script>
 </body>
 </html>

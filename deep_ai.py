@@ -51,6 +51,10 @@ def get_conn(db_path=None):
         created_at TEXT,                   -- 台灣時間
         model TEXT, searched INTEGER, text TEXT, sources_json TEXT, queries_json TEXT)""")
     c.execute("CREATE INDEX IF NOT EXISTS ix_deep_ai_sid ON deep_ai(sid, id)")
+    cols = {r[1] for r in c.execute("PRAGMA table_info(deep_ai)")}
+    if "news_json" not in cols:                       # B70：第 1 段「近 30 天消息」
+        c.execute("ALTER TABLE deep_ai ADD COLUMN news_json TEXT")
+    c.execute("CREATE TABLE IF NOT EXISTS deep_ai_news (sid TEXT PRIMARY KEY, t REAL, data TEXT)")
     return c
 
 
@@ -61,16 +65,17 @@ def latest(sid: str, db_path=None) -> dict | None:
         return None
     return {"sid": r["sid"], "kdate": r["kdate"], "created_at": r["created_at"], "model": r["model"],
             "searched": bool(r["searched"]), "text": r["text"],
-            "sources": json.loads(r["sources_json"] or "[]"), "queries": json.loads(r["queries_json"] or "[]")}
+            "sources": json.loads(r["sources_json"] or "[]"), "queries": json.loads(r["queries_json"] or "[]"),
+            "news": json.loads(r["news_json"] or "null") if "news_json" in r.keys() else None}
 
 
 def save(sid: str, kdate: str, out: dict, db_path=None):
     with closing(get_conn(db_path)) as c:
-        c.execute("INSERT INTO deep_ai (sid, kdate, created_at, model, searched, text, sources_json, queries_json) "
-                  "VALUES (?,?,?,?,?,?,?,?)",
+        c.execute("INSERT INTO deep_ai (sid, kdate, created_at, model, searched, text, sources_json, queries_json, news_json) "
+                  "VALUES (?,?,?,?,?,?,?,?,?)",
                   (sid, kdate, datetime.now(_TW).strftime("%Y-%m-%d %H:%M"), out["model"], int(out["searched"]),
                    out["text"], json.dumps(out["sources"], ensure_ascii=False),
-                   json.dumps(out["queries"], ensure_ascii=False)))
+                   json.dumps(out["queries"], ensure_ascii=False), json.dumps(out.get("news"), ensure_ascii=False)))
         # 每檔只留最近 5 份
         c.execute("DELETE FROM deep_ai WHERE sid=? AND id NOT IN (SELECT id FROM deep_ai WHERE sid=? "
                   "ORDER BY id DESC LIMIT 5)", (sid, sid))
@@ -136,8 +141,9 @@ def _data_block(d: dict, rows: list) -> str:
     L.append(f"最新收盤 {_n(t.get('close'))}（{_s(t.get('change_pct'), 2)}%），K 線日期 {_ymd(t.get('date'))}，"
              f"今天量 {_n(t.get('volume'), 0)} 張、20 日均量 {_n(t.get('vol20'), 0)} 張")
 
-    L.append("\n【K 線型態（系統用宏爺 16 種定義判斷，近 3 根，舊→新）】")
-    for k in pat.get("kbars") or []:
+    kb = pat.get("kbars") or []
+    L.append(f"\n【日 K 型態（宏爺 16 種定義，近 {len(kb)} 根，舊→新）】")
+    for k in kb:
         L.append(f"- {_ymd(k['date'])}：{k['type']}（漲跌 {_s(k.get('chg'), 2)}%）— {k['meaning']}")
     ks = pat.get("kbar_stat")
     if ks:
@@ -148,13 +154,28 @@ def _data_block(d: dict, rows: list) -> str:
         if ks.get("claim"):
             line += f"。注意：一般說法把它當「{ks['claim']}」訊號，回測不成立"
         L.append(line)
+    wk = pat.get("weekly") or []
+    if wk:
+        L.append(f"\n【週 K 型態（近 {len(wk)} 週，舊→新）】")
+        for w in wk:
+            L.append(f"- {_ymd(w['start'])}～{_ymd(w['end'])}{'（本週到目前，還沒走完）' if w.get('partial') else ''}："
+                     f"{w['type']}（週漲跌 {_s(w.get('chg'), 2)}%）— {w['meaning']}")
+        ws = pat.get("kbar_w_stat")
+        if ws:
+            line = (f"回測（最後一根完整週 {ws.get('type', '')}，{ws['band_label']}）：之後 20 個交易日平均比同期 {_s(ws['x20'], 2)}%"
+                    f"（{_n(ws['n'], 0)} 筆）")
+            if ws.get("base_x20") is not None:
+                line += f"；同位置所有股票 {_s(ws['base_x20'], 2)}%"
+            L.append(line)
 
     tr = pat.get("trend")
     if tr:
         L.append("\n【趨勢格局（宏爺 MA20／MA100）】")
         L.append(f"格局：{tr['box']}（{tr['desc']}）；MA20 {_n(tr['ma20'])}（{'上彎' if tr.get('ma20_up') else '下彎'}）、"
                  f"MA100 {_n(tr['ma100'])}（{'上彎' if tr.get('ma100_up') else '下彎'}）；"
-                 f"乖離 MA20 {_s(tr['bias20'], 2)}%、MA100 {_s(tr['bias100'], 2)}%")
+                 f"乖離 MA20 {_s(tr['bias20'], 2)}%、MA100 {_s(tr['bias100'], 2)}%"
+                 + (f"；月線斜率 {_s(tr.get('mslope'), 2)}%（權證小哥：>1% 強勢、>3% 妖股；回測斜率 >1% 之後 20 天平均比同期 +2.19%）"
+                    if tr.get("mslope") is not None else ""))
         bs = tr.get("stat")
         if bs:
             line = f"回測：{tr['box']}格局 20 天平均比同期 {_s(bs['x20'], 2)}%（{_n(bs['n'], 0)} 筆）"
@@ -258,53 +279,107 @@ def _data_block(d: dict, rows: list) -> str:
             L.append(" | ".join([x["date"], _n(x["open"]), _n(x["high"]), _n(x["low"]), _n(x["close"]),
                                  _n(x["volume"], 0), _n(x["ma20"]), _n(x["ma100"]),
                                  _s(x["foreign"], 0), _s(x["trust"], 0), x["kbar"]]))
-    news = (d.get("news") or {}).get("items") or []
-    if news:
-        L.append("\n【系統抓到的新聞標題】")
-        for x in news[:6]:
+    return "\n".join(L)
+
+
+def _news_block(d: dict, digest: dict | None) -> str:
+    L = ["【近 30 天消息（Google 搜尋整理，第四章只能用這裡和系統數字）】"]
+    items = (digest or {}).get("items") or []
+    if items:
+        for x in items[:10]:
+            L.append(f"- {x.get('date', '')} {x.get('title', '')}：{x.get('summary', '')}（{x.get('source', '')}）")
+    else:
+        L.append("- （這次沒有查到網路消息）")
+    key = lambda t: re.sub(r"[\W_]+", "", str(t or ""))[:14]      # noqa: E731
+    seen = {key(x.get("title")) for x in items}
+    sys_news = [x for x in (d.get("news") or {}).get("items") or [] if key(x.get("title")) not in seen]
+    if sys_news:
+        L.append("【系統抓到的新聞標題（近 30 天，已去掉跟上面重複的）】")
+        for x in sys_news[:8]:
             L.append(f"- {x.get('date', '')} {x.get('title', '')}（{x.get('publisher', '')}）")
     return "\n".join(L)
 
 
-def build_prompt(d: dict, rows: list) -> str:
-    return f"""你是台股研究員，幫使用者寫「{d.get('stock_id')} {d.get('name')}」的深度解盤報告。今天是 {tw_today()}。
-下面【資料】的數字都是系統算好的（證交所／櫃買官方行情與法人、月營收、季報、系統回測），請直接引用、不要改數字。
-寫第四章前一定要先用 Google 搜尋（例如「{d.get('name')} {d.get('stock_id')} 法說會」「{d.get('name')} 目標價」「{d.get('name')} 題材」），
-產業、公司近況、題材、法人目標價都用搜尋到的最新消息，寫出消息日期；查不到就寫查不到，不要猜。
+def build_prompt(d: dict, rows: list, digest: dict | None = None) -> str:
+    return f"""你是台股研究員，幫使用者寫「{d.get('stock_id')} {d.get('name')}」的解盤重點。今天是 {tw_today()}。
+【資料】的數字都是系統算好的（官方行情與法人、月營收、季報、系統回測），直接引用、不要改數字。
 
 規則：
-1. 繁體中文、白話、阿拉伯數字；數字自然寫進句子裡，不要做表格。
-2. 支撐、壓力、目標、停損只能用【系統關鍵價位】的數字，不可以自己算或編新的價位（可以提 MA20、MA100 的位置）。
-3. K 線型態用系統判斷的名稱（例如「倒鎚紅K(墓碑線-上漲)」），最近 3 根用「→」串起來並用「」框住，例如「中紅K → 倒鎚紅K(墓碑線-上漲) → 十字線」。
-4. 尊重回測：系統回測顯示「高檔的墓碑線／倒T線」之後平均還是續漲、「低檔的鎚子／T字線」之後平均續跌，不可以把它們說成反轉訊號；要引用格局與技術分類的回測數字。
-5. 沒有的資料就說沒有。不要把資料逐筆照抄（例如每一季、每個月都列出來），挑重點講趨勢與轉折。
-6. 用 Markdown：每章用「## 一、標題」，章內可以用「- 」條列重點。不要表格、不要在開頭寫前言。
-7. 全文約 1,500～2,500 字。
+1. 繁體中文、白話、阿拉伯數字；全文 700～1,000 字（800～1,200 字是上限），寧可短、不要重複資料。
+2. 開頭先寫一句話結論（30 字內、不要標題），再寫五章；章名照下面抄、不要加括號說明；每章 3～4 個「- 」重點，每點 1 句為主。
+3. 支撐、壓力、目標、停損只能用【系統關鍵價位】的數字，不可以自己算或編新的價位（可以提 MA20、MA100 的位置）。
+4. K 線用系統判斷的名稱：日 K 近 5 根、週 K 近 4 週，各用「→」串成一串並用「」框住；不要逐日描述。
+5. 尊重回測：日 K 高檔墓碑線／倒T之後平均還是續漲、低檔鎚子／T字之後平均續跌，不能說成反轉；週 K 的回測數字照引用。
+6. 第四章「產業與基本面」只能用【近 30 天消息】、系統新聞與系統財報數字，每個題材、目標價都寫日期；
+   近 30 天沒有消息就寫「近 30 天沒有重大新聞」，不要拿舊聞或憑記憶補。
+7. 沒有的資料就說沒有；不要表格、不要前言、不要逐月逐季照抄。
 
-要寫的五章：
-## 一、K 線型態
-最近 1～3 根的組合、多空力道怎麼變；今天這種 K 線在這個位置，回測代表什麼。
-## 二、均線與趨勢格局
-MA20（月線）與 MA100（百日線）的格局（多頭／空頭／多箱／空箱）、乖離、均線方向；配合系統技術分類（10/20/60 日線排列、60 日線方向、52 週位置、半年漲跌）。
+章名（照抄）：
+## 一、K 線
+## 二、均線與格局
 ## 三、籌碼
-外資、投信、自營商、主力合計近 20～30 日動向與連買連賣；融資融券增減代表什麼（散戶追價、軋空）；千張大戶。
 ## 四、產業與基本面
-公司做什麼、在產業鏈哪一段、主要客戶與競爭對手、目前題材與催化劑（Google 搜尋）；最新月營收與近 12 個月趨勢、近幾季毛利率與 EPS 走勢、本益比跟同業比；法人目標價（查到才寫，寫日期與來源）。
 ## 五、操作策略
-先講系統綜合評價（分數、動作）和理由；再分「積極型」「保守型」寫怎麼進出（只能用系統價位）；最後「風險」用 1. 2. 3. 列 3～5 點。
+各章寫什麼：一＝日 K 近 5 根、週 K 近 4 週的組合與回測；二＝MA20／MA100 格局、乖離、月線斜率、系統技術分類；
+三＝外資、投信、主力合計、融資融券、千張大戶；四＝近 30 天消息、營收與毛利率趨勢、本益比；
+五＝系統評價與動作、積極型、保守型，最後「風險」用 1. 2. 3. 列 3 點。
 
 【資料】
 {_data_block(d, rows)}
+
+{_news_block(d, digest)}
 """
 
 
+NEWS_PROMPT = """請用 Google 搜尋台股「{sid} {name}」最近 30 天（今天是 {today}）的重要消息：法說會、月營收／財報、法人評等與目標價、
+重大訊息（併購、擴產、接單、處分）、產業動態。優先最近 2 週；超過 90 天的不要。
+只輸出 JSON（放在 ```json 區塊）：{{"items": [{{"date": "YYYY-MM-DD", "title": "標題", "summary": "一兩句重點", "source": "媒體名稱"}}]}}
+最多 8 則、新到舊；查不到就回 {{"items": []}}。"""
+NEWS_TTL = 12 * 3600
+
+
+def news_digest(d: dict, timeout: float = 90, db_path=None) -> dict:
+    """第 1 段：Gemini＋Google 搜尋整理近 30 天消息（每檔快取 12 小時）；失敗回 {"items": [], "searched": False}"""
+    from discuss import ai
+    sid = str(d.get("stock_id") or "")
+    with closing(get_conn(db_path)) as c:
+        r = c.execute("SELECT t, data FROM deep_ai_news WHERE sid=?", (sid,)).fetchone()
+    if r and time.time() - r["t"] < NEWS_TTL:
+        return json.loads(r["data"])
+    key = ai.api_key()
+    out = {"items": [], "searched": False, "model": None, "sources": []}
+    if key:
+        prompt = NEWS_PROMPT.format(sid=sid, name=d.get("name") or "", today=tw_today())
+        for model in [m for m, srch in ai.ANALYZE_CHAIN if srch]:
+            try:
+                res = ai._call(model, [{"text": prompt}], True, key, timeout)
+                items = ai._extract_json(res["text"]).get("items") or []
+                gm = res["grounding"]
+                srcs = [{"title": (ch.get("web") or {}).get("title") or "", "uri": (ch.get("web") or {}).get("uri")}
+                        for ch in gm.get("groundingChunks") or [] if (ch.get("web") or {}).get("uri")]
+                searched = bool(srcs or gm.get("webSearchQueries"))
+                cut = (datetime.now(_TW).date() - timedelta(days=45)).isoformat()   # 30 天＋緩衝，擋掉 AI 拿舊聞
+                items = [x for x in items if isinstance(x, dict) and str(x.get("date") or "")[:10] >= cut][:8]
+                out = {"items": items if searched else [], "searched": searched, "model": model, "sources": srcs[:8]}
+                break
+            except Exception:    # noqa: BLE001  搜尋失敗不影響第 2 段
+                continue
+    if out["searched"]:
+        with closing(get_conn(db_path)) as c:
+            c.execute("INSERT OR REPLACE INTO deep_ai_news VALUES (?,?,?)", (sid, time.time(), json.dumps(out, ensure_ascii=False)))
+            c.commit()
+    return out
+
+
 def _clean(txt: str) -> str:
-    """拿掉 ```markdown 外框、第一個 ## 之前的客套話（「好的，以下是…」）"""
+    """拿掉 ```markdown 外框、開頭的客套話行（「好的，以下是…」）；B70：保留開頭一句話結論"""
     txt = txt.strip()
     m = re.fullmatch(r"```(?:markdown|md)?\s*(.*?)\s*```", txt, re.S)
     txt = m.group(1).strip() if m else txt
-    i = txt.find("## ")
-    return txt[i:] if 0 < i < 300 else txt
+    lines = txt.split("\n")
+    while lines and re.match(r"^\s*(好的|沒問題|當然|以下(是|為)|這是)", lines[0]):
+        lines.pop(0)
+    return "\n".join(lines).strip()
 
 
 def generate(d: dict, rows: list, timeout: float = 170) -> dict:
@@ -313,7 +388,11 @@ def generate(d: dict, rows: list, timeout: float = 170) -> dict:
     key = ai.api_key()
     if not key:
         raise RuntimeError("還沒設定 Gemini 金鑰（Fly secret GEMINI_API_KEY）")
-    parts = [{"text": build_prompt(d, rows)}]
+    try:
+        digest = news_digest(d)
+    except Exception:    # noqa: BLE001
+        digest = {"items": [], "searched": False, "sources": []}
+    parts = [{"text": build_prompt(d, rows, digest)}]
     errors = []
     first = os.environ.get("GEMINI_MODEL")
     chain = ([(first, True), (first, False)] if first else []) + ai.ANALYZE_CHAIN
@@ -321,7 +400,7 @@ def generate(d: dict, rows: list, timeout: float = 170) -> dict:
         try:
             out = ai._call(model, parts, search, key, timeout)
             text = _clean(out["text"])
-            if len(text) < 200:
+            if len(text) < 150:
                 raise RuntimeError(f"回應太短（{len(text)} 字）")
             gm = out["grounding"]
             sources, seen = [], set()
@@ -332,8 +411,13 @@ def generate(d: dict, rows: list, timeout: float = 170) -> dict:
                     sources.append({"title": w.get("title") or "", "uri": w["uri"]})
             queries = gm.get("webSearchQueries") or []
             # 開了搜尋不代表有查：沒有查詢字串也沒有來源就當沒查（避免畫面標「＋Google 搜尋」誤導）
-            return {"text": text, "model": model, "searched": bool(search and (sources or queries)),
-                    "sources": sources[:12], "queries": queries}
+            for x in digest.get("sources") or []:          # 第 1 段的搜尋來源也列出來
+                if x.get("uri") and x["uri"] not in seen:
+                    seen.add(x["uri"])
+                    sources.append(x)
+            return {"text": text, "model": model, "searched": bool((search and (sources or queries)) or digest.get("searched")),
+                    "sources": sources[:12], "queries": queries,
+                    "news": {"items": digest.get("items") or [], "searched": bool(digest.get("searched"))}}
         except Exception as e:    # noqa: BLE001  httpx／RuntimeError／JSON 都換下一個模型
             errors.append(f"{model}{'＋搜尋' if search else ''}: {str(e)[:140]}")
             time.sleep(1)

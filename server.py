@@ -268,17 +268,30 @@ def _bb_live(sid: str, price, qdate: "str | None") -> "float | None":
         try:
             from price_cache import get_stock_ohlcv
             df = get_stock_ohlcv(sid, days=45)
-            closes = [float(c) for d, c in zip(df["date"], df["close"]) if str(d) < qdate and c == c][-19:]
+            closes = [float(c) for d, c in zip(df["date"], df["close"]) if str(d) < qdate and c == c][-20:]
         except Exception:
             closes = []
         hit = (_t.time(), qdate, closes)
         _BB_BASE[sid] = hit
     if len(hit[2]) < 19:
         return None
-    arr = hit[2] + [price]
+    arr = hit[2][-19:] + [price]
     m = sum(arr) / 20
     sd = (sum((v - m) ** 2 for v in arr) / 20) ** 0.5
     return round((price - m) / (2 * sd) * 10, 1) if sd > 0 else None
+
+
+def _mslope_live(sid: str, price, qdate: "str | None") -> "float | None":
+    """權證小哥月線斜率（%）：今天月線＝報價日前 19 根＋現價、昨天月線＝報價日前 20 根（跟 _bb_live 共用快取，B70）"""
+    from deep_patterns import month_slope
+    price = _sf_price(price)
+    if price is None or not qdate:
+        return None
+    _bb_live(sid, price, qdate)                  # 確保 _BB_BASE 有這檔、這個報價日
+    hit = _BB_BASE.get(sid)
+    if not hit or hit[1] != qdate or len(hit[2]) < 20:
+        return None
+    return month_slope(hit[2][-20:] + [price])
 
 
 def _append_live_bar(sid: str, df):
@@ -1668,6 +1681,9 @@ async def api_watchlist_prices():
         bb = _bb_live(sid, q["close"], q.get("date"))
         if bb is not None:
             q["bb_score"] = bb
+        ms = _mslope_live(sid, q["close"], q.get("date"))
+        if ms is not None:
+            q["mslope"] = ms
     missing = [sid for sid in stock_ids if sid not in result]
     if missing:
         old = await _watchlist_prices_fallback(missing, mkt_map)
@@ -1703,8 +1719,9 @@ async def _watchlist_prices_fallback(stock_ids: list, mkt_map: dict) -> dict:
             yahoo_result.update(fm_fallback)
         return yahoo_result
 
-async def _deep_news(stock_id: str) -> dict:
-    """新聞：Google News RSS → cnyes → Yahoo Finance 多重 fallback"""
+async def _deep_news(stock_id: str, name: str = "") -> dict:
+    """新聞：Google News RSS → cnyes → Yahoo Finance 多重 fallback
+    B70：用「股名 代號」查、Google 加 when:30d，只留 30 天內（沒有日期的放最後），新到舊"""
     import xml.etree.ElementTree as ET
     from datetime import datetime, timezone
     from email.utils import parsedate_to_datetime
@@ -1714,14 +1731,19 @@ async def _deep_news(stock_id: str) -> dict:
     async with httpx.AsyncClient(timeout=12, headers=_hdrs, follow_redirects=True) as c:
         # ── Strategy 1: Google News RSS（最豐富，不需 API key）──
         try:
+            q = f"{name} {stock_id}".strip() if name and name != stock_id else stock_id
             r = await c.get(
                 "https://news.google.com/rss/search",
-                params={"q": stock_id, "hl": "zh-TW", "gl": "TW", "ceid": "TW:zh-Hant"},
+                params={"q": f"{q} when:30d", "hl": "zh-TW", "gl": "TW", "ceid": "TW:zh-Hant"},
             )
+            if not (r.is_success and "<item>" in r.text):      # when: 沒效／沒結果 → 不限天數，下面用 pubDate 過濾
+                r = await c.get("https://news.google.com/rss/search",
+                                params={"q": q, "hl": "zh-TW", "gl": "TW", "ceid": "TW:zh-Hant"})
             if r.is_success and r.text.strip().startswith("<"):
                 root = ET.fromstring(r.text)
                 items = []
-                for item in root.findall(".//item")[:8]:
+                _cut = (datetime.now(timezone(timedelta(hours=8))) - timedelta(days=30)).strftime("%Y-%m-%d")   # 台灣時間
+                for item in root.findall(".//item")[:20]:
                     title = (item.findtext("title") or "").strip()
                     if not title or title.lower() == stock_id:
                         continue
@@ -1734,10 +1756,12 @@ async def _deep_news(stock_id: str) -> dict:
                             date_str = parsedate_to_datetime(pub).strftime("%Y-%m-%d")
                         except Exception:
                             pass
+                    if date_str and date_str < _cut:
+                        continue
                     items.append({"title": title, "publisher": src, "link": link, "date": date_str})
                 if items:
                     items.sort(key=lambda x: x.get("date") or "", reverse=True)
-                    return {"items": items[:6]}
+                    return {"items": items[:8]}
         except Exception as _e:
             log.warning(f"[deep_news] Google RSS {stock_id}: {_e}")
 
@@ -1745,7 +1769,7 @@ async def _deep_news(stock_id: str) -> dict:
         try:
             r = await c.get(
                 "https://api.cnyes.com/media/api/v1/newslist/search",
-                params={"term": stock_id, "limit": "6"},
+                params={"term": name if name and name != stock_id else stock_id, "limit": "8"},
             )
             if r.is_success:
                 body = r.json()
@@ -1952,7 +1976,7 @@ async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False, retu
             asyncio.to_thread(deep_data.revenue, stock_id, mkt, fresh),
             asyncio.to_thread(deep_data.income, stock_id, mkt, fresh),
             asyncio.to_thread(deep_data.eps_history, stock_id, fresh),
-            _deep_news(stock_id),
+            _deep_news(stock_id, stock_name),
             asyncio.to_thread(deep_data.revenue_history, stock_id, fresh),
             asyncio.to_thread(_deep_sector, stock_id, dates[-1] if dates else None, dates[-30:]),
             asyncio.to_thread(_kpct),
@@ -1977,11 +2001,16 @@ async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False, retu
         verdict["market"] = regime
 
     # ── 宏爺：K 線型態（近 3 根）＋MA20／MA100 格局，附回測（deep_patterns，B67）──
-    kbars = deep_patterns.kbar_chain(df, 3)
+    kbars = deep_patterns.kbar_chain(df, 5)                      # B70：3 → 5 根
+    weekly = deep_patterns.weekly_chain(df, 4)                   # B70：週 K 近 4 週（本週未走完標 partial）
     trend = deep_patterns.trend_info(df)
     if trend:
         trend["stat"] = deep_patterns.box_stat(trend["box"], (verdict.get("bucket") or {}).get("key"))
-    patterns = {"kbars": kbars, "trend": trend, "period": deep_patterns.HONGYE_PERIOD,
+    full_w = [w for w in weekly if not w.get("partial")]
+    kws = deep_patterns.kbar_w_stat(full_w[-1]["type"], trow["pos52"]) if full_w else None
+    if kws:
+        kws["type"] = full_w[-1]["type"]
+    patterns = {"kbars": kbars, "weekly": weekly, "kbar_w_stat": kws, "trend": trend, "period": deep_patterns.HONGYE_PERIOD,
                 "box_all": {k: v[1] for k, v in deep_patterns.BOX_STATS.items()},
                 "kbar_stat": deep_patterns.kbar_stat(kbars[-1]["type"], trow["pos52"]) if kbars else None}
 
@@ -2178,6 +2207,9 @@ async def api_watchlist_summary():
         bb = _bb_live(sid, q["close"], q.get("date"))
         if bb is not None:
             latest_prices[sid]["bb_score"] = bb
+        ms = _mslope_live(sid, q["close"], q.get("date"))
+        if ms is not None:
+            latest_prices[sid]["mslope"] = ms
 
     added_px = _added_prices(rows)
 
@@ -2200,6 +2232,7 @@ async def api_watchlist_summary():
             "close":      price_info.get("close"),
             "change_pct": price_info.get("change_pct"),
             "bb_score":   price_info.get("bb_score"),  # None → 前端顯示 "—"（MIS/FinMind fallback 無OHLCV無法計算BB）
+            "mslope":     price_info.get("mslope"),    # 權證小哥月線斜率 %（B70）
             "stage":      price_info.get("stage", {"code": "unknown", "label": "—", "color": "muted", "desc": "無法取得價格資料"}),
         }
         if records:
@@ -2505,178 +2538,88 @@ _UA_TWSE = (
     "Chrome/124.0.0.0 Safari/537.36"
 )
 
+_market_lock = asyncio.Lock()
+
+
 @app.get("/api/market/scan")
-async def api_market_scan(top: int = 50):
-    """全市場今日法人買賣超排行（TWSE 上市，T86 三大法人 + STOCK_DAY_ALL 股價）"""
-    from datetime import date, timedelta
-    from chip_tracker_v2 import is_trading_day
-
-    timeout_cfg = httpx.Timeout(20.0, connect=8.0)
-
-    # 股價清單（只抓一次）
-    price_map: dict = {}
-    chip_map: dict = {}
-    used_date_str: str = ""
-
-    async with httpx.AsyncClient(
-        headers={"User-Agent": _UA_TWSE, "Referer": "https://www.twse.com.tw/"},
-        timeout=timeout_cfg,
-        verify=False,
-        follow_redirects=True,
-    ) as client:
-        # 先抓股價（與日期無關，單次即可）
-        try:
-            price_r = await client.get(
-                "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
-            )
-            if price_r.status_code == 200:
-                for item in price_r.json():
-                    sid = str(item.get("Code", "")).strip()
-                    if not sid:
-                        continue
-                    try:
-                        close_s = str(item.get("ClosingPrice", "0")).replace(",", "")
-                        price_map[sid] = {
-                            "name":  item.get("Name", ""),
-                            "close": float(close_s) if close_s not in ("", "--", "-") else None,
-                        }
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
-        # T86 嘗試最近 5 個交易日（今日優先，若未公布則往前找）
-        attempt_dt = datetime.now(timezone(timedelta(hours=8))).date()
-        for _ in range(5):
-            if not is_trading_day(attempt_dt):
-                attempt_dt -= timedelta(days=1)
-                continue
-            dt_str = attempt_dt.strftime("%Y%m%d")
+async def api_market_scan(top: int = 50, refresh: int = 0, side: str = "buy", sort: str = "total",
+                          market: str = "all", etf: int = 0):
+    """法人買賣超排行（B70，market_rank.py）：上市＋上櫃、三大合計＝三者相加、外資／投信各自連買連賣、5 日合計、占量 %
+    refresh=1（按「更新今日資料」）：先補最近 3 天三大法人（最多等 60 秒），當天股價還沒進 price_daily 就補一次（最多 40 秒）"""
+    import market_rank
+    from price_cache import DB_PATH as _PDB
+    from yahoo_price import get_stock_list, official_names
+    top = max(1, min(int(top or 50), 200))
+    notes = []
+    async with _market_lock:
+        if refresh:
+            import chip_course
             try:
-                t86_r = await client.get(
-                    "https://www.twse.com.tw/rwd/zh/fund/T86",
-                    params={"date": dt_str, "selectType": "ALL", "response": "json"},
-                )
-                if t86_r.status_code == 200:
-                    t86 = t86_r.json()
-                    if t86.get("stat") == "OK" and t86.get("data"):
-                        used_date_str = dt_str
-                        for row in t86.get("data", []):
-                            try:
-                                sid = str(row[0]).strip()
+                r = await asyncio.wait_for(asyncio.to_thread(chip_course.refresh_inst, 3), timeout=60)
+                notes += r.get("messages") or []
+            except asyncio.TimeoutError:
+                notes.append("法人資料更新超過 60 秒，先用現有的")
+            except Exception as e:      # noqa: BLE001
+                notes.append(f"法人資料更新失敗：{type(e).__name__}")
+        dates, by = await asyncio.to_thread(market_rank.load_inst, 25)
+        if not dates:
+            raise HTTPException(status_code=503, detail="還沒有三大法人資料（按「更新今日資料」或等 18:00 掃描）")
+        rows = market_rank.build_rows(dates, by)
+        has_px = await asyncio.to_thread(market_rank.attach_prices, rows, dates[0], _PDB)
+        if refresh and not has_px:
+            try:
+                from price_cache import update_price_cache
+                await asyncio.wait_for(update_price_cache(), timeout=40)
+                has_px = await asyncio.to_thread(market_rank.attach_prices, rows, dates[0], _PDB)
+            except Exception as e:      # noqa: BLE001
+                notes.append(f"當天股價還沒進資料庫：{type(e).__name__}")
 
-                                def _f(v):
-                                    return float(str(v).replace(",", "")) / 1000  # 股 → 張
+    # 股名、市場：stocks.csv → 官方收盤表（含 ETF）
+    sdf = get_stock_list()
+    csv_names, csv_mkt = dict(zip(sdf["stock_id"], sdf["stock_name"])), dict(zip(sdf["stock_id"], sdf["type"]))
+    off = await asyncio.to_thread(official_names)
+    for r in rows:
+        sid = r["stock_id"]
+        o = off.get(sid) or ("", None)
+        r["name"] = csv_names.get(sid) or o[0]
+        r["market"] = csv_mkt.get(sid) or o[1] or "twse"
 
-                                foreign = _f(row[4])
-                                trust   = _f(row[10])
-                                dealer  = _f(row[14])
-                                whale   = foreign * 1.0 + trust * 0.95 + dealer * 0.70
-                                chip_map[sid] = {
-                                    "foreign_lots":    round(foreign),
-                                    "trust_lots":      round(trust),
-                                    "dealer_lots":     round(dealer),
-                                    "whale_flow_lots": round(whale),
-                                }
-                            except Exception:
-                                pass
-                        break  # 成功取得資料，停止重試
-            except Exception:
-                pass
-            attempt_dt -= timedelta(days=1)
-
-    if not chip_map:
-        raise HTTPException(status_code=503, detail="無法取得 T86 法人資料（TWSE 尚未公布或 IP 封鎖），請稍後再試")
-
-    # 合併結果
-    from yahoo_price import get_stock_list
-    stocks_df = get_stock_list()
-    csv_names = dict(zip(stocks_df["stock_id"], stocks_df["stock_name"]))
-
-    merged = []
-    for sid, chip in chip_map.items():
-        price_info = price_map.get(sid, {})
-        name = price_info.get("name") or csv_names.get(sid, "")
-        merged.append({
-            "stock_id":        sid,
-            "name":            name,
-            "close":           price_info.get("close"),
-            "foreign_lots":    chip["foreign_lots"],
-            "trust_lots":      chip["trust_lots"],
-            "dealer_lots":     chip["dealer_lots"],
-            "whale_flow_lots": chip["whale_flow_lots"],
-            "retail_flow_lots": 0,
-            "signal_emoji":    "⚪",
-            "signal_title":    "—",
-            "signal_level":    0,
-        })
-
-    merged.sort(key=lambda x: x["whale_flow_lots"], reverse=True)
-
-    # 從策略掃描快取補充 signal 資訊（顯示所有命中策略）
-    all_sig: dict = {}  # sid -> {strategy_key: (priority, emoji, label, level)}
+    # 策略訊號（同舊版：最近一次掃描命中）＋法人買賣超基本訊號
+    sig_map = {"S10": (10, "🚀", "漲停", 3), "S1": (8, "📈", "雙MACD多", 2), "S2": (7, "📈", "W底再攻擊", 2),
+               "S_XIANREN": (7, "🧙", "仙人指路", 2), "S5": (6, "📈", "量增3倍", 2), "S_MSLOPE": (6, "📐", "月線斜率", 2),
+               "S1_SHORT": (5, "📉", "雙MACD空", 2)}
+    all_sig: dict = {}
     try:
         from yahoo_price import get_scan_results
-        scan_res = get_scan_results()
-        _SIG_MAP = {
-            "S10":          (10, "🚀", "漲停",    3),
-            "CHIP":         (9,  "💎", "主力籌碼", 3),
-            "S1":           (8,  "📈", "雙MACD多", 2),
-            "S2":           (7,  "📈", "W底再攻擊", 2),
-            "S_XIANREN":    (7,  "🧙", "仙人指路", 2),
-            "S5":           (6,  "📈", "站上均線", 2),
-            "S1_SHORT":     (5,  "📉", "雙MACD空", 2),
-        }
-        for strategy_key, results in scan_res.items():
-            if strategy_key not in _SIG_MAP:
-                continue
-            entry = _SIG_MAP[strategy_key]
-            for r in results:
-                sid = r.get("stock_id", "")
-                if not sid:
-                    continue
-                if sid not in all_sig:
-                    all_sig[sid] = {}
-                all_sig[sid][strategy_key] = entry
-        for item in merged:
-            sig_map = all_sig.get(item["stock_id"])
-            if sig_map:
-                sigs = sorted(sig_map.values(), key=lambda x: x[0], reverse=True)
-                item["signal_emoji"] = sigs[0][1]
-                item["signal_title"] = "·".join(s[2] for s in sigs)
-                item["signal_level"] = sigs[0][3]
-    except Exception:
+        for k, res in (get_scan_results() or {}).items():
+            if k in sig_map:
+                for x in res or []:
+                    all_sig.setdefault(str(x.get("stock_id")), {})[k] = sig_map[k]
+    except Exception:      # noqa: BLE001
         pass
-
-    # 若無策略掃描訊號，以法人買賣超流向產生基礎訊號
-    for item in merged:
-        if item["signal_title"] != "—":
+    for r in rows:
+        sigs = sorted((all_sig.get(r["stock_id"]) or {}).values(), key=lambda x: -x[0])
+        if sigs:
+            r.update(signal_emoji=sigs[0][1], signal_title="·".join(x[2] for x in sigs), signal_level=sigs[0][3])
             continue
-        wf = item.get("whale_flow_lots", 0) or 0
-        fgn = item.get("foreign_lots", 0) or 0
-        if wf >= 2000 or fgn >= 1500:
-            item["signal_emoji"] = "📈"
-            item["signal_title"] = "強力買超"
-            item["signal_level"] = 1
-        elif wf >= 500:
-            item["signal_emoji"] = "📈"
-            item["signal_title"] = "法人買超"
-            item["signal_level"] = 1
-        elif wf <= -2000 or fgn <= -1500:
-            item["signal_emoji"] = "📉"
-            item["signal_title"] = "強力賣超"
-            item["signal_level"] = 1
-        elif wf <= -500:
-            item["signal_emoji"] = "📉"
-            item["signal_title"] = "法人賣超"
-            item["signal_level"] = 1
+        t, f = r["total_lots"], r["foreign_lots"]
+        if t >= 2000 or f >= 1500:
+            r.update(signal_emoji="📈", signal_title="強力買超", signal_level=1)
+        elif t >= 500:
+            r.update(signal_emoji="📈", signal_title="法人買超", signal_level=1)
+        elif t <= -2000 or f <= -1500:
+            r.update(signal_emoji="📉", signal_title="強力賣超", signal_level=1)
+        elif t <= -500:
+            r.update(signal_emoji="📉", signal_title="法人賣超", signal_level=1)
+        else:
+            r.update(signal_emoji="⚪", signal_title="—", signal_level=0)
 
-    return {
-        "date":        used_date_str,
-        "total":       len(merged),
-        "top_buyers":  merged[:top],
-        "top_sellers": list(reversed(merged))[:top],
-    }
+    kw = dict(sort=sort, market=market if market in ("all", "twse", "tpex") else "all", etf=bool(etf), top=top)
+    buyers = market_rank.filter_sort(rows, side="buy", **kw)
+    sellers = market_rank.filter_sort(rows, side="sell", **kw)
+    return {"date": dates[0].replace("-", ""), "total": len(rows), "price_ok": has_px,
+            "markets": {"twse": sum(1 for r in rows if r["market"] == "twse"), "tpex": sum(1 for r in rows if r["market"] == "tpex")},
+            "top_buyers": buyers, "top_sellers": sellers, "notes": notes}
 
 
 # ════════════════════════════════════════════════════════════════════════════
