@@ -883,6 +883,9 @@ details.guide[open]>summary::before{content:'▾ ';}
         <label style="color:var(--muted)">最多持有
           <input id="batch-days" type="number" value="0" min="0" max="250" style="width:46px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem"> 天 <span style="font-size:.72rem">（0=不限）</span>
         </label>
+        <label style="color:var(--muted)" title="訊號那天的成交量要 ≥ 前一天的 N 倍才進場；0 = 不看量">量 ≥ 前一天
+          <input id="batch-vol" type="number" value="0" min="0" max="20" step="0.5" style="width:46px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem"> 倍
+        </label>
         <label style="color:var(--muted)">股數
           <input id="batch-n" type="number" value="100" min="10" max="300" step="10" style="width:46px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem">
         </label>
@@ -3172,6 +3175,7 @@ function _btEnsureStockPanel() {
         <option value="next_open" selected>訊號隔天開盤買（實際買得到）</option>
         <option value="close">訊號日收盤買（尾盤進場，較樂觀）</option>
       </select>
+      <label title="訊號那天的成交量要 ≥ 前一天的 N 倍才進場（訊號當天收盤就知道）；0 = 不看量。5 年研究：負乖離、KDJ 低檔、RSI6 超賣加了比較好，大部分策略加了反而變差（策略篩選頁的 5 年回測表）">量 ≥ 前一天${_btInput('bt-vol-mult', 0, 'min="0" max="20" step="0.5"')} 倍才進場 <span style="color:#484f58;font-size:.72rem">（0=不看量）</span></label>
     </div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding-top:8px;border-top:1px solid #21262d">
       <span style="font-weight:700;color:var(--text)">出場</span>
@@ -3251,6 +3255,7 @@ function _btParams() {
     cost: num('bt-cost', 0.585),
     taiex_bull: document.getElementById('bts-taiex-bull')?.checked ? 1 : 0,
     big_macd: document.getElementById('bts-big-macd')?.checked ? 1 : 0,
+    vol_mult: Math.max(0, num('bt-vol-mult', 0)),
   };
   if (stop === 'atr') p.stop_atr = num('bt-stop-val', 2); else if (stop === 'pct') p.stop_pct = num('bt-stop-val', 8);
   if (trail === 'atr') p.trail_atr = num('bt-trail-val', 2.5); else if (trail === 'pct') p.trail_pct = num('bt-trail-val', 10);
@@ -3260,6 +3265,7 @@ function _btParams() {
 function _btExitDesc(cfg, cost) {
   if (!cfg) return '';
   const parts = [cfg.entry === 'close' ? '訊號日收盤進場' : '訊號隔天開盤進場'];
+  if (cfg.vol_mult > 0) parts.push(`訊號當天量 ≥ 前一天 ${cfg.vol_mult} 倍才進場`);
   if (cfg.stop === 'atr') parts.push(`初始停損 ${cfg.stop_atr}×ATR`); else if (cfg.stop === 'pct') parts.push(`初始停損 ${cfg.stop_pct}%`);
   if (cfg.trail === 'atr') parts.push(`移動停損 ${cfg.trail_atr}×ATR`); else if (cfg.trail === 'pct') parts.push(`移動停損回落 ${cfg.trail_pct}%`);
   if (cfg.exit_ma) parts.push(`收盤破 MA${cfg.exit_ma} 出場`);
@@ -3455,7 +3461,7 @@ async function runBacktest() {
         </table></div>
       </details>`;
     }
-    html += `<div style="margin-top:12px;font-size:.72rem;color:#484f58;line-height:1.6">⚙️ ${_btExitDesc(d.exit_cfg, d.cost)}${d.taiex_bull ? ' · 加權多頭才進場' : ''}${d.big_macd ? ' · 大MACD多頭才進場' : ''}<br>
+    html += `<div style="margin-top:12px;font-size:.72rem;color:#484f58;line-height:1.6">⚙️ ${_btExitDesc({ ...(d.exit_cfg || {}), vol_mult: d.vol_mult }, d.cost)}${d.taiex_bull ? ' · 加權多頭才進場' : ''}${d.big_macd ? ' · 大MACD多頭才進場' : ''}<br>
       ${range} · 使用還原股價（除權息不會誤判停損）· 持倉中不重複進場 · 🔴 紅=獲利 🟢 綠=虧損 · 歷史回測不代表未來績效</div></div>`;
     body.innerHTML = html;
   } catch(e) {
@@ -5129,6 +5135,8 @@ function _batchQuery() {
   const sel = (id, d) => document.getElementById(id)?.value || d;
   const q = { strategy: _batchStrategy, max_stocks: Math.round(num('batch-n', 100)),
               max_hold: Math.max(0, Math.round(num('batch-days', 0))), take_profit: Math.max(0, num('batch-tp', 25)) };
+  const vm = num('batch-vol', 0);
+  if (vm > 0) q.vol_mult = vm;
   const stop = sel('batch-stop', 'pct'), sv = num('batch-stop-val', 8);
   if (stop === 'none' || sv <= 0) q.stop = 'none';
   else { q.stop = stop; q[stop === 'atr' ? 'stop_atr' : 'stop_pct'] = sv; }
@@ -5203,7 +5211,7 @@ function _renderBatch(r) {
       ${box('每股平均：買進持有', _btPct(r.avg_buy_hold_return, 1), _btRetColor(r.avg_buy_hold_return))}
     </div>
     <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">出場原因：${_btReasonChips(agg.exit_reasons)}</div>
-    <div style="font-size:.72rem;color:#484f58;margin-bottom:8px">⚙️ ${_btExitDesc(r.exit_cfg, r.cost)} · 還原股價 · 所有交易合併統計（不是每股平均再平均）· 歷史回測不代表未來績效</div>
+    <div style="font-size:.72rem;color:#484f58;margin-bottom:8px">⚙️ ${_btExitDesc({ ...(r.exit_cfg || {}), vol_mult: r.vol_mult }, r.cost)} · 還原股價 · 所有交易合併統計（不是每股平均再平均）· 歷史回測不代表未來績效</div>
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem;white-space:nowrap">
       <thead><tr style="background:#1c2128">
         <th style="padding:5px 8px;text-align:left;color:var(--muted)">代號</th>
@@ -5366,6 +5374,15 @@ function _f825Beat(x, long) {
   if (m == null || m <= 0) return long ? '<span class="lk-badge warn">△ 比隨機進場好，但平均每筆還是虧</span>' : '<span style="color:#f59e0b">△ 比隨機好但虧</span>';
   return long ? '<span class="lk-badge ok">✅ 樣本外勝過隨機進場、平均每筆賺</span>' : '<b style="color:var(--up)">✅</b>';
 }
+// 加「訊號當天量 ≥ 前一天 2 倍」之後跟不加比（樣本外平均每筆）
+function _f825Vol(x) {
+  const v = x.vol2, o = x.oos || {};
+  if (!v || !(v.oos || {}).n) return { cell: '<span class="muted">—</span>', tag: '' };
+  const vo = v.oos, d = (vo.mean ?? 0) - (o.mean ?? 0);
+  const tag = Math.abs(d) < 1e-6 ? '<span class="muted">＝ 一樣</span>'
+    : d > 0 ? `<b style="color:var(--up)">↑ 變好</b>${vo.n < 100 ? '<small class="muted">（樣本少）</small>' : ''}` : '<span style="color:var(--down)">↓ 變差</span>';
+  return { cell: `${vo.n.toLocaleString()} 筆 ${_f825w(vo.win)}／<span style="${_f825c(vo.mean)}">${_f825p(vo.mean, 2)}</span>`, tag };
+}
 function _f825Reasons(rs) {
   if (!rs) return '—';
   return `<span style="color:var(--up)">停利 ${_f825w(rs.tp)}</span>／<span style="color:var(--down)">停損 ${_f825w(rs.sl)}</span>${rs.open ? `／抱著 ${_f825w(rs.open)}` : ''}`;
@@ -5388,15 +5405,17 @@ async function loadFixed825Card() {
       <td class="num">${o.days != null ? Math.round(o.days) + ' 天' : '—'}</td><td style="font-size:.76rem">${_f825Reasons(x.reasons)}</td>
       <td class="num">${_f825w(rb.win)}／${_f825p(rb.mean)}</td><td>${_f825Beat(x, false)}</td>
       <td class="num">${_f825w(a.win)}／<span style="${_f825c(a.mean)}">${_f825p(a.mean)}</span></td>
-      <td class="num"><span style="${_f825c(pf.cagr)}">${_f825p(pf.cagr)}</span>／<span style="color:var(--down)">${_f825p(pf.mdd)}</span></td></tr>`;
+      <td class="num"><span style="${_f825c(pf.cagr)}">${_f825p(pf.cagr)}</span>／<span style="color:var(--down)">${_f825p(pf.mdd)}</span></td>
+      <td class="num" style="border-left:1px solid var(--border)">${_f825Vol(x).cell}</td><td>${_f825Vol(x).tag}</td></tr>`;
   }).join('');
   el.style.display = 'block';
   el.innerHTML = `<details><summary style="cursor:pointer"><b>📊 全部策略 5 年回測：停損 8%／停利 25%（不限天數）</b>
       <span class="muted" style="font-size:.8rem">　${keys.length} 個做多策略；依樣本外平均每筆排序，點策略名稱看那個策略</span></summary>
-    <div class="tbl-wrap" style="margin-top:6px"><table style="font-size:.8rem"><thead><tr><th>策略</th><th>樣本外筆數</th><th>勝率</th><th>平均每筆</th><th>平均抱</th><th>出場（全期）</th><th>隨機進場 勝率／平均</th><th>勝過隨機</th><th>全期 勝率／平均</th><th>帳戶年化／最大回撤</th></tr></thead>
+    <div class="tbl-wrap" style="margin-top:6px"><table style="font-size:.8rem"><thead><tr><th>策略</th><th>樣本外筆數</th><th>勝率</th><th>平均每筆</th><th>平均抱</th><th>出場（全期）</th><th>隨機進場 勝率／平均</th><th>勝過隨機</th><th>全期 勝率／平均</th><th>帳戶年化／最大回撤</th><th style="border-left:1px solid var(--border)">加「量 ≥ 前一天 2 倍」：樣本外</th><th>跟不加比</th></tr></thead>
     <tbody>${rows}</tbody></table></div>
     <div class="muted" style="font-size:.74rem;margin-top:6px;line-height:1.6">${_esc(m.entry || '')}；${_esc(m.exit || '')}；成本 ${_esc(m.cost || '')}。股票池：${_esc(m.pool || '')}。
       樣本內 ${md((per.is || [])[0])}～${md((per.is || [])[1])}、樣本外 ${md((per.oos || [])[0])}～${md((per.oos || [])[1])}（最近的交易還沒出場的用最新收盤算）。
+      加量條件：${_esc(m.vol2 || '')}。
       隨機進場：${_esc(m.random || '')}；勝過隨機＝樣本外勝率和平均都比隨機高（✅ 還要自己平均每筆是賺的；△＝比隨機好但還是虧）。8%／25% 的停利比停損遠 3 倍，勝率本來就只有 2～4 成，要看平均每筆和帳戶結果。帳戶：${_esc(m.port || '')}。同期加權年化 ${_f825p(tx.cagr)}、最大回撤 ${_f825p(tx.mdd)}（不含股利）。歷史回測不代表未來。</div></details>`;
 }
 function _f825StratHtml(strategy) {
@@ -5409,7 +5428,9 @@ function _f825StratHtml(strategy) {
   return `<details style="border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-top:6px" open>
     <summary style="cursor:pointer;font-weight:700">📊 5 年回測：停損 8%／停利 25%（不限天數）　${_f825Beat(x, true)}</summary>
     <div class="tbl-wrap" style="margin-top:6px"><table style="font-size:.82rem"><thead><tr><th>期間</th><th>筆數</th><th>勝率</th><th>平均每筆（扣成本）</th><th>平均抱</th></tr></thead><tbody>
-      ${row('樣本內', x.is)}${row('樣本外', x.oos)}${row('全期', x.all)}</tbody></table></div>
+      ${row('樣本內', x.is)}${row('樣本外', x.oos)}${row('全期', x.all)}
+      ${x.vol2 ? row('樣本外＋量 ≥ 前一天 2 倍', x.vol2.oos) : ''}</tbody></table></div>
+    ${x.vol2 && (x.vol2.oos || {}).n ? `<div style="font-size:.8rem;margin-top:4px">加「訊號當天量 ≥ 前一天 2 倍」：${_f825Vol(x).tag}　同樣加量的隨機進場 ${_f825w((x.vol2.random || {}).win)}／${_f825p((x.vol2.random || {}).mean)}；帳戶年化 ${_f825p((x.vol2.port || {}).cagr)}、最大回撤 ${_f825p((x.vol2.port || {}).mdd)}</div>` : ''}
     <div style="font-size:.8rem;margin-top:4px">出場：${_f825Reasons(x.reasons)}　隨機進場（同出場）：${_f825w(rb.win)}／${_f825p(rb.mean)}　帳戶（10 檔各 10%）年化 <span style="${_f825c(pf.cagr)}">${_f825p(pf.cagr)}</span>、最大回撤 <span style="color:var(--down)">${_f825p(pf.mdd)}</span></div>
     ${yrs ? `<div class="muted" style="font-size:.76rem;margin-top:2px">各年（勝率／平均）：${yrs}</div>` : ''}
     <div class="muted" style="font-size:.72rem;margin-top:4px">隔天開盤買；停損＝買價 −8%、停利＝買價 +25%，盤中碰到就算（跳空用開盤價、同一天都碰到算停損）；不限天數（上限 250 交易日）。K 線圖 📊 回測、🔬 批量回測的預設也是這一套。</div></details>`;

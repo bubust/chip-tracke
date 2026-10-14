@@ -216,6 +216,19 @@ def strategy_mask(df: pd.DataFrame, stock_id: str, strategy: str, params: Option
     return mask
 
 
+def vol_ratio_mask(df: pd.DataFrame, k: float) -> Optional[list]:
+    """進場量能條件（B72 追加，10-14 用戶）：訊號當天成交量 ≥ 前一個交易日 × k。
+    訊號當天收盤就知道、隔天開盤買；進場那天的量要收盤才知道，不能拿來判斷。k ≤ 0 → None（不用）"""
+    if not k or k <= 0 or "volume" not in df:
+        return None
+    v = pd.to_numeric(df["volume"], errors="coerce").to_numpy(float)
+    out = [False] * len(v)
+    for i in range(1, len(v)):
+        p = v[i - 1]
+        out[i] = bool(np.isfinite(p) and p > 0 and np.isfinite(v[i]) and v[i] >= k * p)
+    return out
+
+
 def market_filter_mask(df: pd.DataFrame, taiex_bull: int = 0, big_macd: int = 0) -> list:
     """回測面板的「市場篩選」：加權多頭排列（MA5>10>20>60）、週線大 MACD 多頭"""
     n = len(df)
@@ -266,7 +279,7 @@ def _market_of(stock_id: str) -> str:
 
 def run_single(stock_id: str, strategy: str, signal: str, exit_cfg: ExitConfig,
                cost_cfg: CostConfig, all_params: dict, taiex_bull: int = 0, big_macd: int = 0,
-               years: int = 5) -> Optional[dict]:
+               years: int = 5, vol_mult: float = 0.0) -> Optional[dict]:
     from scanner import SHORT_STRATEGIES, STRATEGIES
     df = fetch_adjusted_ohlcv(stock_id, _market_of(stock_id), years)
     if df is None:
@@ -283,6 +296,9 @@ def run_single(stock_id: str, strategy: str, signal: str, exit_cfg: ExitConfig,
     if taiex_bull or big_macd:
         f = market_filter_mask(df, taiex_bull, big_macd)
         mask = [a and b for a, b in zip(mask, f)]
+    vm = vol_ratio_mask(df, vol_mult)
+    if vm is not None:
+        mask = [a and b for a, b in zip(mask, vm)]
     trades, open_trade, info = simulate(df, mask, direction, exit_cfg, cost_cfg)
     stats = compute_stats(trades)
     stats["trades"] = trades
@@ -293,6 +309,7 @@ def run_single(stock_id: str, strategy: str, signal: str, exit_cfg: ExitConfig,
         "direction":     direction,
         "exit_cfg":      exit_cfg.key(),
         "cost":          cost_cfg.roundtrip,
+        "vol_mult":      float(vol_mult or 0),
         "first_date":    info["first_date"],
         "last_date":     info["last_date"],
         "total_bars":    info["bars"],
@@ -341,17 +358,20 @@ _batch_lock = threading.Lock()
 
 
 def batch_key(strategy: str, params: Optional[dict], min_vol_ratio: float, exit_cfg: ExitConfig,
-              cost_cfg: CostConfig, max_stocks: int) -> str:
-    return _h(["batch", strategy, params or {}, float(min_vol_ratio or 0), exit_cfg.key(),
-               cost_cfg.roundtrip, int(max_stocks), tw_today()])
+              cost_cfg: CostConfig, max_stocks: int, vol_mult: float = 0.0) -> str:
+    parts = ["batch", strategy, params or {}, float(min_vol_ratio or 0), exit_cfg.key(),
+             cost_cfg.roundtrip, int(max_stocks), tw_today()]
+    if vol_mult and vol_mult > 0:                      # 沒用量能條件 → 跟以前同一個 key（快取照用）
+        parts.append(["vol_mult", float(vol_mult)])
+    return _h(parts)
 
 
 def batch_request(strategy: str, exit_cfg: ExitConfig, cost_cfg: CostConfig, all_params: dict,
-                  max_stocks: int = 100) -> dict:
+                  max_stocks: int = 100, vol_mult: float = 0.0) -> dict:
     """查詢 / 啟動批量回測。快取命中 → done；同設定跑中 → running；其他 → 啟動背景 worker"""
     params = all_params.get(strategy)
     mvr = (all_params.get("_global") or {}).get("min_vol_ratio", 0.0)
-    key = batch_key(strategy, params, mvr, exit_cfg, cost_cfg, max_stocks)
+    key = batch_key(strategy, params, mvr, exit_cfg, cost_cfg, max_stocks, vol_mult)
     store = get_store()
     cached = store.get_batch(key)
     if cached:
@@ -368,13 +388,13 @@ def batch_request(strategy: str, exit_cfg: ExitConfig, cost_cfg: CostConfig, all
         _batch.update(running=True, key=key, strategy=strategy, progress=0, total=0,
                       error=None, started_at=time.time())
     t = threading.Thread(target=_batch_worker,
-                         args=(key, strategy, params, mvr, exit_cfg, cost_cfg, max_stocks),
+                         args=(key, strategy, params, mvr, exit_cfg, cost_cfg, max_stocks, vol_mult),
                          daemon=True, name="backtest-batch")
     t.start()
     return {"status": "started", "progress": 0, "total": 0}
 
 
-def _batch_worker(key, strategy, params, mvr, exit_cfg, cost_cfg, max_stocks):
+def _batch_worker(key, strategy, params, mvr, exit_cfg, cost_cfg, max_stocks, vol_mult=0.0):
     from concurrent.futures import ThreadPoolExecutor
     from scanner import SHORT_STRATEGIES, STRATEGIES
     store = get_store()
@@ -394,6 +414,9 @@ def _batch_worker(key, strategy, params, mvr, exit_cfg, cost_cfg, max_stocks):
                         failed += 1
                         continue
                     mask = strategy_mask(df, sid, strategy, params, mvr, store=store, persist=True)
+                    vm = vol_ratio_mask(df, vol_mult)
+                    if vm is not None:
+                        mask = [a and b for a, b in zip(mask, vm)]
                     trades, open_t, info = simulate(df, mask, direction, exit_cfg, cost_cfg)
                     st = compute_stats(trades)
                     for t in trades:
@@ -440,7 +463,7 @@ def _batch_worker(key, strategy, params, mvr, exit_cfg, cost_cfg, max_stocks):
             "strategy": strategy, "strategy_name": STRATEGIES.get(strategy, strategy),
             "direction": direction, "universe": src, "total_scanned": len(universe),
             "computed": len(by_stock), "failed": failed, "stocks_with_trades": len(traded),
-            "exit_cfg": exit_cfg.key(), "cost": cost_cfg.roundtrip,
+            "exit_cfg": exit_cfg.key(), "cost": cost_cfg.roundtrip, "vol_mult": float(vol_mult or 0),
             "avg_buy_hold_return": round(avg_bh, 5) if avg_bh is not None else None,
             "avg_strategy_total_return": round(avg_tot, 5) if avg_tot is not None else None,
             "summary": summary, "aggregate": agg, "by_stock": by_stock,

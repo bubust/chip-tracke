@@ -2748,7 +2748,8 @@ def api_backtest_fbd(stock_id: str, strategy: str = "", signal: str = "fbd",
                      take_profit: float = 25.0, cost: float = 0.585,
                      taiex_bull: int = 0, big_macd: int = 0,
                      trailing_low_days: int = 0,
-                     holding_days: Optional[int] = None, stop_loss: Optional[float] = None):
+                     holding_days: Optional[int] = None, stop_loss: Optional[float] = None,
+                     vol_mult: float = 0.0):
     """
     單股回測（PLAN-BACKTEST §3.1）：
     - strategy：策略掃描的 key（S1、S5…）→ 逐日套用同一個 screen 函式＋同參數判斷進場；
@@ -2760,6 +2761,7 @@ def api_backtest_fbd(stock_id: str, strategy: str = "", signal: str = "fbd",
     - max_hold：最多持有天數（預設 0 = 不限）；exit_ma / trailing_low_days：收盤成立、隔天開盤出場
     - time_stop_days + time_stop_pct：N 天內沒賺到 X% 就出場；take_profit：停利 %（預設 25）
     - cost：來回成本 %（預設 0.585 = 手續費 0.1425%×2 + 證交稅 0.3%）
+    - vol_mult：訊號當天成交量 ≥ 前一天 × vol_mult 才進場（0 = 不看量；B72 追加）
     - 一律用還原股價；出場以盤中高低價判定，跳空用開盤價；持倉中不重複進場
     """
     from backtest_engine import CostConfig
@@ -2776,7 +2778,7 @@ def api_backtest_fbd(stock_id: str, strategy: str = "", signal: str = "fbd",
                       trailing_low_days, holding_days, stop_loss)
     res = run_single(stock_id, strategy, signal, ec, CostConfig(max(0.0, cost) / 100.0),
                      _load_strategy_params() if strategy else {},
-                     taiex_bull=taiex_bull, big_macd=big_macd)
+                     taiex_bull=taiex_bull, big_macd=big_macd, vol_mult=max(0.0, vol_mult))
     if res is None:
         raise HTTPException(status_code=404, detail=f"{stock_id} 無法取得歷史資料")
     res["taiex_bull"] = taiex_bull
@@ -3010,7 +3012,7 @@ def api_backtest_strategy_batch(
     trail: str = "none", trail_atr: float = 2.5, trail_pct: float = 0.0,
     max_hold: int = 0, exit_ma: int = 0,
     time_stop_days: int = 0, time_stop_pct: float = 0.0,
-    take_profit: float = 25.0, cost: float = 0.585,
+    take_profit: float = 25.0, cost: float = 0.585, vol_mult: float = 0.0,
 ):
     """
     批量回測此策略（PLAN-BACKTEST §3.4）：全市場近 20 日平均成交金額前 N 大（預設 100，上限 300），
@@ -3029,7 +3031,7 @@ def api_backtest_strategy_batch(
     ec = _bt_exit_cfg(entry, stop, stop_atr, stop_pct, trail, trail_atr, trail_pct, max_hold,
                       exit_ma, time_stop_days, time_stop_pct, take_profit)
     return batch_request(strategy, ec, CostConfig(max(0.0, cost) / 100.0),
-                         _load_strategy_params(), max_stocks)
+                         _load_strategy_params(), max_stocks, vol_mult=max(0.0, vol_mult))
 
 
 @app.get("/api/stock/{stock_id}/ohlcv")

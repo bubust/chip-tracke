@@ -248,6 +248,46 @@ def stage_c(P, F, sim, sig_path):
     return out
 
 
+def vol_ratio_ok(P, k=2.0):
+    """訊號當天成交量 ≥ 前一個交易日 × k（停牌日不算一天；前一天量 0 不算）"""
+    v = P['volume']
+    prev = engine.per_stock(v, lambda s: s.shift(1))
+    with np.errstate(invalid='ignore', divide='ignore'):
+        return ((v >= prev * k) & (prev > 0)).to_numpy()
+
+
+def stage_v(P, F, sim, sig_path, k=2.0):
+    """PLAN-B72 追加（10-14 用戶）：進場前加「訊號當天量 ≥ 前一天 2 倍」，跟不加比；結果併進 fixed825.json 的 vol2"""
+    last = str(sim.dates[-2])
+    IS, OOS = run.IS, ('20240701', last)
+    years = ('2022', '2023', '2024', '2025', '2026')
+    pool = F['liquid'].to_numpy() & (sim.dates >= engine.TRADE_FROM)[:, None] & ~F['gap60'].to_numpy()
+    vx = vol_ratio_ok(P, k)
+    poolv = pool & vx
+    M = masks(sim, sig_path, pool)
+    strength = np.nan_to_num(sim.c * P['volume'].to_numpy(float))
+    J = json.load(open(OUT_JSON, encoding='utf-8'))
+    t0 = time.time()
+    for key, m in sorted(M.items()):
+        mv = m & vx
+        tr = sim.trades825(mv)
+        ss = split(tr, IS, OOS, years)
+        pf = port(sim, tr, strength, engine.TRADE_FROM, last)
+        rb = random_825(sim, poolv, mv, OOS) if mv.any() else {'win': None, 'mean': None, 'reps': 0}
+        o = ss['oos']
+        base = J['strategies'].get(key, {}).get('oos', {})
+        J['strategies'].setdefault(key, {})['vol2'] = {
+            **{p: ss[p] for p in ('is', 'oos', 'all', 'years', 'reasons')}, 'port': pf, 'random': rb,
+            'kept': float(mv.sum() / m.sum()) if m.sum() else None,
+            'beats_random': bool(o.get('n') and rb['mean'] is not None and o['mean'] > rb['mean'] and o['win'] > rb['win']),
+            'better_than_plain': bool(o.get('n') and base.get('n') and o['mean'] > base['mean'])}
+        print(f'{key}: kept={mv.sum()}/{m.sum()} oos n={o.get("n")} win={o.get("win")} mean={o.get("mean")} '
+              f'(plain {base.get("mean")}) rand={rb["mean"]} port={pf["cagr"]:.3f}/{pf["mdd"]:.3f} {time.time() - t0:.0f}s', flush=True)
+    J['meta']['vol2'] = (f'訊號當天成交量 ≥ 前一個交易日 × {k:g}（訊號當天收盤就知道，隔天開盤買；進場那天的量要收盤才知道，不能用）；'
+                         f'隨機進場也只從「當天量 ≥ 前一天 {k:g} 倍」的股票日裡抽')
+    json.dump(J, open(OUT_JSON, 'w', encoding='utf-8'), ensure_ascii=False, indent=1, default=float)
+
+
 def _c1(Mx, My):
     w = lambda m: m | np.r_[np.zeros((1, m.shape[1]), bool), m[:-1]] | np.r_[np.zeros((2, m.shape[1]), bool), m[:-2]]
     return (Mx & w(My)) | (My & w(Mx))
@@ -353,3 +393,5 @@ if __name__ == '__main__':
         stage_c(P, F, sim, sig_all)
     if stage in ('e', 'all'):
         stage_e(P, F, sim, sig_all, sig_band)
+    if stage in ('v', 'all'):
+        stage_v(P, F, sim, sig_all)
