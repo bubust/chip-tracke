@@ -1,0 +1,48 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B73.md"
+ ],
+ "reviews": [
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"The plan addresses survivorship, look‑ahead, multiple‑testing, volume‑unit conversion, and test coverage. Research and live code share the same quality.py, and the bootstrap and pass‑rule logic are pre‑registered and correctly corrected. Minor suggestions are provided for completeness.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"low\",\n      \"section\": \"B. Research\",\n      \"issue\": \"Bootstrap resampling over calendar months may leave a partial month at the start or end of the OOS window unaccounted for.\",\n      \"suggestion\": \"Explicitly document how partial months are handled (e.g., include them as a separate block or merge with adjacent month) to avoid ambiguity.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"section\": \"C. Website\",\n      \"issue\": \"Cross‑sectional ranking tie‑breaking is not described; differences between research and live could arise on equal values.\",\n      \"suggestion\": \"Specify deterministic tie‑break rule (e.g., secondary sort by ticker or volume) and add a unit test covering equal‑rank scenarios.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"low\",\n      \"section\": \"C. Website\",\n      \"issue\": \"No explicit integration test for the /api/quality/research endpoint.\",\n      \"suggestion\": \"Add an end‑to‑end test that calls the API and verifies the presence and format of the `q` field for a sample day.\"\n    },\n    {\n      \"id\": \"F4\",\n      \"severity\": \"low\",\n      \"section\": \"Performance\",\n      \"issue\": \"Memory estimate assumes ~2,000 stocks; peak market days can exceed 4,000 listed stocks.\",\n      \"suggestion\": \"Benchmark the worst‑case day (full market) and confirm memory stays < 512 MB; if needed, stream in batches of 2,000.\"\n    }\n  ],\n  \"coverage\": \"Unit tests cover each flag (F1‑F9), edge cases (NaN/zero price, zero volume, missing sector, lot/share conversion), pass‑rule logic, and reproducible bootstrap. Added synthetic data tests ensure research and live calculations match. Integration test for API endpoint is recommended.\",\n  \"limitations\": \"Quality‑score evaluation depends on the current sector mapping; delisted stocks lacking a sector are excluded from F6, which may bias results. The plan notes this and will report results with and without F6. Bootstrap uses month blocks, so very short OOS periods (<1 month) would reduce resampling effectiveness.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "The plan addresses survivorship, look‑ahead, multiple‑testing, volume‑unit conversion, and test coverage. Research and live code share the same quality.py, and the bootstrap and pass‑rule logic are pre‑registered and correctly corrected. Minor suggestions are provided for completeness.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "low",
+      "section": "B. Research",
+      "issue": "Bootstrap resampling over calendar months may leave a partial month at the start or end of the OOS window unaccounted for.",
+      "suggestion": "Explicitly document how partial months are handled (e.g., include them as a separate block or merge with adjacent month) to avoid ambiguity."
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "section": "C. Website",
+      "issue": "Cross‑sectional ranking tie‑breaking is not described; differences between research and live could arise on equal values.",
+      "suggestion": "Specify deterministic tie‑break rule (e.g., secondary sort by ticker or volume) and add a unit test covering equal‑rank scenarios."
+     },
+     {
+      "id": "F3",
+      "severity": "low",
+      "section": "C. Website",
+      "issue": "No explicit integration test for the /api/quality/research endpoint.",
+      "suggestion": "Add an end‑to‑end test that calls the API and verifies the presence and format of the `q` field for a sample day."
+     },
+     {
+      "id": "F4",
+      "severity": "low",
+      "section": "Performance",
+      "issue": "Memory estimate assumes ~2,000 stocks; peak market days can exceed 4,000 listed stocks.",
+      "suggestion": "Benchmark the worst‑case day (full market) and confirm memory stays < 512 MB; if needed, stream in batches of 2,000."
+     }
+    ],
+    "coverage": "Unit tests cover each flag (F1‑F9), edge cases (NaN/zero price, zero volume, missing sector, lot/share conversion), pass‑rule logic, and reproducible bootstrap. Added synthetic data tests ensure research and live calculations match. Integration test for API endpoint is recommended.",
+    "limitations": "Quality‑score evaluation depends on the current sector mapping; delisted stocks lacking a sector are excluded from F6, which may bias results. The plan notes this and will report results with and without F6. Bootstrap uses month blocks, so very short OOS periods (<1 month) would reduce resampling effectiveness."
+   }
+  }
+ ]
+}

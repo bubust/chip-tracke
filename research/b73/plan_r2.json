@@ -1,0 +1,38 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B73.md"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.6-flash",
+   "error": "503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}"
+  },
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"REVISE\",\n  \"summary\": \"The plan addresses most reviewer concerns (look‑ahead, survivorship, multiple‑testing correction, unit handling, code parity, and test coverage). However, the bootstrap methodology for the out‑of‑sample win‑rate test is not fully specified, which could introduce hidden bias, and test coverage could be expanded to include block‑bootstrap validation and extreme‑edge cases.\",\n  \"findings\": [\n    {\n      \"id\": \"F6\",\n      \"severity\": \"medium\",\n      \"section\": \"B. 研究 – Bootstrap validation\",\n      \"issue\": \"The plan states a monthly bootstrap (2,000 resamples) for the win‑rate difference but does not specify whether a block‑bootstrap or other time‑series‑aware resampling is used. Simple i.i.d. resampling may underestimate variance due to autocorrelation in daily returns.\",\n      \"suggestion\": \"Adopt a block‑bootstrap (e.g., moving‑block or stationary bootstrap) with block length calibrated to the typical autocorrelation horizon of the strategies, and document the method in the research code. Add a unit test that verifies the bootstrap routine preserves temporal dependence on a synthetic autocorrelated series.\"\n    },\n    {\n      \"id\": \"F7\",\n      \"severity\": \"low\",\n      \"section\": \"C. 網站 – Test coverage\",\n      \"issue\": \"Current test suite covers mixed‑unit volume conversion and missing industry cases, but does not explicitly test the block‑bootstrap path or the handling of extreme edge cases such as zero‑price days, NaN values, or extremely low liquidity stocks.\",\n      \"suggestion\": \"Extend tests in `tests/test_quality.py` to include: (a) a synthetic dataset with NaN/zero price entries, (b) a stock with zero daily volume for many days, and (c) a mock bootstrap module that returns deterministic results to verify the OOS pass/fail logic.\"\n    }\n  ],\n  \"coverage\": \"The plan includes pytest coverage for core quality calculations, equivalence between research and live code, and edge cases (insufficient data, missing sector, zero volume, mixed share/lot conversion). Adding the suggested bootstrap and extreme‑edge tests will bring coverage to >90% of critical paths.\",\n  \"limitations\": \"Manual half‑year re‑run of `run_quality.py` may delay detection of regime shifts. Industry classification gaps for delisted stocks can penalize F6, but the plan mitigates by reporting results without F6. The bootstrap method must be time‑series aware to avoid understated p‑values.\"\n}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "The plan addresses most reviewer concerns (look‑ahead, survivorship, multiple‑testing correction, unit handling, code parity, and test coverage). However, the bootstrap methodology for the out‑of‑sample win‑rate test is not fully specified, which could introduce hidden bias, and test coverage could be expanded to include block‑bootstrap validation and extreme‑edge cases.",
+    "findings": [
+     {
+      "id": "F6",
+      "severity": "medium",
+      "section": "B. 研究 – Bootstrap validation",
+      "issue": "The plan states a monthly bootstrap (2,000 resamples) for the win‑rate difference but does not specify whether a block‑bootstrap or other time‑series‑aware resampling is used. Simple i.i.d. resampling may underestimate variance due to autocorrelation in daily returns.",
+      "suggestion": "Adopt a block‑bootstrap (e.g., moving‑block or stationary bootstrap) with block length calibrated to the typical autocorrelation horizon of the strategies, and document the method in the research code. Add a unit test that verifies the bootstrap routine preserves temporal dependence on a synthetic autocorrelated series."
+     },
+     {
+      "id": "F7",
+      "severity": "low",
+      "section": "C. 網站 – Test coverage",
+      "issue": "Current test suite covers mixed‑unit volume conversion and missing industry cases, but does not explicitly test the block‑bootstrap path or the handling of extreme edge cases such as zero‑price days, NaN values, or extremely low liquidity stocks.",
+      "suggestion": "Extend tests in `tests/test_quality.py` to include: (a) a synthetic dataset with NaN/zero price entries, (b) a stock with zero daily volume for many days, and (c) a mock bootstrap module that returns deterministic results to verify the OOS pass/fail logic."
+     }
+    ],
+    "coverage": "The plan includes pytest coverage for core quality calculations, equivalence between research and live code, and edge cases (insufficient data, missing sector, zero volume, mixed share/lot conversion). Adding the suggested bootstrap and extreme‑edge tests will bring coverage to >90% of critical paths.",
+    "limitations": "Manual half‑year re‑run of `run_quality.py` may delay detection of regime shifts. Industry classification gaps for delisted stocks can penalize F6, but the plan mitigates by reporting results without F6. The bootstrap method must be time‑series aware to avoid understated p‑values."
+   }
+  }
+ ]
+}

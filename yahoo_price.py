@@ -1100,6 +1100,18 @@ async def run_market_scan(strategy_params: dict = None):
         except Exception as _ce:
             print(f"[SCAN] 籌碼面（上課筆記）失敗: {_ce}")
 
+        # ⭐ 品質分（PLAN-B73）：做多策略每一列加 q（分數＋符合哪些條件）；失敗不影響結果
+        try:
+            import quality as _qm
+            from scanner import SHORT_STRATEGIES as _SS
+            from chip_course import CHIP_SHORT as _CS
+            _long = {k for k in all_results if k not in _SS and k not in _CS}
+            _scan_status["phase"] = "quality"
+            _qs = await loop.run_in_executor(None, lambda: _qm.annotate(all_results, _long))
+            print(f"[SCAN] ⭐ 品質分：{_qs}")
+        except Exception as _qe:
+            print(f"[SCAN] 品質分失敗（不影響結果）: {_qe}")
+
         _scan_status["results"] = all_results
         _save_scan_cache(all_results)  # 持久化，重啟後訊號不消失
 

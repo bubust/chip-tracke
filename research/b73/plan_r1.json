@@ -1,0 +1,59 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B73.md"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-2.5-flash",
+   "error": "429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 10h12m43.226809193s.', 'status': 'RESOURCE_EXH"
+  },
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"REVISE\",\n  \"summary\": \"The plan is well‑structured and covers most validation steps, but there are material risks around survivorship bias, multiple‑testing inflation, resource constraints on the Fly.io instance, and incomplete test‑coverage reporting. These issues must be addressed before deployment.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"high\",\n      \"section\": \"Data Universe & Survivorship Bias\",\n      \"issue\": \"The back‑test uses the current stock universe (price_daily) without explicit handling of delisted or newly listed securities, which can introduce survivorship bias especially for the 5‑year sample.\",\n      \"suggestion\": \"Create a static universe snapshot for each back‑test day (e.g., using a daily list of listed securities) and exclude stocks that were not tradable on that day. Document the handling of delistings in the research report.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"high\",\n      \"section\": \"Multiple‑Testing & Data‑Snooping\",\n      \"issue\": \"Testing 45 filter combinations per strategy (900 total) increases the chance of false‑positive improvements, even with a single out‑of‑sample validation.\",\n      \"suggestion\": \"Apply a multiple‑testing correction (e.g., Bonferroni, Benjamini‑Hochberg) to the out‑of‑sample win‑rate thresholds, or reserve a second hold‑out period for the top‑ranked filters. Clearly state the adjusted significance level in the pass rules.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"medium\",\n      \"section\": \"Resource Constraints (Fly.io 512 MB)\",\n      \"issue\": \"The live scan reads the last 260 rows for the entire market in one SQL query and computes cross‑sectional metrics (F4, F6, F9). On a 512 MB instance this may exceed memory limits during peak loads.\",\n      \"suggestion\": \"Implement incremental aggregation (e.g., window functions) or batch the market data in chunks. Add a memory‑usage benchmark and fallback to a slower, paginated scan if the RAM usage approaches the limit.\"\n    },\n    {\n      \"id\": \"F4\",\n      \"severity\": \"medium\",\n      \"section\": \"Volume Unit Conversion\",\n      \"issue\": \"price_daily mixes share‑count and lot‑count; conversion relies on deep_verdict.lots_volume which may not cover all edge cases (e.g., stocks with non‑standard lot sizes).\",\n      \"suggestion\": \"Add validation logic that checks lot‑size metadata per ticker and normalises volume to a single unit before applying F7. Include unit‑conversion tests for at least three atypical lot‑size stocks.\"\n    },\n    {\n      \"id\": \"F5\",\n      \"severity\": \"low\",\n      \"section\": \"Test Coverage Reporting\",\n      \"issue\": \"The plan mentions pytest passing and new tests, but does not specify coverage metrics or a target threshold.\",\n      \"suggestion\": \"Integrate coverage.py and enforce a minimum of 80 % line coverage for quality.py and related modules. Publish the coverage report as part of the CI pipeline.\"\n    }\n  ],\n  \"coverage\": \"Current test suite includes unit tests for quality flag computation and edge cases, but coverage percentage is not reported. Aim for ≥80 % line coverage and include integration tests that compare live API output with research results.\",\n  \"limitations\": \"Even after addressing the above points, the win‑rate improvement may still be modest due to the fixed 8 %/25 % exit rule and market regime changes. The plan does not include a mechanism for periodic re‑validation of the quality score as new data arrives.\"\n}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "The plan is well‑structured and covers most validation steps, but there are material risks around survivorship bias, multiple‑testing inflation, resource constraints on the Fly.io instance, and incomplete test‑coverage reporting. These issues must be addressed before deployment.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "section": "Data Universe & Survivorship Bias",
+      "issue": "The back‑test uses the current stock universe (price_daily) without explicit handling of delisted or newly listed securities, which can introduce survivorship bias especially for the 5‑year sample.",
+      "suggestion": "Create a static universe snapshot for each back‑test day (e.g., using a daily list of listed securities) and exclude stocks that were not tradable on that day. Document the handling of delistings in the research report."
+     },
+     {
+      "id": "F2",
+      "severity": "high",
+      "section": "Multiple‑Testing & Data‑Snooping",
+      "issue": "Testing 45 filter combinations per strategy (900 total) increases the chance of false‑positive improvements, even with a single out‑of‑sample validation.",
+      "suggestion": "Apply a multiple‑testing correction (e.g., Bonferroni, Benjamini‑Hochberg) to the out‑of‑sample win‑rate thresholds, or reserve a second hold‑out period for the top‑ranked filters. Clearly state the adjusted significance level in the pass rules."
+     },
+     {
+      "id": "F3",
+      "severity": "medium",
+      "section": "Resource Constraints (Fly.io 512 MB)",
+      "issue": "The live scan reads the last 260 rows for the entire market in one SQL query and computes cross‑sectional metrics (F4, F6, F9). On a 512 MB instance this may exceed memory limits during peak loads.",
+      "suggestion": "Implement incremental aggregation (e.g., window functions) or batch the market data in chunks. Add a memory‑usage benchmark and fallback to a slower, paginated scan if the RAM usage approaches the limit."
+     },
+     {
+      "id": "F4",
+      "severity": "medium",
+      "section": "Volume Unit Conversion",
+      "issue": "price_daily mixes share‑count and lot‑count; conversion relies on deep_verdict.lots_volume which may not cover all edge cases (e.g., stocks with non‑standard lot sizes).",
+      "suggestion": "Add validation logic that checks lot‑size metadata per ticker and normalises volume to a single unit before applying F7. Include unit‑conversion tests for at least three atypical lot‑size stocks."
+     },
+     {
+      "id": "F5",
+      "severity": "low",
+      "section": "Test Coverage Reporting",
+      "issue": "The plan mentions pytest passing and new tests, but does not specify coverage metrics or a target threshold.",
+      "suggestion": "Integrate coverage.py and enforce a minimum of 80 % line coverage for quality.py and related modules. Publish the coverage report as part of the CI pipeline."
+     }
+    ],
+    "coverage": "Current test suite includes unit tests for quality flag computation and edge cases, but coverage percentage is not reported. Aim for ≥80 % line coverage and include integration tests that compare live API output with research results.",
+    "limitations": "Even after addressing the above points, the win‑rate improvement may still be modest due to the fixed 8 %/25 % exit rule and market regime changes. The plan does not include a mechanism for periodic re‑validation of the quality score as new data arrives."
+   }
+  }
+ ]
+}

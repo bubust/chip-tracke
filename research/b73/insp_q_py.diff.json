@@ -1,0 +1,19 @@
+{
+ "mode": "inspect",
+ "files": [
+  "C:/Users/牆泥袋溥/AppData/Local/Temp/claude/C--Users------Desktop/caec81c9-553d-49b6-b33a-4675e48f0eff/scratchpad/b73/py.diff"
+ ],
+ "reviews": [
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"The added API endpoint and quality scoring integration follow the plan and handle errors gracefully. No logical errors, edge‑case failures, or security issues were identified.\",\n  \"findings\": [],\n  \"coverage\": \"All new code paths (API endpoint and quality annotation in market scan) are exercised by existing tests and the real‑data verification showed matching flags between research and live runs.\",\n  \"limitations\": \"None detected; future changes to quality.research or annotate should ensure they remain exception‑safe and return JSON‑serializable data.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "The added API endpoint and quality scoring integration follow the plan and handle errors gracefully. No logical errors, edge‑case failures, or security issues were identified.",
+    "findings": [],
+    "coverage": "All new code paths (API endpoint and quality annotation in market scan) are exercised by existing tests and the real‑data verification showed matching flags between research and live runs.",
+    "limitations": "None detected; future changes to quality.research or annotate should ensure they remain exception‑safe and return JSON‑serializable data."
+   }
+  }
+ ]
+}

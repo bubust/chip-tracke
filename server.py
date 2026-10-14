@@ -3708,6 +3708,13 @@ def check_positions(phase: str, dry: bool = False) -> list:
     return out
 
 
+@app.get("/api/quality/research")
+def api_quality_research():
+    """⭐ 品質分研究結果（PLAN-B73，research/b73/quality_research.json）：條件說明、計分條件、各策略濾網與分組勝率"""
+    import quality
+    return quality.research()
+
+
 @app.get("/api/global-brief")
 def api_global_brief():
     """08:30 盤前推播的國際盤區塊預覽（PLAN-B72 F；只抓不推）"""

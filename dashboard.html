@@ -775,6 +775,7 @@ details.guide[open]>summary::before{content:'▾ ';}
   <div class="card" id="crash-card" style="display:none"></div>
   <div class="card" id="course-card" style="display:none"></div>
   <div class="card" id="fixed825-card" style="display:none"></div>
+  <div class="card" id="quality-card" style="display:none"></div>
 
   <div class="card">
     <!-- Cache 預熱狀態列 -->
@@ -2196,7 +2197,7 @@ function switchTab(name) {
   if (name === 'relationship') { const rf2 = document.getElementById('relationship-iframe'); if (rf2 && !rf2.dataset.loaded) { rf2.dataset.loaded = '1'; rf2.src = '/relationship/'; } }
   if (name === 'link') { linkOnShow(); }
   if (name === 'market') { _mktOnShow(); }
-  if (name === 'screen') { loadCrashCard(); loadCourseCard(); loadFixed825Card(); }
+  if (name === 'screen') { loadCrashCard(); loadCourseCard(); loadFixed825Card(); loadQualityCard(); }
   if (name === 'treasury') { tbOnShow(); }
   if (name === 'mna') { mnaOnShow(); }
   if (name === 'cb') { cbOnShow(); }
@@ -5274,8 +5275,9 @@ async function _renderStratResearch(strategy) {
   if (_best2 === null) { try { _best2 = await api('GET', '/api/best2/strategies'); } catch (e) { _best2 = {}; } }
   if (_courseRes === null) { try { _courseRes = await api('GET', '/api/course/research'); } catch (e) { _courseRes = {}; } }
   await _getF825();
+  await _getQRes();
   const r = (_best2.strategies || {})[strategy];
-  const courseHtml = _courseResearchHtml(strategy) + _f825StratHtml(strategy);
+  const courseHtml = _qualityStratHtml(strategy) + _courseResearchHtml(strategy) + _f825StratHtml(strategy);
   if (!r) { if (courseHtml) { el.style.display = 'block'; el.innerHTML = courseHtml; } else el.style.display = 'none'; return; }
   const b = r.baseline || {}, p = r.pick, e7 = r.e7_10;
   const pct = x => x == null ? '—' : `${x >= 0 ? '+' : ''}${(x * 100).toFixed(2)}%`;
@@ -5356,6 +5358,82 @@ async function loadCourseCard(force) {
       ${alerts.length ? `<b style="color:var(--up)">🔔 ${alerts.join('、')}</b>` : '<span class="muted">大盤出貨日／主流族群大跌／當沖名單／漲停打開／出貨日（點開）</span>'}
       <span class="muted" style="font-size:.74rem">　每晚掃描後更新；盤中每分鐘看漲停打開</span></summary>
     <div class="cs-grid">${mBox}${sBox}${lBox}${dBox2}${dBox}</div></details>`;
+}
+
+// ── ⭐ 品質分（PLAN-B73）：個股條件 F1～F9，研究通過才拿來排序；不隱藏任何股票 ──
+let _qRes = null;
+async function _getQRes() {
+  if (_qRes === null) { try { _qRes = await api('GET', '/api/quality/research'); } catch (e) { _qRes = {}; } }
+  return _qRes || {};
+}
+const _qp = (x, d = 1) => x == null ? '—' : `${x >= 0 ? '+' : ''}${(x * 100).toFixed(d)}%`;
+const _qw = x => x == null ? '—' : `${(x * 100).toFixed(0)}%`;
+// 這個策略有沒有「回測通過的建議濾網」（研究 B1）；沒有＝null
+function _qB1(strategy) {
+  const x = ((_qRes || {}).strategies || {})[strategy];
+  return x && x.b1 && x.b1.passed ? x.b1 : null;
+}
+function _qMeets(row, b1) { return !!(row.q && b1 && (b1.combo || []).every(k => (row.q.flags || []).includes(k))); }
+function _qCell(row, b1) {
+  if (!row.q) return '<td class="muted" title="重新掃描後才有">—</td>';
+  const F = (_qRes || {}).flags || {};
+  const tip = Object.keys(F).map(k => `${(row.q.flags || []).includes(k) ? '✅' : '·'} ${F[k]}`).join('\n');
+  return _qMeets(row, b1)
+    ? `<td title="${_esc('符合回測建議：' + (b1.desc || '') + '\n\n' + tip)}" style="cursor:help;white-space:nowrap"><b style="color:var(--up)">⭐ 建議</b></td>`
+    : `<td title="${_esc('不符合回測建議：' + (b1.desc || '') + '\n\n' + tip)}" class="muted" style="cursor:help">—</td>`;
+}
+async function loadQualityCard() {
+  const el = document.getElementById('quality-card');
+  if (!el) return;
+  const R = await _getQRes();
+  const sc = R.score || {}, F = R.flags || {}, m = R.meta || {}, S = R.strategies || {};
+  if (!sc.lifts) { el.style.display = 'none'; return; }
+  const per = (m.periods || {});
+  const md = d => d ? `${String(d).slice(0, 4)}-${String(d).slice(4, 6)}` : '';
+  const keys = Object.keys(S).filter(k => S[k].b1 && (S[k].base || {}).oos).sort((a, b) =>
+    ((S[b].b1.oos.win - S[b].base.oos.win) || 0) - ((S[a].b1.oos.win - S[a].base.oos.win) || 0));
+  const rows = keys.map(k => { const x = S[k], b = x.b1, o = b.oos || {}, bo = x.base.oos || {}, gap = (o.win ?? 0) - (bo.win ?? 0);
+    return `<tr style="cursor:pointer${b.passed ? ';background:rgba(239,68,68,.06)' : ''}" onclick="viewStrategy('${_esc(k)}');document.getElementById('screen-result-card').scrollIntoView({behavior:'smooth'})">
+      <td style="white-space:normal;min-width:120px">${_esc(STRATEGY_SHORT[k] || x.label || k)}</td>
+      <td class="num">${_qw(bo.win)}／<span style="${bo.mean > 0 ? 'color:var(--up)' : 'color:var(--down)'}">${_qp(bo.mean, 2)}</span></td>
+      <td style="white-space:normal;min-width:180px;font-size:.76rem">${_esc(b.desc)}</td>
+      <td class="num"><b>${_qw(o.win)}</b>／<span style="${o.mean > 0 ? 'color:var(--up)' : 'color:var(--down)'}">${_qp(o.mean, 2)}</span>（${o.n || 0}）</td>
+      <td class="num" style="${gap > 0 ? 'color:var(--up)' : 'color:var(--down)'}">${gap >= 0 ? '+' : ''}${(gap * 100).toFixed(1)} 點</td>
+      <td class="num">${(x.per_day_base ?? 0).toFixed(1)} → ${(b.per_day ?? 0).toFixed(1)}</td>
+      <td class="num">${b.p_adj != null ? b.p_adj.toFixed(3) : '—'}</td>
+      <td>${b.passed ? '<b style="color:var(--up)">✅ 通過</b>' : '<span class="muted">✗</span>'}</td></tr>`; }).join('');
+  const lift = Object.keys(F).map(k => { const x = sc.lifts[k] || {};
+    return `<tr><td>${_esc(F[k])}</td><td class="num">${_qp(x.lift)}</td><td class="num">${_qp(x.oos_lift)}</td></tr>`; }).join('');
+  const npass = keys.filter(k => S[k].b1.passed).length;
+  el.style.display = 'block';
+  el.innerHTML = `<details><summary style="cursor:pointer"><b>⭐ 提高勝率：每個策略加個股條件的 5 年回測</b>　<span style="font-size:.85rem">${npass ? `<b style="color:var(--up)">✅ ${npass} 個策略通過（${keys.filter(k => S[k].b1.passed).map(k => _esc(STRATEGY_SHORT[k] || k)).join('、')}）→ 符合的股票標 ⭐ 排前面</b>` : '<b style="color:#f59e0b">⚠ 沒有策略通過</b>'}</span></summary>
+    <div style="font-size:.84rem;margin:6px 0">出場固定 停損 8%／停利 25%（跟回測預設一樣），只測「挑哪些股票」：9 個個股條件、單一或兩兩組合（45 種），<b>樣本內挑一個、樣本外驗一次</b>。勝率是先碰到 +25% 的比例。<b>不會藏任何股票</b>，只有通過的策略會把符合的排前面。</div>
+    <div class="tbl-wrap"><table style="font-size:.8rem"><thead><tr><th>策略</th><th>原本 樣本外 勝率／平均</th><th>樣本內挑出的條件</th><th>加條件後 樣本外 勝率／平均（筆）</th><th>勝率差</th><th>每天平均檔數</th><th>校正後 p</th><th>結果</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <details style="margin-top:8px"><summary style="cursor:pointer" class="muted">共用「品質分」為什麼沒用（點開）</summary>
+      <div style="font-size:.8rem;margin:4px 0">把 20 個策略的交易合在一起看：沒有一個條件讓勝率提高 3 個百分點以上（事先定的門檻）→ 不做通用的星等排序。順勢的條件（大盤在季線上、格局多頭、月線上揚）在樣本外反而讓勝率下降。</div>
+      <div class="tbl-wrap"><table style="font-size:.8rem"><thead><tr><th>條件</th><th>樣本內勝率差</th><th>樣本外勝率差</th></tr></thead><tbody>${lift}</tbody></table></div></details>
+    <div class="muted" style="font-size:.74rem;margin-top:6px;line-height:1.6">樣本內 ${md((per.is || [])[0])}～${md((per.is || [])[1])}、樣本外 ${md((per.oos || [])[0])}～${md((per.oos || [])[1])}。通過＝樣本外筆數 ≥ 50、勝率比原本高 ≥ 5 個百分點、平均每筆比原本好、20 個策略 Benjamini-Hochberg 校正後 p < 0.10（月份 block bootstrap，事先定好）。產業分類用現在的對照表。籌碼型策略沒有 5 年資料，沒有回測。研究程式 research/b73/run_quality.py。</div></details>`;
+}
+function _qualityStratHtml(strategy) {
+  const R = _qRes || {}, x = (R.strategies || {})[strategy], F = R.flags || {};
+  if (!x) return '';
+  const b1 = x.b1, base = x.base || {}, hi = x.high || {}, sc = R.score || {};
+  const row = (lab, o, extra = '') => !o || !o.n ? `<tr><td>${lab}</td><td colspan="3" class="muted">沒有交易</td></tr>` :
+    `<tr><td>${lab}</td><td class="num">${o.n.toLocaleString()}</td><td class="num"><b>${_qw(o.win)}</b></td><td class="num" style="${o.mean > 0 ? 'color:var(--up)' : 'color:var(--down)'}">${_qp(o.mean, 2)}</td>${extra}</tr>`;
+  const tag = !b1 ? '<span class="lk-badge warn">樣本內沒有合格的濾網</span>'
+    : b1.passed ? '<span class="lk-badge ok">✅ 濾網回測通過</span>' : '<span class="lk-badge warn">⚠ 濾網樣本外沒通過</span>';
+  const bk = (x.buckets || []).map(b => `${b.score} 分：${_qw(b.win)}（${b.n}）`).join('　');
+  return `<details style="border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-top:6px" ${b1 && b1.passed ? 'open' : ''}>
+    <summary style="cursor:pointer;font-weight:700">⭐ 提高勝率：加個股條件（停損 8%／停利 25%）　${tag}</summary>
+    <div class="tbl-wrap" style="margin-top:6px"><table style="font-size:.82rem"><thead><tr><th>樣本外（${_esc(((R.meta || {}).periods || {}).oos ? `${String(R.meta.periods.oos[0]).slice(0, 6)}～${String(R.meta.periods.oos[1]).slice(0, 6)}` : '')}）</th><th>筆數</th><th>勝率</th><th>平均每筆</th><th>每天平均</th></tr></thead><tbody>
+      ${row('原本（不加條件）', base.oos, `<td class="num">${(x.per_day_base ?? 0).toFixed(1)} 檔</td>`)}
+      ${b1 ? row(`樣本內挑出的濾網：${_esc(b1.desc)}`, b1.oos, `<td class="num">${(b1.per_day ?? 0).toFixed(1)} 檔</td>`) : ''}
+      ${sc.cut != null && sc.passed ? row(`品質分 ≥ ${sc.cut}`, hi, `<td class="num">${(x.per_day_high ?? 0).toFixed(1)} 檔</td>`) : ''}
+    </tbody></table></div>
+    ${b1 ? `<div style="font-size:.78rem;margin-top:4px">濾網樣本內：${_qw((b1.is || {}).win)}／${_qp((b1.is || {}).mean, 2)}（${(b1.is || {}).n} 筆，原本 ${_qw((base.is || {}).win)}）；同濾網隨機進場樣本外 ${_qw((b1.random || {}).win)}／${_qp((b1.random || {}).mean)}；勝率差 bootstrap p＝${b1.p != null ? b1.p.toFixed(3) : '—'}，20 個策略 BH 校正後 ${b1.p_adj != null ? b1.p_adj.toFixed(3) : '—'}</div>` : ''}
+    ${b1 && b1.years ? `<div class="muted" style="font-size:.76rem;margin-top:2px">各年勝率（加條件 vs 原本）：${Object.keys(b1.years).filter(y => (b1.years[y] || {}).n).map(y => `${y}：${_qw(b1.years[y].win)} vs ${_qw(((base.years || {})[y] || {}).win)}`).join('　')}</div>` : ''}
+    ${bk && sc.passed ? `<div class="muted" style="font-size:.76rem;margin-top:2px">各品質分樣本外勝率（筆數）：${bk}</div>` : ''}
+    <div class="muted" style="font-size:.72rem;margin-top:4px">通過＝樣本外筆數 ≥ 50、勝率比原本高 ≥ 5 個百分點、平均每筆比原本好、校正後 p < 0.10（事先定好）。只是參考，策略條件沒改。</div></details>`;
 }
 
 // ── 📊 全部策略 5 年回測：停損 8%／停利 25%、不限天數（PLAN-B72 C）──
@@ -5819,7 +5897,11 @@ function renderScreenTable(strategy, data) {
   const _fl = document.getElementById('fbd-live');
   if (_fl) { _fl.style.display = strategy === 'S_FBD' ? 'block' : 'none'; if (strategy === 'S_FBD') _renderFbdLive(); }
   _renderStratResearch(strategy);
-  document.getElementById('screen-result-count').textContent = `共 ${data.length} 支`;
+  const _b1 = _qB1(strategy);
+  const _hasQ = !!_b1 && data.some(r => r.q);
+  document.getElementById('screen-result-count').textContent = `共 ${data.length} 支`
+    + (_hasQ ? `｜⭐ 符合回測建議 ${data.filter(r => _qMeets(r, _b1)).length} 支${!_screenSort.col ? '（排前面）' : ''}` : '');
+  if (_qRes === null) _getQRes().then(() => { if (_viewingStrategy === strategy) renderScreenTable(strategy, data); });
 
   // 計算跨策略：每支股票還符合哪些其他策略
   const _otherStratMap = {};
@@ -5833,10 +5915,16 @@ function renderScreenTable(strategy, data) {
 
   // 排序（overlap = 重疊策略數量）
   let sorted = [...data];
+  if (!_screenSort.col && _hasQ) {
+    // 這個策略有回測通過的建議濾網：符合的排前面（同組看成交金額大的）；不藏任何股票
+    const tv = r => (r.close && r.volume ? r.close * r.volume : 0);
+    sorted.sort((a, b) => (_qMeets(b, _b1) - _qMeets(a, _b1)) || (tv(b) - tv(a)));
+  }
   if (_screenSort.col) {
     const col = _screenSort.col, dir = _screenSort.dir;
     const val = r => col === 'overlap'  ? (_otherStratMap[r.stock_id] || []).length
                    : col === 'turnover' ? (r.close && r.volume ? r.close * r.volume : null)
+                   : col === 'qok'      ? (_qMeets(r, _b1) ? 1 : 0)
                    : r[col];
     sorted.sort((a, b) => {
       const av = val(a) ?? -Infinity, bv = val(b) ?? -Infinity;
@@ -5850,6 +5938,7 @@ function renderScreenTable(strategy, data) {
     return `<th${cls ? ` class="${cls}"` : ''}${title ? ` title="${title}"` : ''} style="cursor:pointer;user-select:none" onclick="sortScreenBy('${col}')">${label}${arrow}</th>`;
   }
   let headRow = `<tr><th>#</th>${th('代號','stock_id')}${th('股名','name')}${th('股價','close')}${th('漲跌%','change_pct')}`;
+  if (_hasQ) headRow += th('⭐ 回測建議', 'qok', '', `5 年回測通過的條件：${_esc(_b1.desc)}（樣本外勝率 ${_qw(_b1.oos.win)}）；滑過看每檔符合哪些條件`);
   if (strategy === 'S10')  headRow += `${th('連續漲停','consec_limit_up')}`;
   if (strategy === 'S2')   headRow += `${th('前低（碗底）','prev_low')}${th('第一波','wave_pct')}${th('盤整','base_days')}`;
   if (strategy === 'S_WARRANT_TOP') headRow += `${th('認購額(萬)','call_turnover_wan')}${th('認購/認售比','cp_ratio')}`;
@@ -5911,6 +6000,7 @@ function renderScreenTable(strategy, data) {
         return row.close + dateSub;
       })()}</td>
       ${pctTd}
+      ${_hasQ ? _qCell(row, _b1) : ''}
       ${extraTd}
       <td class="muted">${(() => { if (!row.volume) return '—'; const lots = Math.round(row.volume); return lots >= 10000 ? (lots/10000).toFixed(1)+'萬' : lots.toLocaleString('zh-TW'); })()}</td>
       <td class="muted hide-mobile">${(() => { if (!row.close || !row.volume) return '—'; const amt = row.close * row.volume * 1000; if (amt >= 1e8) return (amt/1e8).toFixed(2)+'億'; if (amt >= 1e4) return Math.round(amt/1e4)+'萬'; return '—'; })()}</td>
