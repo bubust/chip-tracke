@@ -5359,6 +5359,13 @@ async function _getF825() {
 const _f825p = (x, d = 1) => x == null ? '—' : `${x >= 0 ? '+' : ''}${(x * 100).toFixed(d)}%`;
 const _f825w = x => x == null ? '—' : `${Math.round(x * 100)}%`;
 const _f825c = x => x == null ? '' : x > 0 ? 'color:var(--up)' : x < 0 ? 'color:var(--down)' : '';
+// 勝過隨機＝樣本外勝率、平均都比隨機進場高；但自己平均 ≤ 0 也要講清楚（例 S1：比隨機好、還是虧）
+function _f825Beat(x, long) {
+  const m = (x.oos || {}).mean;
+  if (!x.beats_random) return long ? '<span class="lk-badge warn">⚠ 樣本外沒勝過隨機進場</span>' : '<span class="muted">✗</span>';
+  if (m == null || m <= 0) return long ? '<span class="lk-badge warn">△ 比隨機進場好，但平均每筆還是虧</span>' : '<span style="color:#f59e0b">△ 比隨機好但虧</span>';
+  return long ? '<span class="lk-badge ok">✅ 樣本外勝過隨機進場、平均每筆賺</span>' : '<b style="color:var(--up)">✅</b>';
+}
 function _f825Reasons(rs) {
   if (!rs) return '—';
   return `<span style="color:var(--up)">停利 ${_f825w(rs.tp)}</span>／<span style="color:var(--down)">停損 ${_f825w(rs.sl)}</span>${rs.open ? `／抱著 ${_f825w(rs.open)}` : ''}`;
@@ -5377,20 +5384,20 @@ async function loadFixed825Card() {
     return `<tr style="cursor:pointer" onclick="viewStrategy('${_esc(k)}');document.getElementById('screen-result-card').scrollIntoView({behavior:'smooth'})">
       <td style="white-space:normal;min-width:150px">${_esc(STRATEGY_SHORT[k] || x.label || k)}</td>
       <td class="num">${(o.n || 0).toLocaleString()}</td><td class="num">${_f825w(o.win)}</td>
-      <td class="num" style="${_f825c(o.mean)};font-weight:700">${_f825p(o.mean, 2)}</td><td class="num" style="${_f825c(o.median)}">${_f825p(o.median)}</td>
+      <td class="num" style="${_f825c(o.mean)};font-weight:700">${_f825p(o.mean, 2)}</td>
       <td class="num">${o.days != null ? Math.round(o.days) + ' 天' : '—'}</td><td style="font-size:.76rem">${_f825Reasons(x.reasons)}</td>
-      <td class="num">${_f825w(rb.win)}／${_f825p(rb.mean)}</td><td>${x.beats_random ? '<b style="color:var(--up)">✅</b>' : '<span class="muted">✗</span>'}</td>
+      <td class="num">${_f825w(rb.win)}／${_f825p(rb.mean)}</td><td>${_f825Beat(x, false)}</td>
       <td class="num">${_f825w(a.win)}／<span style="${_f825c(a.mean)}">${_f825p(a.mean)}</span></td>
       <td class="num"><span style="${_f825c(pf.cagr)}">${_f825p(pf.cagr)}</span>／<span style="color:var(--down)">${_f825p(pf.mdd)}</span></td></tr>`;
   }).join('');
   el.style.display = 'block';
   el.innerHTML = `<details><summary style="cursor:pointer"><b>📊 全部策略 5 年回測：停損 8%／停利 25%（不限天數）</b>
       <span class="muted" style="font-size:.8rem">　${keys.length} 個做多策略；依樣本外平均每筆排序，點策略名稱看那個策略</span></summary>
-    <div class="tbl-wrap" style="margin-top:6px"><table style="font-size:.8rem"><thead><tr><th>策略</th><th>樣本外筆數</th><th>勝率</th><th>平均每筆</th><th>中位數</th><th>平均抱</th><th>出場（全期）</th><th>隨機進場 勝率／平均</th><th>勝過隨機</th><th>全期 勝率／平均</th><th>帳戶年化／最大回撤</th></tr></thead>
+    <div class="tbl-wrap" style="margin-top:6px"><table style="font-size:.8rem"><thead><tr><th>策略</th><th>樣本外筆數</th><th>勝率</th><th>平均每筆</th><th>平均抱</th><th>出場（全期）</th><th>隨機進場 勝率／平均</th><th>勝過隨機</th><th>全期 勝率／平均</th><th>帳戶年化／最大回撤</th></tr></thead>
     <tbody>${rows}</tbody></table></div>
     <div class="muted" style="font-size:.74rem;margin-top:6px;line-height:1.6">${_esc(m.entry || '')}；${_esc(m.exit || '')}；成本 ${_esc(m.cost || '')}。股票池：${_esc(m.pool || '')}。
       樣本內 ${md((per.is || [])[0])}～${md((per.is || [])[1])}、樣本外 ${md((per.oos || [])[0])}～${md((per.oos || [])[1])}（最近的交易還沒出場的用最新收盤算）。
-      隨機進場：${_esc(m.random || '')}；勝過隨機＝樣本外勝率和平均都比隨機高。帳戶：${_esc(m.port || '')}。同期加權年化 ${_f825p(tx.cagr)}、最大回撤 ${_f825p(tx.mdd)}（不含股利）。歷史回測不代表未來。</div></details>`;
+      隨機進場：${_esc(m.random || '')}；勝過隨機＝樣本外勝率和平均都比隨機高（✅ 還要自己平均每筆是賺的；△＝比隨機好但還是虧）。8%／25% 的停利比停損遠 3 倍，勝率本來就只有 2～4 成，要看平均每筆和帳戶結果。帳戶：${_esc(m.port || '')}。同期加權年化 ${_f825p(tx.cagr)}、最大回撤 ${_f825p(tx.mdd)}（不含股利）。歷史回測不代表未來。</div></details>`;
 }
 function _f825StratHtml(strategy) {
   const x = ((_f825 || {}).strategies || {})[strategy];
@@ -5400,7 +5407,7 @@ function _f825StratHtml(strategy) {
   const rb = x.random || {}, pf = x.port || {};
   const yrs = Object.entries(x.years || {}).filter(([, v]) => v.n).map(([y, v]) => `${y}：${_f825w(v.win)}／<span style="${_f825c(v.mean)}">${_f825p(v.mean)}</span>`).join('　');
   return `<details style="border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-top:6px" open>
-    <summary style="cursor:pointer;font-weight:700">📊 5 年回測：停損 8%／停利 25%（不限天數）　${x.beats_random ? '<span class="lk-badge ok">✅ 樣本外勝過隨機進場</span>' : '<span class="lk-badge warn">⚠ 樣本外沒勝過隨機進場</span>'}</summary>
+    <summary style="cursor:pointer;font-weight:700">📊 5 年回測：停損 8%／停利 25%（不限天數）　${_f825Beat(x, true)}</summary>
     <div class="tbl-wrap" style="margin-top:6px"><table style="font-size:.82rem"><thead><tr><th>期間</th><th>筆數</th><th>勝率</th><th>平均每筆（扣成本）</th><th>平均抱</th></tr></thead><tbody>
       ${row('樣本內', x.is)}${row('樣本外', x.oos)}${row('全期', x.all)}</tbody></table></div>
     <div style="font-size:.8rem;margin-top:4px">出場：${_f825Reasons(x.reasons)}　隨機進場（同出場）：${_f825w(rb.win)}／${_f825p(rb.mean)}　帳戶（10 檔各 10%）年化 <span style="${_f825c(pf.cagr)}">${_f825p(pf.cagr)}</span>、最大回撤 <span style="color:var(--down)">${_f825p(pf.mdd)}</span></div>
