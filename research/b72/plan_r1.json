@@ -1,0 +1,88 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B72.md"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-2.5-flash",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"This is a very comprehensive and well-structured plan. The diagnosis and fix for the strategy scanning bug are thorough. The research methodology for the 5-year backtest (C) is excellent, explicitly addressing survivorship and look-ahead bias, and includes realistic transaction costs and robust performance metrics. The pre-registered adoption rules for research candidates (E2, E3) are objective and fair, relying on out-of-sample performance. Intraday partial-volume issues for the live FBD alerts (D) are pragmatically handled. Alert spam/duplication is actively prevented. Timezone and holiday handling are adequately considered. The verification plan is exceptionally strong, covering unit tests, integration tests, consistency checks, UI validation, and post-deployment monitoring. The identified risks are also clearly stated.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"medium\",\n      \"section\": \"D. 盤中假跌破推播\",\n      \"issue\": \"The market-wide intraday scan for S_FBD (假跌破) every 5 minutes on a 512MB Fly.io machine might encounter CPU/memory constraints, especially when processing all ~2000 Taiwan stocks (fetching 130 bars from SQLite for each, then running strategy logic). While the plan notes to check `fly logs` after deployment, this specific workload on a constrained environment is a potential performance bottleneck.\",\n      \"suggestion\": \"Monitor the CPU and memory usage of the `fbd_live.py` process closely after deployment. If performance is an issue, consider optimizing the `scanner.screen_sfbd` for batch processing, or explore strategies like dividing the market into smaller batches to be processed sequentially, or optimizing the `price_cache` access for real-time scenarios. For now, the existing SQLite-backed `price_cache` should prevent out-of-memory errors but could be CPU-bound.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"section\": \"不做／風險\",\n      \"issue\": \"Data source failure handling for external APIs (鉅亨, Yahoo, 期交所) currently involves simply skipping a failed request. While this prevents blocking, frequent transient failures could lead to missed alerts or incomplete information.\",\n      \"suggestion\": \"Consider implementing a basic retry mechanism with exponential backoff for external API calls, especially for critical data sources in `fbd_live.py` and `global_brief.py`. This would improve robustness against transient network issues without significantly increasing complexity or resource usage if carefully implemented.\"\n    }\n  ],\n  \"coverage\": \"Test coverage is excellent, including new unit tests for the bug fix (A), FBD live alerts (D), global brief (F), and near-trigger lists (E1). Extensive consistency checks are planned between research backtests and the live engine (C). UI-level verification via Playwright and thorough post-deployment verification using production data and logs are also included.\",\n  \"limitations\": \"The primary practical limitation is the potential performance and resource contention of a market-wide intraday scan (Section D) on a 512MB server. While acknowledged and planned for monitoring, it remains the most significant operational risk. The plan also explicitly states certain items that are out of scope (e.g., specific S_FBD condition changes, short strategy backtests, chip strategy backtests), which clearly defines the boundaries of this batch of work.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "This is a very comprehensive and well-structured plan. The diagnosis and fix for the strategy scanning bug are thorough. The research methodology for the 5-year backtest (C) is excellent, explicitly addressing survivorship and look-ahead bias, and includes realistic transaction costs and robust performance metrics. The pre-registered adoption rules for research candidates (E2, E3) are objective and fair, relying on out-of-sample performance. Intraday partial-volume issues for the live FBD alerts (D) are pragmatically handled. Alert spam/duplication is actively prevented. Timezone and holiday handling are adequately considered. The verification plan is exceptionally strong, covering unit tests, integration tests, consistency checks, UI validation, and post-deployment monitoring. The identified risks are also clearly stated.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "medium",
+      "section": "D. 盤中假跌破推播",
+      "issue": "The market-wide intraday scan for S_FBD (假跌破) every 5 minutes on a 512MB Fly.io machine might encounter CPU/memory constraints, especially when processing all ~2000 Taiwan stocks (fetching 130 bars from SQLite for each, then running strategy logic). While the plan notes to check `fly logs` after deployment, this specific workload on a constrained environment is a potential performance bottleneck.",
+      "suggestion": "Monitor the CPU and memory usage of the `fbd_live.py` process closely after deployment. If performance is an issue, consider optimizing the `scanner.screen_sfbd` for batch processing, or explore strategies like dividing the market into smaller batches to be processed sequentially, or optimizing the `price_cache` access for real-time scenarios. For now, the existing SQLite-backed `price_cache` should prevent out-of-memory errors but could be CPU-bound."
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "section": "不做／風險",
+      "issue": "Data source failure handling for external APIs (鉅亨, Yahoo, 期交所) currently involves simply skipping a failed request. While this prevents blocking, frequent transient failures could lead to missed alerts or incomplete information.",
+      "suggestion": "Consider implementing a basic retry mechanism with exponential backoff for external API calls, especially for critical data sources in `fbd_live.py` and `global_brief.py`. This would improve robustness against transient network issues without significantly increasing complexity or resource usage if carefully implemented."
+     }
+    ],
+    "coverage": "Test coverage is excellent, including new unit tests for the bug fix (A), FBD live alerts (D), global brief (F), and near-trigger lists (E1). Extensive consistency checks are planned between research backtests and the live engine (C). UI-level verification via Playwright and thorough post-deployment verification using production data and logs are also included.",
+    "limitations": "The primary practical limitation is the potential performance and resource contention of a market-wide intraday scan (Section D) on a 512MB server. While acknowledged and planned for monitoring, it remains the most significant operational risk. The plan also explicitly states certain items that are out of scope (e.g., specific S_FBD condition changes, short strategy backtests, chip strategy backtests), which clearly defines the boundaries of this batch of work."
+   }
+  },
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\"verdict\":\"REVISE\",\"summary\":\"Plan addresses many functional bugs but has material concerns: potential look‑ahead/survivorship bias in the 5‑year research backtest, incomplete holiday/calendar handling for Taiwan and global markets, insufficient retry/back‑off for data‑source failures, possible CPU/memory overload on a 512 MB Fly.io instance when scanning the whole market every 5 min, and limited test coverage for error‑paths and edge‑cases. These must be resolved before approval.\",\"findings\":[{\"id\":\"F1\",\"severity\":\"high\",\"section\":\"C. 5‑year research backtest\",\"issue\":\"The backtest uses the official daily file that includes delisted stocks without filtering out those that ceased trading before the exit date, introducing survivorship bias. Also, exit prices are taken from the same‑day close after a stop‑loss/take‑profit trigger, which can be a look‑ahead if the price used is from after the trigger time.\",\"suggestion\":\"Exclude any stock that is delisted or has a corporate action before the exit date. Use intraday bar data (or the open price of the next bar) for stop‑loss/take‑profit execution to avoid look‑ahead. Document the exact price source used for exits.\"},{\"id\":\"F2\",\"severity\":\"medium\",\"section\":\"D. Intraday FBD live alerts\",\"issue\":\"Volume threshold uses 20‑day average that includes today’s partial volume, which can cause false‑positive alerts or missed signals, especially on low‑liquidity days. Also, no exponential back‑off on failed requests to the real‑time quote API, risking repeated failures and API rate limits.\",\"suggestion\":\"Compute the 20‑day average excluding today’s volume, and compare today’s volume to that static benchmark. Implement retry with exponential back‑off (max 3 attempts) for failed quote fetches, and log failures for monitoring.\"},{\"id\":\"F3\",\"severity\":\"medium\",\"section\":\"Timezone / Holiday handling\",\"issue\":\"Plan mentions skipping scans when the date is not today, but does not explicitly handle Taiwan market holidays, US/JP/KR market closures, or daylight‑saving changes. Missing holidays can produce spurious alerts or backtest entries on non‑trading days.\",\"suggestion\":\"Integrate a holiday calendar library (e.g., pandas_market_calendars) for each market. Before each scan/backtest, verify that the target market is open. Adjust timestamps to Taiwan time consistently.\"},{\"id\":\"F4\",\"severity\":\"high\",\"section\":\"Resource constraints (Fly.io 512 MB)\",\"issue\":\"Scanning the entire Taiwan market every 5 minutes, caching 130 bars per symbol, and making ~25 external requests per scan may exceed memory and CPU limits, leading to OOM or throttling.\",\"suggestion\":\"Limit the live scan to symbols that passed the pre‑filter (price > min_price, volume > threshold) before loading full 130‑bar history. Use async I/O with a concurrency cap (e.g., 10 simultaneous HTTP calls). Monitor memory usage and add a fallback to skip the scan if memory > 400 MB.\"},{\"id\":\"F5\",\"severity\":\"low\",\"section\":\"Test coverage\",\"issue\":\"New tests cover happy paths but do not exercise error conditions such as API timeouts, holiday skips, or memory‑limit aborts. Lack of these tests reduces confidence in robustness.\",\"suggestion\":\"Add parametrized tests that simulate API failures, holiday dates, and memory‑pressure scenarios. Ensure coverage >90% for modules fbd_live.py, global_brief.py, and the backtest engine.\"},{\"id\":\"F6\",\"severity\":\"low\",\"section\":\"Pre‑registered adoption rules (E2/E3)\",\"issue\":\"Adoption thresholds (70% win rate, profit factor ≥1.3, etc.) are hard‑coded and may lead to cherry‑picking if not documented and versioned.\",\"suggestion\":\"Store adoption criteria in a config file and log the exact criteria used for each research run. Provide an audit trail in the report markdown.\"}],\"coverage\":\"Automated pytest suite includes new tests test_scan_keys, test_fbd_live, test_global_brief, test_best_near and existing backtest tests, achieving ~85% line coverage. Additional edge‑case tests are required for error handling and holiday logic.\",\"limitations\":\"Current plan assumes Yahoo! and 巨亨 APIs remain stable; no fallback data source is defined. Memory usage may still spike on days with >2000 symbols meeting the pre‑filter. The 5‑minute scheduler runs in the same process as the API server, which could affect request latency under load.\"}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "Plan addresses many functional bugs but has material concerns: potential look‑ahead/survivorship bias in the 5‑year research backtest, incomplete holiday/calendar handling for Taiwan and global markets, insufficient retry/back‑off for data‑source failures, possible CPU/memory overload on a 512 MB Fly.io instance when scanning the whole market every 5 min, and limited test coverage for error‑paths and edge‑cases. These must be resolved before approval.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "section": "C. 5‑year research backtest",
+      "issue": "The backtest uses the official daily file that includes delisted stocks without filtering out those that ceased trading before the exit date, introducing survivorship bias. Also, exit prices are taken from the same‑day close after a stop‑loss/take‑profit trigger, which can be a look‑ahead if the price used is from after the trigger time.",
+      "suggestion": "Exclude any stock that is delisted or has a corporate action before the exit date. Use intraday bar data (or the open price of the next bar) for stop‑loss/take‑profit execution to avoid look‑ahead. Document the exact price source used for exits."
+     },
+     {
+      "id": "F2",
+      "severity": "medium",
+      "section": "D. Intraday FBD live alerts",
+      "issue": "Volume threshold uses 20‑day average that includes today’s partial volume, which can cause false‑positive alerts or missed signals, especially on low‑liquidity days. Also, no exponential back‑off on failed requests to the real‑time quote API, risking repeated failures and API rate limits.",
+      "suggestion": "Compute the 20‑day average excluding today’s volume, and compare today’s volume to that static benchmark. Implement retry with exponential back‑off (max 3 attempts) for failed quote fetches, and log failures for monitoring."
+     },
+     {
+      "id": "F3",
+      "severity": "medium",
+      "section": "Timezone / Holiday handling",
+      "issue": "Plan mentions skipping scans when the date is not today, but does not explicitly handle Taiwan market holidays, US/JP/KR market closures, or daylight‑saving changes. Missing holidays can produce spurious alerts or backtest entries on non‑trading days.",
+      "suggestion": "Integrate a holiday calendar library (e.g., pandas_market_calendars) for each market. Before each scan/backtest, verify that the target market is open. Adjust timestamps to Taiwan time consistently."
+     },
+     {
+      "id": "F4",
+      "severity": "high",
+      "section": "Resource constraints (Fly.io 512 MB)",
+      "issue": "Scanning the entire Taiwan market every 5 minutes, caching 130 bars per symbol, and making ~25 external requests per scan may exceed memory and CPU limits, leading to OOM or throttling.",
+      "suggestion": "Limit the live scan to symbols that passed the pre‑filter (price > min_price, volume > threshold) before loading full 130‑bar history. Use async I/O with a concurrency cap (e.g., 10 simultaneous HTTP calls). Monitor memory usage and add a fallback to skip the scan if memory > 400 MB."
+     },
+     {
+      "id": "F5",
+      "severity": "low",
+      "section": "Test coverage",
+      "issue": "New tests cover happy paths but do not exercise error conditions such as API timeouts, holiday skips, or memory‑limit aborts. Lack of these tests reduces confidence in robustness.",
+      "suggestion": "Add parametrized tests that simulate API failures, holiday dates, and memory‑pressure scenarios. Ensure coverage >90% for modules fbd_live.py, global_brief.py, and the backtest engine."
+     },
+     {
+      "id": "F6",
+      "severity": "low",
+      "section": "Pre‑registered adoption rules (E2/E3)",
+      "issue": "Adoption thresholds (70% win rate, profit factor ≥1.3, etc.) are hard‑coded and may lead to cherry‑picking if not documented and versioned.",
+      "suggestion": "Store adoption criteria in a config file and log the exact criteria used for each research run. Provide an audit trail in the report markdown."
+     }
+    ],
+    "coverage": "Automated pytest suite includes new tests test_scan_keys, test_fbd_live, test_global_brief, test_best_near and existing backtest tests, achieving ~85% line coverage. Additional edge‑case tests are required for error handling and holiday logic.",
+    "limitations": "Current plan assumes Yahoo! and 巨亨 APIs remain stable; no fallback data source is defined. Memory usage may still spike on days with >2000 symbols meeting the pre‑filter. The 5‑minute scheduler runs in the same process as the API server, which could affect request latency under load."
+   }
+  }
+ ]
+}

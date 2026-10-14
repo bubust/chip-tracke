@@ -776,6 +776,16 @@ async def lifespan(app: FastAPI):
                            id="course_limit_tick", replace_existing=True, max_instances=1, coalesce=True)
         _pos_watch.add_job(_course_pre, "cron", day_of_week="mon-fri", hour=8, minute=30,
                            id="course_premarket", replace_existing=True)
+        # 🪤 盤中假跌破（PLAN-B72 D）：全市場 S_FBD 即時價，09:10～13:10 每 5 分鐘、13:10 收盤前清單（時間判斷在 fbd_live.tick）
+        def _fbd_tick():
+            try:
+                import fbd_live as _fl
+                _fl.tick()
+            except Exception as _fe:
+                import logging as _lg3
+                _lg3.getLogger(__name__).warning(f"[fbd-live] {_fe}")
+        _pos_watch.add_job(_fbd_tick, "cron", day_of_week="mon-fri", hour="9-13", minute="*/5",
+                           id="fbd_live_tick", replace_existing=True, max_instances=1, coalesce=True)
         _pos_watch.start()
         global _POS_SCHED
         _POS_SCHED = _pos_watch
@@ -2731,11 +2741,11 @@ def _bt_exit_cfg(entry: str, stop: str, stop_atr: float, stop_pct: float,
 @app.get("/api/backtest/fbd")
 def api_backtest_fbd(stock_id: str, strategy: str = "", signal: str = "fbd",
                      entry: str = "next_open",
-                     stop: str = "atr", stop_atr: float = 2.0, stop_pct: float = 0.0,
-                     trail: str = "atr", trail_atr: float = 2.5, trail_pct: float = 0.0,
-                     max_hold: int = 60, exit_ma: int = 0,
+                     stop: str = "pct", stop_atr: float = 2.0, stop_pct: float = 8.0,
+                     trail: str = "none", trail_atr: float = 2.5, trail_pct: float = 0.0,
+                     max_hold: int = 0, exit_ma: int = 0,
                      time_stop_days: int = 0, time_stop_pct: float = 0.0,
-                     take_profit: float = 0.0, cost: float = 0.585,
+                     take_profit: float = 25.0, cost: float = 0.585,
                      taiex_bull: int = 0, big_macd: int = 0,
                      trailing_low_days: int = 0,
                      holding_days: Optional[int] = None, stop_loss: Optional[float] = None):
@@ -2744,10 +2754,11 @@ def api_backtest_fbd(stock_id: str, strategy: str = "", signal: str = "fbd",
     - strategy：策略掃描的 key（S1、S5…）→ 逐日套用同一個 screen 函式＋同參數判斷進場；
       空字串 → MA10 假跌破（signal=fbd，看多）/ 假突破（signal=fbr，看空）
     - entry：next_open（訊號隔天開盤，預設）/ close（訊號日收盤，較樂觀）
-    - stop：atr（進場價 − stop_atr×ATR14，預設 2）/ pct / none
-    - trail：移動停損 atr（持有期最高價 − trail_atr×ATR，預設 2.5）/ pct / none，只往有利方向移
-    - max_hold：最多持有天數（預設 60，0 = 不限）；exit_ma / trailing_low_days：收盤成立、隔天開盤出場
-    - time_stop_days + time_stop_pct：N 天內沒賺到 X% 就出場；take_profit：停利 %
+    - 預設（B72，2026-10-14 用戶）：固定停損 8%、停利 25%、不設移動停損、不限天數
+    - stop：pct（進場價 × (1 − stop_pct%)，預設 8）/ atr（進場價 − stop_atr×ATR14）/ none
+    - trail：移動停損 none（預設）/ atr（持有期最高價 − trail_atr×ATR）/ pct，只往有利方向移
+    - max_hold：最多持有天數（預設 0 = 不限）；exit_ma / trailing_low_days：收盤成立、隔天開盤出場
+    - time_stop_days + time_stop_pct：N 天內沒賺到 X% 就出場；take_profit：停利 %（預設 25）
     - cost：來回成本 %（預設 0.585 = 手續費 0.1425%×2 + 證交稅 0.3%）
     - 一律用還原股價；出場以盤中高低價判定，跳空用開盤價；持倉中不重複進場
     """
@@ -2776,8 +2787,8 @@ def api_backtest_fbd(stock_id: str, strategy: str = "", signal: str = "fbd",
 @app.get("/api/backtest/index")
 def api_backtest_index(key: str, holding_days: int = 0,
                        trailing_low_days: int = 0,
-                       exit_ma: int = 10,
-                       stop_loss: float = 0.0, take_profit: float = 0.0,
+                       exit_ma: int = 0,
+                       stop_loss: float = 8.0, take_profit: float = 25.0,
                        taiex_bull: int = 0,
                        big_macd: int = 0):
     """指數 MA10 假跌破/假突破回測（同個股邏輯，但使用指數 OHLCV 資料）"""
@@ -2995,11 +3006,11 @@ def api_backtest_strategy_batch(
     strategy: str,
     max_stocks: int = 100,
     entry: str = "next_open",
-    stop: str = "atr", stop_atr: float = 2.0, stop_pct: float = 0.0,
-    trail: str = "atr", trail_atr: float = 2.5, trail_pct: float = 0.0,
-    max_hold: int = 60, exit_ma: int = 0,
+    stop: str = "pct", stop_atr: float = 2.0, stop_pct: float = 8.0,
+    trail: str = "none", trail_atr: float = 2.5, trail_pct: float = 0.0,
+    max_hold: int = 0, exit_ma: int = 0,
     time_stop_days: int = 0, time_stop_pct: float = 0.0,
-    take_profit: float = 0.0, cost: float = 0.585,
+    take_profit: float = 25.0, cost: float = 0.585,
 ):
     """
     批量回測此策略（PLAN-BACKTEST §3.4）：全市場近 20 日平均成交金額前 N 大（預設 100，上限 300），
@@ -3693,6 +3704,21 @@ def check_positions(phase: str, dry: bool = False) -> list:
             "notified": sum(1 for i in out if i.get("sent")), "pending": sum(1 for i in out if not i.get("sent")),
         }, ensure_ascii=False))
     return out
+
+
+@app.get("/api/global-brief")
+def api_global_brief():
+    """08:30 盤前推播的國際盤區塊預覽（PLAN-B72 F；只抓不推）"""
+    import global_brief
+    r = global_brief.brief()
+    return {"text": r["text"], "at": r["at"], "night": r["night"], "items": len(r["quotes"])}
+
+
+@app.get("/api/fbd-live/status")
+def api_fbd_live_status():
+    """🪤 盤中假跌破（PLAN-B72 D）：今天最後檢查時間、候選數、成立清單、早上出現過的"""
+    import fbd_live
+    return fbd_live.live_status()
 
 
 @app.get("/api/positions/status")

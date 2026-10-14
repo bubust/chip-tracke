@@ -116,7 +116,26 @@ def watch_plans() -> dict:
 
 @router.get("/api/best/summary")
 def api_best_summary():
-    return {"key": bs.KEY, "label": bs.LABEL, "config": bs.CONFIG, "passed": bs.PASSED, "summary": bs.summary()}
+    return {"key": bs.KEY, "label": bs.LABEL, "config": bs.CONFIG, "passed": bs.PASSED, "summary": bs.summary(),
+            "pool": {"min_price": bs.MIN_PRICE, "min_vol20": bs.MIN_VOL20, "min_bars": bs.MIN_BARS, "note": bs.POOL_NOTE}}
+
+
+@router.get("/api/best/retest")
+def api_best_retest():
+    """🔬 研究候選重測（PLAN-B72 E2 放寬股票池、E3 停損 8%／停利 25%）：research/b72/best_retest.json"""
+    import json
+    import os
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "research", "b72", "best_retest.json"), encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+
+
+@router.get("/api/best/near")
+def api_best_near():
+    """🔬 研究候選快觸發名單（PLAN-B72 E1）：最近一次掃描記的「差一點」，只顯示、不推播"""
+    return bs.near_load()
 
 
 @router.get("/api/best/watch")

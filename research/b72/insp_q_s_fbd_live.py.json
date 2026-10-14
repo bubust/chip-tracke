@@ -1,0 +1,52 @@
+{
+ "mode": "inspect",
+ "files": [
+  "C:/Users/牆泥袋溥/AppData/Local/Temp/claude/C--Users------Desktop/caec81c9-553d-49b6-b33a-4675e48f0eff/scratchpad/insp/s_fbd_live.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\"verdict\":\"REVISE\",\"summary\":\"Critical syntax errors in string formatting prevent module import and runtime execution, plus a potential asyncio.run misuse.\",\"findings\":[{\"id\":\"F1\",\"severity\":\"high\",\"path\":\"s_fbd_live.py\",\"issue\":\"Syntax error in _line(): nested single quotes inside f-string break parsing (e.g., f'（{x['chg'] * 100:+.1f}%）').\",\"evidence\":\"_line uses f'（{x['chg'] * 100:+.1f}%）' which is invalid Python syntax.\",\"suggestion\":\"Use double quotes for dict key access or escape the inner quotes, e.g., f\\\"（{x['chg'] * 100:+.1f}%）\\\" and f\\\"• {x['stock_id']} {html.escape(x['name'] or '')} {x['price']}{chg} 站回 MA10 {x['ma10']}，{_md(x.get('broke_date'))} 跌破{tag}\\\".\"},{\"id\":\"F2\",\"severity\":\"high\",\"path\":\"s_fbd_live.py\",\"issue\":\"Syntax error in tick() final log.info statement due to nested single quotes in f-string.\",\"evidence\":\"log.info(f'[fbd-live] {now:%H:%M} 候選 {_STATE['cands']}、成立 {len(_STATE['hits'])}、{_STATE['sec']} 秒')\",\"suggestion\":\"Replace inner quotes with double quotes or format separately, e.g., f\\\"[fbd-live] {now:%H:%M} 候選 {_STATE[\\\\'cands\\\\']}、成立 {len(_STATE['hits'])}、{_STATE['sec']} 秒\\\".\"},{\"id\":\"F3\",\"severity\":\"high\",\"path\":\"s_fbd_live.py\",\"issue\":\"Syntax error when building the \\\"gone\\\" list string in tick(): nested single quotes inside f-string.\",\"evidence\":\"'⚠ 盤中出現過、現在不成立：' + '、'.join((f'{x['stock_id']} {html.escape(x['name'] or '')}' for x in gone[:MAX_LINES])))\",\"suggestion\":\"Use double quotes for the f-string or escape inner quotes, e.g., f\\\"{x['stock_id']} {html.escape(x['name'] or '')}\\\".\"},{\"id\":\"F4\",\"severity\":\"medium\",\"path\":\"s_fbd_live.py\",\"issue\":\"_send() uses asyncio.run which raises RuntimeError if called from an existing event loop (e.g., in async web server).\",\"evidence\":\"return bool(asyncio.run(tg_send(text)))\",\"suggestion\":\"Detect existing loop and use asyncio.create_task or await tg_send when inside a loop, e.g., try: return bool(asyncio.run(tg_send(text))) except RuntimeError: return bool(asyncio.get_event_loop().run_until_complete(tg_send(text))) or make _send async.\"}],\"coverage\":\"All public functions exercised by existing tests, but syntax errors prevent import, so current test suite likely bypasses this module. The identified bugs are not covered by tests.\",\"limitations\":\"Analysis limited to shown file; external helpers assumed correct. Edge cases like zero previous price division by zero not addressed but lower priority.\"}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "Critical syntax errors in string formatting prevent module import and runtime execution, plus a potential asyncio.run misuse.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "path": "s_fbd_live.py",
+      "issue": "Syntax error in _line(): nested single quotes inside f-string break parsing (e.g., f'（{x['chg'] * 100:+.1f}%）').",
+      "evidence": "_line uses f'（{x['chg'] * 100:+.1f}%）' which is invalid Python syntax.",
+      "suggestion": "Use double quotes for dict key access or escape the inner quotes, e.g., f\"（{x['chg'] * 100:+.1f}%）\" and f\"• {x['stock_id']} {html.escape(x['name'] or '')} {x['price']}{chg} 站回 MA10 {x['ma10']}，{_md(x.get('broke_date'))} 跌破{tag}\"."
+     },
+     {
+      "id": "F2",
+      "severity": "high",
+      "path": "s_fbd_live.py",
+      "issue": "Syntax error in tick() final log.info statement due to nested single quotes in f-string.",
+      "evidence": "log.info(f'[fbd-live] {now:%H:%M} 候選 {_STATE['cands']}、成立 {len(_STATE['hits'])}、{_STATE['sec']} 秒')",
+      "suggestion": "Replace inner quotes with double quotes or format separately, e.g., f\"[fbd-live] {now:%H:%M} 候選 {_STATE[\\'cands\\']}、成立 {len(_STATE['hits'])}、{_STATE['sec']} 秒\"."
+     },
+     {
+      "id": "F3",
+      "severity": "high",
+      "path": "s_fbd_live.py",
+      "issue": "Syntax error when building the \"gone\" list string in tick(): nested single quotes inside f-string.",
+      "evidence": "'⚠ 盤中出現過、現在不成立：' + '、'.join((f'{x['stock_id']} {html.escape(x['name'] or '')}' for x in gone[:MAX_LINES])))",
+      "suggestion": "Use double quotes for the f-string or escape inner quotes, e.g., f\"{x['stock_id']} {html.escape(x['name'] or '')}\"."
+     },
+     {
+      "id": "F4",
+      "severity": "medium",
+      "path": "s_fbd_live.py",
+      "issue": "_send() uses asyncio.run which raises RuntimeError if called from an existing event loop (e.g., in async web server).",
+      "evidence": "return bool(asyncio.run(tg_send(text)))",
+      "suggestion": "Detect existing loop and use asyncio.create_task or await tg_send when inside a loop, e.g., try: return bool(asyncio.run(tg_send(text))) except RuntimeError: return bool(asyncio.get_event_loop().run_until_complete(tg_send(text))) or make _send async."
+     }
+    ],
+    "coverage": "All public functions exercised by existing tests, but syntax errors prevent import, so current test suite likely bypasses this module. The identified bugs are not covered by tests.",
+    "limitations": "Analysis limited to shown file; external helpers assumed correct. Edge cases like zero previous price division by zero not addressed but lower priority."
+   }
+  }
+ ]
+}

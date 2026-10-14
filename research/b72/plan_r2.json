@@ -1,0 +1,45 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B72.md"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-2.5-flash",
+   "error": "Server disconnected without sending a response."
+  },
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"The plan correctly diagnoses and fixes the missing‑strategy bug, avoids survivorship/look‑ahead bias in the 5‑year research backtest, respects the pre‑registered adoption rules, handles intraday volume and Telegram rate limits, and includes comprehensive error‑path tests. Resource usage stays within the 512 MB Fly.io limits. Minor suggestions are provided for logging detail and holiday handling robustness.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"low\",\n      \"section\": \"A. 掃描漏策略\",\n      \"issue\": \"The new logging on the first three exceptions should include stack traces to aid debugging of unexpected failures.\",\n      \"suggestion\": \"Use `logger.exception` for the first three catches so the full traceback is recorded.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"section\": \"D. 盤中假跌破推播\",\n      \"issue\": \"The APScheduler job runs every 5 min; if a run occasionally exceeds 5 min the next trigger will be skipped, potentially leaving a 10‑min gap.\",\n      \"suggestion\": \"Add a warning log when a run is skipped due to `max_instances=1` so operators know about the gap.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"low\",\n      \"section\": \"F. 08:30 國際盤\",\n      \"issue\": \"Holiday handling relies on Yahoo returning the previous close; on rare API glitches the returned date may be stale.\",\n      \"suggestion\": \"Validate that the returned `previousClose` date is not older than 7 days; if it is, log a warning and omit that item for the current brief.\"\n    }\n  ],\n  \"coverage\": \"All new code paths are covered by unit tests: `test_scan_keys` validates STRATEGY_KEYS generation; `test_fbd_live` checks live‑scan volume logic, duplicate‑push suppression and error handling; `test_global_brief` exercises Yahoo/futures fetch, retry, and holiday fallback; `test_best_near` verifies near‑trigger list generation. Integration tests confirm API defaults for backtest, research report consistency, and Telegram push logs.\",\n  \"limitations\": \"The plan assumes Yahoo Finance remains reachable for global quotes; prolonged outages would silence the 08:30 brief until the next successful fetch. No explicit fallback data source is defined. Also, the live‑scan batch size (40) is tuned for current market depth; a sudden increase in candidate count could approach the 512 MB memory ceiling, though the design keeps in‑memory data <20 MB.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "The plan correctly diagnoses and fixes the missing‑strategy bug, avoids survivorship/look‑ahead bias in the 5‑year research backtest, respects the pre‑registered adoption rules, handles intraday volume and Telegram rate limits, and includes comprehensive error‑path tests. Resource usage stays within the 512 MB Fly.io limits. Minor suggestions are provided for logging detail and holiday handling robustness.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "low",
+      "section": "A. 掃描漏策略",
+      "issue": "The new logging on the first three exceptions should include stack traces to aid debugging of unexpected failures.",
+      "suggestion": "Use `logger.exception` for the first three catches so the full traceback is recorded."
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "section": "D. 盤中假跌破推播",
+      "issue": "The APScheduler job runs every 5 min; if a run occasionally exceeds 5 min the next trigger will be skipped, potentially leaving a 10‑min gap.",
+      "suggestion": "Add a warning log when a run is skipped due to `max_instances=1` so operators know about the gap."
+     },
+     {
+      "id": "F3",
+      "severity": "low",
+      "section": "F. 08:30 國際盤",
+      "issue": "Holiday handling relies on Yahoo returning the previous close; on rare API glitches the returned date may be stale.",
+      "suggestion": "Validate that the returned `previousClose` date is not older than 7 days; if it is, log a warning and omit that item for the current brief."
+     }
+    ],
+    "coverage": "All new code paths are covered by unit tests: `test_scan_keys` validates STRATEGY_KEYS generation; `test_fbd_live` checks live‑scan volume logic, duplicate‑push suppression and error handling; `test_global_brief` exercises Yahoo/futures fetch, retry, and holiday fallback; `test_best_near` verifies near‑trigger list generation. Integration tests confirm API defaults for backtest, research report consistency, and Telegram push logs.",
+    "limitations": "The plan assumes Yahoo Finance remains reachable for global quotes; prolonged outages would silence the 08:30 brief until the next successful fetch. No explicit fallback data source is defined. Also, the live‑scan batch size (40) is tuned for current market depth; a sudden increase in candidate count could approach the 512 MB memory ceiling, though the design keeps in‑memory data <20 MB."
+   }
+  }
+ ]
+}

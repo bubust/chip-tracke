@@ -370,13 +370,12 @@ def fetch_yahoo(stock_id: str, market: str = "twse") -> pd.DataFrame:
 
 # ── 全市場掃描 ────────────────────────────────────────────────────────────────
 
-STRATEGY_KEYS = ["S1", "S1_SHORT", "S2", "S5", "S10",
-                 "S_FBD", "S_THUNDER", "S_WARRANT_TOP"]
-# 上課筆記新增：價格型（scanner_course）＋籌碼型（chip_course，掃描後另外算）
-from scanner_course import COURSE_FNS as _COURSE_FNS  # noqa: E402
+# 掃描結果的策略 key：價格型一律跟 scanner.PRICE_STRATEGY_FNS 同一份（B72：以前手寫清單漏了 S_XIANREN／S_STRONG／
+# S_FIB／S_DBREAK，收結果時 KeyError 被吞掉 → 這 4 個策略永遠 0 檔，同一檔排在後面的策略也一起丟）
+# ＋籌碼型（chip_course，掃描後另外算）＋S_WARRANT_TOP（掃描後另外算）
+from scanner import PRICE_STRATEGY_FNS as _PRICE_FNS  # noqa: E402
 from chip_course import CHIP_STRATEGIES as _CHIP_STRATS  # noqa: E402
-STRATEGY_KEYS += [k for k in _COURSE_FNS if k not in STRATEGY_KEYS] + [k for k in _CHIP_STRATS if k not in STRATEGY_KEYS]
-STRATEGY_KEYS.append("S_BEST")   # 🔬 研究候選（best_strategy.py，PLAN-BEST）
+STRATEGY_KEYS = list(_PRICE_FNS) + ["S_WARRANT_TOP"] + [k for k in _CHIP_STRATS if k not in _PRICE_FNS]
 
 _SCAN_WORKERS = 4    # Fly.io shared-cpu: 4 workers 避免 Yahoo 429 burst
 
@@ -858,6 +857,11 @@ async def run_market_scan(strategy_params: dict = None):
         _scan_status["phase"] = "yahoo"
 
         all_results = {k: [] for k in STRATEGY_KEYS}
+        try:
+            import best_strategy as _bs
+            _bs.near_reset()                     # 🔬 研究候選快觸發名單（PLAN-B72 E1）：掃描中由 screen_best 記
+        except Exception as _bse:
+            print(f"[SCAN] 快觸發重設失敗: {_bse}")
 
         def _one(sid, mkt):
             """單支股票：fetch → scan，在 worker thread 執行。只回傳 result dict，不回傳 df（避免 Future 持有大量 DataFrame）"""
@@ -889,24 +893,43 @@ async def run_market_scan(strategy_params: dict = None):
                 result = {}
             return result  # 不回傳 df，讓 GC 立即釋放
 
+        _collect_err = [0]
+
+        def _collect(result):
+            """單檔結果併進 all_results；沒見過的策略 key 也收（setdefault），一個策略出錯不拖累同一檔的其他策略"""
+            for strat, r in (result or {}).items():
+                if r is None:
+                    continue
+                try:
+                    all_results.setdefault(strat, []).append(r)
+                except Exception:
+                    if _collect_err[0] < 3:          # 每次掃描只印前 3 次（含 traceback）
+                        import traceback as _tb2
+                        print(f"[SCAN] 收結果失敗 {strat}")
+                        _tb2.print_exc()
+                    _collect_err[0] += 1
+
         def _run_blocking():
             with ThreadPoolExecutor(max_workers=_SCAN_WORKERS) as ex:
                 futures = {ex.submit(_one, sid, mkt): sid for sid, mkt in tasks}
                 for fut in as_completed(futures):
                     try:
                         result = fut.result()
-                        if result is None:
-                            continue
-                        sid = futures[fut]
-                        for strat, r in result.items():
-                            if r is not None:
-                                all_results[strat].append(r)
                     except Exception:
-                        pass
+                        if _collect_err[0] < 3:
+                            import traceback as _tb2
+                            print(f"[SCAN] {futures[fut]} 失敗")
+                            _tb2.print_exc()
+                        _collect_err[0] += 1
+                        continue
+                    if result is not None:
+                        _collect(result)
 
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, _run_blocking)
         _first_pass_hits = sum(len(v) for v in all_results.values())
+        if _collect_err[0]:
+            print(f"[SCAN] ⚠ 收結果失敗共 {_collect_err[0]} 次（只印前 3 次的 traceback）")
         print(f"[SCAN] 第一輪完成：yahoo_ok={_scan_status['yahoo_ok']}, yahoo_fail={_scan_status['yahoo_fail']}, 命中={_first_pass_hits}, "
               f"達目標日 {_scan_cache_target_date}={_scan_status['target_hits']}")
         # 第一輪結束立即存檔，不管後續 retry/S_WARRANT_TOP 是否成功
@@ -989,9 +1012,7 @@ async def run_market_scan(strategy_params: dict = None):
                                             _scan_status["failed_stocks"].remove(sid2)
                                             _scan_status["yahoo_fail"] -= 1
                                             _scan_status["yahoo_ok"] += 1
-                                        for strat, r2 in result2.items():
-                                            if r2 is not None:
-                                                all_results[strat].append(r2)
+                                        _collect(result2)
                                 except Exception:
                                     pass
 
@@ -1031,9 +1052,7 @@ async def run_market_scan(strategy_params: dict = None):
                                     _scan_status["failed_stocks"].remove(sid3)
                                     _scan_status["yahoo_fail"] -= 1
                                     _scan_status["yahoo_ok"] += 1
-                                for strat, r3 in (result3 or {}).items():
-                                    if r3 is not None:
-                                        all_results[strat].append(r3)
+                                _collect(result3)
 
                 await loop.run_in_executor(None, _run_slow_blocking)
                 print(f"[SCAN] 三次重試完成，剩餘失敗 {_scan_status['yahoo_fail']} 支")
@@ -1050,6 +1069,12 @@ async def run_market_scan(strategy_params: dict = None):
         # 重試後更新存檔（含重試新增的命中）
         _scan_status["results"] = all_results
         _save_scan_cache(all_results)
+        try:
+            import best_strategy as _bs
+            _nr = _bs.near_save(_scan_cache_target_date)
+            print(f"[SCAN] 研究候選快觸發 {_nr['date']}：{_nr['counts']}")
+        except Exception as _bse:
+            print(f"[SCAN] 快觸發存檔失敗: {_bse}")
         print(f"[SCAN] 主要策略完成，命中={sum(len(v) for v in all_results.values())}")
 
         # S_WARRANT_TOP：認購權證前十大（即時：盤中＝今天到目前，收盤後／週末＝最近交易日）

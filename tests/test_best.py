@@ -59,7 +59,7 @@ def test_signal_b1_rsi_and_pool():
     assert A["c"][i] > A["ma200"][i] and A["rsi2"][i] <= 5
     assert bs.signal_at(A, i, "B1_ma200_rsi5")
     assert not bs.signal_at(A, i - 3, "B1_ma200_rsi5")
-    A2 = bs._arrays(_df(c, vol=100.0))          # 20 日均量 < 500 張 → 不在股票池
+    A2 = bs._arrays(_df(c, vol=100.0))          # 20 日均量 < 300 張 → 不在股票池
     assert not bs.signal_at(A2, i, "B1_ma200_rsi5")
 
 

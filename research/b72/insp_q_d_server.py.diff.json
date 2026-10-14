@@ -1,0 +1,44 @@
+{
+ "mode": "inspect",
+ "files": [
+  "C:/Users/牆泥袋溥/AppData/Local/Temp/claude/C--Users------Desktop/caec81c9-553d-49b6-b33a-4675e48f0eff/scratchpad/insp/d_server.py.diff"
+ ],
+ "reviews": [
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"REVISE\",\n  \"summary\": \"Default parameter changes introduce edge‑case failures, especially where the code assumes positive values for exit_ma and max_hold.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"high\",\n      \"path\": \"server.py\",\n      \"issue\": \"The default `exit_ma` for `/api/backtest/index` and batch backtest endpoints was changed from 10 to 0. Downstream logic (not shown) expects a positive moving‑average period for exit calculations; a value of 0 can cause division‑by‑zero errors or skip exit logic entirely.\",\n      \"evidence\": \"In the diff, `exit_ma` default is set to 0:\\n```diff\\n-                       exit_ma: int = 10,\\n+                       exit_ma: int = 0,\\n```\",\n      \"suggestion\": \"Restore the original default (e.g., 10) or add validation that raises a clear error when `exit_ma` <= 0. If unlimited exit_ma is intended, ensure the back‑test engine handles a sentinel value safely.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"medium\",\n      \"path\": \"server.py\",\n      \"issue\": \"`max_hold` default changed to 0 (unlimited) for several back‑test APIs. Some back‑test implementations treat 0 as a valid limit and may compute `holding_days / max_hold` or similar, leading to division‑by‑zero or infinite loops.\",\n      \"evidence\": \"Diff shows:\\n```diff\\n-                     max_hold: int = 60,\\n+                     max_hold: int = 0,\\n```\",\n      \"suggestion\": \"Add explicit handling for `max_hold == 0` in the back‑test logic, or keep the previous sentinel (e.g., 60) and document the unlimited case separately.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"low\",\n      \"path\": \"server.py\",\n      \"issue\": \"The cron schedule for `fbd_live_tick` runs every 5 minutes from 09:00, while the plan specifies starting at 09:10. The extra early ticks are filtered inside `fbd_live.tick`, but the schedule is broader than necessary.\",\n      \"evidence\": \"Cron definition:\\n```python\\n_pos_watch.add_job(_fbd_tick, \\\"cron\\\", day_of_week=\\\"mon-fri\\\", hour=\\\"9-13\\\", minute=\\\"*/5\\\", ...)\\n```\",\n      \"suggestion\": \"Adjust the minute field to start at 10 (e.g., `minute=\\\"10-55/5\\\"`) or add a comment clarifying that `fbd_live.tick` internally ignores out‑of‑range times.\"\n    }\n  ],\n  \"coverage\": \"The review covered all modified endpoints and the new scheduled job. Edge cases for default parameters and scheduling were examined.\",\n  \"limitations\": \"The actual back‑test implementation and `fbd_live` module are not shown, so verification of how they handle `exit_ma=0` or `max_hold=0` is based on typical patterns. Runtime behavior of `global_brief.brief()` and `fbd_live.live_status()` was assumed to return serializable dicts.\"\n}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "Default parameter changes introduce edge‑case failures, especially where the code assumes positive values for exit_ma and max_hold.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "path": "server.py",
+      "issue": "The default `exit_ma` for `/api/backtest/index` and batch backtest endpoints was changed from 10 to 0. Downstream logic (not shown) expects a positive moving‑average period for exit calculations; a value of 0 can cause division‑by‑zero errors or skip exit logic entirely.",
+      "evidence": "In the diff, `exit_ma` default is set to 0:\n```diff\n-                       exit_ma: int = 10,\n+                       exit_ma: int = 0,\n```",
+      "suggestion": "Restore the original default (e.g., 10) or add validation that raises a clear error when `exit_ma` <= 0. If unlimited exit_ma is intended, ensure the back‑test engine handles a sentinel value safely."
+     },
+     {
+      "id": "F2",
+      "severity": "medium",
+      "path": "server.py",
+      "issue": "`max_hold` default changed to 0 (unlimited) for several back‑test APIs. Some back‑test implementations treat 0 as a valid limit and may compute `holding_days / max_hold` or similar, leading to division‑by‑zero or infinite loops.",
+      "evidence": "Diff shows:\n```diff\n-                     max_hold: int = 60,\n+                     max_hold: int = 0,\n```",
+      "suggestion": "Add explicit handling for `max_hold == 0` in the back‑test logic, or keep the previous sentinel (e.g., 60) and document the unlimited case separately."
+     },
+     {
+      "id": "F3",
+      "severity": "low",
+      "path": "server.py",
+      "issue": "The cron schedule for `fbd_live_tick` runs every 5 minutes from 09:00, while the plan specifies starting at 09:10. The extra early ticks are filtered inside `fbd_live.tick`, but the schedule is broader than necessary.",
+      "evidence": "Cron definition:\n```python\n_pos_watch.add_job(_fbd_tick, \"cron\", day_of_week=\"mon-fri\", hour=\"9-13\", minute=\"*/5\", ...)\n```",
+      "suggestion": "Adjust the minute field to start at 10 (e.g., `minute=\"10-55/5\"`) or add a comment clarifying that `fbd_live.tick` internally ignores out‑of‑range times."
+     }
+    ],
+    "coverage": "The review covered all modified endpoints and the new scheduled job. Edge cases for default parameters and scheduling were examined.",
+    "limitations": "The actual back‑test implementation and `fbd_live` module are not shown, so verification of how they handle `exit_ma=0` or `max_hold=0` is based on typical patterns. Runtime behavior of `global_brief.brief()` and `fbd_live.live_status()` was assumed to return serializable dicts."
+   }
+  }
+ ]
+}

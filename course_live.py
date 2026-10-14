@@ -582,27 +582,35 @@ def push_nightly(day: str) -> dict:
     return out
 
 
-def push_premarket() -> dict:
-    """08:30：今天的當沖多空名單＋漲停打開候選（前一晚算好的）"""
+def push_premarket(brief_fn=None) -> dict:
+    """08:30：國際盤（前一晚美股、今早日韓、匯率、台指期夜盤，PLAN-B72 F）＋今天的當沖多空名單＋漲停打開候選（前一晚算好的）。
+    國際盤抓不到不影響當沖名單；沒有當沖資料也照發國際盤。"""
     import html
     today = datetime.now().strftime("%Y%m%d")
-    d = latest("daytrade", before=today)
-    lim = latest("limit", before=today)
-    if not d:
-        return {"sent": False}
     key = f"premarket:{today}"
     if _sent(key):
         return {"sent": False, "dup": True}
-    mk = d.get("market") or {}
-    lines = [f"⚡ <b>盤前當沖名單</b>　{_md(today)}（{_md(d['date'])} 收盤算）",
-             f"加權 {mk.get('taiex', '—')}，在 5 日線{'上 → 順勢偏多' if mk.get('side') == '多' else '下 → 順勢偏空' if mk.get('side') else '—'}"]
-    for side, lab in (("long", "🔴 多（剛起漲）"), ("short", "🟢 空（剛起跌）")):
-        xs = d.get(side) or []
-        lines.append(lab + "：" + ("、".join(f"{x['stock_id']} {html.escape(x['name'])}{'⁽期⁾' if x.get('futures') else ''}" for x in xs) if xs else "無"))
-    if lim and lim.get("candidates"):
-        lines.append("🚪 漲停打開候選（盤中打開會再通知）：" + "、".join(
-            f"{x['stock_id']} {html.escape(x['name'])} 連{x['streak']}" for x in lim["candidates"][:10]))
-    lines.append("研究：日線代理回測見網站；當沖守紀律：進場同時設停損、單日虧損 ≤ 資金 2%。")
+    try:
+        if brief_fn is None:
+            from global_brief import brief as brief_fn
+        gb = brief_fn()["text"]
+    except Exception as e:
+        log.warning(f"[course] 國際盤：{e}")
+        gb = "🌏 國際盤抓取失敗，請自行查看。"
+    d = latest("daytrade", before=today)
+    lim = latest("limit", before=today)
+    lines = [gb]
+    if d:
+        mk = d.get("market") or {}
+        lines += ["", f"⚡ <b>盤前當沖名單</b>　{_md(today)}（{_md(d['date'])} 收盤算）",
+                  f"加權 {mk.get('taiex', '—')}，在 5 日線{'上 → 順勢偏多' if mk.get('side') == '多' else '下 → 順勢偏空' if mk.get('side') else '—'}"]
+        for side, lab in (("long", "🔴 多（剛起漲）"), ("short", "🟢 空（剛起跌）")):
+            xs = d.get(side) or []
+            lines.append(lab + "：" + ("、".join(f"{x['stock_id']} {html.escape(x['name'])}{'⁽期⁾' if x.get('futures') else ''}" for x in xs) if xs else "無"))
+        if lim and lim.get("candidates"):
+            lines.append("🚪 漲停打開候選（盤中打開會再通知）：" + "、".join(
+                f"{x['stock_id']} {html.escape(x['name'])} 連{x['streak']}" for x in lim["candidates"][:10]))
+        lines.append("研究：日線代理回測見網站；當沖守紀律：進場同時設停損、單日虧損 ≤ 資金 2%。")
     return {"sent": _send(key, "\n".join(lines))}
 
 

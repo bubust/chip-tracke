@@ -774,6 +774,7 @@ details.guide[open]>summary::before{content:'▾ ';}
 <div id="tab-screen" class="tab">
   <div class="card" id="crash-card" style="display:none"></div>
   <div class="card" id="course-card" style="display:none"></div>
+  <div class="card" id="fixed825-card" style="display:none"></div>
 
   <div class="card">
     <!-- Cache 預熱狀態列 -->
@@ -849,6 +850,8 @@ details.guide[open]>summary::before{content:'▾ ';}
       <button class="btn" style="font-size:.8rem;padding:5px 12px" onclick="openStrategyBacktest()">🔬 批量回測此策略</button>
     </div>
     <div id="best-explain" style="display:none;margin-bottom:14px"></div>
+    <div id="best-near" style="display:none;margin-bottom:14px"></div>
+    <div id="fbd-live" style="display:none;margin-bottom:12px"></div>
     <div id="strat-research" style="display:none;margin-bottom:12px"></div>
     <div class="tbl-wrap">
       <table>
@@ -866,14 +869,19 @@ details.guide[open]>summary::before{content:'▾ ';}
       <strong id="batch-title">批量回測</strong>
       <span id="batch-meta" style="font-size:.8rem;color:var(--muted)"></span>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto;font-size:.82rem">
-        <label style="color:var(--muted)" title="ATR = 這支股票平常一天大概波動多少">初始停損 ×ATR
-          <input id="batch-stop-atr" type="number" value="2" min="0" max="20" step="0.5" style="width:46px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem">
+        <label style="color:var(--muted)" title="固定 %：買進價往下 8% 停損（盤中碰到就算）；ATR＝這支股票平常一天大概波動多少">停損
+          <select id="batch-stop" style="margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem"><option value="pct" selected>固定 %</option><option value="atr">×ATR</option><option value="none">不設</option></select>
+          <input id="batch-stop-val" type="number" value="8" min="0" max="50" step="0.5" style="width:46px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem">
         </label>
-        <label style="color:var(--muted)" title="股價漲上去停損跟著上移、不往下">移動停損 ×ATR
-          <input id="batch-trail-atr" type="number" value="2.5" min="0" max="30" step="0.5" style="width:46px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem">
+        <label style="color:var(--muted)">停利 %
+          <input id="batch-tp" type="number" value="25" min="0" max="200" step="0.5" style="width:46px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem">
+        </label>
+        <label style="color:var(--muted)" title="股價漲上去停損跟著上移、不往下">移動停損
+          <select id="batch-trail" style="margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem"><option value="none" selected>不設</option><option value="atr">×ATR</option><option value="pct">回落 %</option></select>
+          <input id="batch-trail-val" type="number" value="2.5" min="0" max="30" step="0.5" style="width:46px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem">
         </label>
         <label style="color:var(--muted)">最多持有
-          <input id="batch-days" type="number" value="60" min="0" max="250" style="width:46px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem"> 天
+          <input id="batch-days" type="number" value="0" min="0" max="250" style="width:46px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem"> 天 <span style="font-size:.72rem">（0=不限）</span>
         </label>
         <label style="color:var(--muted)">股數
           <input id="batch-n" type="number" value="100" min="10" max="300" step="10" style="width:46px;margin-left:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 4px;font-size:.8rem">
@@ -2185,7 +2193,7 @@ function switchTab(name) {
   if (name === 'relationship') { const rf2 = document.getElementById('relationship-iframe'); if (rf2 && !rf2.dataset.loaded) { rf2.dataset.loaded = '1'; rf2.src = '/relationship/'; } }
   if (name === 'link') { linkOnShow(); }
   if (name === 'market') { _mktOnShow(); }
-  if (name === 'screen') { loadCrashCard(); loadCourseCard(); }
+  if (name === 'screen') { loadCrashCard(); loadCourseCard(); loadFixed825Card(); }
   if (name === 'treasury') { tbOnShow(); }
   if (name === 'mna') { mnaOnShow(); }
   if (name === 'cb') { cbOnShow(); }
@@ -3045,9 +3053,9 @@ async function openBacktest() {
           <div style="font-size:.72rem;color:var(--muted);font-weight:700;letter-spacing:.5px;margin-bottom:8px">出場條件</div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
             <select id="bt-exit-type" onchange="btUpdateExitUI()" style="background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem">
-              <option value="none">⏹ 不設條件（持至數據末端）</option>
+              <option value="none" selected>⏹ 只看停損／停利（不設均線條件）</option>
               <option value="ma5">📉 破5日均線（多）/ 站上5日均線（空）</option>
-              <option value="ma10" selected>📉 破10日均線（多）/ 站上10日均線（空）</option>
+              <option value="ma10">📉 破10日均線（多）/ 站上10日均線（空）</option>
               <option value="ma20">📉 破20日均線（多）/ 站上20日均線（空）</option>
               <option value="ma60">📉 破60日均線（多）/ 站上60日均線（空）</option>
               <option value="tld">🕯 跌破前N天低點（多）/ 突破N天高點（空）</option>
@@ -3063,11 +3071,11 @@ async function openBacktest() {
               天 <span style="color:#484f58;font-size:.72rem">（0=不限）</span>
             </label>
             <label style="color:var(--muted);font-size:.82rem">停損%
-              <input id="bt-sl" type="number" value="0" min="0" max="50" step="0.5" style="width:46px;margin-left:5px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 5px">
+              <input id="bt-sl" type="number" value="8" min="0" max="50" step="0.5" style="width:46px;margin-left:5px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 5px">
               <span style="color:#484f58;font-size:.72rem">（0=不啟用）</span>
             </label>
             <label style="color:var(--muted);font-size:.82rem">停利%
-              <input id="bt-tp" type="number" value="0" min="0" max="100" step="0.5" style="width:46px;margin-left:5px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 5px">
+              <input id="bt-tp" type="number" value="25" min="0" max="100" step="0.5" style="width:46px;margin-left:5px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:var(--text);padding:2px 5px">
               <span style="color:#484f58;font-size:.72rem">（0=不啟用）</span>
             </label>
           </div>
@@ -3167,17 +3175,18 @@ function _btEnsureStockPanel() {
     </div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding-top:8px;border-top:1px solid #21262d">
       <span style="font-weight:700;color:var(--text)">出場</span>
-      <label title="ATR = 這支股票平常一天大概波動多少；波動大的股票停損放寬、波動小的收緊">初始停損
+      <label title="固定 %：買進價往下 8% 就停損（盤中碰到就算）；ATR = 這支股票平常一天大概波動多少">初始停損
         <select id="bt-stop" style="${_btSelStyle};margin-left:4px" onchange="btUpdateStopUI()">
-          <option value="atr" selected>ATR 倍數</option><option value="pct">固定 %</option><option value="none">不設</option>
-        </select>${_btInput('bt-stop-val', 2, 'min="0.5" max="20" step="0.5"')}
+          <option value="pct" selected>固定 %</option><option value="atr">ATR 倍數</option><option value="none">不設</option>
+        </select>${_btInput('bt-stop-val', 8, 'min="0.5" max="50" step="0.5" data-mode="pct"')}
       </label>
+      <label>停利${_btInput('bts-tp', 25, 'min="0" max="200" step="0.5"')}% <span style="color:#484f58;font-size:.72rem">（0=不用）</span></label>
       <label title="股價漲上去，停損跟著往上移、不往下，讓獲利可以跑">移動停損
         <select id="bt-trail" style="${_btSelStyle};margin-left:4px" onchange="btUpdateStopUI()">
-          <option value="atr" selected>ATR 倍數</option><option value="pct">回落 %</option><option value="none">不設</option>
-        </select>${_btInput('bt-trail-val', 2.5, 'min="0.5" max="30" step="0.5"')}
+          <option value="none" selected>不設</option><option value="atr">ATR 倍數</option><option value="pct">回落 %</option>
+        </select>${_btInput('bt-trail-val', 2.5, 'min="0.5" max="30" step="0.5" data-mode="none"')}
       </label>
-      <label>最多持有${_btInput('bts-days', 60, 'min="0" max="250"')} 天 <span style="color:#484f58;font-size:.72rem">（0=不限）</span></label>
+      <label>最多持有${_btInput('bts-days', 0, 'min="0" max="250"')} 天 <span style="color:#484f58;font-size:.72rem">（0=不限）</span></label>
     </div>
     <details style="margin-top:8px">
       <summary style="cursor:pointer">更多出場 / 成本 / 市場篩選</summary>
@@ -3189,7 +3198,6 @@ function _btEnsureStockPanel() {
           </select>
         </label>
         <label>時間停損${_btInput('bt-ts-days', 0, 'min="0" max="120"')} 天內沒賺到${_btInput('bt-ts-pct', 0, 'step="0.5"')}% 就出場 <span style="color:#484f58;font-size:.72rem">（0=不用）</span></label>
-        <label>停利${_btInput('bts-tp', 0, 'min="0" max="200" step="0.5"')}% <span style="color:#484f58;font-size:.72rem">（0=不用）</span></label>
         <label>來回成本${_btInput('bt-cost', 0.585, 'min="0" max="3" step="0.005"')}% <span style="color:#484f58;font-size:.72rem">（手續費 0.1425%×2 + 證交稅 0.3%）</span></label>
       </div>
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-top:8px">
@@ -3202,6 +3210,7 @@ function _btEnsureStockPanel() {
       <button onclick="runBacktest()" style="background:#58a6ff;color:#fff;border:none;border-radius:6px;padding:5px 18px;cursor:pointer;font-size:.85rem;font-weight:600">重新計算</button>
     </div>`;
   document.getElementById('bt-body').before(ctrl);
+  btUpdateStopUI();
   const sel = document.getElementById('bt-signal');
   const ma10 = `<option value="__fbd">🟡 MA10 假跌破（看多）— K 線黃色標記，非策略</option>
                 <option value="__fbr">🟡 MA10 假突破（看空）— K 線黃色標記，非策略</option>`;
@@ -3215,14 +3224,13 @@ function _btEnsureStockPanel() {
 }
 
 function btUpdateStopUI() {
-  const map = { atr: [2, '0.5'], pct: [7, '0.5'] };
   [['bt-stop', 'bt-stop-val', 2], ['bt-trail', 'bt-trail-val', 2.5]].forEach(([sid, vid, atrDef]) => {
     const mode = document.getElementById(sid)?.value;
     const inp = document.getElementById(vid);
     if (!inp) return;
     inp.style.display = mode === 'none' ? 'none' : '';
     if (inp.dataset.mode !== mode) {
-      inp.value = mode === 'atr' ? atrDef : (sid === 'bt-stop' ? 7 : 10);
+      inp.value = mode === 'atr' ? atrDef : (sid === 'bt-stop' ? 8 : 10);
       inp.dataset.mode = mode;
     }
   });
@@ -3231,20 +3239,20 @@ function btUpdateStopUI() {
 function _btParams() {
   const v = id => document.getElementById(id)?.value;
   const num = (id, d) => { const x = parseFloat(v(id)); return isNaN(x) ? d : x; };
-  const stop = v('bt-stop') || 'atr', trail = v('bt-trail') || 'atr';
+  const stop = v('bt-stop') || 'pct', trail = v('bt-trail') || 'none';
   const p = {
     entry: v('bt-entry') || 'next_open',
     stop, trail,
-    max_hold: Math.max(0, parseInt(v('bts-days') ?? 60) || 0),
+    max_hold: Math.max(0, parseInt(v('bts-days') ?? 0) || 0),
     exit_ma: parseInt(v('bt-exit-ma') || 0),
     time_stop_days: parseInt(v('bt-ts-days') || 0),
     time_stop_pct: num('bt-ts-pct', 0),
-    take_profit: num('bts-tp', 0),
+    take_profit: num('bts-tp', 25),
     cost: num('bt-cost', 0.585),
     taiex_bull: document.getElementById('bts-taiex-bull')?.checked ? 1 : 0,
     big_macd: document.getElementById('bts-big-macd')?.checked ? 1 : 0,
   };
-  if (stop === 'atr') p.stop_atr = num('bt-stop-val', 2); else if (stop === 'pct') p.stop_pct = num('bt-stop-val', 7);
+  if (stop === 'atr') p.stop_atr = num('bt-stop-val', 2); else if (stop === 'pct') p.stop_pct = num('bt-stop-val', 8);
   if (trail === 'atr') p.trail_atr = num('bt-trail-val', 2.5); else if (trail === 'pct') p.trail_pct = num('bt-trail-val', 10);
   return p;
 }
@@ -3298,7 +3306,7 @@ async function runIdxBacktest(key) {
   const body = document.getElementById('bt-body');
   body.innerHTML = '<div style="color:var(--muted);text-align:center;padding:40px">計算中...</div>';
   const days      = parseInt(document.getElementById('bt-days')?.value ?? 0);
-  const exitType  = document.getElementById('bt-exit-type')?.value || 'ma10';
+  const exitType  = document.getElementById('bt-exit-type')?.value || 'none';
   const tld       = exitType === 'tld' ? parseInt(document.getElementById('bt-tld')?.value ?? 2) : 0;
   const exitMa    = {'ma5':5,'ma10':10,'ma20':20,'ma60':60}[exitType] || 0;
   const sl        = parseFloat(document.getElementById('bt-sl')?.value || 0);
@@ -3307,7 +3315,7 @@ async function runIdxBacktest(key) {
   const bigMacd   = document.getElementById('bt-big-macd')?.checked ? 1 : 0;
   const slHint    = sl > 0 ? ` · 停損 ${sl}%` : '';
   const tpHint    = tp > 0 ? ` · 停利 ${tp}%` : '';
-  const exitHint  = exitType === 'none' ? '持至末端' : exitType === 'tld' ? `跌破前${tld}天低/高點` : `MA${exitMa}出場`;
+  const exitHint  = exitType === 'none' ? (sl > 0 || tp > 0 ? '只看停損／停利' : '持至末端') : exitType === 'tld' ? `跌破前${tld}天低/高點` : `MA${exitMa}出場`;
   const filterHint = [taiexBull ? '加權多頭排列' : '', bigMacd ? '大MACD多頭' : ''].filter(Boolean).join(' + ');
   try {
     const r = await fetch(`/api/backtest/index?key=${key}&holding_days=${days}&trailing_low_days=${tld}&exit_ma=${exitMa}&stop_loss=${sl}&take_profit=${tp}&taiex_bull=${taiexBull}&big_macd=${bigMacd}`);
@@ -5118,11 +5126,15 @@ function openStrategyBacktest() {
 
 function _batchQuery() {
   const num = (id, d) => { const x = parseFloat(document.getElementById(id)?.value); return isNaN(x) ? d : x; };
-  const stopAtr = num('batch-stop-atr', 2), trailAtr = num('batch-trail-atr', 2.5);
+  const sel = (id, d) => document.getElementById(id)?.value || d;
   const q = { strategy: _batchStrategy, max_stocks: Math.round(num('batch-n', 100)),
-              max_hold: Math.max(0, Math.round(num('batch-days', 60))) };
-  if (stopAtr > 0) { q.stop = 'atr'; q.stop_atr = stopAtr; } else q.stop = 'none';
-  if (trailAtr > 0) { q.trail = 'atr'; q.trail_atr = trailAtr; } else q.trail = 'none';
+              max_hold: Math.max(0, Math.round(num('batch-days', 0))), take_profit: Math.max(0, num('batch-tp', 25)) };
+  const stop = sel('batch-stop', 'pct'), sv = num('batch-stop-val', 8);
+  if (stop === 'none' || sv <= 0) q.stop = 'none';
+  else { q.stop = stop; q[stop === 'atr' ? 'stop_atr' : 'stop_pct'] = sv; }
+  const trail = sel('batch-trail', 'none'), tv = num('batch-trail-val', 2.5);
+  if (trail === 'none' || tv <= 0) q.trail = 'none';
+  else { q.trail = trail; q[trail === 'atr' ? 'trail_atr' : 'trail_pct'] = tv; }
   return new URLSearchParams(q).toString();
 }
 
@@ -5253,8 +5265,9 @@ async function _renderStratResearch(strategy) {
   if (!el) return;
   if (_best2 === null) { try { _best2 = await api('GET', '/api/best2/strategies'); } catch (e) { _best2 = {}; } }
   if (_courseRes === null) { try { _courseRes = await api('GET', '/api/course/research'); } catch (e) { _courseRes = {}; } }
+  await _getF825();
   const r = (_best2.strategies || {})[strategy];
-  const courseHtml = _courseResearchHtml(strategy);
+  const courseHtml = _courseResearchHtml(strategy) + _f825StratHtml(strategy);
   if (!r) { if (courseHtml) { el.style.display = 'block'; el.innerHTML = courseHtml; } else el.style.display = 'none'; return; }
   const b = r.baseline || {}, p = r.pick, e7 = r.e7_10;
   const pct = x => x == null ? '—' : `${x >= 0 ? '+' : ''}${(x * 100).toFixed(2)}%`;
@@ -5268,7 +5281,7 @@ async function _renderStratResearch(strategy) {
   el.innerHTML = `<details ${r.improved ? 'open' : ''} style="border:1px solid var(--border);border-radius:8px;padding:8px 12px">
     <summary style="cursor:pointer;font-weight:700">📊 5 年回測：原本 vs 改良　<span style="font-weight:400;font-size:.85rem">${verdict}</span></summary>
     <div class="tbl-wrap" style="margin-top:6px"><table style="font-size:.82rem"><thead><tr><th>做法</th><th>樣本內 勝率／平均每筆</th><th>樣本外 勝率／平均每筆</th><th>平均抱</th><th>帳戶年化／最大回撤（10 檔）</th></tr></thead><tbody>
-      <tr><td>原本（網站 K 線回測預設：2ATR 停損＋2.5ATR 移動停損、最多 60 天）</td><td>${pw(b.is_win)}／<span style="${col(b.is_mean)}">${pct(b.is_mean)}</span></td><td>${pw(b.oos_win)}／<span style="${col(b.oos_mean)}">${pct(b.oos_mean)}</span></td><td>${b.all_days != null ? b.all_days.toFixed(0) + ' 天' : '—'}</td><td>${r.port ? `${pct(r.port.base.cagr)}／${pct(r.port.base.mdd)}` : '—'}</td></tr>
+      <tr><td>舊預設（2ATR 停損＋2.5ATR 移動停損、最多 60 天）</td><td>${pw(b.is_win)}／<span style="${col(b.is_mean)}">${pct(b.is_mean)}</span></td><td>${pw(b.oos_win)}／<span style="${col(b.oos_mean)}">${pct(b.oos_mean)}</span></td><td>${b.all_days != null ? b.all_days.toFixed(0) + ' 天' : '—'}</td><td>${r.port ? `${pct(r.port.base.cagr)}／${pct(r.port.base.mdd)}` : '—'}</td></tr>
       ${p ? `<tr><td>改良候選：${_esc(p.filter)}；${_esc(p.exit)}</td><td>${pw(p.is_win)}／<span style="${col(p.is_mean)}">${pct(p.is_mean)}</span></td><td>${pw(p.oos_win)}／<span style="${col(p.oos_mean)}">${pct(p.oos_mean)}</span></td><td>${p.all_days != null ? p.all_days.toFixed(0) + ' 天' : '—'}</td><td>${r.port ? `${pct(r.port.pick.cagr)}／${pct(r.port.pick.mdd)}` : '—'}</td></tr>` : ''}
       ${e7 ? `<tr><td>固定停損 10%、沒跌破一直抱（收盤判斷）</td><td colspan="2">勝率 ${pw(e7.win)}、平均每筆 <span style="${col(e7.mean)}">${pct(e7.mean)}</span>；60 天內被洗出場 ${pw(e7.wash60)}</td><td>${e7.days != null ? e7.days.toFixed(0) + ' 天' : '—'}</td><td>${pct(e7.port_cagr)}／${pct(e7.port_mdd)}</td></tr>` : ''}
     </tbody></table></div>
@@ -5335,6 +5348,64 @@ async function loadCourseCard(force) {
       ${alerts.length ? `<b style="color:var(--up)">🔔 ${alerts.join('、')}</b>` : '<span class="muted">大盤出貨日／主流族群大跌／當沖名單／漲停打開／出貨日（點開）</span>'}
       <span class="muted" style="font-size:.74rem">　每晚掃描後更新；盤中每分鐘看漲停打開</span></summary>
     <div class="cs-grid">${mBox}${sBox}${lBox}${dBox2}${dBox}</div></details>`;
+}
+
+// ── 📊 全部策略 5 年回測：停損 8%／停利 25%、不限天數（PLAN-B72 C）──
+let _f825 = null;
+async function _getF825() {
+  if (_f825 === null) { try { _f825 = await api('GET', '/api/best2/fixed825'); } catch (e) { _f825 = {}; } }
+  return _f825 || {};
+}
+const _f825p = (x, d = 1) => x == null ? '—' : `${x >= 0 ? '+' : ''}${(x * 100).toFixed(d)}%`;
+const _f825w = x => x == null ? '—' : `${Math.round(x * 100)}%`;
+const _f825c = x => x == null ? '' : x > 0 ? 'color:var(--up)' : x < 0 ? 'color:var(--down)' : '';
+function _f825Reasons(rs) {
+  if (!rs) return '—';
+  return `<span style="color:var(--up)">停利 ${_f825w(rs.tp)}</span>／<span style="color:var(--down)">停損 ${_f825w(rs.sl)}</span>${rs.open ? `／抱著 ${_f825w(rs.open)}` : ''}`;
+}
+async function loadFixed825Card() {
+  const el = document.getElementById('fixed825-card');
+  if (!el) return;
+  const F = await _getF825();
+  const S = F.strategies || {}, m = F.meta || {};
+  const keys = Object.keys(S).filter(k => (S[k].oos || {}).n).sort((a, b) => (S[b].oos.mean ?? -9) - (S[a].oos.mean ?? -9));
+  if (!keys.length) { el.style.display = 'none'; return; }
+  const per = m.periods || {}, tx = m.taiex || {};
+  const md = d => d ? `${String(d).slice(0, 4)}-${String(d).slice(4, 6)}` : '';
+  const rows = keys.map(k => {
+    const x = S[k], o = x.oos || {}, a = x.all || {}, rb = x.random || {}, pf = x.port || {};
+    return `<tr style="cursor:pointer" onclick="viewStrategy('${_esc(k)}');document.getElementById('screen-result-card').scrollIntoView({behavior:'smooth'})">
+      <td style="white-space:normal;min-width:150px">${_esc(STRATEGY_SHORT[k] || x.label || k)}</td>
+      <td class="num">${(o.n || 0).toLocaleString()}</td><td class="num">${_f825w(o.win)}</td>
+      <td class="num" style="${_f825c(o.mean)};font-weight:700">${_f825p(o.mean, 2)}</td><td class="num" style="${_f825c(o.median)}">${_f825p(o.median)}</td>
+      <td class="num">${o.days != null ? Math.round(o.days) + ' 天' : '—'}</td><td style="font-size:.76rem">${_f825Reasons(x.reasons)}</td>
+      <td class="num">${_f825w(rb.win)}／${_f825p(rb.mean)}</td><td>${x.beats_random ? '<b style="color:var(--up)">✅</b>' : '<span class="muted">✗</span>'}</td>
+      <td class="num">${_f825w(a.win)}／<span style="${_f825c(a.mean)}">${_f825p(a.mean)}</span></td>
+      <td class="num"><span style="${_f825c(pf.cagr)}">${_f825p(pf.cagr)}</span>／<span style="color:var(--down)">${_f825p(pf.mdd)}</span></td></tr>`;
+  }).join('');
+  el.style.display = 'block';
+  el.innerHTML = `<details><summary style="cursor:pointer"><b>📊 全部策略 5 年回測：停損 8%／停利 25%（不限天數）</b>
+      <span class="muted" style="font-size:.8rem">　${keys.length} 個做多策略；依樣本外平均每筆排序，點策略名稱看那個策略</span></summary>
+    <div class="tbl-wrap" style="margin-top:6px"><table style="font-size:.8rem"><thead><tr><th>策略</th><th>樣本外筆數</th><th>勝率</th><th>平均每筆</th><th>中位數</th><th>平均抱</th><th>出場（全期）</th><th>隨機進場 勝率／平均</th><th>勝過隨機</th><th>全期 勝率／平均</th><th>帳戶年化／最大回撤</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>
+    <div class="muted" style="font-size:.74rem;margin-top:6px;line-height:1.6">${_esc(m.entry || '')}；${_esc(m.exit || '')}；成本 ${_esc(m.cost || '')}。股票池：${_esc(m.pool || '')}。
+      樣本內 ${md((per.is || [])[0])}～${md((per.is || [])[1])}、樣本外 ${md((per.oos || [])[0])}～${md((per.oos || [])[1])}（最近的交易還沒出場的用最新收盤算）。
+      隨機進場：${_esc(m.random || '')}；勝過隨機＝樣本外勝率和平均都比隨機高。帳戶：${_esc(m.port || '')}。同期加權年化 ${_f825p(tx.cagr)}、最大回撤 ${_f825p(tx.mdd)}（不含股利）。歷史回測不代表未來。</div></details>`;
+}
+function _f825StratHtml(strategy) {
+  const x = ((_f825 || {}).strategies || {})[strategy];
+  if (!x) return '';
+  const row = (lab, o) => !o || !o.n ? `<tr><td>${lab}</td><td colspan="4" class="muted">沒有交易</td></tr>` :
+    `<tr><td>${lab}</td><td class="num">${o.n.toLocaleString()}</td><td class="num">${_f825w(o.win)}</td><td class="num" style="${_f825c(o.mean)};font-weight:700">${_f825p(o.mean, 2)}</td><td class="num">${o.days != null ? Math.round(o.days) + ' 天' : '—'}</td></tr>`;
+  const rb = x.random || {}, pf = x.port || {};
+  const yrs = Object.entries(x.years || {}).filter(([, v]) => v.n).map(([y, v]) => `${y}：${_f825w(v.win)}／<span style="${_f825c(v.mean)}">${_f825p(v.mean)}</span>`).join('　');
+  return `<details style="border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-top:6px" open>
+    <summary style="cursor:pointer;font-weight:700">📊 5 年回測：停損 8%／停利 25%（不限天數）　${x.beats_random ? '<span class="lk-badge ok">✅ 樣本外勝過隨機進場</span>' : '<span class="lk-badge warn">⚠ 樣本外沒勝過隨機進場</span>'}</summary>
+    <div class="tbl-wrap" style="margin-top:6px"><table style="font-size:.82rem"><thead><tr><th>期間</th><th>筆數</th><th>勝率</th><th>平均每筆（扣成本）</th><th>平均抱</th></tr></thead><tbody>
+      ${row('樣本內', x.is)}${row('樣本外', x.oos)}${row('全期', x.all)}</tbody></table></div>
+    <div style="font-size:.8rem;margin-top:4px">出場：${_f825Reasons(x.reasons)}　隨機進場（同出場）：${_f825w(rb.win)}／${_f825p(rb.mean)}　帳戶（10 檔各 10%）年化 <span style="${_f825c(pf.cagr)}">${_f825p(pf.cagr)}</span>、最大回撤 <span style="color:var(--down)">${_f825p(pf.mdd)}</span></div>
+    ${yrs ? `<div class="muted" style="font-size:.76rem;margin-top:2px">各年（勝率／平均）：${yrs}</div>` : ''}
+    <div class="muted" style="font-size:.72rem;margin-top:4px">隔天開盤買；停損＝買價 −8%、停利＝買價 +25%，盤中碰到就算（跳空用開盤價、同一天都碰到算停損）；不限天數（上限 250 交易日）。K 線圖 📊 回測、🔬 批量回測的預設也是這一套。</div></details>`;
 }
 
 async function loadCrashCard() {
@@ -5555,6 +5626,7 @@ async function _renderBestExplain() {
       <div><div class="muted" style="font-size:.78rem">② 停損／出場</div><div style="font-weight:700">${_esc(d.exit || '')}</div><div style="font-size:.8rem">條件都用<b>收盤</b>判斷，成立就<b>隔天開盤賣</b>；表格「停損／停利／最晚出場」已經幫你算好。</div></div>
       <div><div class="muted" style="font-size:.78rem">③ 一次買多少</div><div style="font-size:.85rem">每筆最多虧總資金 <b>1%</b>：張數 ＝ 總資金 × 1% ÷（買價 − 停損）÷ 1000；單檔不超過總資金 ${passed ? '20%' : '5%'}。${passed ? '同時最多抱 10 檔，訊號太多挑量增最明顯的。' : (() => { const z = (dg.sizing || []).find(x => x.slots === 20 && Math.abs(x.weight - 0.05) < 1e-9); return '大跌時訊號一天可能上百個，<b>不要第一天就買滿</b>。' + (z ? `<br><small class="muted">事後試算：每筆 5%、最多 20 檔 → 5 年年化 ${_bp2(z.cagr)}、最大回撤 ${_bp2(z.mdd)}（不是選方法的依據）</small>` : ''); })()}</div></div>
     </div>
+    ${(_bestSummary.pool || {}).note ? `<div style="font-size:.8rem;margin-bottom:4px;color:#f59e0b">ℹ️ ${_esc(_bestSummary.pool.note)}</div>` : ''}
     <div class="tbl-wrap"><table style="font-size:.85rem"><thead><tr><th>期間</th><th>筆數</th><th>勝率</th><th>平均每筆（扣成本）</th><th>獲利因子</th><th>最差 5%</th><th>平均持有</th></tr></thead><tbody>
       ${row('樣本內 2021-10～2024-06（含 2022 空頭）', st.is)}${row('樣本外 2024-07～2026-08（選方法時沒看）', st.oos)}${row('全期', st.all)}
     </tbody></table></div>
@@ -5577,8 +5649,83 @@ async function _renderBestExplain() {
         <li>5 年裡 2023～2026 多頭為主，過去的勝率不保證未來。</li></ul></div>
     </div>
     ${diagHtml}
-    <div class="muted" style="font-size:.72rem;margin-top:8px">股票池：4 碼普通股、收盤 ≥ 10 元、20 日均量 ≥ 500 張。研究程式與完整報告：research/best/（PLAN-BEST）。觀察清單從這裡「+ 加入清單」或填成本的股票，會自動顯示「抱第幾天／明天開盤賣」；有填成本的出場那天會推 Telegram。</div>
+    ${await _bestRetestHtml()}
+    <div class="muted" style="font-size:.72rem;margin-top:8px">股票池：4 碼普通股、收盤 ≥ 10 元、20 日均量 ≥ ${_esc(((_bestSummary.pool || {}).min_vol20) || 500)} 張。研究程式與完整報告：research/best/（PLAN-BEST）。觀察清單從這裡「+ 加入清單」或填成本的股票，會自動顯示「抱第幾天／明天開盤賣」；有填成本的出場那天會推 Telegram。</div>
   </div>`;
+}
+
+// 🔬 研究候選快觸發名單（PLAN-B72 E1）：差一個條件／兩個條件都有但被股票池或資料保護擋掉
+async function _renderBestNear(nToday) {
+  const el = document.getElementById('best-near');
+  if (!el) return;
+  let r;
+  try { r = await api('GET', '/api/best/near'); } catch (e) { el.innerHTML = ''; return; }
+  const items = r.items || [], cnt = r.counts || {}, kinds = r.kinds || {}, pool = r.pool || {};
+  const md = d => d ? `${String(d).slice(4, 6)}/${String(d).slice(6, 8)}` : '—';
+  const all = items.map(x => ({ id: x.stock_id, name: x.name }));
+  const blocked = (cnt.illiquid || 0) + (cnt.guard || 0);
+  const why = nToday ? '' : `<div style="font-size:.88rem;margin-bottom:6px"><b>今天 0 檔的原因：</b>${blocked
+      ? `兩個條件都符合的有 <b>${blocked}</b> 檔，但被擋掉（不在股票池 ${cnt.illiquid || 0} 檔、除權息／減資保護 ${cnt.guard || 0} 檔）`
+      : '沒有股票同時符合「負乖離」和「破底翻」'}；只差一個條件的：等破底翻 ${cnt.wait_bb || 0} 檔、乖離不夠深 ${cnt.shallow || 0} 檔。這個做法本來就只在大跌後才大量出現（平常一個月 0～15 次）。</div>`;
+  const tbl = k => {
+    const xs = items.filter(x => x.kind === k);
+    if (!xs.length) return '';
+    return `<div class="lk-lbl" style="margin-top:6px">${_esc(kinds[k] || k)}（${xs.length} 檔）</div>
+      <div class="tbl-wrap"><table class="lk-tbl" style="font-size:.82rem"><thead><tr><th>股票</th><th style="text-align:right">收盤</th><th style="text-align:right">60 日乖離（3 天最低）</th><th style="text-align:right">20 日均量</th><th>負乖離</th><th>破底翻</th></tr></thead><tbody>
+      ${xs.slice(0, 60).map(x => `<tr><td>${_linkStock(x.stock_id, x.name, all, '研究候選快觸發')}</td><td class="num">${_esc(x.close)}</td><td class="num" style="color:var(--down)">${_esc(x.bias_min)}%</td><td class="num">${x.vol20 == null ? '—' : Math.round(x.vol20).toLocaleString() + ' 張'}</td><td>${md(x.bias_date)}</td><td>${md(x.bb_date)}</td></tr>`).join('')}</tbody></table></div>`;
+  };
+  el.innerHTML = `<div class="card" style="border-color:var(--border)">
+    <div style="font-weight:800;margin-bottom:6px">⏳ 快觸發名單 <span class="muted" style="font-weight:400;font-size:.8rem">${r.date ? md(r.date) + ' 收盤' : '還沒有資料（下一次掃描後出現）'}</span></div>
+    ${why}${['illiquid', 'guard', 'wait_bb', 'shallow'].map(tbl).join('')}
+    <div class="muted" style="font-size:.74rem;margin-top:6px">只是名單、不是買進訊號：兩個條件都成立、又在股票池（收盤 ≥ ${pool.min_price ?? 10} 元、20 日均量 ≥ ${pool.min_vol20 ?? 500} 張）、60 天內沒有除權息／減資跳動，才會出現在下面的研究候選表並推 Telegram。</div>
+  </div>`;
+}
+
+// 🪤 盤中假跌破（PLAN-B72 D）：全市場 S_FBD 用即時價，09:10～13:10 每 5 分鐘 Telegram，13:10 收盤前清單
+async function _renderFbdLive() {
+  const el = document.getElementById('fbd-live');
+  if (!el) return;
+  let r;
+  try { r = await api('GET', '/api/fbd-live/status'); } catch (e) { el.innerHTML = ''; return; }
+  const now = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10).replace(/-/g, '');
+  const today = r.day === now && r.checked;
+  const hits = today ? (r.hits || []) : [], seen = today ? (r.seen || []) : [];
+  const all = hits.concat(seen.filter(x => !hits.some(h => h.stock_id === x.stock_id))).map(x => ({ id: x.stock_id, name: x.name }));
+  const pct = x => x == null ? '' : `<span style="color:${x >= 0 ? 'var(--up)' : 'var(--down)'}">${x >= 0 ? '+' : ''}${(x * 100).toFixed(1)}%</span>`;
+  const md = d => d ? `${String(d).slice(4, 6)}/${String(d).slice(6, 8)}` : '—';
+  const row = (x, tag) => `<tr><td>${_linkStock(x.stock_id, x.name, all, '盤中假跌破')}</td><td class="num">${_esc(x.price)} ${pct(x.chg)}</td><td class="num">MA10 ${_esc(x.ma10)}</td><td>${md(x.broke_date)} 跌破</td><td>${tag}</td></tr>`;
+  const gone = seen.filter(x => !hits.some(h => h.stock_id === x.stock_id));
+  el.innerHTML = `<div class="card" style="border-color:#fbbf24">
+    <div style="font-weight:800;margin-bottom:4px">📡 盤中假跌破（Telegram）</div>
+    <div class="muted" style="font-size:.8rem">全市場「🪤 假跌破買進」用即時價算：09:10～13:10 每 5 分鐘，新出現的推 Telegram（同一檔一天一次），13:10 再推「收盤前還成立」的清單。盤中量還沒滿，用前 20 日均量代替；收盤確認以 18:00 掃描（下面的表）為準。</div>
+    <div style="font-size:.85rem;margin-top:6px">${today ? `今天最後檢查 <b>${_esc(r.checked)}</b>（${_esc(r.sec ?? '—')} 秒）、候選 ${r.candidates} 檔、現在成立 <b>${hits.length}</b> 檔${r.final_sent ? '　✅ 13:10 清單已發' : ''}` : '今天盤中還沒檢查（交易日 09:10 開始）'}${r.error ? `　<span style="color:#f59e0b">⚠ ${_esc(r.error)}</span>` : ''}</div>
+    ${hits.length || gone.length ? `<div class="tbl-wrap" style="margin-top:6px"><table class="lk-tbl" style="font-size:.82rem"><tbody>
+      ${hits.map(x => row(x, seen.some(s => s.stock_id === x.stock_id) ? '已通知' : '🆕')).join('')}
+      ${gone.map(x => row(x, '<span class="muted">盤中出現過、現在不成立</span>')).join('')}</tbody></table></div>` : ''}
+  </div>`;
+}
+
+// 🔬 研究候選重測（PLAN-B72 E2／E3）：放寬股票池、改用停損 8%／停利 25%；採用規則事先定好
+async function _bestRetestHtml() {
+  let R;
+  try { R = await api('GET', '/api/best/retest'); } catch (e) { return ''; }
+  if (!R || !R.orig) return '';
+  const cell = o => !o || !o.n ? '<td class="muted">—</td>' : `<td>${_bp(o.win)}／<span style="${_bcol(o.mean)}">${_bp2(o.mean)}</span>（${o.n} 筆）</td>`;
+  const pc = p => p ? `<td><span style="${_bcol(p.cagr)}">${_bp2(p.cagr)}</span>／<span style="color:var(--down)">${_bp2(p.mdd)}</span></td>` : '<td>—</td>';
+  const o = R.orig, e2 = R.e2 || {}, e3 = R.e3 || {}, a2 = (R.adopt_rules || {}).E2 || {}, a3 = (R.adopt_rules || {}).E3 || {};
+  const rs = e3.reasons || {};
+  return `<details style="margin-top:10px;font-size:.84rem" open><summary style="cursor:pointer;font-weight:700">🔁 重測（2026-10-14 用戶要求）：放寬股票池、改用停損 8%／停利 25%</summary>
+    <div class="tbl-wrap" style="margin-top:6px"><table style="font-size:.8rem"><thead><tr><th>做法</th><th>樣本內 勝率／平均</th><th>樣本外 勝率／平均</th><th>帳戶年化／最大回撤（10 檔）</th></tr></thead><tbody>
+      <tr><td>原本：股票池均量 ≥ 500 張；+1ATR 停利／−2ATR 停損（收盤判斷）、最多 20 天</td>${cell(o.is)}${cell(o.oos)}${pc(o.port)}</tr>
+      <tr><td>E2 放寬股票池：均量 ≥ 300 張（同一出場）</td>${cell((e2.combined || {}).is)}${cell((e2.combined || {}).oos)}${pc(e2.port)}</tr>
+      <tr><td>　其中新增的（均量 300～500 張）</td>${cell((e2.new_only || {}).is)}${cell((e2.new_only || {}).oos)}<td>—</td></tr>
+      <tr><td>E3 停損 8%／停利 25%（盤中觸價、不限天數）<br><small class="muted">出場：停利 ${_bp(rs.tp)}、停損 ${_bp(rs.sl)}${rs.open ? '、還抱著 ' + _bp(rs.open) : ''}</small></td>${cell(e3.is)}${cell(e3.oos)}${pc(e3.port)}</tr>
+    </tbody></table></div>
+    <ul style="margin:6px 0 0 18px;padding:0">
+      <li>E2 採用規則（事先定好）：新增那批樣本外勝率 ≥ ${_bp(a2.new_oos_win)}、平均 > 0、獲利因子 ≥ ${a2.new_oos_pf}，且合併後樣本外勝率不比原本低超過 ${Math.round((a2.combined_win_drop || 0) * 100)} 個百分點 → <b>${e2.adopt ? '✅ 通過，網站股票池改成 300 張' : '❌ 沒通過，股票池維持 500 張'}</b></li>
+      <li>E3 採用規則（事先定好）：樣本外平均每筆 ≥ 原本、帳戶年化 ≥ 原本、最大回撤不比原本差超過 ${Math.round((a3.mdd_worse_max || 0) * 100)} 個百分點 → <b>${e3.adopt ? '✅ 通過，研究候選改用停損 8%／停利 25%' : '❌ 沒通過，維持原本出場'}</b></li>
+    </ul>
+    <div class="muted" style="font-size:.72rem;margin-top:4px">同一組訊號、同一段期間（樣本內 2021-10～2024-06、樣本外 2024-07～2026-08）、同成本；帳戶＝最多 10 檔各 10%，同一天訊號多時量增大的先。研究程式：research/b72/run825.py。</div></details>`;
 }
 
 // 觀察清單：🔬 研究候選（PLAN-BEST）的計畫／出場狀態
@@ -5639,6 +5786,10 @@ function renderScreenTable(strategy, data) {
   document.getElementById('screen-result-title').textContent = STRATEGY_LABELS[strategy] || strategy;
   const _be = document.getElementById('best-explain');
   if (_be) { _be.style.display = strategy === 'S_BEST' ? 'block' : 'none'; if (strategy === 'S_BEST') _renderBestExplain(); }
+  const _bn = document.getElementById('best-near');
+  if (_bn) { _bn.style.display = strategy === 'S_BEST' ? 'block' : 'none'; if (strategy === 'S_BEST') _renderBestNear(data.length); }
+  const _fl = document.getElementById('fbd-live');
+  if (_fl) { _fl.style.display = strategy === 'S_FBD' ? 'block' : 'none'; if (strategy === 'S_FBD') _renderFbdLive(); }
   _renderStratResearch(strategy);
   document.getElementById('screen-result-count').textContent = `共 ${data.length} 支`;
 

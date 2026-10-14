@@ -99,6 +99,17 @@ def push_crash(dry: bool = False) -> dict:
 
 
 STRAT = os.path.join(HERE, "research", "best2", "results", "strategy_site.json")
+FIXED825 = os.path.join(HERE, "research", "best2", "results", "fixed825.json")
+
+
+@router.get("/api/best2/fixed825")
+def api_best2_fixed825():
+    """全部做多策略 5 年回測：停損 8%／停利 25%、不限天數（research/b72/run825.py 產生，PLAN-B72 C）"""
+    try:
+        with open(FIXED825, encoding="utf-8") as fh:
+            return JSONResponse(content=json.load(fh))
+    except Exception:
+        return JSONResponse(content={})
 
 
 @router.get("/api/best2/strategies")

@@ -9,3 +9,5 @@
 6. `python verify_live.py data`：網站版 best_strategy.py 跟研究版逐日一致
 
 結果與決策過程：results/REPORT.md、../../PLAN-BEST.md、../../PLAN-BEST-LOG.md。
+
+2026-10-14 PLAN-B72：網站股票池均量門檻改 300 張（research/b72/run825.py 的 E2 重測通過，結果 research/b72/best_retest.json）。這裡的研究程式與 summary.json 仍是原本 500 張的版本；要用 verify_live.py 比對，先把 best_strategy.MIN_VOL20 暫時改回 500。

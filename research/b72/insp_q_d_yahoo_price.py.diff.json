@@ -1,0 +1,36 @@
+{
+ "mode": "inspect",
+ "files": [
+  "C:/Users/牆泥袋溥/AppData/Local/Temp/claude/C--Users------Desktop/caec81c9-553d-49b6-b33a-4675e48f0eff/scratchpad/insp/d_yahoo_price.py.diff"
+ ],
+ "reviews": [
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"REVISE\",\n  \"summary\": \"The refactor introduces a backward‑compatibility regression and a subtle risk of missing strategy keys. While most logic is sound, the removal of the \\\"S_BEST\\\" key from STRATEGY_KEYS can cause downstream code that expects this key to fail or silently drop results.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"medium\",\n      \"path\": \"yahoo_price.py\",\n      \"issue\": \"The original code appended \\\"S_BEST\\\" to STRATEGY_KEYS (used for research candidate strategy). The new implementation builds STRATEGY_KEYS from PRICE_STRATEGY_FNS and CHIP_STRATS but omits \\\"S_BEST\\\". Any component that relies on the presence of this key (e.g., reporting, downstream aggregation) will now receive a missing key, leading to KeyError or missing data.\",\n      \"evidence\": \"Previous version: `STRATEGY_KEYS.append(\\\"S_BEST\\\")   # 🔬 研究候選（best_strategy.py，PLAN-BEST）`. New version: `STRATEGY_KEYS = list(_PRICE_FNS) + [\\\"S_WARRANT_TOP\\\"] + [k for k in _CHIP_STRATS if k not in _PRICE_FNS]` – no \\\"S_BEST\\\" added.\",\n      \"suggestion\": \"Re‑introduce the \\\"S_BEST\\\" entry, e.g., `STRATEGY_KEYS = list(_PRICE_FNS) + [\\\"S_WARRANT_TOP\\\", \\\"S_BEST\\\"] + [k for k in _CHIP_STRATS if k not in _PRICE_FNS]`. If \\\"S_BEST\\\" is intentionally deprecated, ensure all callers are updated and add a comment explaining the change.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"path\": \"yahoo_price.py\",\n      \"issue\": \"The `_collect` helper silently swallows any exception after printing up to three error messages. This can hide persistent collection errors (e.g., malformed result structures) without alerting operators.\",\n      \"evidence\": \"`except Exception: if _collect_err[0] < 3: ... _collect_err[0] += 1` – after three prints the exception is ignored completely.\",\n      \"suggestion\": \"Consider logging the exception details (including traceback) even after the threshold, or raise a warning after the scan completes so that hidden issues can be investigated.\"\n    }\n  ],\n  \"coverage\": \"The review covered all modified sections: strategy key construction, best‑strategy hooks, result collection, and error handling. No issues were found in the threading or async flow.\",\n  \"limitations\": \"Only the diffed file was examined; potential interactions with other modules (e.g., best_strategy, scanner) were inferred from context. Runtime behavior such as import side‑effects or external service failures was not executed.\"\n}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "The refactor introduces a backward‑compatibility regression and a subtle risk of missing strategy keys. While most logic is sound, the removal of the \"S_BEST\" key from STRATEGY_KEYS can cause downstream code that expects this key to fail or silently drop results.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "medium",
+      "path": "yahoo_price.py",
+      "issue": "The original code appended \"S_BEST\" to STRATEGY_KEYS (used for research candidate strategy). The new implementation builds STRATEGY_KEYS from PRICE_STRATEGY_FNS and CHIP_STRATS but omits \"S_BEST\". Any component that relies on the presence of this key (e.g., reporting, downstream aggregation) will now receive a missing key, leading to KeyError or missing data.",
+      "evidence": "Previous version: `STRATEGY_KEYS.append(\"S_BEST\")   # 🔬 研究候選（best_strategy.py，PLAN-BEST）`. New version: `STRATEGY_KEYS = list(_PRICE_FNS) + [\"S_WARRANT_TOP\"] + [k for k in _CHIP_STRATS if k not in _PRICE_FNS]` – no \"S_BEST\" added.",
+      "suggestion": "Re‑introduce the \"S_BEST\" entry, e.g., `STRATEGY_KEYS = list(_PRICE_FNS) + [\"S_WARRANT_TOP\", \"S_BEST\"] + [k for k in _CHIP_STRATS if k not in _PRICE_FNS]`. If \"S_BEST\" is intentionally deprecated, ensure all callers are updated and add a comment explaining the change."
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "path": "yahoo_price.py",
+      "issue": "The `_collect` helper silently swallows any exception after printing up to three error messages. This can hide persistent collection errors (e.g., malformed result structures) without alerting operators.",
+      "evidence": "`except Exception: if _collect_err[0] < 3: ... _collect_err[0] += 1` – after three prints the exception is ignored completely.",
+      "suggestion": "Consider logging the exception details (including traceback) even after the threshold, or raise a warning after the scan completes so that hidden issues can be investigated."
+     }
+    ],
+    "coverage": "The review covered all modified sections: strategy key construction, best‑strategy hooks, result collection, and error handling. No issues were found in the threading or async flow.",
+    "limitations": "Only the diffed file was examined; potential interactions with other modules (e.g., best_strategy, scanner) were inferred from context. Runtime behavior such as import side‑effects or external service failures was not executed."
+   }
+  }
+ ]
+}

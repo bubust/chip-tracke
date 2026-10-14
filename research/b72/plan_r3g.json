@@ -1,0 +1,41 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B72.md"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-2.5-flash",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"The implementation plan comprehensively addresses all user requirements and reviewer concerns, demonstrating a solid understanding of system constraints and previous feedback. The bug fix for silently dropped strategies is correct and robust. The backtest and research methodologies rigorously avoid look-ahead and survivorship biases, and the pre-registered adoption rules for research strategies are fair and transparent. Intraday partial-volume handling for live alerts correctly applies the previously approved mitigation strategy. Alert spam, data source failure handling, timezone/holiday considerations, and memory/CPU limits are all thoughtfully addressed, adhering to prior dispositions. Test coverage is comprehensive, including new unit tests, consistency checks, UI/UX verification, and post-deployment monitoring.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"low\",\n      \"section\": \"A. 掃描漏策略\",\n      \"issue\": \"The plan does not explicitly specify the logging framework or how the 'first 3 times' error logging will be reset or tracked (e.g., per scan run, per day, etc.). While `except`改成印 log (前 3 次) is an improvement over silent failure, the detail could be clearer for operational debugging.\",\n      \"suggestion\": \"Clarify the scope of 'first 3 times' for error logging (e.g., 'first 3 errors per strategy-stock pair per scan run' or 'per day') and ensure appropriate logging level and context are provided for effective debugging.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"section\": \"C. 5 年全部做多策略 8%/25% 回測\",\n      \"issue\": \"The plan mentions `fetch5y` to supplement data for research. While the research is offline, it's good practice to note the source and potential latency/completeness of this supplemental data if it's separate from the main official daily行情.\",\n      \"suggestion\": \"Briefly mention the source or typical freshness of the `fetch5y` data to ensure its suitability for a 5-year backtest alongside official daily data, if not already part of the `research/best` official data.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"low\",\n      \"section\": \"E1 快觸發名單\",\n      \"issue\": \"The '資料保護' condition for near-trigger (60 天內有 >10.5% 跳動) is good for avoiding signals on volatile events, but the threshold (10.5%) is specific. It could be beneficial to briefly note the rationale for this value or if it's configurable.\",\n      \"suggestion\": \"Briefly describe the rationale behind the '60 天內有 >10.5% 跳動' threshold for data protection, or consider making it a configurable parameter if future adjustments are anticipated.\"\n    }\n  ],\n  \"coverage\": \"All requested review points (correctness of bug diagnosis/fix, look-ahead/survivorship bias, fairness of pre-registered adoption rules, intraday partial-volume issues, alert spam/duplication, timezone/holiday handling, data-source failure handling, memory/CPU limits, and test coverage) have been adequately addressed in the plan.\",\n  \"limitations\": \"Acknowledged limitations/risks include potential minor differences between 13:10 intraday alerts and 18:00 end-of-day scan due to incomplete intraday volume, potential Yahoo/TAIFEX data delays, and TAIFEX night session data availability at 08:30. These are well-understood and acceptable trade-offs given the real-time nature and resource constraints.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "The implementation plan comprehensively addresses all user requirements and reviewer concerns, demonstrating a solid understanding of system constraints and previous feedback. The bug fix for silently dropped strategies is correct and robust. The backtest and research methodologies rigorously avoid look-ahead and survivorship biases, and the pre-registered adoption rules for research strategies are fair and transparent. Intraday partial-volume handling for live alerts correctly applies the previously approved mitigation strategy. Alert spam, data source failure handling, timezone/holiday considerations, and memory/CPU limits are all thoughtfully addressed, adhering to prior dispositions. Test coverage is comprehensive, including new unit tests, consistency checks, UI/UX verification, and post-deployment monitoring.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "low",
+      "section": "A. 掃描漏策略",
+      "issue": "The plan does not explicitly specify the logging framework or how the 'first 3 times' error logging will be reset or tracked (e.g., per scan run, per day, etc.). While `except`改成印 log (前 3 次) is an improvement over silent failure, the detail could be clearer for operational debugging.",
+      "suggestion": "Clarify the scope of 'first 3 times' for error logging (e.g., 'first 3 errors per strategy-stock pair per scan run' or 'per day') and ensure appropriate logging level and context are provided for effective debugging."
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "section": "C. 5 年全部做多策略 8%/25% 回測",
+      "issue": "The plan mentions `fetch5y` to supplement data for research. While the research is offline, it's good practice to note the source and potential latency/completeness of this supplemental data if it's separate from the main official daily行情.",
+      "suggestion": "Briefly mention the source or typical freshness of the `fetch5y` data to ensure its suitability for a 5-year backtest alongside official daily data, if not already part of the `research/best` official data."
+     },
+     {
+      "id": "F3",
+      "severity": "low",
+      "section": "E1 快觸發名單",
+      "issue": "The '資料保護' condition for near-trigger (60 天內有 >10.5% 跳動) is good for avoiding signals on volatile events, but the threshold (10.5%) is specific. It could be beneficial to briefly note the rationale for this value or if it's configurable.",
+      "suggestion": "Briefly describe the rationale behind the '60 天內有 >10.5% 跳動' threshold for data protection, or consider making it a configurable parameter if future adjustments are anticipated."
+     }
+    ],
+    "coverage": "All requested review points (correctness of bug diagnosis/fix, look-ahead/survivorship bias, fairness of pre-registered adoption rules, intraday partial-volume issues, alert spam/duplication, timezone/holiday handling, data-source failure handling, memory/CPU limits, and test coverage) have been adequately addressed in the plan.",
+    "limitations": "Acknowledged limitations/risks include potential minor differences between 13:10 intraday alerts and 18:00 end-of-day scan due to incomplete intraday volume, potential Yahoo/TAIFEX data delays, and TAIFEX night session data availability at 08:30. These are well-understood and acceptable trade-offs given the real-time nature and resource constraints."
+   }
+  }
+ ]
+}

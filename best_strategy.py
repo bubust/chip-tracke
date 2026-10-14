@@ -28,7 +28,10 @@ LABEL = "🔬 研究候選（負乖離＋破底翻抄底，未全過）"
 NOTE_TAGS = ("🔬 研究候選", "研究候選", "🏆", "研究最佳")    # 觀察清單「來源」含這些字＝從這個方法加入
 
 WINDOW = 520           # 正式站掃描讀最近 520 根（yahoo_price._fetch_for_scan），研究也這樣算
-MIN_PRICE, MIN_VOL20, MIN_BARS = 10.0, 500.0, 120
+# 股票池均量門檻：原研究 500 張；2026-10-14 PLAN-B72 E2 重測「放寬到 300 張」照事先定好的規則通過（新增的均量 300～500 張那批
+# 樣本外 144 筆、勝率 82.6%、每筆 +4.7%；合併後勝率只降 0.3 個百分點）→ 改 300。research/b72/best_retest.json
+MIN_PRICE, MIN_VOL20, MIN_BARS = 10.0, 300.0, 120
+POOL_NOTE = "2026-10-14 起股票池均量門檻從 500 張放寬到 300 張（重測通過）；上面的統計是原本 500 張的版本，300 張版本看「🔁 重測」表"
 
 
 # ── 指標（跟 research/best/engine.features 同一套）──────────────────────────
@@ -67,7 +70,7 @@ def gap_guard(A: dict, i: int) -> bool:
 
 
 def liquid(A: dict, i: int) -> bool:
-    """股票池：收盤 ≥ 10、20 日均量 ≥ 500 張、至少 120 根"""
+    """股票池：收盤 ≥ 10、20 日均量 ≥ MIN_VOL20（300）張、至少 120 根"""
     with np.errstate(invalid="ignore"):
         return bool(A["c"][i] >= MIN_PRICE and A["vol20"][i] >= MIN_VOL20 and i + 1 >= MIN_BARS)
 
@@ -403,6 +406,13 @@ def _screen_one(sid: str, df: pd.DataFrame, names: Optional[dict]) -> Optional[d
     A = _arrays(df)
     i = A["n"] - 1
     if not signal_at(A, i):
+        if sid != "BT":                                  # K 線回測逐日呼叫（sid＝BT）不記快觸發
+            try:
+                nr = near_of(A, i)
+                if nr:
+                    _near_add({"stock_id": sid, "name": _name(sid, names or {}), **nr})
+            except Exception as e:
+                print(f"[S_BEST] {sid} 快觸發計算失敗：{type(e).__name__}: {e}")
         return None
     rg = regime_ok(A["date"][i]) if sid != "BT" else True
     if rg is False:
@@ -421,6 +431,106 @@ def _screen_one(sid: str, df: pd.DataFrame, names: Optional[dict]) -> Optional[d
             "plan": plan_text(p), "stop_note": p["stop_note"],
             "regime_note": "" if rg else "大盤資料不足，請自己確認加權指數在均線上",
             "first_date": A["date"][first], "note": run_note}
+
+
+# ── 快觸發名單（PLAN-B72 E1）：掃描時記「差一點」的，掃描結束存 chip_data/best_near.json ──────────────
+NEAR_PATH = os.path.join(HERE, "chip_data", "best_near.json")
+NEAR_BIAS = -15.0                    # 破底翻有了、60 日乖離在 −20%～−15% ＝乖離不夠深
+NEAR_KINDS = {"wait_bb": "等破底翻：負乖離 3 天內有，破底翻還沒出現",
+              "shallow": "乖離不夠深：破底翻 3 天內有，60 日乖離還沒到 −20%",
+              "illiquid": "兩個條件都有，但不在股票池（成交量太小／股價 < 10 元／資料太短）",
+              "guard": "兩個條件都有，但 60 天內有單日 > 10.5% 跳動（除權息／減資，資料保護不算）"}
+import threading as _thr
+_NEAR = {"items": [], "lock": _thr.Lock()}
+
+
+def _leg(A: dict, key: str, j: int, cache: dict) -> bool:
+    """跟 _a_hit 一樣、但不看股票池（快觸發要知道「被股票池擋掉」的）"""
+    ck = ("raw", key, j)
+    if ck not in cache:
+        ok = False
+        if j >= 0:
+            from scanner import PRICE_STRATEGY_FNS
+            sub = A["df"].iloc[max(0, j - WINDOW + 1):j + 1]
+            try:
+                ok = bool(PRICE_STRATEGY_FNS[key]({"BT": sub}, {"BT": ""}, params=None))
+            except Exception:
+                ok = False
+        cache[ck] = ok
+    return cache[ck]
+
+
+def near_of(A: dict, i: int) -> Optional[dict]:
+    """第 i 根沒出訊號時，差在哪裡；不是快觸發回 None。只適用 CONFIG 是「負乖離＋破底翻」"""
+    if CONFIG["signal"] != "C1_S_BIAS+S_BREAKBOTTOM" or i < 2:
+        return None
+    with np.errstate(invalid="ignore", divide="ignore"):
+        bias = (A["c"][i - 2:i + 1] / A["ma60"][i - 2:i + 1] - 1) * 100
+    if not np.isfinite(bias).any() or np.nanmin(bias) > NEAR_BIAS:      # 乖離連 −15% 都不到 → 四種都不可能
+        return None
+    cache: dict = {}
+    xs = [_leg(A, "S_BIAS", j, cache) for j in (i, i - 1, i - 2)]
+    ys = [_leg(A, "S_BREAKBOTTOM", j, cache) for j in (i, i - 1, i - 2)]
+    both = (xs[0] and any(ys)) or (ys[0] and any(xs))
+    pool, guard = liquid(A, i), gap_guard(A, i)
+    if both:
+        kind = "guard" if guard else "illiquid" if not pool else None
+    elif not pool or guard:
+        return None
+    elif any(xs) and not any(ys):
+        kind = "wait_bb"
+    elif any(ys) and not any(xs):
+        kind = "shallow"
+    else:
+        kind = None                  # 兩個都在 3 天內出現過、但不是「今天其中一個＋3 天內另一個」（已經過了）
+    if not kind:
+        return None
+    day = lambda flags: next((A["date"][i - k] for k, f in enumerate(flags) if f), None)
+    return {"kind": kind, "why": NEAR_KINDS[kind], "close": round(float(A["c"][i]), 2),
+            "bias_min": round(float(np.nanmin(bias)), 1), "vol20": round(float(A["vol20"][i]), 0) if np.isfinite(A["vol20"][i]) else None,
+            "bias_date": day(xs), "bb_date": day(ys), "date": A["date"][i]}
+
+
+def _near_add(item: dict) -> None:
+    with _NEAR["lock"]:
+        _NEAR["items"].append(item)
+
+
+def near_reset() -> None:
+    with _NEAR["lock"]:
+        _NEAR["items"] = []
+
+
+def near_save(day: str) -> dict:
+    """掃描結束：存今天的快觸發（日期＝最後一根 K 棒，取出現最多的那天，避免殘留舊資料的股票）"""
+    with _NEAR["lock"]:
+        items = list(_NEAR["items"])
+    if items:
+        from collections import Counter
+        top = Counter(x["date"] for x in items).most_common(1)[0][0]
+        items = [x for x in items if x["date"] == top]
+    order = {k: n for n, k in enumerate(NEAR_KINDS)}
+    items.sort(key=lambda x: (order[x["kind"]], x["bias_min"]))
+    out = {"date": items[0]["date"] if items else day, "scan_day": day, "items": items,
+           "counts": {k: sum(1 for x in items if x["kind"] == k) for k in NEAR_KINDS}, "kinds": NEAR_KINDS,
+           "pool": {"min_price": MIN_PRICE, "min_vol20": MIN_VOL20, "min_bars": MIN_BARS}}
+    try:
+        tmp = NEAR_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(out, fh, ensure_ascii=False)
+        os.replace(tmp, NEAR_PATH)
+    except Exception as e:
+        print(f"[S_BEST] 快觸發存檔失敗：{e}")
+    return out
+
+
+def near_load() -> dict:
+    try:
+        with open(NEAR_PATH, encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return {"date": None, "items": [], "counts": {}, "kinds": NEAR_KINDS,
+                "pool": {"min_price": MIN_PRICE, "min_vol20": MIN_VOL20, "min_bars": MIN_BARS}}
 
 
 def summary() -> dict:

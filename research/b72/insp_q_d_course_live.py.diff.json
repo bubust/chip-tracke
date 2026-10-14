@@ -1,0 +1,36 @@
+{
+ "mode": "inspect",
+ "files": [
+  "C:/Users/牆泥袋溥/AppData/Local/Temp/claude/C--Users------Desktop/caec81c9-553d-49b6-b33a-4675e48f0eff/scratchpad/insp/d_course_live.py.diff"
+ ],
+ "reviews": [
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"REVISE\",\n  \"summary\": \"push_premarket now includes an international brief but fails to escape that dynamic content, and assumes candidate objects always contain a 'streak' field.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"high\",\n      \"path\": \"course_live.py:push_premarket\",\n      \"issue\": \"The international brief (gb) is inserted into the message without any HTML escaping. If the brief source is compromised, this could lead to XSS when the message is rendered in HTML contexts.\",\n      \"evidence\": \"lines: `gb = brief_fn()[\\\"text\\\"]` then `lines = [gb]` and later `\\\"\\\\n\\\".join(lines)` is sent directly.\",\n      \"suggestion\": \"Escape the brief text before adding it to the message, e.g. `gb = html.escape(brief_fn()[\\\"text\\\"])` or use the project's `_esc` helper if available.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"medium\",\n      \"path\": \"course_live.py:push_premarket\",\n      \"issue\": \"When iterating over `lim[\\\"candidates\\\"]`, the code accesses `x['streak']` directly. If a candidate dict lacks the 'streak' key, a KeyError will be raised, breaking the push.\",\n      \"evidence\": \"`f\\\"{x['stock_id']} {html.escape(x['name'])} 連{x['streak']}\\\"`\",\n      \"suggestion\": \"Use `x.get('streak', '')` or provide a default placeholder to avoid exceptions.\"\n    }\n  ],\n  \"coverage\": \"The revised logic aligns with PLAN‑B72: it always sends the international brief, even when day‑trade data is missing, and retains the original day‑trade formatting. However, the missing escaping and unsafe key access constitute gaps that could cause runtime failures or security issues.\",\n  \"limitations\": \"The analysis assumes that helpers like `_send`, `_sent`, `_md`, and `latest` behave as in the existing codebase. It does not verify the exact structure of the brief payload or candidate objects beyond what is shown.\"\n}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "push_premarket now includes an international brief but fails to escape that dynamic content, and assumes candidate objects always contain a 'streak' field.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "path": "course_live.py:push_premarket",
+      "issue": "The international brief (gb) is inserted into the message without any HTML escaping. If the brief source is compromised, this could lead to XSS when the message is rendered in HTML contexts.",
+      "evidence": "lines: `gb = brief_fn()[\"text\"]` then `lines = [gb]` and later `\"\\n\".join(lines)` is sent directly.",
+      "suggestion": "Escape the brief text before adding it to the message, e.g. `gb = html.escape(brief_fn()[\"text\"])` or use the project's `_esc` helper if available."
+     },
+     {
+      "id": "F2",
+      "severity": "medium",
+      "path": "course_live.py:push_premarket",
+      "issue": "When iterating over `lim[\"candidates\"]`, the code accesses `x['streak']` directly. If a candidate dict lacks the 'streak' key, a KeyError will be raised, breaking the push.",
+      "evidence": "`f\"{x['stock_id']} {html.escape(x['name'])} 連{x['streak']}\"`",
+      "suggestion": "Use `x.get('streak', '')` or provide a default placeholder to avoid exceptions."
+     }
+    ],
+    "coverage": "The revised logic aligns with PLAN‑B72: it always sends the international brief, even when day‑trade data is missing, and retains the original day‑trade formatting. However, the missing escaping and unsafe key access constitute gaps that could cause runtime failures or security issues.",
+    "limitations": "The analysis assumes that helpers like `_send`, `_sent`, `_md`, and `latest` behave as in the existing codebase. It does not verify the exact structure of the brief payload or candidate objects beyond what is shown."
+   }
+  }
+ ]
+}
