@@ -4253,6 +4253,23 @@ async def debug_prices():
     return out
 
 
+_BUILD_CACHE = {"mtime": None, "id": ""}
+
+
+@app.get("/api/build")
+def api_build():
+    """網頁版本代碼（dashboard.html 內容雜湊）：手機分頁開很久沒重新整理時，網頁比對到不一樣就提示更新"""
+    import hashlib
+    html_path = BASE_DIR / "dashboard.html"
+    try:
+        mt = html_path.stat().st_mtime
+        if _BUILD_CACHE["mtime"] != mt:
+            _BUILD_CACHE.update(mtime=mt, id=hashlib.sha1(html_path.read_bytes()).hexdigest()[:12])
+    except OSError:
+        pass
+    return JSONResponse({"build": _BUILD_CACHE["id"]}, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/")
 def root():
     html_path = BASE_DIR / "dashboard.html"

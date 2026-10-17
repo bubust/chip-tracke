@@ -515,6 +515,32 @@ details.guide[open]>summary::before{content:'▾ ';}
   }
   #tab-link .dp-open-btn .t { display:none; }
   #tab-link .dp-open-btn { padding:0 5px !important; font-size:.74rem; margin-left:2px; }
+/* K 線彈窗：桌機維持原樣（圖例按鈕藏起來、關閉排最後） */
+#chart-head-tools { display:contents; }
+#chart-close-btn { order: 99; }
+#chart-legend-btn { display:none; }
+/* K 線彈窗手機／平板版（2026-10-17）：標題一列、按鈕／工具列左右滑、圖例收起；≤768 另外讓圖可以上下捲 */
+@media (max-width: 1024px) {
+  #chart-head { padding: 6px 8px !important; gap: 4px !important; }
+  #chart-head .btn, #chart-tools .btn { min-height: 34px !important; font-size: .78rem !important; padding: 3px 9px !important; flex-shrink: 0; }
+  #chart-head .ch-txt { display: none; }
+  #chart-prev-btn { order: 1; } #chart-next-btn { order: 2; }
+  #chart-modal-title { order: 3; flex: 1 1 0 !important; min-width: 0; font-size: .86rem !important; text-align: left !important; line-height: 1.35; }
+  #chart-close-btn { order: 4; }
+  #chart-head-tools { order: 5; display: flex; flex: 1 1 100%; gap: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; }
+  #chart-head-tools::-webkit-scrollbar, #chart-tools::-webkit-scrollbar { display: none; }
+  #chart-period-bar { flex-shrink: 0; }
+  #chart-tools { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding: 4px 8px !important; }
+  #chart-tools > span { flex-shrink: 0; }
+  #chart-legend-btn { display: inline-flex; }
+  #chart-legend { display: none !important; padding: 4px 8px !important; gap: 4px 10px !important; }
+  #chart-modal-box.legend-open #chart-legend { display: flex !important; }
+  #chart-legend span { font-size: .72rem !important; }
+  #chart-tools span { white-space: nowrap; }
+}
+@media (max-width: 768px) {
+  #chart-tv-container { overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
+}
 </style>
 </head>
 <body>
@@ -2145,6 +2171,31 @@ function renderDpBody(tab, d) {
   window.addEventListener('unhandledrejection', function(e) {
     _showErrBanner(`未處理的 Promise 錯誤: ${e.reason?.message || String(e.reason)}`);
   });
+})();
+
+// 網站有新版本時提示重新整理（2026-10-17）：手機的分頁常常開好幾天沒重新整理，會一直跑舊版程式
+(function () {
+  let _build = null;
+  async function check() {
+    try {
+      const r = await fetch('/api/build', { cache: 'no-store' });
+      const b = (await r.json()).build;
+      if (!b) return;
+      if (_build === null) { _build = b; return; }
+      if (b !== _build && !document.getElementById('_new-build-banner')) {
+        const d = document.createElement('div');
+        d.id = '_new-build-banner';
+        d.textContent = '🔄 網站已更新，點這裡重新整理';
+        d.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:2147482000;background:#2563eb;color:#fff;padding:10px 18px;border-radius:22px;font-size:.9rem;font-weight:600;box-shadow:0 6px 24px #000a;cursor:pointer';
+        d.onclick = () => location.reload();
+        document.body.appendChild(d);
+      }
+    } catch (e) {}
+  }
+  check();
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+  window.addEventListener('pageshow', e => { if (e.persisted) check(); });   // Safari 從快取還原分頁
+  setInterval(check, 10 * 60 * 1000);
 })();
 
 // ───── Toast ─────
@@ -6776,6 +6827,14 @@ function _mkLegend(el) {
   return d;
 }
 
+// K 線彈窗手機版（≤ 768px）：副圖固定高度可往下捲、圖例收起
+function _isChartMobile() { return window.matchMedia('(max-width: 768px)').matches; }
+function toggleChartLegend() {
+  const box = document.getElementById('chart-modal-box');
+  const on = box.classList.toggle('legend-open');
+  document.getElementById('chart-legend-btn').classList.toggle('active', on);
+}
+
 async function openChart(stockId, savedRange = null) {
   const modal     = document.getElementById('chart-modal');
   const title     = document.getElementById('chart-modal-title');
@@ -6887,12 +6946,19 @@ async function openChart(stockId, savedRange = null) {
 
     container.style.display = 'flex';
     container.style.flexDirection = 'column';
+    // 手機：主圖固定佔大部分高度、副圖固定高度，往下捲看 MACD（以前全部擠在一個畫面，主圖只剩一小條）
+    const _mob = _isChartMobile();
+    const _ph = _mob ? (() => {
+      const H = container.clientHeight || (window.innerHeight - 150);
+      return { c: Math.max(300, Math.round(H * 0.72)), v: 64, ms: 70, m: 96 };
+    })() : null;
+    const _pst = (flex, px, top = true) => `width:100%;${_mob ? `height:${px}px;flex:none` : `flex:${flex};min-height:0`};${top ? 'border-top:1px solid #2a2e39;' : ''}position:relative`;
     container.innerHTML = `
-      <div id="lwc-candle" style="width:100%;flex:5;min-height:0;position:relative"></div>
-      <div id="lwc-vol"    style="width:100%;flex:1;min-height:0;border-top:1px solid #2a2e39;position:relative"></div>
-      ${_chartInterval === '1d' && !stockId.startsWith('__idx_') ? '<div id="lwc-ms" style="width:100%;flex:1.3;min-height:0;border-top:1px solid #2a2e39;position:relative"></div>' : ''}
-      <div id="lwc-macd"  style="width:100%;flex:2;min-height:0;border-top:1px solid #2a2e39;position:relative"></div>
-      <div id="lwc-macd2" style="width:100%;flex:2;min-height:0;border-top:1px solid #2a2e39;position:relative"></div>`;
+      <div id="lwc-candle" style="${_pst(5, _ph && _ph.c, false)}"></div>
+      <div id="lwc-vol"    style="${_pst(1, _ph && _ph.v)}"></div>
+      ${_chartInterval === '1d' && !stockId.startsWith('__idx_') ? `<div id="lwc-ms" style="${_pst(1.3, _ph && _ph.ms)}"></div>` : ''}
+      <div id="lwc-macd"  style="${_pst(2, _ph && _ph.m)}"></div>
+      <div id="lwc-macd2" style="${_pst(2, _ph && _ph.m)}"></div>`;
 
     const BASE = {
       layout: { background: { color: '#131722' }, textColor: '#9598a1', fontSize: window.innerWidth >= 1200 ? 13 : 11 },
@@ -6900,7 +6966,9 @@ async function openChart(stockId, savedRange = null) {
       crosshair: { mode: 1 },
       rightPriceScale: { borderColor: '#2a2e39' },
       timeScale: { borderColor: '#2a2e39', timeVisible: ['3m','5m','30m','60m'].includes(_chartInterval) },
-      handleScale: true, handleScroll: true,
+      handleScale: true,
+      // 手機：上下滑＝捲動頁面（看下面的 MACD），左右滑才拖動 K 線
+      handleScroll: _mob ? { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false } : true,
     };
 
     const closes = ohlcv.map(r => r.close);
@@ -7093,6 +7161,7 @@ async function openChart(stockId, savedRange = null) {
 
     // ── 同步時間軸 + crosshair（主副圖垂直線一起顯示）──
     const charts = [cChart, vChart, mChart, m2Chart].concat(msChart ? [msChart] : []);
+    if (_mob) [vChart, mChart].concat(msChart ? [msChart] : []).forEach(c => c.applyOptions({ timeScale: { visible: false } }));   // 手機：副圖不重複畫日期軸
     const primarySeries = [cSeries, vSeries, hSeries, h2Series].concat(msSeries ? [msSeries] : []);
 
     // 建立時間 → 各圖數值對照表，供 setCrosshairPosition 使用
@@ -7553,10 +7622,11 @@ async function saveAllStratParams() {
 <div id="chart-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;align-items:center;justify-content:center;padding:8px" onclick="if(event.target===this)closeChart()">
   <div id="chart-modal-box" style="background:#131722;border-radius:var(--radius);width:min(calc(100vw - 16px),2000px);height:calc(100vh - 16px);overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 60px #000c">
     <!-- 第一行：導航 + 標題 + 時間週期 + 觀察清單/回測/關閉 -->
-    <div style="display:flex;align-items:center;padding:8px 16px;border-bottom:1px solid #1e2435;flex-shrink:0;gap:6px;flex-wrap:wrap">
-      <button id="chart-prev-btn" class="btn sm ghost" onclick="chartNav(-1)" title="上一檔" style="padding:4px 10px">◀ 上一檔</button>
-      <button id="chart-next-btn" class="btn sm ghost" onclick="chartNav(+1)" title="下一檔" style="padding:4px 10px">下一檔 ▶</button>
+    <div id="chart-head" style="display:flex;align-items:center;padding:8px 16px;border-bottom:1px solid #1e2435;flex-shrink:0;gap:6px;flex-wrap:wrap">
+      <button id="chart-prev-btn" class="btn sm ghost" onclick="chartNav(-1)" title="上一檔" style="padding:4px 10px">◀<span class="ch-txt"> 上一檔</span></button>
+      <button id="chart-next-btn" class="btn sm ghost" onclick="chartNav(+1)" title="下一檔" style="padding:4px 10px"><span class="ch-txt">下一檔 </span>▶</button>
       <strong id="chart-modal-title" style="font-size:.95rem;flex:1;color:#d1d4dc;text-align:center"></strong>
+      <span id="chart-head-tools">
       <span id="chart-period-bar" style="display:flex;gap:3px;align-items:center">
         <button class="btn sm ghost chart-period-btn" data-period="3m"  onclick="setChartPeriod('3m')"  style="padding:2px 6px;font-size:.72rem">3分</button>
         <button class="btn sm ghost chart-period-btn" data-period="5m"  onclick="setChartPeriod('5m')"  style="padding:2px 6px;font-size:.72rem">5分</button>
@@ -7573,10 +7643,12 @@ async function saveAllStratParams() {
       <button id="chart-split-btn" class="btn sm ghost dp-split-btn" onclick="dpSplitOn()" title="K 線跟分析並排同時看" style="color:#d29922;white-space:nowrap">◫ 同時看</button>
       <button id="chart-cmp-btn" class="btn sm ghost" onclick="openCompare(_chartStockId, '')" title="跟另一檔上下對比（時間軸、十字線同步）" style="color:#f472b6;white-space:nowrap">⇅ 對比</button>
       <button id="chart-link-btn" class="btn sm ghost" onclick="showLinkPeers()" title="這檔的連動股：相關係數、同產業、偏差率、誰先動" style="color:#38bdf8;white-space:nowrap">🔗 連動</button>
-      <button class="btn sm ghost" onclick="closeChart()">✕ 關閉</button>
+      </span>
+      <button id="chart-close-btn" class="btn sm ghost" onclick="closeChart()">✕<span class="ch-txt"> 關閉</span></button>
     </div>
     <!-- 第二行：均線按鈕 + 畫線工具 -->
-    <div style="display:flex;align-items:center;padding:5px 16px;border-bottom:1px solid #2a2e39;flex-shrink:0;gap:6px;background:#0f1523">
+    <div id="chart-tools" style="display:flex;align-items:center;padding:5px 16px;border-bottom:1px solid #2a2e39;flex-shrink:0;gap:6px;background:#0f1523">
+      <button id="chart-legend-btn" class="btn sm ghost" onclick="toggleChartLegend()" title="顯示／收起圖例說明" style="padding:2px 8px;font-size:.72rem">ℹ️ 圖例</button>
       <span id="chart-overlay-bar" style="display:flex;gap:3px;align-items:center;flex-wrap:nowrap">
         <span style="font-size:.68rem;color:#6b7280;margin-right:2px">均線:</span>
         <button id="overlay-btn-ma5"  class="btn sm ghost chart-overlay-btn active" onclick="toggleChartOverlay('ma5')"  style="padding:2px 7px;font-size:.72rem;color:#4caf50;border-color:#4caf50">MA5</button>
@@ -7603,8 +7675,8 @@ async function saveAllStratParams() {
         <button id="swing-btn" class="btn sm ghost chart-overlay-btn active" onclick="toggleSwings()" style="padding:2px 7px;font-size:.72rem;color:#f59e0b;border-color:#f59e0b" title="前高＝左右各 5 根的波段高點（壓力區用的前高）、前低＝兩個前高之間的最低點，標在真正的最高／最低價">前高/前低</button>
       </span>
     </div>
-    <!-- 圖例說明列 -->
-    <div style="display:flex;align-items:center;padding:5px 16px;background:#0a0f1a;flex-shrink:0;flex-wrap:wrap;gap:12px;border-bottom:1px solid #1a1f2e">
+    <!-- 圖例說明列（手機預設收起，按「ℹ️ 圖例」展開）-->
+    <div id="chart-legend" style="display:flex;align-items:center;padding:5px 16px;background:#0a0f1a;flex-shrink:0;flex-wrap:wrap;gap:12px;border-bottom:1px solid #1a1f2e">
       <span style="font-size:.8rem;color:#6b7280">圖例：</span>
       <span style="font-size:.8rem;color:#fbbf24" title="跌破 MAx 次日收復 → 洗盤完成，看多訊號">▲黃 假跌破（MAx）</span>
       <span style="font-size:.8rem;color:#22c55e" title="突破 MAx 次日跌回 → 假突破，看空訊號">▼綠 假突破（MAx）</span>
