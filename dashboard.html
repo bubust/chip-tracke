@@ -554,19 +554,20 @@ details.guide[open]>summary::before{content:'▾ ';}
   <span id="live-clock" style="margin-left:auto;font-size:.82rem;color:#8b949e;font-variant-numeric:tabular-nums;white-space:nowrap"></span>
   <button id="btn-global-refresh" onclick="globalRefreshAll()" style="margin-left:8px;padding:6px 14px;background:#238636;border:1px solid #2ea043;border-radius:6px;color:#fff;cursor:pointer;font-size:.82rem;white-space:nowrap">🔄 全系統更新</button>
 
-<!-- 全系統更新進度 Modal -->
+</header>
+<!-- 全系統更新進度 Modal（放在 header 外面：header 有 backdrop-filter，放裡面會被當成定位範圍，彈窗被夾在標題列、還被分頁列蓋住）-->
 <div id="refresh-progress-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center">
-  <div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:24px;min-width:340px;max-width:420px">
+  <div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:24px;width:min(420px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow-y:auto;box-sizing:border-box">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
       <b style="font-size:1rem">🔄 全系統更新進度</b>
       <button onclick="document.getElementById('refresh-progress-modal').style.display='none'"
               style="background:none;border:none;color:#8b949e;cursor:pointer;font-size:1.1rem">✕</button>
     </div>
     <div id="refresh-steps-list" style="display:flex;flex-direction:column;gap:8px;font-size:.85rem"></div>
-    <div id="refresh-all-done-msg" style="display:none;margin-top:14px;color:#3fb950;font-weight:600;text-align:center">✅ 全系統更新完成！</div>
+    <div id="refresh-all-done-msg" style="display:none;margin-top:14px;color:#3fb950;font-weight:600;text-align:center;line-height:1.6">✅ 全系統更新完成！</div>
   </div>
 </div>
-</header>
+
 
 <nav>
   <button class="active" onclick="switchTab('watchlist')">觀察清單</button>
@@ -3726,7 +3727,9 @@ async function globalRefreshAll() {
     }
 
     // 開始輪詢進度
-    const statusIcons = { pending: '⏳', running: '🔄', done: '✅', error: '❌' };
+    const statusIcons = { pending: '⏳', running: '🔄', done: '✅', error: '❌', interrupted: '⚠️' };
+    const stText = { running: '進行中...', done: '完成', error: '錯誤', interrupted: '中斷', pending: '等待中' };
+    const stColor = { done: '#3fb950', error: '#f85149', running: '#d29922', interrupted: '#d29922' };
     const poll = setInterval(async () => {
       try {
         const st = await api('GET', '/api/refresh_all/status');
@@ -3734,12 +3737,27 @@ async function globalRefreshAll() {
         stepsList.innerHTML = Object.entries(steps).map(([k, v]) => `
           <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#0d1117;border-radius:6px">
             <span style="font-size:1rem">${statusIcons[v.status] || '⏳'}</span>
-            <span style="flex:1;color:${v.status==='done'?'#3fb950':v.status==='error'?'#f85149':v.status==='running'?'#d29922':'#8b949e'}">${v.label}</span>
-            <span style="color:#8b949e;font-size:.75rem">${v.status==='running'?'進行中...':v.status==='done'?'完成':v.status==='error'?'錯誤':'等待中'}</span>
+            <span style="flex:1;color:${stColor[v.status] || '#8b949e'}">${v.label}</span>
+            <span style="color:#8b949e;font-size:.75rem">${stText[v.status] || '等待中'}</span>
           </div>`).join('');
 
         if (!st.running) {
           clearInterval(poll);
+          // 沒跑完（伺服器中途重新啟動）就不能說「完成」：以前進度歸零後全部「等待中」也顯示完成
+          const vals = Object.values(steps);
+          const stuck = vals.filter(v => v.status !== 'done' && v.status !== 'error');
+          const errs = vals.filter(v => v.status === 'error');
+          if (st.interrupted || stuck.length) {
+            const at = vals.find(v => v.status === 'interrupted');
+            doneMsg.style.color = '#d29922';
+            doneMsg.innerHTML = `⚠️ 更新沒有跑完${at ? `：在「${_esc(at.label)}」途中伺服器重新啟動` : '：伺服器中途重新啟動'}<br><span style="font-weight:400;font-size:.8rem;color:#8b949e">已完成的步驟有效；按「🔄 全系統更新」再跑一次補齊</span>`;
+          } else if (errs.length) {
+            doneMsg.style.color = '#d29922';
+            doneMsg.innerHTML = `✅ 更新完成，但 ${errs.length} 項失敗：${errs.map(v => _esc(v.label)).join('、')}`;
+          } else {
+            doneMsg.style.color = '#3fb950';
+            doneMsg.textContent = '✅ 全系統更新完成！';
+          }
           doneMsg.style.display = 'block';
           btn.disabled = false;
           btn.textContent = '🔄 全系統更新';
