@@ -543,6 +543,22 @@ details.guide[open]>summary::before{content:'▾ ';}
 @media (max-width: 768px) {
   #chart-tv-container { overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
 }
+/* 全系統更新進度（2026-10-18 改版：兩欄小格、進度條、一定關得掉） */
+.rf-box{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:16px 18px;width:min(520px,100%);max-height:calc(100dvh - 24px);overflow-y:auto;box-sizing:border-box;box-shadow:0 12px 40px #000c}
+.rf-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.rf-head b{font-size:1rem}
+.rf-count{font-size:.8rem;color:#8b949e;flex:1}
+.rf-x{background:#21262d;border:1px solid #30363d;color:#e6edf3;border-radius:8px;width:36px;height:36px;font-size:1rem;cursor:pointer;flex-shrink:0}
+.rf-bar{height:6px;background:#21262d;border-radius:3px;overflow:hidden;margin-bottom:12px}
+#rf-bar-fill{height:100%;width:0;background:linear-gradient(90deg,#238636,#3fb950);transition:width .4s}
+.rf-list{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.rf-item{display:flex;align-items:center;gap:6px;padding:7px 9px;background:#0d1117;border-radius:7px;font-size:.8rem;min-width:0}
+.rf-item .rf-l{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rf-item .rf-s{font-size:.7rem;color:#8b949e;white-space:nowrap}
+.rf-done{margin-top:12px;font-weight:600;text-align:center;line-height:1.6;font-size:.9rem}
+.rf-foot{display:flex;align-items:center;gap:10px;margin-top:12px}
+.rf-hint{flex:1;font-size:.72rem;color:#8b949e;line-height:1.5}
+@media (max-width:420px){.rf-list{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -556,15 +572,20 @@ details.guide[open]>summary::before{content:'▾ ';}
 
 </header>
 <!-- 全系統更新進度 Modal（放在 header 外面：header 有 backdrop-filter，放裡面會被當成定位範圍，彈窗被夾在標題列、還被分頁列蓋住）-->
-<div id="refresh-progress-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center">
-  <div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:24px;width:min(420px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow-y:auto;box-sizing:border-box">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-      <b style="font-size:1rem">🔄 全系統更新進度</b>
-      <button onclick="document.getElementById('refresh-progress-modal').style.display='none'"
-              style="background:none;border:none;color:#8b949e;cursor:pointer;font-size:1.1rem">✕</button>
+<div id="refresh-progress-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center;padding:12px" onclick="if(event.target===this)closeRefreshModal()">
+  <div class="rf-box">
+    <div class="rf-head">
+      <b>🔄 全系統更新</b>
+      <span id="rf-count" class="rf-count"></span>
+      <button class="rf-x" onclick="closeRefreshModal()" title="關閉（更新會在背景繼續）">✕</button>
     </div>
-    <div id="refresh-steps-list" style="display:flex;flex-direction:column;gap:8px;font-size:.85rem"></div>
-    <div id="refresh-all-done-msg" style="display:none;margin-top:14px;color:#3fb950;font-weight:600;text-align:center;line-height:1.6">✅ 全系統更新完成！</div>
+    <div class="rf-bar"><div id="rf-bar-fill"></div></div>
+    <div id="refresh-steps-list" class="rf-list"></div>
+    <div id="refresh-all-done-msg" class="rf-done" style="display:none">✅ 全系統更新完成！</div>
+    <div class="rf-foot">
+      <span id="rf-hint" class="rf-hint">可以先關掉，更新會在背景繼續；按右上角按鈕可再打開</span>
+      <button class="btn sm" onclick="closeRefreshModal()">關閉</button>
+    </div>
   </div>
 </div>
 
@@ -3703,77 +3724,107 @@ async function saveMemo(sid, memo) {
   } catch (e) { toast('備註儲存失敗', true); }
 }
 
-// ── 全系統更新（Regime + Positioning + Sector 一鍵觸發）──
+// ── 全系統更新（2026-10-18 改版）──
+// 一次更新：觀察清單、總經、千張大戶、籌碼定位、產業輪動、權證、市場關聯、連動、庫藏股、收購併購、可轉債；
+// 跑完各分頁畫面自動重新載入（不用再一頁一頁點進去按更新）。進度框隨時可以關（背景繼續），全部成功 3 秒後自動關。
+let _rfPoll = null, _rfAutoClose = null;
+const _RF_ICON = { pending: '⏳', running: '🔄', done: '✅', error: '❌', interrupted: '⚠️', busy: '⏭️' };
+const _RF_TEXT = { pending: '等待中', running: '更新中…', done: '完成', error: '失敗', interrupted: '中斷', busy: '分頁自己在更新' };
+const _RF_COLOR = { done: '#3fb950', error: '#f85149', running: '#d29922', interrupted: '#d29922', busy: '#8b949e' };
+
+function closeRefreshModal() {
+  clearTimeout(_rfAutoClose);
+  document.getElementById('refresh-progress-modal').style.display = 'none';
+}
+function _rfOpen() { document.getElementById('refresh-progress-modal').style.display = 'flex'; }
+
+function _rfRender(st) {
+  const steps = Object.values(st.steps || {});
+  const fin = steps.filter(v => ['done', 'error', 'busy'].includes(v.status)).length;
+  document.getElementById('refresh-steps-list').innerHTML = steps.map(v => `
+    <div class="rf-item"><span>${_RF_ICON[v.status] || '⏳'}</span>
+      <span class="rf-l" style="color:${_RF_COLOR[v.status] || '#8b949e'}">${_esc(v.label)}</span>
+      <span class="rf-s">${_RF_TEXT[v.status] || '等待中'}</span></div>`).join('');
+  document.getElementById('rf-count').textContent = steps.length ? `${fin} / ${steps.length}` : '';
+  document.getElementById('rf-bar-fill').style.width = steps.length ? `${Math.round(fin / steps.length * 100)}%` : '0';
+  const btn = document.getElementById('btn-global-refresh');
+  if (st.running) { btn.textContent = `⏳ 更新中 ${fin}/${steps.length}`; btn.title = '點一下看進度'; }
+  return { steps, fin };
+}
+
+// 跑完後：各分頁的畫面重新載入（目前開著的那頁馬上重載，其他頁下次點進去會重抓）
+function _rfReloadTabs() {
+  try { loadWatchlist(); loadPill(); } catch (e) {}
+  ['regime-iframe', 'sector-iframe', 'relationship-iframe'].forEach(id => {
+    const f = document.getElementById(id);
+    if (f && f.dataset.loaded) { try { f.contentWindow.location.reload(); } catch (e) { f.src = f.src; } }
+  });
+  const wf = document.querySelector('#tab-warrant iframe');
+  if (wf) { try { wf.contentWindow.location.reload(); } catch (e) {} }
+  try { _tbLoaded = false; } catch (e) {}
+  try { _mnaLoaded = false; } catch (e) {}
+  try { _cbLoaded = false; } catch (e) {}
+  try { _linkLoaded = 0; } catch (e) {}
+  try { _mktLoadedAt = 0; } catch (e) {}
+  const act = (document.querySelector('.tab.active') || {}).id || '';
+  const onShow = { 'tab-treasury': 'tbOnShow', 'tab-mna': 'mnaOnShow', 'tab-cb': 'cbOnShow', 'tab-link': 'linkOnShow', 'tab-market': '_mktOnShow' }[act];
+  if (onShow && typeof window[onShow] === 'function') { try { window[onShow](); } catch (e) {} }
+}
+
 async function globalRefreshAll() {
   const btn = document.getElementById('btn-global-refresh');
-  const modal = document.getElementById('refresh-progress-modal');
-  const stepsList = document.getElementById('refresh-steps-list');
   const doneMsg = document.getElementById('refresh-all-done-msg');
-
-  btn.disabled = true;
-  btn.textContent = '⏳ 更新中...';
+  if (_rfPoll) { _rfOpen(); return; }          // 更新中再按＝打開進度
+  clearTimeout(_rfAutoClose);
+  btn.disabled = false;
+  btn.textContent = '⏳ 啟動中...';
   doneMsg.style.display = 'none';
-  stepsList.innerHTML = '';
-  modal.style.display = 'flex';
-
+  document.getElementById('rf-hint').textContent = '可以先關掉，更新會在背景繼續；按右上角按鈕可再打開';
+  document.getElementById('refresh-steps-list').innerHTML = '';
+  document.getElementById('rf-count').textContent = '';
+  document.getElementById('rf-bar-fill').style.width = '0';
+  _rfOpen();
   try {
     const r = await api('POST', '/api/refresh_all');
-    if (!r.ok && r.message) {
-      toast(r.message, true);
-      modal.style.display = 'none';
-      btn.disabled = false;
-      btn.textContent = '🔄 全系統更新';
-      return;
-    }
-
-    // 開始輪詢進度
-    const statusIcons = { pending: '⏳', running: '🔄', done: '✅', error: '❌', interrupted: '⚠️' };
-    const stText = { running: '進行中...', done: '完成', error: '錯誤', interrupted: '中斷', pending: '等待中' };
-    const stColor = { done: '#3fb950', error: '#f85149', running: '#d29922', interrupted: '#d29922' };
-    const poll = setInterval(async () => {
-      try {
-        const st = await api('GET', '/api/refresh_all/status');
-        const steps = st.steps || {};
-        stepsList.innerHTML = Object.entries(steps).map(([k, v]) => `
-          <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#0d1117;border-radius:6px">
-            <span style="font-size:1rem">${statusIcons[v.status] || '⏳'}</span>
-            <span style="flex:1;color:${stColor[v.status] || '#8b949e'}">${v.label}</span>
-            <span style="color:#8b949e;font-size:.75rem">${stText[v.status] || '等待中'}</span>
-          </div>`).join('');
-
-        if (!st.running) {
-          clearInterval(poll);
-          // 沒跑完（伺服器中途重新啟動）就不能說「完成」：以前進度歸零後全部「等待中」也顯示完成
-          const vals = Object.values(steps);
-          const stuck = vals.filter(v => v.status !== 'done' && v.status !== 'error');
-          const errs = vals.filter(v => v.status === 'error');
-          if (st.interrupted || stuck.length) {
-            const at = vals.find(v => v.status === 'interrupted');
-            doneMsg.style.color = '#d29922';
-            doneMsg.innerHTML = `⚠️ 更新沒有跑完${at ? `：在「${_esc(at.label)}」途中伺服器重新啟動` : '：伺服器中途重新啟動'}<br><span style="font-weight:400;font-size:.8rem;color:#8b949e">已完成的步驟有效；按「🔄 全系統更新」再跑一次補齊</span>`;
-          } else if (errs.length) {
-            doneMsg.style.color = '#d29922';
-            doneMsg.innerHTML = `✅ 更新完成，但 ${errs.length} 項失敗：${errs.map(v => _esc(v.label)).join('、')}`;
-          } else {
-            doneMsg.style.color = '#3fb950';
-            doneMsg.textContent = '✅ 全系統更新完成！';
-          }
-          doneMsg.style.display = 'block';
-          btn.disabled = false;
-          btn.textContent = '🔄 全系統更新';
-          await loadWatchlist();
-          await loadPill();
-        }
-      } catch (_) {}
-    }, 3000);
-
+    if (!r.ok && r.message && !/執行中/.test(r.message)) throw new Error(r.message);
   } catch (e) {
     toast('全系統更新失敗：' + e.message, true);
-    modal.style.display = 'none';
-    btn.disabled = false;
+    closeRefreshModal();
     btn.textContent = '🔄 全系統更新';
+    return;
   }
+  const tick = async () => {
+    let st;
+    try { st = await api('GET', '/api/refresh_all/status'); } catch (_) { return; }   // 伺服器重啟中：下次再問
+    const { steps } = _rfRender(st);
+    if (st.running) return;
+    clearInterval(_rfPoll); _rfPoll = null;
+    btn.textContent = '🔄 全系統更新'; btn.title = '';
+    const stuck = steps.filter(v => !['done', 'error', 'busy'].includes(v.status));
+    const errs = steps.filter(v => v.status === 'error');
+    if (st.interrupted || stuck.length) {
+      const at = steps.find(v => v.status === 'interrupted');
+      doneMsg.style.color = '#d29922';
+      doneMsg.innerHTML = `⚠️ 更新沒有跑完${at ? `：在「${_esc(at.label)}」途中伺服器重新啟動` : ''}<br><span style="font-weight:400;font-size:.8rem;color:#8b949e">已完成的有效；再按一次「🔄 全系統更新」補跑</span>`;
+    } else if (errs.length) {
+      doneMsg.style.color = '#d29922';
+      doneMsg.textContent = `✅ 更新完成，${errs.length} 項失敗：${errs.map(v => v.label).join('、')}`;
+    } else {
+      doneMsg.style.color = '#3fb950';
+      doneMsg.textContent = '✅ 全系統更新完成！各分頁已重新載入';
+      document.getElementById('rf-hint').textContent = '3 秒後自動關閉';
+      _rfAutoClose = setTimeout(closeRefreshModal, 3000);
+    }
+    doneMsg.style.display = 'block';
+    _rfReloadTabs();
+    if (document.getElementById('refresh-progress-modal').style.display === 'none') toast(doneMsg.textContent.replace(/\s+/g, ' '));
+  };
+  _rfPoll = setInterval(tick, 3000);
+  setTimeout(tick, 800);
 }
+
+// Esc 關進度框
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRefreshModal(); });
 
 // ── 全部更新 ──
 async function refreshAll() {
