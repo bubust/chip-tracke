@@ -2407,6 +2407,12 @@ _refresh_all_status: dict = {
         "positioning": {"label": "籌碼定位引擎",     "status": "pending"},
         "sector":      {"label": "產業輪動引擎",     "status": "pending"},
         "warrant":     {"label": "權證合約更新",     "status": "pending"},
+        # 2026-10-18：各分頁的資料也一起更新（以前要自己點進分頁按更新）
+        "relationship": {"label": "市場關聯",        "status": "pending"},
+        "link":        {"label": "連動／處置股",     "status": "pending"},
+        "treasury":    {"label": "庫藏股",          "status": "pending"},
+        "mna":         {"label": "收購併購",        "status": "pending"},
+        "cb":          {"label": "可轉債",          "status": "pending"},
     },
 }
 
@@ -2455,7 +2461,7 @@ def api_refresh_all_status():
 
 def _do_system_refresh():
     """執行全系統更新（同步，可在任意 thread 直接呼叫）。
-    包含：watchlist → regime → tdcc → positioning → sector → warrant
+    包含：watchlist → regime → tdcc → positioning → sector → warrant → 市場關聯 → 連動 → 庫藏股 → 收購併購 → 可轉債
     同時更新 _refresh_all_status dict，供 /api/refresh_all/status 查詢。
     """
     import logging as _log, asyncio as _asyncio
@@ -2565,6 +2571,46 @@ def _do_system_refresh():
             lg.error(f"[refresh_all] warrant: {e}")
             _set_step("warrant", "error")
 
+        # 6～10. 各分頁資料（市場關聯、連動／處置、庫藏股、收購併購、可轉債）
+        def _tab_step(step, fn):
+            try:
+                _set_step(step, "running")
+                r = fn()
+                if isinstance(r, dict) and r.get("busy"):
+                    _set_step(step, "busy")            # 那個分頁自己正在更新（例如排程剛好在跑）
+                elif isinstance(r, dict) and r.get("error"):
+                    _set_step(step, "error")
+                elif isinstance(r, dict) and r.get("ok") is False:
+                    _set_step(step, "busy" if "更新中" in str(r.get("message", "")) else "error")
+                else:
+                    _set_step(step, "done")
+            except Exception as e:
+                lg.error(f"[refresh_all] {step}: {e}")
+                _set_step(step, "error")
+
+        def _rel():
+            from relationship.router import _run_refresh as _rel_refresh
+            _rel_refresh(days=30)
+
+        def _link():
+            from link_routes import refresh_all as _link_refresh
+            return _link_refresh()
+
+        def _tb():
+            from treasury.router import run_refresh as _tb_refresh
+            return _tb_refresh(days=180)
+
+        def _mna():
+            from mna.router import run_refresh as _mna_refresh
+            return _mna_refresh(days=5)
+
+        def _cb():
+            from cb.router import run_refresh as _cb_refresh
+            return _cb_refresh()
+
+        for _st, _fn in (("relationship", _rel), ("link", _link), ("treasury", _tb), ("mna", _mna), ("cb", _cb)):
+            _tab_step(_st, _fn)
+
     finally:
         _refresh_all_status["running"] = False
         _refresh_all_status["finished_at"] = _dt.now().isoformat()
@@ -2573,7 +2619,7 @@ def _do_system_refresh():
 
 @app.post("/api/refresh_all")
 async def api_refresh_all():
-    """一鍵觸發所有引擎更新（背景執行），包含千張大戶、Regime、Positioning、Sector、權證"""
+    """一鍵觸發所有引擎更新（背景執行）：千張大戶、Regime、Positioning、Sector、權證、市場關聯、連動、庫藏股、收購併購、可轉債"""
     import threading
     if _refresh_all_status["running"]:
         return {"ok": False, "message": "更新已在執行中，請稍候"}
