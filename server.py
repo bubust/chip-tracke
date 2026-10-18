@@ -2410,8 +2410,44 @@ _refresh_all_status: dict = {
     },
 }
 
+# 進度存檔（2026-10-18）：伺服器跑到一半重新啟動（例如記憶體不夠被 Fly 重開）時，
+# 記憶體裡的進度會變回全部「等待中」、running=False，網頁就誤報「全系統更新完成」。
+# 每一步都寫進 chip_data/refresh_all_status.json，重啟後讀回來把卡住的那步標成「中斷」。
+_REFRESH_STATUS_FILE = DATA_DIR / "refresh_all_status.json"
+
+
+def _save_refresh_status():
+    try:
+        _REFRESH_STATUS_FILE.write_text(json.dumps(_refresh_all_status, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _load_refresh_status():
+    try:
+        saved = json.loads(_REFRESH_STATUS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    for k, v in (saved.get("steps") or {}).items():
+        if k in _refresh_all_status["steps"] and isinstance(v, dict):
+            _refresh_all_status["steps"][k]["status"] = v.get("status", "pending")
+    _refresh_all_status["started_at"] = saved.get("started_at")
+    _refresh_all_status["finished_at"] = saved.get("finished_at")
+    if saved.get("running") or saved.get("interrupted"):
+        # 上次跑到一半伺服器就重開了：正在跑的那步＝中斷，後面的維持等待中
+        for v in _refresh_all_status["steps"].values():
+            if v["status"] == "running":
+                v["status"] = "interrupted"
+        _refresh_all_status["interrupted"] = True
+    _refresh_all_status["running"] = False
+
+
+_load_refresh_status()
+
+
 def _set_step(step: str, status: str):
     _refresh_all_status["steps"][step]["status"] = status
+    _save_refresh_status()
 
 @app.get("/api/refresh_all/status")
 def api_refresh_all_status():
@@ -2427,9 +2463,12 @@ def _do_system_refresh():
     lg = _log.getLogger(__name__)
 
     _refresh_all_status["running"] = True
+    _refresh_all_status["interrupted"] = False
     _refresh_all_status["started_at"] = _dt.now().isoformat()
+    _refresh_all_status["finished_at"] = None
     for k in _refresh_all_status["steps"]:
         _refresh_all_status["steps"][k]["status"] = "pending"
+    _save_refresh_status()
 
     try:
         # 0. 觀察清單股票（優先更新，供後續引擎使用）
@@ -2528,6 +2567,8 @@ def _do_system_refresh():
 
     finally:
         _refresh_all_status["running"] = False
+        _refresh_all_status["finished_at"] = _dt.now().isoformat()
+        _save_refresh_status()
 
 
 @app.post("/api/refresh_all")
