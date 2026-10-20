@@ -1,0 +1,48 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B74.md"
+ ],
+ "reviews": [
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\":\"REVISE\",\n  \"summary\":\"The plan is thorough and addresses most of the previously‑raised concerns. Core statistical procedures, look‑ahead safeguards, data‑source fallbacks and LLM safety measures are well defined. However, there are material gaps in CI‑level UI regression testing, potential instability of some sub‑studies due to limited sample size, and lack of automated monitoring for LLM quota/cost. Addressing these will reduce risk of regressions, over‑fitting and unexpected expense.\",\n  \"findings\":[\n    {\n      \"id\":\"F1\",\n      \"severity\":\"high\",\n      \"section\":\"8. 前端 / 11. 驗證\",\n      \"issue\":\"UI regression tests are only run locally via Playwright and are not part of the CI pipeline, so UX changes could break the new panel without detection.\",\n      \"suggestion\":\"Integrate the Playwright UI suite into CI (e.g., GitHub Actions) with headless browsers and enforce a pass threshold before merge.\"\n    },\n    {\n      \"id\":\"F2\",\n      \"severity\":\"medium\",\n      \"section\":\"5. 研究 – R4, R5\",\n      \"issue\":\"The chip‑flow (R4) and international (R5) sub‑studies rely on relatively short post‑2000 samples (especially R5) which may yield unstable bootstrap intervals and over‑state significance.\",\n      \"suggestion\":\"Report the effective sample size and confidence‑interval width for each sub‑study; consider aggregating adjacent periods or using a rolling‑window analysis to improve robustness.\"\n    },\n    {\n      \"id\":\"F3\",\n      \"severity\":\"medium\",\n      \"section\":\"6. AI 圓桌\",\n      \"issue\":\"Token usage is logged but there is no automated alert or budget guard; a surge in model failures could cause repeated retries and exceed daily quota.\",\n      \"suggestion\":\"Add a lightweight watchdog that checks cumulative token consumption each day and raises a warning/halts further panel runs when a configurable threshold (e.g., 80% of quota) is reached.\"\n    },\n    {\n      \"id\":\"F4\",\n      \"severity\":\"low\",\n      \"section\":\"7. API / 12. 風險\",\n      \"issue\":\"Fallback data sources (TWSE official, prior‑day snapshot) are mentioned but no health‑check or alert is described.\",\n      \"suggestion\":\"Implement a periodic health‑check endpoint that verifies the freshness of the official TAIEX feed and logs a warning if the primary source fails for more than two consecutive runs.\"\n    }\n  ],\n  \"coverage\":\"Unit tests cover zigzag detection, Elliott‑wave hard‑rule enforcement, Fibonacci zone generation, chip‑flow factor calculations, AI‑panel orchestration, and API responses. The UI test script validates layout across common breakpoints, but it is not executed in CI. Statistical validation (block‑bootstrap, BH correction) is exercised via the research runner and verification script.\",\n  \"limitations\":\"The methodology remains dependent on historical patterns that may not hold under regime shifts; Elliott‑wave hard rules, while strict, are still a stylised representation of market structure. Small‑sample sub‑studies (R4/R5) can produce wide confidence intervals. LLM outputs are filtered for numeric plausibility, yet subtle hallucinations in narrative reasoning are possible. All forecasts are explicitly labelled as non‑advisory, but user perception may still treat them as signals.\"\n}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "The plan is thorough and addresses most of the previously‑raised concerns. Core statistical procedures, look‑ahead safeguards, data‑source fallbacks and LLM safety measures are well defined. However, there are material gaps in CI‑level UI regression testing, potential instability of some sub‑studies due to limited sample size, and lack of automated monitoring for LLM quota/cost. Addressing these will reduce risk of regressions, over‑fitting and unexpected expense.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "section": "8. 前端 / 11. 驗證",
+      "issue": "UI regression tests are only run locally via Playwright and are not part of the CI pipeline, so UX changes could break the new panel without detection.",
+      "suggestion": "Integrate the Playwright UI suite into CI (e.g., GitHub Actions) with headless browsers and enforce a pass threshold before merge."
+     },
+     {
+      "id": "F2",
+      "severity": "medium",
+      "section": "5. 研究 – R4, R5",
+      "issue": "The chip‑flow (R4) and international (R5) sub‑studies rely on relatively short post‑2000 samples (especially R5) which may yield unstable bootstrap intervals and over‑state significance.",
+      "suggestion": "Report the effective sample size and confidence‑interval width for each sub‑study; consider aggregating adjacent periods or using a rolling‑window analysis to improve robustness."
+     },
+     {
+      "id": "F3",
+      "severity": "medium",
+      "section": "6. AI 圓桌",
+      "issue": "Token usage is logged but there is no automated alert or budget guard; a surge in model failures could cause repeated retries and exceed daily quota.",
+      "suggestion": "Add a lightweight watchdog that checks cumulative token consumption each day and raises a warning/halts further panel runs when a configurable threshold (e.g., 80% of quota) is reached."
+     },
+     {
+      "id": "F4",
+      "severity": "low",
+      "section": "7. API / 12. 風險",
+      "issue": "Fallback data sources (TWSE official, prior‑day snapshot) are mentioned but no health‑check or alert is described.",
+      "suggestion": "Implement a periodic health‑check endpoint that verifies the freshness of the official TAIEX feed and logs a warning if the primary source fails for more than two consecutive runs."
+     }
+    ],
+    "coverage": "Unit tests cover zigzag detection, Elliott‑wave hard‑rule enforcement, Fibonacci zone generation, chip‑flow factor calculations, AI‑panel orchestration, and API responses. The UI test script validates layout across common breakpoints, but it is not executed in CI. Statistical validation (block‑bootstrap, BH correction) is exercised via the research runner and verification script.",
+    "limitations": "The methodology remains dependent on historical patterns that may not hold under regime shifts; Elliott‑wave hard rules, while strict, are still a stylised representation of market structure. Small‑sample sub‑studies (R4/R5) can produce wide confidence intervals. LLM outputs are filtered for numeric plausibility, yet subtle hallucinations in narrative reasoning are possible. All forecasts are explicitly labelled as non‑advisory, but user perception may still treat them as signals."
+   }
+  }
+ ]
+}

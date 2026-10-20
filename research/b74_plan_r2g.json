@@ -1,0 +1,41 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B74.md"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.7-flash",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"PLAN-B74 has rigorously addressed all prior feedback from Gemini and Groq: statistical safeguards against look-ahead bias (strict completed daily bar pivots, confirm date offset, out-of-sample analog factor freeze), overlapping return handling (monthly block bootstrap), Elliott wave hard rules and corrections (flats + zigzags, explicit unclassified state), multi-hypothesis FDR control (overall BH + 4-subperiod sign consistency), database date normalization, and LLM circuit breakers/price validators are all well-specified. The plan is technically sound, methodologically honest, and safe to execute.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"low\",\n      \"section\": \"3 & 4.6\",\n      \"issue\": \"At 08:20 pre-market scheduled run, Asian markets (N225, KS11) have opened at 08:00 TST and Yahoo daily bars may return an incomplete intraday candle for day T, while US indices (SOX, IXIC, GSPC) represent fully completed day T-1 candles. Computing 1/5/20-day returns with mixed incomplete/complete bars can distort correlation and relative strength.\",\n      \"suggestion\": \"Explicitly specify in globalx.py that at 08:20, non-TW Asian index daily series use completed T-1 session closes (or filter out partial bars where bar date == today) to maintain temporal consistency with US indices.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"section\": \"4.2\",\n      \"issue\": \"Section 4.2 phrases wave 2 hard rule as '第 2 浪不跌破第 1 浪起點', which assumes an upward impulse. For downward impulse waves (e.g., wave C impulse or broad downtrends), wave 2 must not rally above wave 1 start and wave 4 must not rise into wave 1 price territory.\",\n      \"suggestion\": \"Ensure the rule checker in engine.py parameterizes wave boundaries symmetrically for both bullish and bearish impulses (e.g. Wave 2 does not retrace beyond 100% of Wave 1 in the counter-trend direction).\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"low\",\n      \"section\": \"5 (R1 & R2)\",\n      \"issue\": \"In support/resistance hold rate evaluation, if a single volatile day t touches a support level (Low <= Level) and simultaneously experiences an intraday swing where High >= Level + 1*ATR and Close < Level - 0.5*ATR, daily bar data lacks tick-level sequence to prove which threshold was hit first.\",\n      \"suggestion\": \"Define a deterministic tie-breaker in R1/R2 rules: e.g., if touched and same-day close is below breakdown threshold, count as failure; or explicitly track subsequent outcome starting from t+1.\"\n    }\n  ],\n  \"coverage\": \"Reviewed all 12 sections of PLAN-B74, including UI/UX changes, database schema & migrations, ZigZag pivot confirmation logic, Elliott wave hard rules & soft scoring, support/resistance clustering, chips & global index integration, analog forecasting calibration (R1-R6), LLM roundtable multi-provider architecture, Telegram push formatting, test scripts, and operational failover mechanics.\",\n  \"limitations\": \"Review is based on architecture and algorithm design specifications in the plan document; execution runtime performance and third-party API availability (FinMind, Groq, Fly.io networking) will require monitoring in staging/production.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "PLAN-B74 has rigorously addressed all prior feedback from Gemini and Groq: statistical safeguards against look-ahead bias (strict completed daily bar pivots, confirm date offset, out-of-sample analog factor freeze), overlapping return handling (monthly block bootstrap), Elliott wave hard rules and corrections (flats + zigzags, explicit unclassified state), multi-hypothesis FDR control (overall BH + 4-subperiod sign consistency), database date normalization, and LLM circuit breakers/price validators are all well-specified. The plan is technically sound, methodologically honest, and safe to execute.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "low",
+      "section": "3 & 4.6",
+      "issue": "At 08:20 pre-market scheduled run, Asian markets (N225, KS11) have opened at 08:00 TST and Yahoo daily bars may return an incomplete intraday candle for day T, while US indices (SOX, IXIC, GSPC) represent fully completed day T-1 candles. Computing 1/5/20-day returns with mixed incomplete/complete bars can distort correlation and relative strength.",
+      "suggestion": "Explicitly specify in globalx.py that at 08:20, non-TW Asian index daily series use completed T-1 session closes (or filter out partial bars where bar date == today) to maintain temporal consistency with US indices."
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "section": "4.2",
+      "issue": "Section 4.2 phrases wave 2 hard rule as '第 2 浪不跌破第 1 浪起點', which assumes an upward impulse. For downward impulse waves (e.g., wave C impulse or broad downtrends), wave 2 must not rally above wave 1 start and wave 4 must not rise into wave 1 price territory.",
+      "suggestion": "Ensure the rule checker in engine.py parameterizes wave boundaries symmetrically for both bullish and bearish impulses (e.g. Wave 2 does not retrace beyond 100% of Wave 1 in the counter-trend direction)."
+     },
+     {
+      "id": "F3",
+      "severity": "low",
+      "section": "5 (R1 & R2)",
+      "issue": "In support/resistance hold rate evaluation, if a single volatile day t touches a support level (Low <= Level) and simultaneously experiences an intraday swing where High >= Level + 1*ATR and Close < Level - 0.5*ATR, daily bar data lacks tick-level sequence to prove which threshold was hit first.",
+      "suggestion": "Define a deterministic tie-breaker in R1/R2 rules: e.g., if touched and same-day close is below breakdown threshold, count as failure; or explicitly track subsequent outcome starting from t+1."
+     }
+    ],
+    "coverage": "Reviewed all 12 sections of PLAN-B74, including UI/UX changes, database schema & migrations, ZigZag pivot confirmation logic, Elliott wave hard rules & soft scoring, support/resistance clustering, chips & global index integration, analog forecasting calibration (R1-R6), LLM roundtable multi-provider architecture, Telegram push formatting, test scripts, and operational failover mechanics.",
+    "limitations": "Review is based on architecture and algorithm design specifications in the plan document; execution runtime performance and third-party API availability (FinMind, Groq, Fly.io networking) will require monitoring in staging/production."
+   }
+  }
+ ]
+}

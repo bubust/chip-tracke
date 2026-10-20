@@ -1,0 +1,34 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B74.md"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-flash-latest",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"PLAN-B74 is thoroughly specified, robustly mitigating look-ahead bias (strict EOD bar confirmation, in-sample factor selection, verify_impl truncation checks), statistical pitfalls (global Benjamini-Hochberg across R1-R6, monthly block bootstrap for overlapping multi-horizon returns, sub-period sign consistency, sample size and Wilson CIs), and operational fragility (tiered data fallbacks, per-source status monitoring, strict LLM token caps, price hallucination verification, and fallback to cached roundtable). UX optimizations cleanly address the 10-second summary bottleneck and the date formatting/broadth scaling bug in market_daily.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"low\",\n      \"section\": \"4.4 & 9\",\n      \"issue\": \"During strong momentum or gap-open environments, candidate levels within the ±6% (short-term) or ±15% (swing) windows might yield fewer than 3 support or resistance bands (e.g., in uncharted all-time highs above 46,000 where historical resistance is sparse).\",\n      \"suggestion\": \"Ensure the level extraction and push formatter gracefully handle lists with fewer than 3 items (or 0 overhead resistance levels at all-time highs), substituting fallback Fibonacci extensions/round-thousand psychological marks to avoid index out-of-range errors or empty strings in pre-market push messages.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"section\": \"4.5\",\n      \"issue\": \"Consecutive foreign buying/selling day streaks ('連買／連賣天數') can be distorted around long market closures (e.g., 7–10 day Lunar New Year break) if calendar days rather than consecutive trading-bar dates are used.\",\n      \"suggestion\": \"Confirm in `wave/chips.py` that consecutive streak counters operate strictly on consecutive trading-bar rows sorted by trading date, ignoring calendar day gaps between sessions.\"\n    }\n  ],\n  \"coverage\": \"Reviewed look-ahead controls in ZigZag confirmation and foreign index alignment, statistical rigor of pre-registered backtests (R1–R6, block bootstrap, global BH, Wilson intervals), Elliott wave symmetry and rule enforcement, multi-tier data source fallbacks (TWSE MI_5MINS_HIST, TAIFEX, FinMind), LLM token limits and price hallucination guards, database migration for breadth, and test suites.\",\n  \"limitations\": \"Review is based on PLAN-B74.md architectural and statistical specifications without live runtime execution of the code or Fly environment secrets.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "PLAN-B74 is thoroughly specified, robustly mitigating look-ahead bias (strict EOD bar confirmation, in-sample factor selection, verify_impl truncation checks), statistical pitfalls (global Benjamini-Hochberg across R1-R6, monthly block bootstrap for overlapping multi-horizon returns, sub-period sign consistency, sample size and Wilson CIs), and operational fragility (tiered data fallbacks, per-source status monitoring, strict LLM token caps, price hallucination verification, and fallback to cached roundtable). UX optimizations cleanly address the 10-second summary bottleneck and the date formatting/broadth scaling bug in market_daily.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "low",
+      "section": "4.4 & 9",
+      "issue": "During strong momentum or gap-open environments, candidate levels within the ±6% (short-term) or ±15% (swing) windows might yield fewer than 3 support or resistance bands (e.g., in uncharted all-time highs above 46,000 where historical resistance is sparse).",
+      "suggestion": "Ensure the level extraction and push formatter gracefully handle lists with fewer than 3 items (or 0 overhead resistance levels at all-time highs), substituting fallback Fibonacci extensions/round-thousand psychological marks to avoid index out-of-range errors or empty strings in pre-market push messages."
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "section": "4.5",
+      "issue": "Consecutive foreign buying/selling day streaks ('連買／連賣天數') can be distorted around long market closures (e.g., 7–10 day Lunar New Year break) if calendar days rather than consecutive trading-bar dates are used.",
+      "suggestion": "Confirm in `wave/chips.py` that consecutive streak counters operate strictly on consecutive trading-bar rows sorted by trading date, ignoring calendar day gaps between sessions."
+     }
+    ],
+    "coverage": "Reviewed look-ahead controls in ZigZag confirmation and foreign index alignment, statistical rigor of pre-registered backtests (R1–R6, block bootstrap, global BH, Wilson intervals), Elliott wave symmetry and rule enforcement, multi-tier data source fallbacks (TWSE MI_5MINS_HIST, TAIFEX, FinMind), LLM token limits and price hallucination guards, database migration for breadth, and test suites.",
+    "limitations": "Review is based on PLAN-B74.md architectural and statistical specifications without live runtime execution of the code or Fly environment secrets."
+   }
+  }
+ ]
+}

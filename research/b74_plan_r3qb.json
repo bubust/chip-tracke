@@ -1,0 +1,76 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B74.md"
+ ],
+ "reviews": [
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"REVISE\",\n  \"summary\": \"Overall plan is thorough and addresses most reviewer concerns, but there are material gaps in look‑ahead handling, analog‑selection robustness, statistical power for some sub‑studies, LLM cost monitoring, graceful degradation on total AI failure, and UI latency safeguards. These must be clarified or mitigated before approval.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"high\",\n      \"section\": \"5.R1‑R6 – Look‑ahead bias\",\n      \"issue\": \"The definition of “first touch” and the use of “confirmation day” rely on a pivot being identified before the day‑after‑touch check. It is unclear whether the confirmation day itself may incorporate future price information (e.g., moving‑average values that include the current bar). This could introduce subtle look‑ahead bias.\",\n      \"suggestion\": \"Explicitly compute all indicators (ATR, MA, etc.) using only data up to *t‑1* and store the confirmation day as the earliest bar that satisfies the rule without using the current bar’s price. Add a unit test that verifies no future data is accessed when generating a forecast for a given day.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"medium\",\n      \"section\": \"5.R6 – Analog‑based forecast\",\n      \"issue\": \"Analog selection uses factor weights chosen from the in‑sample period only. While out‑of‑sample performance is measured, the factor set itself may be over‑fit to the in‑sample data, especially given the long‑term structural changes in the Taiwanese market.\",\n      \"suggestion\": \"Introduce a nested cross‑validation or a rolling‑window validation for factor selection, and report the stability of the selected factor set across windows. Document the procedure in the research report.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"medium\",\n      \"section\": \"5.R4 & R5 – Sample size & power\",\n      \"issue\": \"Chip‑flow (R4) and international index (R5) analyses have relatively short in‑sample windows (5‑year chip window, 6‑year international window). Bootstrap confidence intervals may be wide, risking false‑positive passes.\",\n      \"suggestion\": \"Report the effective sample size and bootstrap interval width for each sub‑study. If the lower bound of the interval is close to zero, flag the result as “low power” and consider aggregating adjacent periods or using a Bayesian shrinkage approach.\"\n    },\n    {\n      \"id\": \"F4\",\n      \"severity\": \"low\",\n      \"section\": \"7.API – Snapshot latency\",\n      \"issue\": \"The plan states the snapshot API is “fast” but does not specify caching strategy or maximum response time guarantees. Under heavy load the 300‑bar request could become a bottleneck.\",\n      \"suggestion\": \"Add server‑side caching (e.g., Redis) with a TTL of ≤30 seconds for the snapshot endpoint and include a performance test in CI that asserts median response ≤1 s under simulated load.\"\n    },\n    {\n      \"id\": \"F5\",\n      \"severity\": \"medium\",\n      \"section\": \"6.AI round‑table – Cost & quota monitoring\",\n      \"issue\": \"Token usage is estimated at ~10 k per round, but actual usage can vary with model version and prompt length. No automated alert is defined when the daily 60 k token cap is approached.\",\n      \"suggestion\": \"Implement a middleware that logs cumulative token usage per model and emits a warning (e.g., via Slack) when 80 % of the daily quota is reached. Include this in the deployment monitoring checklist.\"\n    },\n    {\n      \"id\": \"F6\",\n      \"severity\": \"high\",\n      \"section\": \"6.AI round‑table – Total AI failure handling\",\n      \"issue\": \"If all configured LLM providers fail, the UI shows an error and the rest of the page continues, but the user loses the entire commentary section without a fallback.\",\n      \"suggestion\": \"Provide a deterministic fallback: either a cached last‑successful round‑table summary or a simple rule‑based narrative derived from the quantitative research (e.g., “No AI commentary available – see research section”). Ensure the UI displays a clear, non‑error message.\"\n    },\n    {\n      \"id\": \"F7\",\n      \"severity\": \"low\",\n      \"section\": \"11.Verification – UI regression testing\",\n      \"issue\": \"Playwright UI tests are run locally only and not part of the CI pipeline (as per prior round decision). This leaves a gap where a regression could slip into production.\",\n      \"suggestion\": \"Add a lightweight headless‑browser smoke test to the CI that hits the main page and checks for the presence of the “大盤解析” container and zero JS errors. This can be a minimal script separate from the full Playwright suite.\"\n    },\n    {\n      \"id\": \"F8\",\n      \"severity\": \"low\",\n      \"section\": \"12.Risk – Disclosure\",\n      \"issue\": \"The risk statement mentions “劇本，不是預言” but the push notification still includes specific price levels that could be interpreted as actionable advice.\",\n      \"suggestion\": \"Add a disclaimer line in the push text (e.g., “本訊息僅供參考，非買賣建議”) and ensure the same disclaimer appears on the panel page.\"\n    }\n  ],\n  \"coverage\": \"The plan provides comprehensive unit‑test coverage for zigzag detection, Elliott‑wave classification, Fibonacci zone construction, chip‑flow parsing, AI round‑table orchestration, API endpoints, and push‑notification formatting. UI layout tests cover major breakpoints (1366, 1512, 390 px). Statistical methodology includes month‑block bootstrap, Benjamini‑Hochberg correction, and multi‑period consistency checks.\",\n  \"limitations\": \"Statistical power for chip‑flow and international sub‑studies is limited by short in‑sample windows; analog‑forecast factor selection may still be prone to over‑fitting despite out‑of‑sample checks; AI token usage estimates are coarse and could exceed daily caps under heavy usage; look‑ahead bias safeguards rely on correct implementation of indicator windows, which must be verified by additional tests.\"\n}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "Overall plan is thorough and addresses most reviewer concerns, but there are material gaps in look‑ahead handling, analog‑selection robustness, statistical power for some sub‑studies, LLM cost monitoring, graceful degradation on total AI failure, and UI latency safeguards. These must be clarified or mitigated before approval.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "section": "5.R1‑R6 – Look‑ahead bias",
+      "issue": "The definition of “first touch” and the use of “confirmation day” rely on a pivot being identified before the day‑after‑touch check. It is unclear whether the confirmation day itself may incorporate future price information (e.g., moving‑average values that include the current bar). This could introduce subtle look‑ahead bias.",
+      "suggestion": "Explicitly compute all indicators (ATR, MA, etc.) using only data up to *t‑1* and store the confirmation day as the earliest bar that satisfies the rule without using the current bar’s price. Add a unit test that verifies no future data is accessed when generating a forecast for a given day."
+     },
+     {
+      "id": "F2",
+      "severity": "medium",
+      "section": "5.R6 – Analog‑based forecast",
+      "issue": "Analog selection uses factor weights chosen from the in‑sample period only. While out‑of‑sample performance is measured, the factor set itself may be over‑fit to the in‑sample data, especially given the long‑term structural changes in the Taiwanese market.",
+      "suggestion": "Introduce a nested cross‑validation or a rolling‑window validation for factor selection, and report the stability of the selected factor set across windows. Document the procedure in the research report."
+     },
+     {
+      "id": "F3",
+      "severity": "medium",
+      "section": "5.R4 & R5 – Sample size & power",
+      "issue": "Chip‑flow (R4) and international index (R5) analyses have relatively short in‑sample windows (5‑year chip window, 6‑year international window). Bootstrap confidence intervals may be wide, risking false‑positive passes.",
+      "suggestion": "Report the effective sample size and bootstrap interval width for each sub‑study. If the lower bound of the interval is close to zero, flag the result as “low power” and consider aggregating adjacent periods or using a Bayesian shrinkage approach."
+     },
+     {
+      "id": "F4",
+      "severity": "low",
+      "section": "7.API – Snapshot latency",
+      "issue": "The plan states the snapshot API is “fast” but does not specify caching strategy or maximum response time guarantees. Under heavy load the 300‑bar request could become a bottleneck.",
+      "suggestion": "Add server‑side caching (e.g., Redis) with a TTL of ≤30 seconds for the snapshot endpoint and include a performance test in CI that asserts median response ≤1 s under simulated load."
+     },
+     {
+      "id": "F5",
+      "severity": "medium",
+      "section": "6.AI round‑table – Cost & quota monitoring",
+      "issue": "Token usage is estimated at ~10 k per round, but actual usage can vary with model version and prompt length. No automated alert is defined when the daily 60 k token cap is approached.",
+      "suggestion": "Implement a middleware that logs cumulative token usage per model and emits a warning (e.g., via Slack) when 80 % of the daily quota is reached. Include this in the deployment monitoring checklist."
+     },
+     {
+      "id": "F6",
+      "severity": "high",
+      "section": "6.AI round‑table – Total AI failure handling",
+      "issue": "If all configured LLM providers fail, the UI shows an error and the rest of the page continues, but the user loses the entire commentary section without a fallback.",
+      "suggestion": "Provide a deterministic fallback: either a cached last‑successful round‑table summary or a simple rule‑based narrative derived from the quantitative research (e.g., “No AI commentary available – see research section”). Ensure the UI displays a clear, non‑error message."
+     },
+     {
+      "id": "F7",
+      "severity": "low",
+      "section": "11.Verification – UI regression testing",
+      "issue": "Playwright UI tests are run locally only and not part of the CI pipeline (as per prior round decision). This leaves a gap where a regression could slip into production.",
+      "suggestion": "Add a lightweight headless‑browser smoke test to the CI that hits the main page and checks for the presence of the “大盤解析” container and zero JS errors. This can be a minimal script separate from the full Playwright suite."
+     },
+     {
+      "id": "F8",
+      "severity": "low",
+      "section": "12.Risk – Disclosure",
+      "issue": "The risk statement mentions “劇本，不是預言” but the push notification still includes specific price levels that could be interpreted as actionable advice.",
+      "suggestion": "Add a disclaimer line in the push text (e.g., “本訊息僅供參考，非買賣建議”) and ensure the same disclaimer appears on the panel page."
+     }
+    ],
+    "coverage": "The plan provides comprehensive unit‑test coverage for zigzag detection, Elliott‑wave classification, Fibonacci zone construction, chip‑flow parsing, AI round‑table orchestration, API endpoints, and push‑notification formatting. UI layout tests cover major breakpoints (1366, 1512, 390 px). Statistical methodology includes month‑block bootstrap, Benjamini‑Hochberg correction, and multi‑period consistency checks.",
+    "limitations": "Statistical power for chip‑flow and international sub‑studies is limited by short in‑sample windows; analog‑forecast factor selection may still be prone to over‑fitting despite out‑of‑sample checks; AI token usage estimates are coarse and could exceed daily caps under heavy usage; look‑ahead bias safeguards rely on correct implementation of indicator windows, which must be verified by additional tests."
+   }
+  }
+ ]
+}

@@ -1,0 +1,69 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B74.md"
+ ],
+ "reviews": [
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\"verdict\":\"REVISE\",\"summary\":\"Plan is comprehensive but has material concerns around look‑ahead bias, statistical power, data source resilience and LLM control that must be addressed before deployment.\",\"findings\":[{\"id\":\"F1\",\"severity\":\"high\",\"section\":\"Research – Pivot Confirmation\",\"issue\":\"The ‘守住’ definition uses the first price touch after a pivot, which can be forward‑looking if the pivot point is identified with future data.\",\"suggestion\":\"Implement a strict out‑of‑sample lag (e.g., require at least 1‑day delay) and store pivot timestamps during back‑test to guarantee no future information is used.\"},{\"id\":\"F2\",\"severity\":\"high\",\"section\":\"Statistical Validation\",\"issue\":\"Pass criteria rely on small absolute differences (5 pp) and bootstrap intervals on limited sample sizes, increasing false‑positive risk and ignoring regime shifts.\",\"suggestion\":\"Apply Bonferroni or BH correction across all R‑tests, report power analysis, and add a rolling‑window robustness check across sub‑periods (e.g., 2000‑2007, 2008‑2015, 2016‑2022).\"},{\"id\":\"F3\",\"severity\":\"medium\",\"section\":\"Elliott‑Wave Hard Rules\",\"issue\":\"Hard elimination of waves that violate any rule may discard useful patterns and creates over‑fitting to the training period.\",\"suggestion\":\"Introduce a graded scoring system (e.g., 0‑3 points per rule) and allow a configurable tolerance threshold.\"},{\"id\":\"F4\",\"severity\":\"medium\",\"section\":\"Data Source Robustness\",\"issue\":\"Primary price feed from Yahoo may be blocked on Fly; fallback to exchange official feed is mentioned but not automated.\",\"suggestion\":\"Implement an automatic switch‑over to a secondary API (e.g., TWSE CSV) with health‑check and cache the last good snapshot.\"},{\"id\":\"F5\",\"severity\":\"high\",\"section\":\"LLM Quota & Hallucination Controls\",\"issue\":\"Round‑table relies on multiple LLM calls without explicit content validation; hallucinated price levels could mislead users.\",\"suggestion\":\"Add a post‑processing validator that cross‑checks any numeric price mentioned against the computed system levels and flags mismatches before display.\"},{\"id\":\"F6\",\"severity\":\"low\",\"section\":\"UX Regression Testing\",\"issue\":\"Performance targets are defined (≤2.5 s) but no automated front‑end load test is described.\",\"suggestion\":\"Integrate Lighthouse CI or Playwright performance scripts into CI to enforce the latency budget on every push.\"},{\"id\":\"F7\",\"severity\":\"low\",\"section\":\"Claims Honesty\",\"issue\":\"The UI displays “劇本” as a scenario but the plan notes it is not a prediction; however the push‑notification wording could be interpreted as a forecast.\",\"suggestion\":\"Add a disclaimer banner on the snapshot and push messages stating “Historical scenario, not investment advice”.\"}],\"coverage\":\"Unit tests for zigzag, wave labeling, Fibonacci, chip parsing, AI panel logic and API endpoints; integration tests with Playwright for UI layout on multiple resolutions; performance benchmarks for snapshot endpoint; data‑integrity verification script (verify_impl.py) covering 50 random days; CI runs full pytest suite and linting.\",\"limitations\":\"Back‑test period ends 2026‑10, leaving limited post‑2026 data for out‑of‑sample validation; regime changes (e.g., low‑interest‑rate environment) are not explicitly modelled; reliance on Yahoo and manual secret setup may cause downtime; LLM cost estimates assume full quota availability and do not account for peak‑day spikes.\"}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "Plan is comprehensive but has material concerns around look‑ahead bias, statistical power, data source resilience and LLM control that must be addressed before deployment.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "section": "Research – Pivot Confirmation",
+      "issue": "The ‘守住’ definition uses the first price touch after a pivot, which can be forward‑looking if the pivot point is identified with future data.",
+      "suggestion": "Implement a strict out‑of‑sample lag (e.g., require at least 1‑day delay) and store pivot timestamps during back‑test to guarantee no future information is used."
+     },
+     {
+      "id": "F2",
+      "severity": "high",
+      "section": "Statistical Validation",
+      "issue": "Pass criteria rely on small absolute differences (5 pp) and bootstrap intervals on limited sample sizes, increasing false‑positive risk and ignoring regime shifts.",
+      "suggestion": "Apply Bonferroni or BH correction across all R‑tests, report power analysis, and add a rolling‑window robustness check across sub‑periods (e.g., 2000‑2007, 2008‑2015, 2016‑2022)."
+     },
+     {
+      "id": "F3",
+      "severity": "medium",
+      "section": "Elliott‑Wave Hard Rules",
+      "issue": "Hard elimination of waves that violate any rule may discard useful patterns and creates over‑fitting to the training period.",
+      "suggestion": "Introduce a graded scoring system (e.g., 0‑3 points per rule) and allow a configurable tolerance threshold."
+     },
+     {
+      "id": "F4",
+      "severity": "medium",
+      "section": "Data Source Robustness",
+      "issue": "Primary price feed from Yahoo may be blocked on Fly; fallback to exchange official feed is mentioned but not automated.",
+      "suggestion": "Implement an automatic switch‑over to a secondary API (e.g., TWSE CSV) with health‑check and cache the last good snapshot."
+     },
+     {
+      "id": "F5",
+      "severity": "high",
+      "section": "LLM Quota & Hallucination Controls",
+      "issue": "Round‑table relies on multiple LLM calls without explicit content validation; hallucinated price levels could mislead users.",
+      "suggestion": "Add a post‑processing validator that cross‑checks any numeric price mentioned against the computed system levels and flags mismatches before display."
+     },
+     {
+      "id": "F6",
+      "severity": "low",
+      "section": "UX Regression Testing",
+      "issue": "Performance targets are defined (≤2.5 s) but no automated front‑end load test is described.",
+      "suggestion": "Integrate Lighthouse CI or Playwright performance scripts into CI to enforce the latency budget on every push."
+     },
+     {
+      "id": "F7",
+      "severity": "low",
+      "section": "Claims Honesty",
+      "issue": "The UI displays “劇本” as a scenario but the plan notes it is not a prediction; however the push‑notification wording could be interpreted as a forecast.",
+      "suggestion": "Add a disclaimer banner on the snapshot and push messages stating “Historical scenario, not investment advice”."
+     }
+    ],
+    "coverage": "Unit tests for zigzag, wave labeling, Fibonacci, chip parsing, AI panel logic and API endpoints; integration tests with Playwright for UI layout on multiple resolutions; performance benchmarks for snapshot endpoint; data‑integrity verification script (verify_impl.py) covering 50 random days; CI runs full pytest suite and linting.",
+    "limitations": "Back‑test period ends 2026‑10, leaving limited post‑2026 data for out‑of‑sample validation; regime changes (e.g., low‑interest‑rate environment) are not explicitly modelled; reliance on Yahoo and manual secret setup may cause downtime; LLM cost estimates assume full quota availability and do not account for peak‑day spikes."
+   }
+  }
+ ]
+}

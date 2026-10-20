@@ -1,0 +1,62 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B74.md"
+ ],
+ "reviews": [
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"The plan addresses previously raised concerns, implements robust look‑ahead safeguards, solid statistical controls, strict Elliott‑wave hard rules, comprehensive data‑source fallbacks, and clear labeling of back‑tested vs. reference figures. Minor gaps remain in automated regression testing for the UX changes and monitoring of LLM usage costs.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"low\",\n      \"section\": \"A1 Watchlist Summary\",\n      \"issue\": \"No explicit automated test (unit/integration) is described to verify the ≤2.5 s latency and correct fallback to Yahoo only for missing symbols.\",\n      \"suggestion\": \"Add a CI test suite (e.g., pytest + httpx mock) that simulates missing local data and asserts the response time and correct logging of Yahoo calls.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"section\": \"3. Data Layer – Date Normalization\",\n      \"issue\": \"Date normalisation is performed in `upsert_series`, but there is no verification step to ensure no legacy INSERTs bypass it after future schema changes.\",\n      \"suggestion\": \"Introduce a database migration check that scans `market_daily` for non‑ISO dates nightly and logs any anomalies.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"low\",\n      \"section\": \"4.5 Chips & 4.6 International\",\n      \"issue\": \"Fallback to the most recent snapshot when all sources fail could present stale data beyond the 10‑minute freshness window used elsewhere.\",\n      \"suggestion\": \"Cap snapshot age at 30 minutes and display a distinct “stale data” badge if older.\"\n    },\n    {\n      \"id\": \"F4\",\n      \"severity\": \"low\",\n      \"section\": \"4.7 Forecast\",\n      \"issue\": \"Analog selection uses a minimum of 40 samples, but the plan does not specify a procedure when the sample size falls just below the threshold after dynamic factor pruning.\",\n      \"suggestion\": \"Define a graceful degradation path: either broaden the factor pool or fall back to a simple historical return distribution with a clear “low confidence” label.\"\n    },\n    {\n      \"id\": \"F5\",\n      \"severity\": \"low\",\n      \"section\": \"LLM Roundtable\",\n      \"issue\": \"Cost monitoring and hallucination mitigation are mentioned only in prior‑round decisions; the current plan does not extend those controls to the new multi‑LLM setup.\",\n      \"suggestion\": \"Implement per‑day token caps per model, log total cost, and add a post‑generation validator that checks numeric outputs against the engine’s numeric validator before publishing.\"\n    },\n    {\n      \"id\": \"F6\",\n      \"severity\": \"low\",\n      \"section\": \"UI Layout (A2, A3)\",\n      \"issue\": \"Responsive behaviour is described, but no automated visual regression testing is planned.\",\n      \"suggestion\": \"Add Playwright or Cypress visual regression tests for the three target resolutions (1366, 1512, 1920) and for mobile swipe behaviour.\"\n    }\n  ],\n  \"coverage\": \"The plan covers look‑ahead bias prevention, statistical rigor (Wilson CI, min‑sample thresholds, out‑of‑sample validation), Elliott‑wave hard rule enforcement, data source redundancy, LLM error handling, and clear UI labeling. UX performance targets and data‑pipeline fallbacks are well specified.\",\n  \"limitations\": \"Statistical power may be limited for rare analog conditions (sample <40) and for international indices where free data is sparse. The LLM roundtable cost is not quantified, and visual regression testing is not yet automated, which could allow unnoticed UI regressions after deployment.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "The plan addresses previously raised concerns, implements robust look‑ahead safeguards, solid statistical controls, strict Elliott‑wave hard rules, comprehensive data‑source fallbacks, and clear labeling of back‑tested vs. reference figures. Minor gaps remain in automated regression testing for the UX changes and monitoring of LLM usage costs.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "low",
+      "section": "A1 Watchlist Summary",
+      "issue": "No explicit automated test (unit/integration) is described to verify the ≤2.5 s latency and correct fallback to Yahoo only for missing symbols.",
+      "suggestion": "Add a CI test suite (e.g., pytest + httpx mock) that simulates missing local data and asserts the response time and correct logging of Yahoo calls."
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "section": "3. Data Layer – Date Normalization",
+      "issue": "Date normalisation is performed in `upsert_series`, but there is no verification step to ensure no legacy INSERTs bypass it after future schema changes.",
+      "suggestion": "Introduce a database migration check that scans `market_daily` for non‑ISO dates nightly and logs any anomalies."
+     },
+     {
+      "id": "F3",
+      "severity": "low",
+      "section": "4.5 Chips & 4.6 International",
+      "issue": "Fallback to the most recent snapshot when all sources fail could present stale data beyond the 10‑minute freshness window used elsewhere.",
+      "suggestion": "Cap snapshot age at 30 minutes and display a distinct “stale data” badge if older."
+     },
+     {
+      "id": "F4",
+      "severity": "low",
+      "section": "4.7 Forecast",
+      "issue": "Analog selection uses a minimum of 40 samples, but the plan does not specify a procedure when the sample size falls just below the threshold after dynamic factor pruning.",
+      "suggestion": "Define a graceful degradation path: either broaden the factor pool or fall back to a simple historical return distribution with a clear “low confidence” label."
+     },
+     {
+      "id": "F5",
+      "severity": "low",
+      "section": "LLM Roundtable",
+      "issue": "Cost monitoring and hallucination mitigation are mentioned only in prior‑round decisions; the current plan does not extend those controls to the new multi‑LLM setup.",
+      "suggestion": "Implement per‑day token caps per model, log total cost, and add a post‑generation validator that checks numeric outputs against the engine’s numeric validator before publishing."
+     },
+     {
+      "id": "F6",
+      "severity": "low",
+      "section": "UI Layout (A2, A3)",
+      "issue": "Responsive behaviour is described, but no automated visual regression testing is planned.",
+      "suggestion": "Add Playwright or Cypress visual regression tests for the three target resolutions (1366, 1512, 1920) and for mobile swipe behaviour."
+     }
+    ],
+    "coverage": "The plan covers look‑ahead bias prevention, statistical rigor (Wilson CI, min‑sample thresholds, out‑of‑sample validation), Elliott‑wave hard rule enforcement, data source redundancy, LLM error handling, and clear UI labeling. UX performance targets and data‑pipeline fallbacks are well specified.",
+    "limitations": "Statistical power may be limited for rare analog conditions (sample <40) and for international indices where free data is sparse. The LLM roundtable cost is not quantified, and visual regression testing is not yet automated, which could allow unnoticed UI regressions after deployment."
+   }
+  }
+ ]
+}

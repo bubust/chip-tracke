@@ -1,0 +1,109 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B74.md"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.6-flash",
+   "raw": "{\"verdict\":\"REVISE\",\"summary\":\"The implementation plan PLAN-B74 is exceptionally thorough, well-structured, and demonstrates strong engineering discipline—including strict in-sample/out-of-sample data splits (2000–2015 IS vs 2016–2026 OOS), explicit point-in-time verification (`verify_impl.py`), honest labeling of failed statistical hypotheses (✅ vs △), data redundancy fallbacks, and LLM numeric hallucination checks. However, minor revisions are needed regarding statistical handling of overlapping multi-day returns, factor selection leakage in analog forecasting, Elliott Wave rule definitions for Flat patterns, and atomic date-string normalization in DB writes.\",\"findings\":[{\"id\":\"F1\",\"severity\":\"medium\",\"section\":\"5. 研究（R4/R5）與 4.7 預判（Analog Selection）\",\"issue\":\"R4 and R5 evaluate 5-, 20-, and 60-day horizon returns. standard bootstrap sampling without block resampling for overlapping returns underestimates confidence interval bounds due to autocorrelation. Furthermore, using OOS test results (R3–R5 pass status) to select factors for the live analog forecast engine introduces subtle look-ahead/selection bias across the full sample.\",\"suggestion\":\"Use block-bootstrap or circular block permutation for overlapping multi-day returns (5/20/60 days) in R4 and R5. For analog selection, determine factor inclusion strictly using in-sample (2000–2015 / 2016–2021) pass criteria, and use OOS strictly for validation without allowing OOS results to retroactively modify factor selection filters.\"},{\"id\":\"F2\",\"severity\":\"medium\",\"section\":\"4.2 艾略特數浪（規則化）\",\"issue\":\"The hard rule 'Wave B does not exceed Wave A start' strictly applies to Zigzag corrections (5-3-5). Standard Elliott Wave theory allows Flat corrections (3-3-5) and Expanded Flats where Wave B exceeds the start of Wave A. Enforcing this rule globally will misclassify or disqualify valid Flat/Expanded Flat corrective patterns.\",\"suggestion\":\"Explicitly label the current corrective model as 'Zigzag-only' in the engine documentation/UI, or update the engine rule to allow Wave B to exceed Wave A start up to 138% if classifying Flat correction patterns.\"},{\"id\":\"F3\",\"severity\":\"medium\",\"section\":\"2. A3 總經頁 (Date Migration & DB Writes)\",\"issue\":\"Migrating `market_daily` dates from `YYYYMMDD` to `YYYY-MM-DD` via an ad-hoc migration leaves a risk of string sorting corruption (`ORDER BY date DESC`) if any ingestion pathway (`fetch_breadth_ad`, `TWSE_MI`, etc.) continues writing 8-digit strings post-migration.\",\"suggestion\":\"Implement a centralized DB ingestion decorator or model validator in Python that forces all incoming date values into ISO `YYYY-MM-DD` format prior to SQLite `INSERT`/`UPDATE` operations.\"},{\"id\":\"F4\",\"severity\":\"low\",\"section\":\"6. 🤖 AI 圓桌（Groq Quota & Error Handling）\",\"issue\":\"Groq API limits are shared with another project (MyAlbo). In cases of HTTP 429 (Rate Limit) or 413 (Token Exceeded), single-threaded execution might cause the panel to fail ungracefully if not specifically caught.\",\"suggestion\":\"Add explicit try-except handlers for Groq 429/413 status codes that gracefully skip the affected model and fall back to Gemini without failing the background job or delaying response to the user.\"}],\"coverage\":\"Covers UX optimizations (watchlist acceleration, horizontal nav display, macro layout rebuild), 3-degree ZigZag engine, rule-based Elliott Wave + Fib zone calculation with historical hold rate backtesting (R1-R5), market chips integration, global benchmark cross-analysis, multi-LLM roundtable commentary, Telegram pre-market push, and test suite verification.\",\"limitations\":\"Elliott Wave engines are inherently subjective pattern abstractions; quantitative probabilities are derived from conditional historical distributions rather than theoretical wave guarantees. TAIEX market dynamics post-2020 show structural shifts due to heavy TSMC weighting, which may affect regime stability of older historical analogs.\"}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "The implementation plan PLAN-B74 is exceptionally thorough, well-structured, and demonstrates strong engineering discipline—including strict in-sample/out-of-sample data splits (2000–2015 IS vs 2016–2026 OOS), explicit point-in-time verification (`verify_impl.py`), honest labeling of failed statistical hypotheses (✅ vs △), data redundancy fallbacks, and LLM numeric hallucination checks. However, minor revisions are needed regarding statistical handling of overlapping multi-day returns, factor selection leakage in analog forecasting, Elliott Wave rule definitions for Flat patterns, and atomic date-string normalization in DB writes.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "medium",
+      "section": "5. 研究（R4/R5）與 4.7 預判（Analog Selection）",
+      "issue": "R4 and R5 evaluate 5-, 20-, and 60-day horizon returns. standard bootstrap sampling without block resampling for overlapping returns underestimates confidence interval bounds due to autocorrelation. Furthermore, using OOS test results (R3–R5 pass status) to select factors for the live analog forecast engine introduces subtle look-ahead/selection bias across the full sample.",
+      "suggestion": "Use block-bootstrap or circular block permutation for overlapping multi-day returns (5/20/60 days) in R4 and R5. For analog selection, determine factor inclusion strictly using in-sample (2000–2015 / 2016–2021) pass criteria, and use OOS strictly for validation without allowing OOS results to retroactively modify factor selection filters."
+     },
+     {
+      "id": "F2",
+      "severity": "medium",
+      "section": "4.2 艾略特數浪（規則化）",
+      "issue": "The hard rule 'Wave B does not exceed Wave A start' strictly applies to Zigzag corrections (5-3-5). Standard Elliott Wave theory allows Flat corrections (3-3-5) and Expanded Flats where Wave B exceeds the start of Wave A. Enforcing this rule globally will misclassify or disqualify valid Flat/Expanded Flat corrective patterns.",
+      "suggestion": "Explicitly label the current corrective model as 'Zigzag-only' in the engine documentation/UI, or update the engine rule to allow Wave B to exceed Wave A start up to 138% if classifying Flat correction patterns."
+     },
+     {
+      "id": "F3",
+      "severity": "medium",
+      "section": "2. A3 總經頁 (Date Migration & DB Writes)",
+      "issue": "Migrating `market_daily` dates from `YYYYMMDD` to `YYYY-MM-DD` via an ad-hoc migration leaves a risk of string sorting corruption (`ORDER BY date DESC`) if any ingestion pathway (`fetch_breadth_ad`, `TWSE_MI`, etc.) continues writing 8-digit strings post-migration.",
+      "suggestion": "Implement a centralized DB ingestion decorator or model validator in Python that forces all incoming date values into ISO `YYYY-MM-DD` format prior to SQLite `INSERT`/`UPDATE` operations."
+     },
+     {
+      "id": "F4",
+      "severity": "low",
+      "section": "6. 🤖 AI 圓桌（Groq Quota & Error Handling）",
+      "issue": "Groq API limits are shared with another project (MyAlbo). In cases of HTTP 429 (Rate Limit) or 413 (Token Exceeded), single-threaded execution might cause the panel to fail ungracefully if not specifically caught.",
+      "suggestion": "Add explicit try-except handlers for Groq 429/413 status codes that gracefully skip the affected model and fall back to Gemini without failing the background job or delaying response to the user."
+     }
+    ],
+    "coverage": "Covers UX optimizations (watchlist acceleration, horizontal nav display, macro layout rebuild), 3-degree ZigZag engine, rule-based Elliott Wave + Fib zone calculation with historical hold rate backtesting (R1-R5), market chips integration, global benchmark cross-analysis, multi-LLM roundtable commentary, Telegram pre-market push, and test suite verification.",
+    "limitations": "Elliott Wave engines are inherently subjective pattern abstractions; quantitative probabilities are derived from conditional historical distributions rather than theoretical wave guarantees. TAIEX market dynamics post-2020 show structural shifts due to heavy TSMC weighting, which may affect regime stability of older historical analogs."
+   }
+  },
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\"verdict\":\"REVISE\",\"summary\":\"The plan is ambitious and well‑structured but contains several material risks: potential look‑ahead bias in pivot confirmation, insufficient statistical controls for multiple testing and regime dependence, over‑reliance on Yahoo data without full fallback, under‑specified LLM cost and hallucination safeguards, and limited regression testing for the UX changes. These issues must be addressed before deployment.\",\"findings\":[{\"id\":\"F1\",\"severity\":\"high\",\"section\":\"4.1 ZigZag\",\"issue\":\"Pivot confirmation waits for price to move θ after an extreme, which can incorporate intraday information unavailable at the time of a pre‑market forecast, creating look‑ahead bias.\",\"suggestion\":\"Restrict forecasts to use only pivots confirmed on the previous trading day; compute θ‑based confirmations after market close and delay any pre‑market signals until the next day.\"},{\"id\":\"F2\",\"severity\":\"medium\",\"section\":\"4.7 Forecast\",\"issue\":\"Pass criteria rely on multiple analog matches without correction for multiple testing or overlapping return periods, risking inflated success rates.\",\"suggestion\":\"Implement out‑of‑sample validation, apply Bonferroni or false‑discovery‑rate adjustments, and ensure analog windows are non‑overlapping or use bootstrapping to estimate true performance.\"},{\"id\":\"F3\",\"severity\":\"medium\",\"section\":\"4.2 Elliott Rules\",\"issue\":\"Hard elimination rules may discard viable wave structures, leading to low coverage and potential regime‑specific failures.\",\"suggestion\":\"Conduct sensitivity analysis on rule thresholds (e.g., price‑break violations) and provide a fallback scoring tier that relaxes one non‑critical rule when no candidate passes.\"},{\"id\":\"F4\",\"severity\":\"high\",\"section\":\"Data Layer\",\"issue\":\"Historical price data defaults to Yahoo; official exchange data is only used for the most recent two months, leaving a large historical gap vulnerable to Yahoo outages or inaccuracies.\",\"suggestion\":\"Add a permanent fallback to the Taiwan Stock Exchange (TWSE) daily files for the entire history, and schedule nightly integrity checks comparing Yahoo vs official data, flagging discrepancies >0.2%.\"},{\"id\":\"F5\",\"severity\":\"medium\",\"section\":\"AI Roundtable\",\"issue\":\"LLM quota, cost, and hallucination controls are not defined; the plan assumes free usage of Gemini, GPT‑OSS‑120B, and Qwen3 on Groq.\",\"suggestion\":\"Introduce request throttling, cost monitoring dashboards, and a post‑generation verification step (e.g., factual check against trusted news APIs) before publishing AI commentary.\"},{\"id\":\"F6\",\"severity\":\"low\",\"section\":\"A UX Changes\",\"issue\":\"No automated regression tests are mentioned for the new layout breakpoints and watchlist caching logic.\",\"suggestion\":\"Add Cypress or Playwright tests covering screen widths 900px+, mobile swipe behavior, and cache‑hit scenarios to catch regressions before merge.\"},{\"id\":\"F7\",\"severity\":\"medium\",\"section\":\"4.7 Forecast Analog Selection\",\"issue\":\"Minimum sample size of 30 may be insufficient for robust probability estimates, especially across market regimes (bull, bear, sideways).\",\"suggestion\":\"Segment analog pool by regime using a volatility or trend indicator and require at least 30 samples per regime, or fallback to a Bayesian shrinkage estimator when data are scarce.\"}],\"coverage\":\"Look‑ahead bias, statistical validity of back‑test pass criteria, Elliott‑wave hard rule soundness, data source robustness and fallback mechanisms, LLM quota/cost and hallucination safeguards, regression testing for UX changes, and overall test coverage considerations.\",\"limitations\":\"Assessment is based solely on the written plan; actual code, data pipelines, and existing test suites were not inspected. Recommendations assume typical market data quality and standard LLM pricing models.\"}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "The plan is ambitious and well‑structured but contains several material risks: potential look‑ahead bias in pivot confirmation, insufficient statistical controls for multiple testing and regime dependence, over‑reliance on Yahoo data without full fallback, under‑specified LLM cost and hallucination safeguards, and limited regression testing for the UX changes. These issues must be addressed before deployment.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "section": "4.1 ZigZag",
+      "issue": "Pivot confirmation waits for price to move θ after an extreme, which can incorporate intraday information unavailable at the time of a pre‑market forecast, creating look‑ahead bias.",
+      "suggestion": "Restrict forecasts to use only pivots confirmed on the previous trading day; compute θ‑based confirmations after market close and delay any pre‑market signals until the next day."
+     },
+     {
+      "id": "F2",
+      "severity": "medium",
+      "section": "4.7 Forecast",
+      "issue": "Pass criteria rely on multiple analog matches without correction for multiple testing or overlapping return periods, risking inflated success rates.",
+      "suggestion": "Implement out‑of‑sample validation, apply Bonferroni or false‑discovery‑rate adjustments, and ensure analog windows are non‑overlapping or use bootstrapping to estimate true performance."
+     },
+     {
+      "id": "F3",
+      "severity": "medium",
+      "section": "4.2 Elliott Rules",
+      "issue": "Hard elimination rules may discard viable wave structures, leading to low coverage and potential regime‑specific failures.",
+      "suggestion": "Conduct sensitivity analysis on rule thresholds (e.g., price‑break violations) and provide a fallback scoring tier that relaxes one non‑critical rule when no candidate passes."
+     },
+     {
+      "id": "F4",
+      "severity": "high",
+      "section": "Data Layer",
+      "issue": "Historical price data defaults to Yahoo; official exchange data is only used for the most recent two months, leaving a large historical gap vulnerable to Yahoo outages or inaccuracies.",
+      "suggestion": "Add a permanent fallback to the Taiwan Stock Exchange (TWSE) daily files for the entire history, and schedule nightly integrity checks comparing Yahoo vs official data, flagging discrepancies >0.2%."
+     },
+     {
+      "id": "F5",
+      "severity": "medium",
+      "section": "AI Roundtable",
+      "issue": "LLM quota, cost, and hallucination controls are not defined; the plan assumes free usage of Gemini, GPT‑OSS‑120B, and Qwen3 on Groq.",
+      "suggestion": "Introduce request throttling, cost monitoring dashboards, and a post‑generation verification step (e.g., factual check against trusted news APIs) before publishing AI commentary."
+     },
+     {
+      "id": "F6",
+      "severity": "low",
+      "section": "A UX Changes",
+      "issue": "No automated regression tests are mentioned for the new layout breakpoints and watchlist caching logic.",
+      "suggestion": "Add Cypress or Playwright tests covering screen widths 900px+, mobile swipe behavior, and cache‑hit scenarios to catch regressions before merge."
+     },
+     {
+      "id": "F7",
+      "severity": "medium",
+      "section": "4.7 Forecast Analog Selection",
+      "issue": "Minimum sample size of 30 may be insufficient for robust probability estimates, especially across market regimes (bull, bear, sideways).",
+      "suggestion": "Segment analog pool by regime using a volatility or trend indicator and require at least 30 samples per regime, or fallback to a Bayesian shrinkage estimator when data are scarce."
+     }
+    ],
+    "coverage": "Look‑ahead bias, statistical validity of back‑test pass criteria, Elliott‑wave hard rule soundness, data source robustness and fallback mechanisms, LLM quota/cost and hallucination safeguards, regression testing for UX changes, and overall test coverage considerations.",
+    "limitations": "Assessment is based solely on the written plan; actual code, data pipelines, and existing test suites were not inspected. Recommendations assume typical market data quality and standard LLM pricing models."
+   }
+  }
+ ]
+}

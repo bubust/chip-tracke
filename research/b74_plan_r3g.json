@@ -1,0 +1,34 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B74.md"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.7-flash",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"PLAN-B74 is thoroughly designed, methodologically rigorous, and addresses all prior review comments from rounds 1 and 2. Look-ahead bias is strictly prevented (clear pivot confirmation delays, out-of-sample parameter calibration, symmetric wave rule verification, and automated 50-day point-in-time cross-checks). Statistical testing is sound (block bootstrap for overlapping returns, Bonferroni-Holm family-wise error rate control, and multi-regime robustness splits). LLM hallucination and cost controls are well-bounded with daily token caps, price-hallucination detection thresholds, and graceful fallbacks.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"low\",\n      \"section\": \"3. 資料層\",\n      \"issue\": \"Intraday partial bar is injected into memory during 09:00–13:35. If wave_snapshot caches this state without a dedicated short TTL during market hours, clients might receive a stale intraday snapshot for up to 10 minutes.\",\n      \"suggestion\": \"Explicitly distinguish cache TTL between market hours (e.g. 1–2 minutes or no-cache for intraday partial bars) and off-market hours (static snapshot until scheduled update).\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"section\": \"6. 🤖 AI 圓桌\",\n      \"issue\": \"Gemini Google Search Grounding response structures occasionally vary between SDK versions or when no search results are returned, which could cause JSON parsing exceptions in the news digest step.\",\n      \"suggestion\": \"Ensure the Google Search Grounding extraction wrapper has fallback parsing to handle empty or malformed grounding chunks without throwing unhandled exceptions.\"\n    }\n  ],\n  \"coverage\": \"Evaluated data pipelines (TWSE, Yahoo, FinMind, MIS), ZigZag pivot confirmation logic, Elliott wave hard rules and scoring, support/resistance zone clustering, chip and foreign index factors, multi-horizon block-bootstrap research validation, AI panel orchestration with token quotas, and UI/UX performance optimizations.\",\n  \"limitations\": \"Review is based on PLAN-B74.md design document and architectural specifications; actual execution performance and Yahoo/FinMind rate-limit resilience will require verification during staging run and automated test suite execution.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "PLAN-B74 is thoroughly designed, methodologically rigorous, and addresses all prior review comments from rounds 1 and 2. Look-ahead bias is strictly prevented (clear pivot confirmation delays, out-of-sample parameter calibration, symmetric wave rule verification, and automated 50-day point-in-time cross-checks). Statistical testing is sound (block bootstrap for overlapping returns, Bonferroni-Holm family-wise error rate control, and multi-regime robustness splits). LLM hallucination and cost controls are well-bounded with daily token caps, price-hallucination detection thresholds, and graceful fallbacks.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "low",
+      "section": "3. 資料層",
+      "issue": "Intraday partial bar is injected into memory during 09:00–13:35. If wave_snapshot caches this state without a dedicated short TTL during market hours, clients might receive a stale intraday snapshot for up to 10 minutes.",
+      "suggestion": "Explicitly distinguish cache TTL between market hours (e.g. 1–2 minutes or no-cache for intraday partial bars) and off-market hours (static snapshot until scheduled update)."
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "section": "6. 🤖 AI 圓桌",
+      "issue": "Gemini Google Search Grounding response structures occasionally vary between SDK versions or when no search results are returned, which could cause JSON parsing exceptions in the news digest step.",
+      "suggestion": "Ensure the Google Search Grounding extraction wrapper has fallback parsing to handle empty or malformed grounding chunks without throwing unhandled exceptions."
+     }
+    ],
+    "coverage": "Evaluated data pipelines (TWSE, Yahoo, FinMind, MIS), ZigZag pivot confirmation logic, Elliott wave hard rules and scoring, support/resistance zone clustering, chip and foreign index factors, multi-horizon block-bootstrap research validation, AI panel orchestration with token quotas, and UI/UX performance optimizations.",
+    "limitations": "Review is based on PLAN-B74.md design document and architectural specifications; actual execution performance and Yahoo/FinMind rate-limit resilience will require verification during staging run and automated test suite execution."
+   }
+  }
+ ]
+}
