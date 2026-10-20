@@ -236,6 +236,11 @@ def tick(now: datetime | None = None, quotes_fn=None, load_hist_fn=None, params=
         gone = [x for sid, x in sorted(_STATE["seen"].items()) if sid not in hits]
         items = [x for _, x in sorted(hits.items())]
         res["final"] = {"hits": items, "gone": gone}
+        try:                                     # 🎯 尾盤追蹤：13:10 還成立的自動加入（同一天同一檔不重複）
+            import tail_track
+            tail_track.add_from_fbd(day, items)
+        except Exception as e:
+            log.warning(f"[fbd-live] 尾盤追蹤加入失敗：{e}")
         if push and (items or gone):
             body = [f"⏰ <b>假跌破：收盤前還成立</b>　{now:%H:%M}（{len(items)} 檔）"]
             body += _lines(items, lambda x: "　（早上已通知）" if x["stock_id"] in _STATE["seen"] else "　🆕") or ["• 沒有"]

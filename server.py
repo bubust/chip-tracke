@@ -1119,12 +1119,19 @@ app.include_router(mna_router)
 app.mount("/mna/static", StaticFiles(directory=str(BASE_DIR / "mna-frontend")), name="mna_static")
 app.include_router(cb_router)
 app.mount("/cb/static", StaticFiles(directory=str(BASE_DIR / "cb-frontend")), name="cb_static")
+app.mount("/tail/static", StaticFiles(directory=str(BASE_DIR / "tail-frontend")), name="tail_static")
 app.mount("/notes/static", StaticFiles(directory=str(BASE_DIR / "notes-frontend")), name="notes_static")
 app.include_router(discuss_router)
 from best_routes import router as best_router  # noqa: E402  🏆 研究最佳（PLAN-BEST）
 app.include_router(best_router)
 from link_routes import router as link_router  # noqa: E402  🔗 連動／處置股（PLAN-LINK）
 app.include_router(link_router)
+from tail_track import router as tail_router, init_db as _tail_init_db  # noqa: E402  🎯 尾盤追蹤（13:10 假跌破清單之後的走勢）
+app.include_router(tail_router)
+try:
+    _tail_init_db()
+except Exception as _tte:
+    print(f"[tail_track] init 失敗：{_tte}")
 from crash_routes import router as crash_router  # noqa: E402  📉 大跌買點＋策略回測建議（PLAN-BEST2）
 app.include_router(crash_router)
 from course_routes import router as course_router  # noqa: E402  📋 講義訊號（PLAN-COURSE）
