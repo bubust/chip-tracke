@@ -60,3 +60,7 @@
 ## 部署後（a1aa1cc 部署 success）
 - 正式站：wave.db 回補成功（TWII 6,570、SOX 6,739…）、FinMind 三個籌碼資料集正常、/api/wave/snapshot ok
 - 觀察清單 summary 1.78／3.87／3.19 秒（原本 10 秒）；log [wl-summary]：local 0.14 秒，慢在 1 檔本機日 K 不足 60 根每次打 Yahoo 2.5～2.9 秒 → 加 10 分鐘 Yahoo 快取（_WL_YAHOO_CACHE）＋測試；Gemini 3.7-flash 全新檢查 APPROVED（research/wave/insp_g_round3.json）
+- 22765f7 部署 success：summary 4.33（重開機後第一次要打 Yahoo）／0.58／0.59／0.63 秒；log local 0.14 秒、yahoo 0（快取）、total 0.33～0.37 秒
+- 正式站廣度恢復每天更新（10/20 淨廣度 −40.22，跟證交所 269 漲／701 跌一致）；factor 廣度 −60.2（以前一個月卡 −33）
+- tests_ui/b74_ui.py 對正式站 11/11 通過（分頁 15/15、手機可滑、快照第二次 0.32 秒、總經頁 0 JS 錯誤）
+- 待用戶：`! bash claude-files/set_groq_secret.sh` 設 GROQ_API_KEY；第一次 AI 圓桌＝下個交易日 16:30 自動或手動按
