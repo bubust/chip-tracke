@@ -559,6 +559,18 @@ details.guide[open]>summary::before{content:'▾ ';}
 .rf-foot{display:flex;align-items:center;gap:10px;margin-top:12px}
 .rf-hint{flex:1;font-size:.72rem;color:#8b949e;line-height:1.5}
 @media (max-width:420px){.rf-list{grid-template-columns:1fr}}
+/* 🎯 尾盤追蹤 */
+.tail-h{font-weight:700;margin-bottom:8px;font-size:.95rem}
+.tail-sum{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.tail-sum > div{background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:6px 12px;font-size:.78rem;color:var(--muted)}
+.tail-sum b{font-size:1rem;color:var(--text);margin-left:4px}
+.tail-tbl{width:100%;font-size:.8rem;border-collapse:collapse}
+.tail-tbl th{padding:6px 8px;white-space:nowrap;background:#1c2128;color:var(--muted);cursor:pointer;user-select:none;text-align:right}
+.tail-tbl th:first-child,.tail-tbl td:first-child{text-align:left;position:sticky;left:0;background:var(--card);z-index:1}
+.tail-tbl th:first-child{background:#1c2128}
+.tail-tbl td{padding:6px 8px;white-space:nowrap;text-align:right;border-top:1px solid #21262d}
+.tail-tbl td.l{text-align:left}
+.tail-act button{padding:2px 7px !important;min-height:28px !important;font-size:.75rem !important}
 </style>
 </head>
 <body>
@@ -594,6 +606,7 @@ details.guide[open]>summary::before{content:'▾ ';}
   <button class="active" onclick="switchTab('watchlist')">觀察清單</button>
   <button onclick="switchTab('market')">全市場排行</button>
   <button onclick="switchTab('screen')">策略篩選</button>
+  <button onclick="switchTab('tail')">🎯 尾盤追蹤</button>
   <button onclick="switchTab('warrant')">權證股期選擇器</button>
   <button onclick="switchTab('regime')">📊 總經面板</button>
   <button onclick="switchTab('sector')">🔄 產業輪動</button>
@@ -1110,6 +1123,49 @@ details.guide[open]>summary::before{content:'▾ ';}
     </div>
     <div class="lk-howto" style="margin-top:8px">列出全市場跟它 60 天走勢最像的前 10 檔＋同產業前 5 檔。<b>相關</b>越接近 1 越同步；<b>價差偏離</b>正＝這檔相對對方貴；<b>誰先動</b>＝誰的漲跌常常早一天出現。</div>
     <div id="link-query-out" style="margin-top:10px"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ 🎯 尾盤追蹤 ═══════════════════════ -->
+<div id="tab-tail" class="tab">
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+      <strong style="font-size:1.05rem">🎯 尾盤追蹤</strong>
+      <span style="font-size:.78rem;color:var(--muted)">13:10「假跌破：收盤前還成立」的股票，尾盤進場之後的走勢</span>
+      <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn sm" onclick="tailLoad(true)">🔄 更新報價</button>
+        <button class="btn sm ghost" onclick="tailAdd()">＋ 新增</button>
+        <button class="btn sm ghost" onclick="tailImport()">📋 貼上訊息匯入</button>
+      </span>
+    </div>
+    <details id="tail-guide" class="guide">
+      <summary>📖 使用說明</summary>
+      <div class="guide-body">
+        <ul>
+          <li><b>自動加入：</b>每個交易日 13:10 Telegram 發「假跌破：收盤前還成立」時，那些股票自動加進來，進場價＝13:10 的價格（尾盤進場）。</li>
+          <li><b>停損區：</b>進場之後任何一天盤中最低價跌到「進場價 −8%」就自動移到停損區（跳空開更低就用開盤價），跟網站回測的停損 8% 同一套；停損 % 可以改。</li>
+          <li><b>觀察區：</b>其他的都留在這裡，看現價報酬、進場後最高漲幅、最大回檔、還有沒有站在 MA10 上。</li>
+          <li><b>編輯：</b>點 ✏️ 改進場價／日期／備註，或手動移到另一區（手動移過的不再自動移）；🗑 刪除。也可以「＋ 新增」任何一檔，或把 Telegram 訊息整段貼進「📋 貼上訊息匯入」。</li>
+          <li>表頭可以點來排序；點代號看 K 線。</li>
+        </ul>
+      </div>
+    </details>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:.8rem;color:var(--muted);margin-top:6px">
+      <label>停損 <input id="tail-stop" type="number" min="1" max="50" step="0.5" style="width:60px;font-size:16px" onchange="tailSetStop(this.value)"> %</label>
+      <label>加入日
+        <select id="tail-day" onchange="tailRender()" style="background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem"><option value="">全部</option></select></label>
+      <input id="tail-q" placeholder="代號／名稱" oninput="tailRender()" style="width:120px;background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem">
+      <span id="tail-status"></span>
+    </div>
+    <div id="tail-summary" class="tail-sum"></div>
+  </div>
+  <div class="card">
+    <div class="tail-h">👀 觀察區 <b id="tail-n-watch"></b></div>
+    <div id="tail-watch"><div class="muted" style="padding:20px;text-align:center">載入中...</div></div>
+  </div>
+  <div class="card">
+    <div class="tail-h" style="color:#22c55e">🛑 停損區 <b id="tail-n-stop"></b> <span class="muted" style="font-size:.75rem;font-weight:400">盤中跌到進場價 −<span id="tail-stop-lbl">8</span>% 移過來；也可以看停損後有沒有又漲回來</span></div>
+    <div id="tail-stop-zone"></div>
   </div>
 </div>
 
@@ -2263,9 +2319,8 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  const idx = { watchlist: 0, market: 1, screen: 2, warrant: 3, regime: 4, sector: 5, relationship: 6, link: 7, treasury: 8, mna: 9, cb: 10, notes: 11, discuss: 12, settings: 13 };
-  const navIdx = idx[name];
-  if (navIdx !== undefined) document.querySelectorAll('nav button')[navIdx].classList.add('active');
+  const navBtn = document.querySelector(`nav button[onclick="switchTab('${name}')"]`);   // 用按鈕本身找（加分頁不用改編號）
+  if (navBtn) navBtn.classList.add('active');
   if (name === 'settings') { _doSwitchSettings(); }
   if (name === 'regime') { const rf = document.getElementById('regime-iframe'); if (rf && !rf.dataset.loaded) { rf.dataset.loaded = '1'; rf.src = '/regime/'; } }
   if (name === 'sector') { const sf = document.getElementById('sector-iframe'); if (sf && !sf.dataset.loaded) { sf.dataset.loaded = '1'; sf.src = '/sector/'; } }
@@ -2276,6 +2331,7 @@ function switchTab(name) {
   if (name === 'treasury') { tbOnShow(); }
   if (name === 'mna') { mnaOnShow(); }
   if (name === 'cb') { cbOnShow(); }
+  if (name === 'tail') { tailOnShow(); }
   if (name === 'notes') { _notesInit(); }
   if (name === 'discuss') { discussOnShow(); }
   if (name !== 'watchlist') { _stopPriceRefreshIfActive(); }
@@ -3766,8 +3822,9 @@ function _rfReloadTabs() {
   try { _cbLoaded = false; } catch (e) {}
   try { _linkLoaded = 0; } catch (e) {}
   try { _mktLoadedAt = 0; } catch (e) {}
+  try { _tailLoaded = 0; } catch (e) {}
   const act = (document.querySelector('.tab.active') || {}).id || '';
-  const onShow = { 'tab-treasury': 'tbOnShow', 'tab-mna': 'mnaOnShow', 'tab-cb': 'cbOnShow', 'tab-link': 'linkOnShow', 'tab-market': '_mktOnShow' }[act];
+  const onShow = { 'tab-treasury': 'tbOnShow', 'tab-mna': 'mnaOnShow', 'tab-cb': 'cbOnShow', 'tab-link': 'linkOnShow', 'tab-market': '_mktOnShow', 'tab-tail': 'tailOnShow' }[act];
   if (onShow && typeof window[onShow] === 'function') { try { window[onShow](); } catch (e) {} }
 }
 
@@ -7806,6 +7863,7 @@ async function saveAllStratParams() {
 <script src="/treasury/static/treasury.js?v=20261005f"></script>
 <script src="/mna/static/mna.js?v=20261005f"></script>
 <script src="/cb/static/cb.js?v=20261005f"></script>
+<script src="/tail/static/tail.js?v=20261020a"></script>
 <script src="/notes/static/notes.js?v=20261013b"></script>
 <script src="/discuss/static/discuss.js?v=20261007a"></script>
 </body>
