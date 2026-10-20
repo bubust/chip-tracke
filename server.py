@@ -2162,6 +2162,9 @@ def _added_prices(rows) -> dict:
     return out
 
 
+_WL_YAHOO_CACHE: dict = {}   # {sid: (時間, Yahoo 日 K 算的收盤／布林／階段)}（B74：本機日 K 不夠的股票）
+
+
 @app.get("/api/watchlist/summary")
 async def api_watchlist_summary():
     from yahoo_price import get_stock_list
@@ -2230,8 +2233,18 @@ async def api_watchlist_summary():
     latest_prices = await asyncio.to_thread(local_prices_for_stocks, stock_ids)
     _tm["local"] = _time.time()
     need_yahoo = [sid for sid in stock_ids if sid not in latest_prices]
-    if need_yahoo:
-        latest_prices.update(await fetch_prices_for_stocks([(sid, mkt_map.get(sid, "twse")) for sid in need_yahoo]))
+    # 本機日 K 不夠的（ETF、新上市）→ Yahoo 結果快取 10 分鐘（現價另外由即時報價蓋上；正式站一檔 Yahoo 要 2.5 秒）
+    _now = _time.time()
+    for sid in need_yahoo:
+        _c = _WL_YAHOO_CACHE.get(sid)
+        if _c and _now - _c[0] < 600:
+            latest_prices[sid] = _c[1]
+    _ask = [sid for sid in need_yahoo if sid not in latest_prices]
+    if _ask:
+        _got = await fetch_prices_for_stocks([(sid, mkt_map.get(sid, "twse")) for sid in _ask])
+        for sid, info in _got.items():
+            _WL_YAHOO_CACHE[sid] = (_now, info)
+        latest_prices.update(_got)
     _tm["yahoo"] = _time.time()
     missing_price = [sid for sid in stock_ids if sid not in latest_prices]
     if missing_price:
@@ -2367,7 +2380,7 @@ async def api_watchlist_summary():
     last_refresh = settings_get("last_refresh")
     _t_end = _time.time()
     print(f"[wl-summary] n={len(stock_ids)} sb={_tm['sb'] - _tm['t0']:.2f}s local={_tm['local'] - _tm['sb']:.2f}s "
-          f"yahoo={_tm['yahoo'] - _tm['local']:.2f}s({len(need_yahoo)}) rt={_tm['rt'] - _tm['yahoo']:.2f}s "
+          f"yahoo={_tm['yahoo'] - _tm['local']:.2f}s({len(_ask)}/{len(need_yahoo)}) rt={_tm['rt'] - _tm['yahoo']:.2f}s "
           f"rest={_t_end - _tm['rt']:.2f}s total={_t_end - _tm['t0']:.2f}s")
 
     # ── 問題三：若有無籌碼資料的股票，且距上次更新超過 6 小時，自動背景更新 ──

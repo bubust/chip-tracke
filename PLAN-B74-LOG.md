@@ -56,3 +56,7 @@
 - Gemini 3.7-flash 第 2 次（全新呼叫，5 個修正的完整函式摘錄）：**APPROVED**（research/wave/insp_g_round2.json）
 - 最終：pytest 331 passed；verify_impl 0 不一致；檢查輪數 2/2 用完
 - 備註：第一次送 Groq 時去註解檔因編碼錯誤是空的，引擎與 AI 圓桌各送出一次空檔（回「看不到內容」，不算檢查，結果檔已刪）
+
+## 部署後（a1aa1cc 部署 success）
+- 正式站：wave.db 回補成功（TWII 6,570、SOX 6,739…）、FinMind 三個籌碼資料集正常、/api/wave/snapshot ok
+- 觀察清單 summary 1.78／3.87／3.19 秒（原本 10 秒）；log [wl-summary]：local 0.14 秒，慢在 1 檔本機日 K 不足 60 根每次打 Yahoo 2.5～2.9 秒 → 加 10 分鐘 Yahoo 快取（_WL_YAHOO_CACHE）＋測試；Gemini 3.7-flash 全新檢查 APPROVED（research/wave/insp_g_round3.json）

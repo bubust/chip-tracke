@@ -352,7 +352,8 @@ def test_summary_calls_yahoo_only_for_missing(monkeypatch):
 
     async def fake_yahoo(lst):
         asked.extend(s for s, _ in lst)
-        return {}
+        return {s: {"close": 2.0, "change_pct": 0.0, "bb_score": 0, "stage": {}} for s, _ in lst}
+    monkeypatch.setattr(server, "_WL_YAHOO_CACHE", {})
     monkeypatch.setattr(yp, "fetch_prices_for_stocks", fake_yahoo)
 
     async def no_rt(ids, mkt):
@@ -369,3 +370,5 @@ def test_summary_calls_yahoo_only_for_missing(monkeypatch):
     r = asyncio.run(server.api_watchlist_summary())
     assert asked == ["9999"]
     assert {x["stock_id"] for x in r["items"]} == {"2330", "9999"}
+    asyncio.run(server.api_watchlist_summary())           # 10 分鐘內第二次：用快取，不再打 Yahoo
+    assert asked == ["9999"]
