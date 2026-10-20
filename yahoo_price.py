@@ -317,35 +317,46 @@ async def fetch_prices_for_stocks(stock_list: list) -> dict:
 
     # Yahoo 失敗時：用 price_daily TWSE 快取補充（可計算 BB/stage）
     if failed_sids:
+        result.update({k: v for k, v in local_prices_for_stocks(failed_sids, min_rows=2).items() if k not in result})
+    return result
+
+
+def local_price_info(sid: str, days: int = 120, min_rows: int = 60) -> dict | None:
+    """本機 price_daily（官方行情）算收盤、漲跌、布林位置、階段；不到 min_rows 根回 None。
+    B74：觀察清單 summary 改用這個（以前每檔都打 Yahoo，31 檔要 10 秒）"""
+    from price_cache import get_stock_ohlcv
+    from scanner import classify_stage
+    df = get_stock_ohlcv(sid, days=days)
+    if df.empty or len(df) < max(2, min_rows):
+        return None
+    close = float(df.iloc[-1]["close"])
+    prev = float(df.iloc[-2]["close"])
+    pct = round((close - prev) / prev * 100, 2) if prev > 0 else 0.0
+    bb_score = 0.0
+    if len(df) >= 20:
+        closes = df["close"]
+        ma = closes.rolling(20).mean().iloc[-1]
+        std = closes.rolling(20).std(ddof=0).iloc[-1]
+        if not pd.isna(ma) and not pd.isna(std) and std > 0:
+            bb_score = round((close - float(ma)) / (2 * float(std)) * 10, 1)
+    try:
+        stage = classify_stage(df)
+    except Exception:
+        stage = {"code": "unknown", "label": "—", "color": "muted", "desc": "快取資料"}
+    return {"close": round(close, 2), "change_pct": pct, "bb_score": bb_score, "stage": stage,
+            "date": str(df.iloc[-1]["date"])}
+
+
+def local_prices_for_stocks(stock_ids: list, min_rows: int = 60) -> dict:
+    out = {}
+    for sid in stock_ids:
         try:
-            from price_cache import get_stock_ohlcv
-            from scanner import classify_stage
-            for sid in failed_sids:
-                try:
-                    cached_df = get_stock_ohlcv(sid, days=60)
-                    if cached_df.empty or len(cached_df) < 2:
-                        continue
-                    close = float(cached_df.iloc[-1]["close"])
-                    prev  = float(cached_df.iloc[-2]["close"])
-                    pct   = round((close - prev) / prev * 100, 2) if prev > 0 else 0.0
-                    bb_score = 0.0
-                    if len(cached_df) >= 20:
-                        closes = cached_df['close']
-                        ma  = closes.rolling(20).mean().iloc[-1]
-                        std = closes.rolling(20).std(ddof=0).iloc[-1]
-                        if not pd.isna(ma) and not pd.isna(std) and std > 0:
-                            bb_score = round((close - float(ma)) / (2 * float(std)) * 10, 1)
-                    try:
-                        stage = classify_stage(cached_df)
-                    except Exception:
-                        stage = {"code": "unknown", "label": "—", "color": "muted", "desc": "快取資料"}
-                    result[sid] = {"close": round(close, 2), "change_pct": pct,
-                                   "bb_score": bb_score, "stage": stage}
-                except Exception:
-                    pass
+            info = local_price_info(sid, min_rows=min_rows)
+            if info:
+                out[sid] = info
         except Exception:
             pass
-    return result
+    return out
 
 
 # 同步版（用於觀察清單個股查詢）

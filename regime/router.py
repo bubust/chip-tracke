@@ -145,6 +145,11 @@ def regime_refresh():
             calculate_factors()
             # Sprint 4: 更新完後補算歷史因子
             backfill_factors(days=120)
+            from .db import count_non_iso
+            with db() as _c:
+                _bad = count_non_iso(_c)
+            if _bad:
+                log.warning(f"[regime] market_daily 有 {_bad} 筆不是 YYYY-MM-DD 的日期（PLAN-B74 應該已統一）")
             log.info("[regime] 更新完成（含歷史回填）")
         except Exception as e:
             log.error(f"[regime] 更新失敗: {e}")

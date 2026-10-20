@@ -110,6 +110,8 @@ def db(tmp_path, monkeypatch):
         return True
     monkeypatch.setattr(L, "_conn", conn)
     monkeypatch.setattr(L, "_send", fake_send)
+    import wave.router as WR       # B74 大盤段：這組測試只看國際盤＋當沖，大盤段固定空的（另外測）
+    monkeypatch.setattr(WR, "push_lines", lambda *a, **k: [])
     return sent
 
 
@@ -134,3 +136,20 @@ def test_premarket_global_fails_daytrade_still_sent(db):
 def test_premarket_without_daytrade_sends_global_only(db):
     assert L.push_premarket(lambda: {"text": "🌏 只有國際盤"})["sent"]
     assert db[0][1] == "🌏 只有國際盤"
+
+
+def test_premarket_wave_section_after_global(db, monkeypatch):
+    import wave.router as WR
+    monkeypatch.setattr(WR, "push_lines", lambda *a, **k: ["🌊 加權 46,293", "短線　撐 45,936／壓 46,974"])
+    assert L.push_premarket(lambda: {"text": "🌏 國際盤"})["sent"]
+    txt = db[0][1]
+    assert txt.index("🌏 國際盤") < txt.index("🌊 加權 46,293") and "撐 45,936" in txt
+
+
+def test_premarket_wave_failure_ignored(db, monkeypatch):
+    import wave.router as WR
+    def boom(*a, **k):
+        raise RuntimeError("wave down")
+    monkeypatch.setattr(WR, "push_lines", boom)
+    assert L.push_premarket(lambda: {"text": "🌏 國際盤"})["sent"]
+    assert db[0][1] == "🌏 國際盤"

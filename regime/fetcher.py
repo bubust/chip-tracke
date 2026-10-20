@@ -786,25 +786,30 @@ def _parse_mi_index_ad(data: dict):
         except Exception:
             return None
 
-    def _scan_rows(rows):
+    def _scan_rows(rows, col=1):
         up = down = flat = None
         for row in rows:
-            if len(row) < 2:
+            if len(row) <= col:
                 continue
-            label = str(row[0]).strip()
-            v1 = _parse(row[1]) if len(row) > 1 else None
-            # 不加第二欄（type=MS 下 row[1]=全體市場, row[2]=股票），只取全體市場
-            if "上漲" in label and "停" not in label and up is None and v1 is not None:
+            # 2026-09 起標籤變成「上漲(漲停)」「下跌(跌停)」→ 先去掉括號再比對（以前看到「停」就跳過，9/24 後全部抓不到）
+            label = str(row[0]).strip().split("(")[0].split("（")[0]
+            v1 = _parse(row[col])
+            if "上漲" in label and up is None and v1 is not None:
                 up = v1
-            elif "下跌" in label and "停" not in label and down is None and v1 is not None:
+            elif "下跌" in label and down is None and v1 is not None:
                 down = v1
             elif ("持平" in label or "平盤" in label) and flat is None and v1 is not None:
                 flat = v1
         return up, down, flat
 
+    def _col(fields):
+        # PLAN-B74：只算「股票」（整體市場含上千檔權證，會蓋過真正的漲跌）；沒有股票欄才用第 2 欄
+        fs = [str(f) for f in (fields or [])]
+        return fs.index("股票") if "股票" in fs else 1
+
     # ── type=MS 格式：直接有 fields + data ──
     if "data" in data and "fields" in data:
-        up, down, flat = _scan_rows(data.get("data", []))
+        up, down, flat = _scan_rows(data.get("data", []), _col(data.get("fields")))
         if up is not None and down is not None:
             return up, down, flat or 0
 
@@ -813,7 +818,7 @@ def _parse_mi_index_ad(data: dict):
         rows = table.get("data", [])
         if not rows:
             continue
-        up, down, flat = _scan_rows(rows)
+        up, down, flat = _scan_rows(rows, _col(table.get("fields")))
         if up is not None and down is not None:
             # 舊格式可能有 TSE + OTC 兩欄，嘗試加總
             up2 = down2 = flat2 = None
@@ -864,8 +869,10 @@ def fetch_twse_market_breadth(lookback: int = 90):
                 "SELECT date FROM market_daily WHERE series='BREADTH_50MA' AND (value >= 99.9 OR value <= 0.1)"
             ).fetchall()
         )
-        # 有 AD_LINE 且 BREADTH 看起來正確 → 跳過
-        existing_ad = all_ad - wrong_breadth
+        # 已經有淨廣度（股票家數版）的日子才跳過；只有 AD_LINE 沒有廣度的要重抓（PLAN-B74）
+        have_breadth = set(r[0] for r in conn.execute(
+            "SELECT date FROM market_daily WHERE series='BREADTH_50MA' AND source IN ('TWSE_MI','FINMIND_MI')").fetchall())
+        existing_ad = (all_ad & have_breadth) - wrong_breadth
         existing_median = set(
             r[0] for r in conn.execute(
                 "SELECT date FROM market_daily WHERE series='MEDIAN_RET'"

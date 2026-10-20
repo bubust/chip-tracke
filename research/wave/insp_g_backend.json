@@ -1,0 +1,53 @@
+{
+ "mode": "inspect",
+ "files": [
+  "PLAN-B74.md",
+  "wave/engine.py",
+  "wave/levels.py",
+  "wave/features.py",
+  "wave/forecast.py",
+  "wave/data.py",
+  "wave/service.py",
+  "wave/panel.py",
+  "wave/router.py",
+  "research/wave/run.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.7-flash",
+   "raw": "{\n  \"verdict\": \"REVISE\",\n  \"summary\": \"Implementation is comprehensive, mathematically rigorous, and adheres closely to PLAN-B74. No look-ahead bias was found in ZigZag, Elliott Wave counting, levels, features, or research runner. One medium-severity defect was found in `service.py:last_good()`, where table queries lack `kind` filtering and can return `news` payloads instead of market snapshots on failure. Two minor issues exist in TWSE volume overwrites and single-AI push notification labels.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"medium\",\n      \"path\": \"service.py\",\n      \"issue\": \"last_good() queries wave_snapshot without filtering by kind, returning news JSON instead of market snapshots on failure\",\n      \"evidence\": \"In `service.py:last_good()`: `SELECT json FROM wave_snapshot ORDER BY day DESC, created_at DESC LIMIT 1`. However, `panel.py:news()` also persists to `wave_snapshot` with `kind='news'`. If `news()` is invoked after `compute()` on the same date, `last_good()` fetches the `kind='news'` payload (which contains only `items` and lacks `ok`, `chart`, `waves`, etc.). When `compute()` encounters an exception, `snapshot()` falls back to `last_good()`, returning the news object rather than the last valid market snapshot.\",\n      \"suggestion\": \"Filter by snapshot kinds in `service.py`: `SELECT json FROM wave_snapshot WHERE kind IN ('close', 'live') ORDER BY day DESC, created_at DESC LIMIT 1`.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"path\": \"data.py\",\n      \"issue\": \"save_idx overwrites existing volume with NULL during official TWSE index updates\",\n      \"evidence\": \"In `data.py:parse_twse_hist`, rows are returned with volume as `None`: `(..., num(row[4]), None)`. In `save_idx`, the upsert executes `ON CONFLICT(sym,date) DO UPDATE SET ... v=excluded.v ...`. When `update_twse_official` updates TWII, existing Yahoo volume is overwritten with NULL.\",\n      \"suggestion\": \"Use `v=COALESCE(excluded.v, idx_daily.v)` in `save_idx`'s conflict update clause to preserve existing trading volume if the incoming source does not supply it.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"low\",\n      \"path\": \"router.py\",\n      \"issue\": \"push_lines labels single AI opinion as AI 圓桌 instead of 只有 X 的看法\",\n      \"evidence\": \"In `router.py:push_lines`: `L.append(f\\\"🤖 AI 圓桌（{md(lt['day'])}）：...` regardless of whether `lt.get('mode')` is `'single'` or `'roundtable'`. PLAN-B74 §6 states: '至少 2 位成功才叫「圓桌」；只剩 1 位就標「只有 X 的看法」'.\",\n      \"suggestion\": \"Inspect `lt.get('mode')` in `push_lines`: if `'single'`, format the header as `🤖 只有 {lt.get('participants', [{}])[0].get('name', 'AI')} 的看法` instead of `🤖 AI 圓桌`.\"\n    }\n  ],\n  \"coverage\": \"Inspected all 9 submitted files: engine.py (ZigZag, Elliott Wave counting, Fibonacci), levels.py (zone aggregation, pivot_k3, dynamic levels), features.py (feature building, streak, align_prev), forecast.py (analog, Wilson interval), data.py (SQLite schema, fetchers, fallbacks, status tracking), service.py (caching, snapshot generation, scenario), panel.py (AI roundtable, providers, token cap tracking, price checks), router.py (APIs, push notifications, schedules), and run.py (R1-R6 research implementation, block bootstrap, BH correction).\",\n  \"limitations\": \"Existing server.py, dashboard.html, and regime frontend files (such as wave.js and index.html) were not included in this code bundle; frontend escaping was verified against the provided prompt specification for esc.\"\n}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "Implementation is comprehensive, mathematically rigorous, and adheres closely to PLAN-B74. No look-ahead bias was found in ZigZag, Elliott Wave counting, levels, features, or research runner. One medium-severity defect was found in `service.py:last_good()`, where table queries lack `kind` filtering and can return `news` payloads instead of market snapshots on failure. Two minor issues exist in TWSE volume overwrites and single-AI push notification labels.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "medium",
+      "path": "service.py",
+      "issue": "last_good() queries wave_snapshot without filtering by kind, returning news JSON instead of market snapshots on failure",
+      "evidence": "In `service.py:last_good()`: `SELECT json FROM wave_snapshot ORDER BY day DESC, created_at DESC LIMIT 1`. However, `panel.py:news()` also persists to `wave_snapshot` with `kind='news'`. If `news()` is invoked after `compute()` on the same date, `last_good()` fetches the `kind='news'` payload (which contains only `items` and lacks `ok`, `chart`, `waves`, etc.). When `compute()` encounters an exception, `snapshot()` falls back to `last_good()`, returning the news object rather than the last valid market snapshot.",
+      "suggestion": "Filter by snapshot kinds in `service.py`: `SELECT json FROM wave_snapshot WHERE kind IN ('close', 'live') ORDER BY day DESC, created_at DESC LIMIT 1`."
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "path": "data.py",
+      "issue": "save_idx overwrites existing volume with NULL during official TWSE index updates",
+      "evidence": "In `data.py:parse_twse_hist`, rows are returned with volume as `None`: `(..., num(row[4]), None)`. In `save_idx`, the upsert executes `ON CONFLICT(sym,date) DO UPDATE SET ... v=excluded.v ...`. When `update_twse_official` updates TWII, existing Yahoo volume is overwritten with NULL.",
+      "suggestion": "Use `v=COALESCE(excluded.v, idx_daily.v)` in `save_idx`'s conflict update clause to preserve existing trading volume if the incoming source does not supply it."
+     },
+     {
+      "id": "F3",
+      "severity": "low",
+      "path": "router.py",
+      "issue": "push_lines labels single AI opinion as AI 圓桌 instead of 只有 X 的看法",
+      "evidence": "In `router.py:push_lines`: `L.append(f\"🤖 AI 圓桌（{md(lt['day'])}）：...` regardless of whether `lt.get('mode')` is `'single'` or `'roundtable'`. PLAN-B74 §6 states: '至少 2 位成功才叫「圓桌」；只剩 1 位就標「只有 X 的看法」'.",
+      "suggestion": "Inspect `lt.get('mode')` in `push_lines`: if `'single'`, format the header as `🤖 只有 {lt.get('participants', [{}])[0].get('name', 'AI')} 的看法` instead of `🤖 AI 圓桌`."
+     }
+    ],
+    "coverage": "Inspected all 9 submitted files: engine.py (ZigZag, Elliott Wave counting, Fibonacci), levels.py (zone aggregation, pivot_k3, dynamic levels), features.py (feature building, streak, align_prev), forecast.py (analog, Wilson interval), data.py (SQLite schema, fetchers, fallbacks, status tracking), service.py (caching, snapshot generation, scenario), panel.py (AI roundtable, providers, token cap tracking, price checks), router.py (APIs, push notifications, schedules), and run.py (R1-R6 research implementation, block bootstrap, BH correction).",
+    "limitations": "Existing server.py, dashboard.html, and regime frontend files (such as wave.js and index.html) were not included in this code bundle; frontend escaping was verified against the provided prompt specification for esc."
+   }
+  }
+ ]
+}

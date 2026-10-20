@@ -4,7 +4,7 @@
 <script src="/auth-shim.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>台股市場 Regime 面板</title>
+<title>總經面板・大盤解析</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 16px; }
@@ -84,51 +84,159 @@
   }
 </style>
 <link rel="stylesheet" href="/theme.css?v=20261008">
+<style>
+  /* 🌊 大盤解析（PLAN-B74） */
+  .wv { margin-bottom: 22px; }
+  .wv-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 10px; }
+  .wv-title { font-size: 1.15rem; font-weight: 800; }
+  .wv-title small { font-size: .78rem; color: var(--muted); font-weight: 500; margin-left: 6px; }
+  #wv-price { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+  #wv-asof { font-size: .82rem; color: var(--muted); }
+  .wv-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 10px; }
+  .wv-seg { display: inline-flex; border: 1px solid var(--border2); border-radius: 9px; overflow: hidden; }
+  .wv-seg button { background: transparent; border: 0; color: var(--muted); padding: 6px 11px; font-size: .84rem; cursor: pointer; }
+  .wv-seg button.on { background: var(--accent-soft); color: #c7d7ff; font-weight: 700; }
+  .wv-tools label { font-size: .8rem; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+  #wv-alt.on { background: rgba(251,146,60,.16); color: #fdba74; border-color: rgba(251,146,60,.5); }
+  .wv-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr); gap: 12px; }
+  .wv-card { background: linear-gradient(180deg, rgba(255,255,255,.015), transparent 40%), var(--card); border: 1px solid var(--border);
+             border-radius: 14px; box-shadow: var(--shadow); padding: 14px 16px; min-width: 0; }
+  #wv-chart { height: 460px; width: 100%; }
+  #wv-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .74rem; margin-top: 6px; }
+  .wv-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .wv-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+  .wv-h3 { font-size: .95rem; font-weight: 700; margin-bottom: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+  .wv-dim { color: var(--muted); font-weight: 400; font-size: .82em; }
+  .wv-disc { color: var(--faint); font-size: .74rem; line-height: 1.55; margin-top: 8px; }
+  .wv-disc a { color: var(--accent); }
+  .wv-count { border-left: 3px solid var(--accent); padding: 6px 10px; margin-bottom: 8px; background: rgba(91,140,255,.05); border-radius: 0 8px 8px 0; }
+  .wv-count.alt { border-left-color: var(--warn); background: rgba(251,146,60,.05); }
+  .wv-ct { font-size: .74rem; color: var(--muted); margin-bottom: 2px; }
+  .wv-ctext { font-weight: 700; font-size: .95rem; line-height: 1.45; }
+  .wv-tg { font-size: .84rem; margin-top: 3px; line-height: 1.5; }
+  .wv-inv { font-size: .82rem; color: var(--warn); margin-top: 3px; }
+  .wv-mini { font-size: .84rem; line-height: 1.6; margin-top: 6px; }
+  .wv-note { font-size: .8rem; color: #fdba74; background: rgba(251,146,60,.08); border: 1px solid rgba(251,146,60,.25); border-radius: 8px; padding: 5px 9px; margin-top: 6px; }
+  .wv-badge { font-size: .74rem; padding: 1px 7px; border-radius: 6px; margin-left: 6px; }
+  .wv-badge.warn { background: rgba(251,146,60,.14); color: #fdba74; border: 1px solid rgba(251,146,60,.35); }
+  .wv-tag { font-size: .7rem; padding: 0 6px; border-radius: 5px; margin-left: 4px; white-space: nowrap; }
+  .wv-tag.ok { background: rgba(240,72,72,.12); color: #fca5a5; }
+  .wv-tag.ref { background: rgba(148,163,184,.12); color: var(--muted); }
+  .wv-tbl, .wv-tbl2 { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  .wv-tbl th { text-align: left; font-weight: 600; color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--border); font-size: .76rem; }
+  .wv-tbl td, .wv-tbl2 td { padding: 5px 6px; border-bottom: 1px solid rgba(35,45,66,.6); vertical-align: top; }
+  .wv-tbl .wv-now td { background: rgba(91,140,255,.08); color: #c7d7ff; font-weight: 700; text-align: center; font-size: .8rem; }
+  .wv-src { font-size: .74rem; color: var(--muted); line-height: 1.45; }
+  .wv-tbl td:nth-child(2), .wv-tbl td:nth-child(3) { white-space: nowrap; }
+  .wv-hi { font-size: .86rem; line-height: 1.6; background: rgba(91,140,255,.06); border-radius: 9px; padding: 7px 10px; margin-bottom: 8px; }
+  .wv-fac { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: .8rem; padding: 3px 0; }
+  .wv-fac span:first-child { color: var(--muted); min-width: 9.5em; }
+  .wv-li { font-size: .84rem; line-height: 1.6; padding: 3px 0; border-bottom: 1px dashed rgba(35,45,66,.7); }
+  .wv-ai-sum { font-size: 1rem; line-height: 1.6; margin: 8px 0; }
+  .wv-stance { display: inline-block; padding: 1px 9px; border-radius: 7px; font-weight: 800; margin-right: 6px; }
+  .wv-ai-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: .84rem; }
+  .wv-ai-grid ul, #wv-research ul, .wv-who ul { margin: 2px 0 0 18px; line-height: 1.6; }
+  .wv-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .wv-chip { font-size: .78rem; padding: 2px 8px; border: 1px solid var(--border2); border-radius: 999px; }
+  .wv-who { margin-top: 6px; font-size: .84rem; }
+  .wv-who summary, #wv-research summary { cursor: pointer; line-height: 1.6; }
+  #wv-ai .btn { padding: 4px 10px; font-size: .8rem; }
+  #wv-msg { display: none; padding: 14px; color: var(--muted); }
+  .status-row { display: grid; grid-template-columns: minmax(200px, .8fr) 2fr; gap: 12px; margin-bottom: 16px; }
+  .status-row .regime-box, .status-row .suggest-box { margin-bottom: 0 !important; }
+  details.history-table > summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
+  @media (max-width: 1100px) { .wv-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 700px) {
+    .wv-cards, .wv-ai-grid, .status-row { grid-template-columns: 1fr; }
+    #wv-chart { height: 320px; }
+    .wv-card { padding: 12px; }
+    .wv-src { display: none; }
+  }
+</style>
 </head>
 <body>
 
 <div class="header">
-  <h1>🇹🇼 台股市場 Regime</h1>
+  <h1>📊 總經面板</h1>
   <span class="date" id="regime-date">—</span>
-  <button class="btn" onclick="refresh()">🔄 更新資料</button>
+  <button class="btn" onclick="refresh()">🔄 更新總經資料</button>
 </div>
 <div id="status-bar">資料載入中...</div>
 
-<!-- 市場狀態 + 操作建議（最頂部，只顯示一組） -->
-<div class="regime-box" style="margin-bottom:16px">
+<!-- 🌊 大盤解析（PLAN-B74）：wave.js -->
+<section class="wv" id="wv-root">
+  <div class="wv-top">
+    <div class="wv-title">🌊 大盤解析<small>艾略特波浪＋費波那契＋籌碼＋國際＋AI 圓桌</small></div>
+    <div id="wv-price">—</div>
+    <div id="wv-asof"></div>
+  </div>
+  <div class="wv-tools">
+    <span class="wv-seg"><button data-wv-mode="short">短線 1～2 週</button><button data-wv-mode="swing">波段 1～3 個月</button></span>
+    <span class="wv-seg"><button data-wv-iv="1d">日 K</button><button data-wv-iv="1wk">週 K</button></span>
+    <span class="wv-seg"><button data-wv-deg="small">小級</button><button data-wv-deg="mid">中級</button><button data-wv-deg="big">大級</button></span>
+    <button class="btn" id="wv-alt" title="圖上改標替代劇本的浪別">替代劇本</button>
+    <label><input type="checkbox" data-wv-show="lv" checked>支撐壓力</label>
+    <label><input type="checkbox" data-wv-show="fib" checked>費波那契</label>
+    <label><input type="checkbox" data-wv-show="tg" checked>目標／失效</label>
+    <button class="btn" id="wv-refresh" title="重抓國外指數、籌碼並重算">🔄 重抓</button>
+  </div>
+  <div id="wv-msg"></div>
+  <div class="wv-grid">
+    <div class="wv-side">
+      <div class="wv-card"><div id="wv-chart"></div><div id="wv-legend"></div></div>
+      <div class="wv-card" id="wv-levels"></div>
+    </div>
+    <div class="wv-side">
+      <div class="wv-card" id="wv-scen"></div>
+      <div class="wv-card" id="wv-fc"></div>
+      <div class="wv-card" id="wv-ctx"></div>
+    </div>
+  </div>
+  <div class="wv-card" id="wv-ai" style="margin-top:12px"><div class="wv-h3">🤖 AI 圓桌</div><div class="wv-dim">載入中…</div></div>
+  <div class="wv-cards">
+    <div class="wv-card" id="wv-chips"></div>
+    <div class="wv-card" id="wv-global"></div>
+  </div>
+  <details class="wv-card" id="wv-research" style="margin-top:12px"></details>
+</section>
+
+<h2>總經狀態</h2>
+<div class="status-row">
+<div class="regime-box">
   <div class="label" style="text-align:center;font-size:.8rem;color:#8b949e;margin-bottom:4px">市場狀態</div>
   <div class="regime-label" id="regime-label-top">載入中…</div>
 </div>
-<div class="suggest-box" style="margin-bottom:16px">
+<div class="suggest-box">
   <div class="suggest-title">💡 操作建議</div>
   <div class="suggest-action" id="suggest-action">—</div>
   <div class="suggest-desc" id="suggest-desc">—</div>
   <div class="suggest-tags" id="suggest-tags"></div>
 </div>
+</div>
 
 <!-- 三大核心分數 -->
 <div class="grid3">
   <div class="score-card" id="card-dir">
-    <div class="label">方向 Direction</div>
+    <div class="label">方向分數</div>
     <div class="value" id="dir-val">—</div>
     <div class="sub">市場方向（-100~+100）</div>
     <div class="desc">七大因子加權合成。正值偏多、負值偏空。<br>持續 &lt; −30 時避免主動做多</div>
   </div>
   <div class="score-card" id="card-risk">
-    <div class="label">風險 Risk Score</div>
+    <div class="label">風險分數</div>
     <div class="value" id="risk-val">—</div>
     <div class="sub">市場脆弱度（0~100）</div>
     <div class="desc">分數越高越危險（VIX、融資、匯率加權）。<br>&lt;50 穩健｜50~70 留意停損｜&gt;70 偏高、&gt;85 極端風險</div>
   </div>
   <div class="score-card" id="card-ex">
-    <div class="label">竭盡 Exhaustion</div>
+    <div class="label">竭盡分數</div>
     <div class="value" id="ex-val">—</div>
     <div class="sub" id="ex-status" style="font-size:.78rem;font-weight:600;margin-top:2px">—</div>
     <div class="desc" style="margin-top:6px">
       <b>0 = 正常</b>，無極端訊號（多數時候如此）<br>
       接近 <b style="color:#3fb950">−100</b> → 跌深賣壓耗盡，可能反彈<br>
       接近 <b style="color:#f85149">+100</b> → 買盤過熱，可能見頂<br>
-      <span style="color:#484f58;font-size:.72rem">觸發門檻：廣度 &lt;25% 或 &gt;75% 才會出現非零值</span>
+      <span style="color:#484f58;font-size:.72rem">觸發門檻：淨廣度 &lt;−50 或 &gt;+50 才會出現非零值</span>
     </div>
   </div>
 </div>
@@ -136,7 +244,7 @@
 <!-- 廣度進度條 -->
 <div style="background:#161b22;border:1px solid #21262d;border-radius:10px;padding:14px 16px;margin-bottom:16px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-    <span style="font-size:.8rem;color:#8b949e">廣度分數 — (站上50MA% − 50) × 2，與四大因子一致（-100~+100）</span>
+    <span style="font-size:.8rem;color:#8b949e">淨廣度＝（上漲−下跌家數）÷ 上市股票家數（−100～+100）</span>
     <span id="breadth-pct" style="font-size:1rem;font-weight:700;color:#e6edf3">—</span>
   </div>
   <div style="background:#0d1117;border-radius:4px;height:10px;overflow:hidden">
@@ -150,14 +258,14 @@
 <!-- 過熱/恐慌指數 -->
 <div class="oh-grid">
   <div class="oh-card" id="card-overheating">
-    <div class="label">過熱指數 Overheating</div>
+    <div class="label">過熱指數</div>
     <div class="value" id="oh-val">—</div>
     <div class="bar-wrap"><div class="bar" id="oh-bar" style="width:0%"></div></div>
     <div class="threshold">過熱閾值 50% | 公式：成交量 ÷ 委買量</div>
     <div class="desc">&gt;50% 買盤被大量消化，追漲風險高<br>&lt;30% 委買多但觀望，市場謹慎</div>
   </div>
   <div class="oh-card" id="card-panic">
-    <div class="label">恐慌指數 Panic</div>
+    <div class="label">恐慌指數</div>
     <div class="value" id="pa-val">—</div>
     <div class="bar-wrap"><div class="bar" id="pa-bar" style="width:0%"></div></div>
     <div class="threshold">恐慌閾值 75% | 公式：成交量 ÷ 委賣量</div>
@@ -169,25 +277,27 @@
 <h2>60 日走勢圖</h2>
 <div class="chart-box">
   <div class="chart-legend">
-    <span><i style="background:#5b8cff"></i> Direction 方向</span>
-    <span><i style="background:#fb923c"></i> Risk Score 風險</span>
-    <span><i style="background:#d29922"></i> Exhaustion 竭盡</span>
+    <span><i style="background:#5b8cff"></i> 方向</span>
+    <span><i style="background:#fb923c"></i> 風險</span>
+    <span><i style="background:#d29922"></i> 竭盡</span>
   </div>
   <canvas id="history-chart"></canvas>
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;font-size:.78rem;color:#8b949e;border-top:1px solid #21262d;padding-top:8px">
-    <div><b style="color:#5b8cff">Direction 方向</b><br>七大因子加權合成（-100~+100）<br>正值代表多頭傾向，負值代表空頭傾向。&lt;-30 時避免主動做多</div>
-    <div><b style="color:#fb923c">Risk Score 風險</b><br>市場脆弱度（0~100，VIX、融資、匯率）<br>數值越高越危險。&lt;50 穩健｜50~70 留意停損｜&gt;70 偏高、&gt;85 極端風險</div>
-    <div><b style="color:#d29922">Exhaustion 竭盡</b><br>極端竭盡指標（-100~+100）<br>接近 -100 → 賣壓耗盡可能反彈；接近 +100 → 買盤過熱可能見頂</div>
+    <div><b style="color:#5b8cff">方向</b><br>七大因子加權合成（-100~+100）<br>正值代表多頭傾向，負值代表空頭傾向。&lt;-30 時避免主動做多</div>
+    <div><b style="color:#fb923c">風險</b><br>市場脆弱度（0~100，VIX、融資、匯率）<br>數值越高越危險。&lt;50 穩健｜50~70 留意停損｜&gt;70 偏高、&gt;85 極端風險</div>
+    <div><b style="color:#d29922">竭盡</b><br>極端竭盡指標（-100~+100）<br>接近 -100 → 賣壓耗盡可能反彈；接近 +100 → 買盤過熱可能見頂</div>
   </div>
 </div>
 
 <!-- Regime 標籤歷史 Sprint 3 -->
-<h2>近期市場狀態記錄</h2>
-<div class="history-table" id="history-table">
-  <div style="color:#8b949e;font-size:.82rem;text-align:center;padding:12px">載入中...</div>
-</div>
+<details class="history-table" style="margin-bottom:20px">
+  <summary>📅 近 30 天市場狀態記錄（點開）</summary>
+  <div id="history-table" style="margin-top:10px">
+    <div style="color:#8b949e;font-size:.82rem;text-align:center;padding:12px">載入中...</div>
+  </div>
+</details>
 
-<h2>四大方向因子</h2>
+<h2>七大因子</h2>
 <div class="factors-grid" id="factors-grid">
   <div class="factor-row"><div class="name">載入中...</div></div>
 </div>
@@ -204,7 +314,7 @@ const SERIES_LABELS = {
   USDTWD: 'USD/TWD', TSM_ADR: 'TSM ADR', NASDAQ: 'Nasdaq',
   MARGIN_BALANCE: '融資餘額(股)', SHORT_BALANCE: '融券餘額(股)', SHORT_MARGIN_RATIO: '券資比(%)',
   FOREIGN_NET_LOT: '外資現貨(張)',
-  BREADTH_50MA: '淨廣度%', AD_LINE: '漲跌家數差',
+  BREADTH_50MA: '淨廣度（股票）', AD_LINE: '漲跌家數差（股票）',
   MEDIAN_RET: '全市場中位數漲跌(%)', FOREIGN_FUTURES_NET: '外資期貨淨部位(張)',
   OVERHEATING_INDEX: '過熱指數 (成交/委買)',
   PANIC_INDEX: '恐慌指數 (成交/委賣)',
@@ -380,19 +490,19 @@ function renderToday(data) {
 
   // Factors
   const factors = [
-    { name: 'Trend 趨勢',        key: 'trend',        dir: true,
+    { name: '趨勢',              key: 'trend',        dir: true,
       desc: '均線排列與 MACD 方向。正值多頭、負值空頭' },
-    { name: 'Breadth 廣度',      key: 'breadth',      dir: true,
-      desc: 'TWSE 上漲家數占比（官方資料）。&lt;−50 代表賣壓擴散，選股難度高' },
-    { name: 'Positioning 籌碼',  key: 'positioning',  dir: true,
+    { name: '廣度',              key: 'breadth',      dir: true,
+      desc: '淨廣度＝（上漲−下跌）÷ 上市股票家數（證交所）。&lt;−50 代表賣壓擴散，選股難度高' },
+    { name: '籌碼',              key: 'positioning',  dir: true,
       desc: '外資現貨+期貨+融資的綜合方向。正值外資買進、負值賣超' },
-    { name: 'Macro 總經',        key: 'macro_factor', dir: true,
+    { name: '總經',              key: 'macro_factor', dir: true,
       desc: 'VIX、美債、美元、SOX 半導體等外部環境。負值代表外部風險升高' },
-    { name: 'Leverage 槓桿風險', key: 'leverage_risk',dir: false, nullText: '資料累積中',
+    { name: '槓桿風險',          key: 'leverage_risk',dir: false, nullText: '資料累積中',
       desc: '融資餘額近 20 日增減＋在歷史中的水位。50 中性，&gt;70 槓桿過高，下跌易引爆斷頭潮' },
-    { name: 'Concentration 集中',key: 'concentration',dir: false,
+    { name: '集中度',            key: 'concentration',dir: false,
       desc: '漲幅集中少數股(如台積電)的程度。100 = 指數假象，底下多數股在跌' },
-    { name: 'Divergence 背離',   key: 'divergence',   dir: true, nullText: '資料累積中',
+    { name: '背離',              key: 'divergence',   dir: true, nullText: '資料累積中',
       desc: '近 10 日多數股票（中位數）比指數強或弱。0 附近＝同步；正值＝個股撐、底部訊號；負值＝只靠權值股撐、見頂警訊' },
   ];
 
@@ -573,9 +683,8 @@ async function loadBreadth() {
     const data = await api('/api/regime/series/BREADTH_50MA?days=2');
     if (!data || !data.length) return;
     const val = data[data.length - 1].value;
-    // BREADTH_50MA = % 股票站上50MA（0~100），轉為方向分數與「四大因子」一致
-    // score = (val - 50) * 2，範圍 -100~+100
-    const score = Math.round((val - 50) * 200) / 100;
+    // BREADTH_50MA＝淨廣度（上漲−下跌）÷ 家數 ×100，本來就是 −100～+100（PLAN-B74；以前多做一次 (v−50)×2 → 永遠偏空）
+    const score = Math.max(-100, Math.min(100, Math.round(val * 100) / 100));
     const sign = score >= 0 ? '+' : '';
     document.getElementById('breadth-pct').textContent = sign + score.toFixed(1);
     const col = colorDir(score);
@@ -775,5 +884,6 @@ window.addEventListener('resize', () => {
   api('/api/regime/history?days=60').then(h => { if (h) drawHistoryChart(h); }).catch(()=>{});
 });
 </script>
+<script src="/regime/static/wave.js?v=20261020"></script>
 </body>
 </html>

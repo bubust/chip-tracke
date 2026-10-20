@@ -112,12 +112,12 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
     else:
         trend_score = 0.0
 
-    # ── Breadth (Sprint 2: % stocks above 50MA + AD趨勢) ─────────────────
+    # ── Breadth：淨廣度＝(上漲−下跌)÷家數×100（股票，−100～100；系列名稱沿用 BREADTH_50MA，PLAN-B74）──
     if breadth_50ma and len(breadth_50ma) >= 5:
         b_vals = [v for _, v in breadth_50ma[-20:]]
-        cur_b = b_vals[-1]  # 0~100，例如 60 = 60% 股票站上50MA
-        # 轉換為 -100~+100 方向分數：50% 為中性
-        b_dir = _pct_to_direction(cur_b)
+        cur_b = b_vals[-1]
+        # 以前把淨廣度當成 0～100 的比例再 (v−50)×2 → 系統性偏空（例：淨廣度 +33 算成 −33）
+        b_dir = max(-100.0, min(100.0, cur_b))
         # A/D 趨勢加權（A/D 5日均vs20日均，方向一致加分）
         ad_boost = 0.0
         if ad_line and len(ad_line) >= 20:
@@ -223,11 +223,12 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
     # 正值(+100) = 買盤過熱可能見頂，負值(-100) = 賣壓耗盡可能反彈
     exhaustion = 0.0
     def _signed_exhaustion(cur_breadth, vix_extreme):
-        if cur_breadth > 75:
-            be = (cur_breadth - 75) / 25 * 50
+        # 淨廣度門檻：原本比例 >75%／<25% ＝ 淨廣度 >+50／<−50（同一個意思）
+        if cur_breadth > 50:
+            be = (cur_breadth - 50) / 50 * 50
             return round(min(100, be * 0.6 + vix_extreme * 0.4), 1)
-        elif cur_breadth < 25:
-            be = (25 - cur_breadth) / 25 * 50
+        elif cur_breadth < -50:
+            be = (-50 - cur_breadth) / 50 * 50
             return -round(min(100, be * 0.6 + vix_extreme * 0.4), 1)
         return 0.0
 
@@ -278,11 +279,11 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
         # MEDIAN_RET 無資料：用廣度變化代理集中度
         b_recent = [v for _, v in breadth_50ma[-10:]]
         b_avg = sum(b_recent) / len(b_recent)
-        # 廣度遠低於 50% 且指數向上 → 集中度高
-        if t1 > 0 and b_avg < 45:
-            concentration = round(min(100, (45 - b_avg) * 3), 1)
-        elif t1 < 0 and b_avg > 55:
-            concentration = round(min(100, (b_avg - 55) * 3), 1)
+        # 淨廣度偏負但指數向上 → 集中度高（原本比例 45%／55% ＝ 淨廣度 −10／+10）
+        if t1 > 0 and b_avg < -10:
+            concentration = round(min(100, (-10 - b_avg) * 1.5), 1)
+        elif t1 < 0 and b_avg > 10:
+            concentration = round(min(100, (b_avg - 10) * 1.5), 1)
         else:
             concentration = 0.0
 
@@ -299,8 +300,8 @@ def calculate_factors(target_date: Optional[str] = None) -> dict:
         med_cum = sum(v for _, v in median_ret[-10:])
         divergence = round(max(-100, min(100, (med_cum - taiex_ret10) * 8)), 1)
     elif breadth_50ma and len(breadth_50ma) >= 10 and taiex_ret10 is not None:
-        b_trend = breadth_50ma[-1][1] - breadth_50ma[-10][1]       # 廣度變化（百分點）
-        divergence = round(max(-100, min(100, b_trend * 2 - taiex_ret10 * 6)), 1)
+        b_trend = breadth_50ma[-1][1] - breadth_50ma[-10][1]       # 淨廣度變化（點；約是舊比例的 2 倍）
+        divergence = round(max(-100, min(100, b_trend - taiex_ret10 * 6)), 1)
     elif otc and len(otc) >= 11 and taiex_ret10 is not None:
         otc_ret10 = (otc[-1][1] - otc[-11][1]) / max(otc[-11][1], 1) * 100
         divergence = round(max(-100, min(100, (otc_ret10 - taiex_ret10) * 8)), 1)

@@ -353,6 +353,15 @@ details.guide[open]>summary::before{content:'▾ ';}
                color: var(--muted); white-space: nowrap; flex-shrink: 0; }
   nav button:hover:not(.active) { background: rgba(255,255,255,.04); color: var(--text); }
   nav button.active { background: var(--accent-soft); color: #c7d7ff; font-weight: 700; box-shadow: inset 0 0 0 1px rgba(91,140,255,.35); }
+  /* B74：15 個分頁 → 桌機（≥900）換行全部顯示；手機維持左右滑，右邊加漸層提示「還有更多」 */
+  @media (min-width: 900px) {
+    nav { flex-wrap: wrap; overflow-x: visible; row-gap: 4px; }
+    nav button { padding: 7px 12px; }
+  }
+  @media (max-width: 899px) {
+    nav::after { content: ''; position: sticky; right: -8px; flex: 0 0 28px; margin-left: -28px; pointer-events: none;
+                 background: linear-gradient(to right, rgba(11,15,23,0), rgba(11,15,23,.95)); }
+  }
 
   main { padding: 18px 20px; }
   .card { background: linear-gradient(180deg, rgba(255,255,255,.015), transparent 40%), var(--card);
@@ -2320,7 +2329,10 @@ function switchTab(name) {
   document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   const navBtn = document.querySelector(`nav button[onclick="switchTab('${name}')"]`);   // 用按鈕本身找（加分頁不用改編號）
-  if (navBtn) navBtn.classList.add('active');
+  if (navBtn) {
+    navBtn.classList.add('active');
+    if (window.innerWidth < 900) { try { navBtn.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); } catch (e) { /* 舊瀏覽器 */ } }
+  }
   if (name === 'settings') { _doSwitchSettings(); }
   if (name === 'regime') { const rf = document.getElementById('regime-iframe'); if (rf && !rf.dataset.loaded) { rf.dataset.loaded = '1'; rf.src = '/regime/'; } }
   if (name === 'sector') { const sf = document.getElementById('sector-iframe'); if (sf && !sf.dataset.loaded) { sf.dataset.loaded = '1'; sf.src = '/sector/'; } }
@@ -2399,6 +2411,31 @@ function lsLoadWatchlist() {
 
 function lsClearWatchlist() {
   try { localStorage.removeItem(WL_LS_KEY); } catch(e) {}
+  try { localStorage.removeItem(WL_SNAP_KEY); } catch(e) {}
+}
+
+// B74：上次 /api/watchlist/summary 的完整資料（開頁先畫出來，伺服器回來再換；只在這台裝置）
+const WL_SNAP_KEY = 'chip_wl_summary_v1';
+function _wlSnapSave(resp) {
+  try { localStorage.setItem(WL_SNAP_KEY, JSON.stringify({ t: Date.now(), items: resp.items || [], last_refresh: resp.last_refresh || null })); } catch (e) {}
+}
+function _wlSnapLoad() {
+  try {
+    const s = JSON.parse(localStorage.getItem(WL_SNAP_KEY) || 'null');
+    return s && Array.isArray(s.items) && s.items.length ? s : null;
+  } catch (e) { return null; }
+}
+function _wlUpdating(on) {
+  let el = document.getElementById('wl-updating');
+  if (!el) {
+    const anchor = document.getElementById('chip-data-date');
+    if (!anchor || !anchor.parentNode) return;
+    el = document.createElement('span');
+    el.id = 'wl-updating';
+    el.style.cssText = 'font-size:.75rem;color:var(--muted);margin-left:6px';
+    anchor.parentNode.insertBefore(el, anchor.nextSibling);
+  }
+  el.textContent = on ? '⏳ 更新中…（先顯示上次的資料）' : '';
 }
 
 function clearLocalWatchlist() {
@@ -2416,20 +2453,31 @@ function updateLocalWlInfo() {
 
 // ── 載入 watchlist summary ──
 async function loadWatchlist() {
-  // 冷啟動保護：先從 localStorage 預顯示，讓使用者不會看到空清單
+  // 冷啟動保護：先畫上次的完整資料（B74），沒有才用只有代號的備份，讓使用者不會看到空清單
+  let _shown = false;
   if (_wlData.length === 0) {
-    const ls = lsLoadWatchlist();
-    if (ls.length > 0) {
-      _wlData = ls.map(x => ({ stock_id: x.stock_id, name: x.name || '', memo: x.memo || '', note: x.note || '', has_data: false }));
-      renderWatchlist();
+    const snap = _wlSnapLoad();
+    if (snap) {
+      _wlData = snap.items;
+      renderWatchlist({ snapshot: true });
+      _shown = true;
+    } else {
+      const ls = lsLoadWatchlist();
+      if (ls.length > 0) {
+        _wlData = ls.map(x => ({ stock_id: x.stock_id, name: x.name || '', memo: x.memo || '', note: x.note || '', has_data: false }));
+        renderWatchlist({ snapshot: true });
+      }
     }
   }
 
-  document.getElementById('wl-loading').style.display = 'flex';
+  // 已經有東西可以看 → 不要把表格藏起來，只標「更新中」
+  document.getElementById('wl-loading').style.display = _shown ? 'none' : 'flex';
   document.getElementById('wl-empty').style.display = 'none';
-  document.getElementById('wl-table-wrap').style.display = 'none';
+  if (!_shown) document.getElementById('wl-table-wrap').style.display = 'none';
+  _wlUpdating(_shown);
   try {
     const _wlResp = await api('GET', '/api/watchlist/summary');
+    if (!Array.isArray(_wlResp)) _wlSnapSave(_wlResp);
     _wlData = Array.isArray(_wlResp) ? _wlResp : (_wlResp.items || []);
     // 顯示最後更新時間（不管有沒有籌碼資料都顯示）
     if (!Array.isArray(_wlResp) && _wlResp.last_refresh) {
@@ -2482,14 +2530,17 @@ async function loadWatchlist() {
     setTimeout(() => loadWatchlist(), 5000);
   } finally {
     document.getElementById('wl-loading').style.display = 'none';
+    _wlUpdating(false);
   }
   updateLocalWlInfo();
 }
 
-function renderWatchlist() {
+function renderWatchlist(opts) {
   try { document.querySelector('#tab-warrant iframe').contentWindow.refreshWlButtons(); } catch (e) { /* 權證分頁還沒載入 */ }
-  setTimeout(_loadLevels, 0);   // 關鍵價位非同步補上
-  setTimeout(_loadBestWatch, 0);   // 🔬 研究候選（PLAN-BEST）的出場狀態
+  if (!(opts && opts.snapshot)) {   // 先畫上次資料時不重抓關鍵價位（伺服器回來會再畫一次）
+    setTimeout(_loadLevels, 0);   // 關鍵價位非同步補上
+    setTimeout(_loadBestWatch, 0);   // 🔬 研究候選（PLAN-BEST）的出場狀態
+  }
   const tbody = document.getElementById('wl-tbody');
   if (!_wlData.length) {
     document.getElementById('wl-empty').style.display = 'block';
@@ -6219,6 +6270,9 @@ async function warmupServer() {
 
 (async function init() {
   await warmupServer();
+  // B74：指數列、觀察清單一開始就並行（以前要等掃描結果 311KB 下載完、觀察清單 10 秒後才開始抓指數）
+  startIndicesRefresh();   // 市場指數列（常駐刷新）
+  const _wlPromise = loadWatchlist();
   loadDistMap();
   startCacheWarmupPolling();
 
@@ -6233,11 +6287,12 @@ async function warmupServer() {
       _ghBadgeSet(_t, _b.isOk, false);  // persist=false 避免重寫
     }
   } catch(e) {}
-  try { _scanWarrantNote(await api('GET', '/api/screen/status')); } catch(e) {}
+  let _initStatus = null;
+  try { _initStatus = await api('GET', '/api/screen/status'); _scanWarrantNote(_initStatus); } catch(e) {}
 
   // 偵測掃描正在執行 → 自動重連進度追蹤（不需要使用者再按一次）
   try {
-    const _initStatus = await api('GET', '/api/screen/status');
+    if (!_initStatus) throw new Error('no status');
     if (_initStatus.running) {
       const _ghBtn = document.getElementById('btn-trigger-gh');
       _ghBtn.disabled = true; _ghBtn.textContent = '⚡ 掃描中...';
@@ -6307,10 +6362,9 @@ async function warmupServer() {
   }
 
 
-  await loadWatchlist();
+  await _wlPromise;
   await loadPill();
   renderQueryHistory();
-  startIndicesRefresh();   // 市場指數列（常駐刷新）
   // 頁面重整後自動恢復掃描進度（如果伺服器掃描仍在跑）
   try {
     const s = await api('GET', '/api/screen/status');

@@ -1,0 +1,39 @@
+{
+ "mode": "inspect",
+ "files": [
+  "PLAN-B74.md",
+  "C:/Users/牆泥袋溥/AppData/Local/Temp/claude/C--Users------Desktop/0a4ac6cf-0338-49c6-bd26-1b92b5bef9d3/scratchpad/b74/modified_backend.diff",
+  "C:/Users/牆泥袋溥/AppData/Local/Temp/claude/C--Users------Desktop/0a4ac6cf-0338-49c6-bd26-1b92b5bef9d3/scratchpad/b74/modified_frontend.diff",
+  "regime-frontend/wave.js"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.7-flash",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"Implementation matches PLAN-B74 across backend optimizations, regime fixes, and frontend features. Watchlist summary local price caching, MI_INDEX stock-column filtering, net breadth normalization, and Telegram premarket integration are well-implemented. One medium frontend timezone issue was found in forecast cone date calculations.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"medium\",\n      \"path\": \"regime-frontend/wave.js\",\n      \"issue\": \"futureDays() produces off-by-one dates and weekend dates (Sundays) in Taiwan timezone (UTC+8)\",\n      \"evidence\": \"In futureDays(last, n), 'new Date(last + \\\"T00:00:00\\\")' initializes a Date at local midnight (e.g. UTC+8). 'd.setDate(d.getDate() + 1)' moves to local Oct 21 00:00:00, but 'd.toISOString().slice(0, 10)' converts to UTC (Oct 20 16:00:00Z -> '2026-10-20'). As a result, out[0] duplicates 'last', trading days shift back 1 calendar day, and trading Mondays become Sundays ('2026-10-25') in the forecast cone series.\",\n      \"suggestion\": \"Parse and iterate purely in UTC: 'const [y, m, day] = last.split(\\\"-\\\").map(Number); const d = new Date(Date.UTC(y, m - 1, day)); while (out.length < n) { d.setUTCDate(d.getUTCDate() + 1); if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6) out.push(d.toISOString().slice(0, 10)); }'\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"path\": \"regime-frontend/wave.js\",\n      \"issue\": \"drawChart() may throw TypeError accessing bars[bars.length - 1].time if bars is empty\",\n      \"evidence\": \"In line 265: 'if (!weekly && fc.h5 && fc.h20) { const last = bars[bars.length - 1].time; ...}'. If S.chart.bars is empty, bars[bars.length - 1] is undefined and .time will raise an uncaught exception, aborting the rest of drawChart().\",\n      \"suggestion\": \"Add a length check: 'if (!weekly && fc.h5 && fc.h20 && bars.length) { ... }'\"\n    }\n  ],\n  \"coverage\": \"Inspected all diffs for server.py, yahoo_price.py, regime/db.py, regime/factor.py, regime/fetcher.py, regime/router.py, course_live.py, tests/test_global_brief.py, dashboard.html, regime-frontend/index.html, and regime-frontend/wave.js against PLAN-B74.\",\n  \"limitations\": \"Wave backend modules (wave/engine.py, wave/data.py, wave/panel.py, wave/levels.py, wave/chips.py, wave/globalx.py, wave/forecast.py) were audited separately in Group 1 and were not re-reviewed here except via their interfaces.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "Implementation matches PLAN-B74 across backend optimizations, regime fixes, and frontend features. Watchlist summary local price caching, MI_INDEX stock-column filtering, net breadth normalization, and Telegram premarket integration are well-implemented. One medium frontend timezone issue was found in forecast cone date calculations.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "medium",
+      "path": "regime-frontend/wave.js",
+      "issue": "futureDays() produces off-by-one dates and weekend dates (Sundays) in Taiwan timezone (UTC+8)",
+      "evidence": "In futureDays(last, n), 'new Date(last + \"T00:00:00\")' initializes a Date at local midnight (e.g. UTC+8). 'd.setDate(d.getDate() + 1)' moves to local Oct 21 00:00:00, but 'd.toISOString().slice(0, 10)' converts to UTC (Oct 20 16:00:00Z -> '2026-10-20'). As a result, out[0] duplicates 'last', trading days shift back 1 calendar day, and trading Mondays become Sundays ('2026-10-25') in the forecast cone series.",
+      "suggestion": "Parse and iterate purely in UTC: 'const [y, m, day] = last.split(\"-\").map(Number); const d = new Date(Date.UTC(y, m - 1, day)); while (out.length < n) { d.setUTCDate(d.getUTCDate() + 1); if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6) out.push(d.toISOString().slice(0, 10)); }'"
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "path": "regime-frontend/wave.js",
+      "issue": "drawChart() may throw TypeError accessing bars[bars.length - 1].time if bars is empty",
+      "evidence": "In line 265: 'if (!weekly && fc.h5 && fc.h20) { const last = bars[bars.length - 1].time; ...}'. If S.chart.bars is empty, bars[bars.length - 1] is undefined and .time will raise an uncaught exception, aborting the rest of drawChart().",
+      "suggestion": "Add a length check: 'if (!weekly && fc.h5 && fc.h20 && bars.length) { ... }'"
+     }
+    ],
+    "coverage": "Inspected all diffs for server.py, yahoo_price.py, regime/db.py, regime/factor.py, regime/fetcher.py, regime/router.py, course_live.py, tests/test_global_brief.py, dashboard.html, regime-frontend/index.html, and regime-frontend/wave.js against PLAN-B74.",
+    "limitations": "Wave backend modules (wave/engine.py, wave/data.py, wave/panel.py, wave/levels.py, wave/chips.py, wave/globalx.py, wave/forecast.py) were audited separately in Group 1 and were not re-reviewed here except via their interfaces."
+   }
+  }
+ ]
+}

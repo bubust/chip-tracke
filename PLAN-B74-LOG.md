@@ -32,3 +32,27 @@
   - low F2：連買／連賣天數用交易日列計算 → 實作時處理
 - Groq：planA 第 2 輪 APPROVED；planB 第 3 輪 REVISE，未解決的都是主機駁回或計畫已涵蓋（CI 瀏覽器測試×3、Redis、Slack、再次提偷看／樣本數）→ 停止送 Groq 計畫審查（第 4 輪），立場見第 3 輪處置
 - 結論：計畫以 Gemini 核准版開工；Groq 後半未全核准，上列駁回理由照實回報給用戶
+
+## 實作（builder=Claude，開工前 commit f00d521，分支 b74）
+- 研究：research/wave/{fetch,calibrate,run,report,verify_impl}.py；結果 research/wave/REPORT.md、results/stats_full.json、wave/stats.json
+  - 級數校準（只用 2000–2015、看平均波段長度）：小級 m=2.0（10.1 天）、中級 4.0（37.9 天）、大級 11.5（166.5 天）
+  - 91 個假設整體 BH：R1 費波那契（分布、守住率 37.6% vs 對照 37.3%）△；R2 所有價位類型 △（≥2 來源重疊 +3.0 點 [0.6, 5.4]、4 時期都正，但沒到 +5 點、q=0.13）；R3 浪別 △；R4 籌碼 △；R5 只有「前一晚費半 → 加權隔天」樣本外 R² 0.21 ✅（5／20 天沒有）；R6 相似狀態 Brier 比全部歷史差（20 天 −0.016）△
+  - verify_impl：50 天 × 3 級數，截斷資料重算 vs 研究狀態 0 不一致
+- **跟計畫不同**：R6 沒過 → 預測區間（圖上錐形、劇本文字）改用全部歷史分布，相似狀態只當參考（計畫 §4.7 原本畫相似狀態的區間）；另外加 GET /api/wave/report（研究報告純文字）
+- 網站：wave/{engine,levels,features,forecast,data,service,panel,router}.py；regime-frontend/wave.js＋index.html 改版；server.py（路由、啟動、排程 08:20／13:45／16:30／21:40、全系統更新「大盤解析」步驟、/api/global-brief?wave=1）；course_live.push_premarket 加大盤段
+- 總經修正：regime/db.iso_date＋normalize_dates（upsert_series 統一 ISO；一次性 breadth_v2 刪舊廣度重抓）、fetcher._parse_mi_index_ad（「上漲(漲停)」括號、只算股票欄）、略過邏輯改看「已有淨廣度」、factor 廣度不再 (v−50)×2、竭盡／集中度／背離門檻換算；router 更新後掃非 ISO 日期
+  - 正式站原因確認：ISO 廣度停在 9/24（33.5 → 舊公式 −33）；MI_INDEX 標籤改版
+- 體驗：/api/watchlist/summary 改本機 price_daily（local_prices_for_stocks），Yahoo 只叫本機不足 60 根的；分段計時 log [wl-summary]；dashboard 觀察清單快照 chip_wl_summary_v1、指數列與觀察清單並行、screen/status 只問一次、nav 桌機換行／手機漸層＋scrollIntoView
+- AI 圓桌本機實測（gemini-3.6-flash＋gpt-oss-120b＋qwen3.8-27b）：124 秒、新聞 7 則、Gemini 第二輪與主持 503 → GPT-OSS 主持；價位檢查 0 個非系統價位；tokens：2.5-flash 5.4k、3.6-flash 4.9k、gpt-oss 10.7k、qwen 6.3k
+- 驗證：pytest 330 passed（新增 tests/test_b74_wave.py 26 個、test_global_brief 2 個）；tests_ui/b74_ui.py 11/11（1366／1512／1920 分頁 15/15、390 可滑、快照第二次 0.17 秒、總經頁 0 JS 錯誤）
+
+## 程式檢查（全新呼叫）
+- Gemini 3.7-flash 後端新檔（wave/*.py＋research/wave/run.py）：REVISE 3 點全接受已修 — last_good 沒過濾 kind（會拿到新聞 JSON）、save_idx 量被 NULL 蓋掉（COALESCE）、單一 AI 推播寫成圓桌（research/wave/insp_g_backend.json）；沒有發現偷看
+- Gemini 3.7-flash 既有檔 diff＋前端：APPROVED；2 點接受已修 — futureDays 時區少一天（改 UTC，node 驗證 10/23→10/26）、沒有 K 棒時防呆（research/wave/insp_g_frontend.json）
+- Groq gpt-oss-120b（引擎核心規則摘錄 research/wave/insp_q_engine.json；完整檔 413 超過每分鐘 8,000 tokens、兩次 json_validate_failed 空輸出 → 第 3 次送去掉輔助函式的摘錄才成功；AI 圓桌檔太大沒送 Groq，由 Gemini 審過）：REVISE 3 點
+  - F1 第 1 浪長度 0 會除以零：實際 ZigZag 轉折至少差 θ 不會發生，但加防呆（完成的浪長度 0 → 不算推動浪）＋測試 test_zero_length_wave_rejected_not_crash —— 這行防呆**沒有再送外部檢查**
+  - F2 修正浪 lenA=0：駁回，程式已有 `if lenA > 0 else 99`（engine.py 兩處）
+  - F3 WAVE_SYM 未定義：駁回，摘錄沒放、完整檔有定義
+- Gemini 3.7-flash 第 2 次（全新呼叫，5 個修正的完整函式摘錄）：**APPROVED**（research/wave/insp_g_round2.json）
+- 最終：pytest 331 passed；verify_impl 0 不一致；檢查輪數 2/2 用完
+- 備註：第一次送 Groq 時去註解檔因編碼錯誤是空的，引擎與 AI 圓桌各送出一次空檔（回「看不到內容」，不算檢查，結果檔已刪）

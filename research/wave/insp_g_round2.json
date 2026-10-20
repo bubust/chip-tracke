@@ -1,0 +1,19 @@
+{
+ "mode": "inspect",
+ "files": [
+  "C:/Users/牆泥袋溥/AppData/Local/Temp/claude/C--Users------Desktop/0a4ac6cf-0338-49c6-bd26-1b92b5bef9d3/scratchpad/b74/fixes_excerpt.md"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.7-flash",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"All 5 fixes have been verified against the approved plan. Market snapshot filtering in last_good is properly restricted to ('close','live'); save_idx correctly preserves existing volume via COALESCE; push_lines appropriately distinguishes single-AI modes with HTML escaping; futureDays computes UTC business days without timezone offsets; and drawChart guards against empty bar series gracefully.\",\n  \"findings\": [],\n  \"coverage\": \"Inspected all 5 targeted code snippets across wave/service.py, wave/data.py, wave/router.py, and regime-frontend/wave.js.\",\n  \"limitations\": \"Review was conducted on the provided excerpt functions without the surrounding full repository context.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "All 5 fixes have been verified against the approved plan. Market snapshot filtering in last_good is properly restricted to ('close','live'); save_idx correctly preserves existing volume via COALESCE; push_lines appropriately distinguishes single-AI modes with HTML escaping; futureDays computes UTC business days without timezone offsets; and drawChart guards against empty bar series gracefully.",
+    "findings": [],
+    "coverage": "Inspected all 5 targeted code snippets across wave/service.py, wave/data.py, wave/router.py, and regime-frontend/wave.js.",
+    "limitations": "Review was conducted on the provided excerpt functions without the surrounding full repository context."
+   }
+  }
+ ]
+}

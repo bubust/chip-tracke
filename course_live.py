@@ -600,6 +600,13 @@ def push_premarket(brief_fn=None) -> dict:
     d = latest("daytrade", before=today)
     lim = latest("limit", before=today)
     lines = [gb]
+    try:   # 🌊 大盤解析（PLAN-B74 §9）：快照失敗就略過，不影響其他段
+        from wave.router import push_lines
+        wl = push_lines()
+        if wl:
+            lines += [""] + wl
+    except Exception as e:
+        log.warning(f"[course] 大盤解析段：{e}")
     if d:
         mk = d.get("market") or {}
         lines += ["", f"⚡ <b>盤前當沖名單</b>　{_md(today)}（{_md(d['date'])} 收盤算）",

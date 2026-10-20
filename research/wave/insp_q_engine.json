@@ -1,0 +1,44 @@
+{
+ "mode": "inspect",
+ "files": [
+  "C:/Users/牆泥袋溥/AppData/Local/Temp/claude/C--Users------Desktop/0a4ac6cf-0338-49c6-bd26-1b92b5bef9d3/scratchpad/b74/s_engine_core.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"REVISE\",\n  \"summary\": \"Critical runtime errors and missing symbol cause failures on edge cases.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"high\",\n      \"path\": \"wave/engine.py\",\n      \"issue\": \"ZeroDivisionError in _impulse when the first segment length L(1) is zero.\",\n      \"evidence\": \"L(1) can be zero if x[1] == x[0]; later code computes pens['r2'] = _pen(L(2) / L(1), ...) without guarding division.\",\n      \"suggestion\": \"Add a guard: if L(1) == 0 return None or skip ratio calculations.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"high\",\n      \"path\": \"wave/engine.py\",\n      \"issue\": \"ZeroDivisionError in _correction when lenA (x[1] - x[0]) is zero.\",\n      \"evidence\": \"lenA is used as divisor for rB = lenB / lenA without checking for zero.\",\n      \"suggestion\": \"Return None or treat as invalid when lenA == 0 before computing rB.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"medium\",\n      \"path\": \"wave/engine.py\",\n      \"issue\": \"NameError: WAVE_SYM is referenced but not defined in this module.\",\n      \"evidence\": \"count_waves builds label dicts using WAVE_SYM[labels[j]]; the symbol is absent from the excerpt and likely not imported.\",\n      \"suggestion\": \"Import or define WAVE_SYM mapping for wave labels, or guard its usage.\"\n    }\n  ],\n  \"coverage\": \"Core wave counting logic exercised, but edge‑case handling for flat price moves and symbol definitions missing.\",\n  \"limitations\": \"Findings based on static analysis; runtime tests needed to confirm division‑by‑zero scenarios.\"\n}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "Critical runtime errors and missing symbol cause failures on edge cases.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "path": "wave/engine.py",
+      "issue": "ZeroDivisionError in _impulse when the first segment length L(1) is zero.",
+      "evidence": "L(1) can be zero if x[1] == x[0]; later code computes pens['r2'] = _pen(L(2) / L(1), ...) without guarding division.",
+      "suggestion": "Add a guard: if L(1) == 0 return None or skip ratio calculations."
+     },
+     {
+      "id": "F2",
+      "severity": "high",
+      "path": "wave/engine.py",
+      "issue": "ZeroDivisionError in _correction when lenA (x[1] - x[0]) is zero.",
+      "evidence": "lenA is used as divisor for rB = lenB / lenA without checking for zero.",
+      "suggestion": "Return None or treat as invalid when lenA == 0 before computing rB."
+     },
+     {
+      "id": "F3",
+      "severity": "medium",
+      "path": "wave/engine.py",
+      "issue": "NameError: WAVE_SYM is referenced but not defined in this module.",
+      "evidence": "count_waves builds label dicts using WAVE_SYM[labels[j]]; the symbol is absent from the excerpt and likely not imported.",
+      "suggestion": "Import or define WAVE_SYM mapping for wave labels, or guard its usage."
+     }
+    ],
+    "coverage": "Core wave counting logic exercised, but edge‑case handling for flat price moves and symbol definitions missing.",
+    "limitations": "Findings based on static analysis; runtime tests needed to confirm division‑by‑zero scenarios."
+   }
+  }
+ ]
+}

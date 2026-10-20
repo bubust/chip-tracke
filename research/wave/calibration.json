@@ -1,0 +1,23 @@
+{
+ "small": {
+  "m": 2.0,
+  "floor": 0.03,
+  "n_pivots": 389,
+  "avg_len": 10.1,
+  "target": 10
+ },
+ "mid": {
+  "m": 4.0,
+  "floor": 0.06,
+  "n_pivots": 104,
+  "avg_len": 37.9,
+  "target": 35
+ },
+ "big": {
+  "m": 11.5,
+  "floor": 0.12,
+  "n_pivots": 24,
+  "avg_len": 166.5,
+  "target": 150
+ }
+}

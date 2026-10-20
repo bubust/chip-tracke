@@ -1,0 +1,11 @@
+pivots {'small': 612, 'mid': 168, 'big': 34} 0s
+coverage {'small': {'any': 1.0, 'ge3_segments': 0.7227}, 'mid': {'any': 1.0, 'ge3_segments': 0.7395}, 'big': {'any': 1.0, 'ge3_segments': 0.6496}} 2s
+events 20764 2s
+evaluated 14548 3s
+placebo 52021 3s
+R6 conds ['above_ma60', 'dd_b', 'wstate'] 22s
+R6 5 2022-2026 -0.0105 [-0.0187, -0.0029] 23s
+R6 5 2016-2026 -0.0062 [-0.0119, -0.001] 26s
+R6 20 2022-2026 -0.0164 [-0.0413, 0.0077] 27s
+R6 20 2016-2026 -0.0078 [-0.0222, 0.0055] 30s
+done 30s

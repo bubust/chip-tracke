@@ -429,6 +429,10 @@ async def lifespan(app: FastAPI):
     init_treasury_db()
     init_mna_db()
     init_cb_db()
+    try:
+        wave_startup()     # 🌊 大盤解析（PLAN-B74）：建表＋沒有歷史就背景回補
+    except Exception as _we:
+        print(f"[startup] 大盤解析初始化失敗：{_we}")
     start_warrant_scheduler()
     # 從 Supabase 恢復 watchlist 到本地 SQLite（Render 重啟後 SQLite 為空）
     try:
@@ -786,6 +790,17 @@ async def lifespan(app: FastAPI):
                 _lg3.getLogger(__name__).warning(f"[fbd-live] {_fe}")
         _pos_watch.add_job(_fbd_tick, "cron", day_of_week="mon-fri", hour="9-13", minute="*/5",
                            id="fbd_live_tick", replace_existing=True, max_instances=1, coalesce=True)
+        # 🌊 大盤解析（PLAN-B74 §3）：08:20 國外指數、13:45 加權收盤、16:30 籌碼＋AI 圓桌、21:40 融資
+        def _wave_job(kind):
+            try:
+                from wave.router import scheduled as _ws
+                _ws(kind)
+            except Exception as _wve:
+                import logging as _lg4
+                _lg4.getLogger(__name__).warning(f"[wave] {kind}: {_wve}")
+        for _wk, _wh, _wm in (("premarket", 8, 20), ("close", 13, 45), ("chips", 16, 30), ("margin", 21, 40)):
+            _pos_watch.add_job(lambda _k=_wk: _wave_job(_k), "cron", day_of_week="mon-fri", hour=_wh, minute=_wm,
+                               id=f"wave_{_wk}", replace_existing=True, max_instances=1, coalesce=True)
         _pos_watch.start()
         global _POS_SCHED
         _POS_SCHED = _pos_watch
@@ -1134,6 +1149,8 @@ except Exception as _tte:
     print(f"[tail_track] init 失敗：{_tte}")
 from crash_routes import router as crash_router  # noqa: E402  📉 大跌買點＋策略回測建議（PLAN-BEST2）
 app.include_router(crash_router)
+from wave.router import router as wave_router, startup as wave_startup  # noqa: E402  🌊 大盤解析（PLAN-B74）
+app.include_router(wave_router)
 from course_routes import router as course_router  # noqa: E402  📋 講義訊號（PLAN-COURSE）
 app.include_router(course_router)
 app.mount("/discuss/static", StaticFiles(directory=str(BASE_DIR / "discuss-frontend")), name="discuss_static")
@@ -2153,7 +2170,9 @@ async def api_watchlist_summary():
     # 以前是「雙向聯集」— 本地有、Supabase 沒有就推回 Supabase。刪除只會清掉處理那次請求的那台的本地資料，
     # 另一台（例如舊網址 chip-tracker-tw、或之後重建的機器）本地還留著，就會把刪掉的股票推回去。
     # 現在：Supabase 讀得到 → 本地完全照 Supabase（多的刪、少的補）；讀不到才用本地。
-    sb_rows = sb.wl_list()
+    _tm = {"t0": _time.time()}
+    sb_rows = await asyncio.to_thread(sb.wl_list)
+    _tm["sb"] = _time.time()
     if sb_rows is not None:
         conn = get_conn()
         sb_map = {r["stock_id"]: r for r in sb_rows if r.get("stock_id")}
@@ -2205,10 +2224,15 @@ async def api_watchlist_summary():
         conn.commit()
         conn.close()
 
-    # 現價：Yahoo → MIS 昨收 → FinMind 三層兜底
-    from yahoo_price import fetch_prices_for_stocks
-    stock_list = [(sid, mkt_map.get(sid, "twse")) for sid in stock_ids]
-    latest_prices = await fetch_prices_for_stocks(stock_list)
+    # 收盤／布林／階段：本機 price_daily（官方行情）優先；本機不夠 60 根的才打 Yahoo（B74：以前每檔都打 Yahoo，31 檔 10 秒）
+    # 現價之後由 _fetch_rt_quotes（鉅亨／Yahoo奇摩）蓋上；全都沒有才 MIS 昨收 → FinMind
+    from yahoo_price import fetch_prices_for_stocks, local_prices_for_stocks
+    latest_prices = await asyncio.to_thread(local_prices_for_stocks, stock_ids)
+    _tm["local"] = _time.time()
+    need_yahoo = [sid for sid in stock_ids if sid not in latest_prices]
+    if need_yahoo:
+        latest_prices.update(await fetch_prices_for_stocks([(sid, mkt_map.get(sid, "twse")) for sid in need_yahoo]))
+    _tm["yahoo"] = _time.time()
     missing_price = [sid for sid in stock_ids if sid not in latest_prices]
     if missing_price:
         mis_fb = await _fetch_mis_prices(missing_price, mkt_map)
@@ -2219,8 +2243,10 @@ async def api_watchlist_summary():
     if still_miss:
         fm_fb = await _fetch_finmind_prices(still_miss)
         latest_prices.update(fm_fb)
-    # 股價、漲跌改用跟看盤軟體一樣的最後成交價（布林位置、階段仍用上面 Yahoo 日 K 算的）
-    for sid, q in (await _fetch_rt_quotes(stock_ids, mkt_map)).items():
+    # 股價、漲跌改用跟看盤軟體一樣的最後成交價（布林位置、階段仍用上面日 K 算的）
+    _rtq = await _fetch_rt_quotes(stock_ids, mkt_map)
+    _tm["rt"] = _time.time()
+    for sid, q in _rtq.items():
         latest_prices[sid] = {**(latest_prices.get(sid) or {}), **q}
         bb = _bb_live(sid, q["close"], q.get("date"))
         if bb is not None:
@@ -2339,6 +2365,10 @@ async def api_watchlist_summary():
         pass
 
     last_refresh = settings_get("last_refresh")
+    _t_end = _time.time()
+    print(f"[wl-summary] n={len(stock_ids)} sb={_tm['sb'] - _tm['t0']:.2f}s local={_tm['local'] - _tm['sb']:.2f}s "
+          f"yahoo={_tm['yahoo'] - _tm['local']:.2f}s({len(need_yahoo)}) rt={_tm['rt'] - _tm['yahoo']:.2f}s "
+          f"rest={_t_end - _tm['rt']:.2f}s total={_t_end - _tm['t0']:.2f}s")
 
     # ── 問題三：若有無籌碼資料的股票，且距上次更新超過 6 小時，自動背景更新 ──
     no_data_ids = [item["stock_id"] for item in result if not item.get("has_data")]
@@ -2410,6 +2440,7 @@ _refresh_all_status: dict = {
     "steps": {
         "watchlist":   {"label": "觀察清單股票",    "status": "pending"},
         "regime":      {"label": "總經 Regime 引擎", "status": "pending"},
+        "wave":        {"label": "大盤解析（波浪＋費波那契）", "status": "pending"},
         "tdcc":        {"label": "千張大戶 TDCC",    "status": "pending"},
         "positioning": {"label": "籌碼定位引擎",     "status": "pending"},
         "sector":      {"label": "產業輪動引擎",     "status": "pending"},
@@ -2526,6 +2557,16 @@ def _do_system_refresh():
         except Exception as e:
             lg.error(f"[refresh_all] regime: {e}")
             _set_step("regime", "error")
+
+        # 1b. 🌊 大盤解析（PLAN-B74）：國外指數＋籌碼＋重算（不叫 AI）
+        try:
+            _set_step("wave", "running")
+            from wave.router import refresh_job as _wave_refresh
+            _wave_refresh(chips=True)
+            _set_step("wave", "done")
+        except Exception as e:
+            lg.error(f"[refresh_all] wave: {e}")
+            _set_step("wave", "error")
 
         # 2. 千張大戶 TDCC
         try:
@@ -3810,11 +3851,15 @@ def api_quality_research():
 
 
 @app.get("/api/global-brief")
-def api_global_brief():
-    """08:30 盤前推播的國際盤區塊預覽（PLAN-B72 F；只抓不推）"""
+def api_global_brief(wave: int = 0):
+    """08:30 盤前推播的國際盤區塊預覽（PLAN-B72 F；只抓不推）；wave=1 加上大盤解析那段（PLAN-B74 §9）"""
     import global_brief
     r = global_brief.brief()
-    return {"text": r["text"], "at": r["at"], "night": r["night"], "items": len(r["quotes"])}
+    out = {"text": r["text"], "at": r["at"], "night": r["night"], "items": len(r["quotes"])}
+    if wave:
+        from wave.router import push_lines
+        out["wave"] = chr(10).join(push_lines())
+    return out
 
 
 @app.get("/api/fbd-live/status")
