@@ -1,0 +1,45 @@
+{
+ "mode": "inspect",
+ "files": [
+  "regime-frontend/wave.js",
+  "C:/Users/牆泥袋溥/AppData/Local/Temp/claude/C--Users------Desktop/0a4ac6cf-0338-49c6-bd26-1b92b5bef9d3/scratchpad/b74/v2_index.diff"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.7-flash",
+   "raw": "{\n  \"verdict\": \"REVISE\",\n  \"summary\": \"The UI redesign achieves the approved UX objectives (collapsing detailed metrics into summary accordions, decluttering the K-line chart to core price levels, and presenting plain-language summaries). However, a high-severity uncaught TypeError exists in plain(c) when c.current is not in '12345' or 'ABC' (such as wave '0' or unconfirmed state), which crashes render() and leaves the UI frozen. Additionally, an invalid CSS variable concatenation breaks AI stance badge styling.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"high\",\n      \"path\": \"regime-frontend/wave.js\",\n      \"issue\": \"Uncaught TypeError in plain(c) when wave subwave (c.current) is not in '12345' or 'ABC'\",\n      \"evidence\": \"Lines 35-46: If c.kind === 'correction' or c.kind === 'impulse' with cur not matching '12345' (e.g., '0', undefined, or complex wave labels), execution falls through to `const T = corrDown ? { A: ... } : { A: ... }; return { title: T[cur][0], meaning: T[cur][1], steps, cur };`. If cur is not 'A', 'B', or 'C', T[cur] is undefined and T[cur][0] throws `TypeError: Cannot read properties of undefined (reading '0')`. This unhandled exception crashes renderSummary() and aborts all subsequent render calls (scenario, levels, chips, global, research, and chart).\",\n      \"suggestion\": \"Guard against unmapped cur before reading properties: `if (!T[cur]) return null;` so callers (renderSummary and countBox) safely fall back to the existing '結構不清楚，看支撐壓力就好' branch.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"medium\",\n      \"path\": \"regime-frontend/wave.js\",\n      \"issue\": \"Malformed CSS background syntax in AI stance badges due to string concatenation on CSS var()\",\n      \"evidence\": \"Line 260: `style=\\\"background:${stanceColor(mo.stance)}22;color:${stanceColor(mo.stance)}\\\"`. Since stanceColor returns `'var(--up)'`, `'var(--down)'`, or `'var(--muted)'`, concatenating `'22'` outputs `background: var(--up)22;`. The browser CSS parser rejects this as invalid syntax and discards the property, leaving the badge transparent without background shading.\",\n      \"suggestion\": \"Use color-mix or actual hex values from C: e.g., `background: color-mix(in srgb, ${stanceColor(mo.stance)} 15%, transparent);` or map stance to `C.up + '22'` / `C.down + '22'`.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"low\",\n      \"path\": \"regime-frontend/wave.js\",\n      \"issue\": \"Potential TypeError if g.sox_wave.support or resistance is null/undefined\",\n      \"evidence\": \"Line 169: `g.sox_wave.support.map(v => fmt(v))` and `g.sox_wave.resistance.map(...)` assume array existence if g.sox_wave exists.\",\n      \"suggestion\": \"Guard array mappings: `(g.sox_wave.support || []).map(v => fmt(v))` and `(g.sox_wave.resistance || []).map(...)`.\"\n    }\n  ],\n  \"coverage\": \"Inspected all rendering paths (renderHead, renderSummary, renderScenario, renderLevels, renderChips, renderGlobal, renderForecast, renderContext, renderResearch, renderPanel, drawChart), details open/collapse state persistence, XSS escaping, CSS media queries, and event handlers.\",\n  \"limitations\": \"Backend snapshot payload shapes (/api/wave/snapshot and /api/wave/panel) were inspected from client-side contract expectations without executing live server responses.\"\n}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "The UI redesign achieves the approved UX objectives (collapsing detailed metrics into summary accordions, decluttering the K-line chart to core price levels, and presenting plain-language summaries). However, a high-severity uncaught TypeError exists in plain(c) when c.current is not in '12345' or 'ABC' (such as wave '0' or unconfirmed state), which crashes render() and leaves the UI frozen. Additionally, an invalid CSS variable concatenation breaks AI stance badge styling.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "path": "regime-frontend/wave.js",
+      "issue": "Uncaught TypeError in plain(c) when wave subwave (c.current) is not in '12345' or 'ABC'",
+      "evidence": "Lines 35-46: If c.kind === 'correction' or c.kind === 'impulse' with cur not matching '12345' (e.g., '0', undefined, or complex wave labels), execution falls through to `const T = corrDown ? { A: ... } : { A: ... }; return { title: T[cur][0], meaning: T[cur][1], steps, cur };`. If cur is not 'A', 'B', or 'C', T[cur] is undefined and T[cur][0] throws `TypeError: Cannot read properties of undefined (reading '0')`. This unhandled exception crashes renderSummary() and aborts all subsequent render calls (scenario, levels, chips, global, research, and chart).",
+      "suggestion": "Guard against unmapped cur before reading properties: `if (!T[cur]) return null;` so callers (renderSummary and countBox) safely fall back to the existing '結構不清楚，看支撐壓力就好' branch."
+     },
+     {
+      "id": "F2",
+      "severity": "medium",
+      "path": "regime-frontend/wave.js",
+      "issue": "Malformed CSS background syntax in AI stance badges due to string concatenation on CSS var()",
+      "evidence": "Line 260: `style=\"background:${stanceColor(mo.stance)}22;color:${stanceColor(mo.stance)}\"`. Since stanceColor returns `'var(--up)'`, `'var(--down)'`, or `'var(--muted)'`, concatenating `'22'` outputs `background: var(--up)22;`. The browser CSS parser rejects this as invalid syntax and discards the property, leaving the badge transparent without background shading.",
+      "suggestion": "Use color-mix or actual hex values from C: e.g., `background: color-mix(in srgb, ${stanceColor(mo.stance)} 15%, transparent);` or map stance to `C.up + '22'` / `C.down + '22'`."
+     },
+     {
+      "id": "F3",
+      "severity": "low",
+      "path": "regime-frontend/wave.js",
+      "issue": "Potential TypeError if g.sox_wave.support or resistance is null/undefined",
+      "evidence": "Line 169: `g.sox_wave.support.map(v => fmt(v))` and `g.sox_wave.resistance.map(...)` assume array existence if g.sox_wave exists.",
+      "suggestion": "Guard array mappings: `(g.sox_wave.support || []).map(v => fmt(v))` and `(g.sox_wave.resistance || []).map(...)`."
+     }
+    ],
+    "coverage": "Inspected all rendering paths (renderHead, renderSummary, renderScenario, renderLevels, renderChips, renderGlobal, renderForecast, renderContext, renderResearch, renderPanel, drawChart), details open/collapse state persistence, XSS escaping, CSS media queries, and event handlers.",
+    "limitations": "Backend snapshot payload shapes (/api/wave/snapshot and /api/wave/panel) were inspected from client-side contract expectations without executing live server responses."
+   }
+  }
+ ]
+}

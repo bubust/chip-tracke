@@ -1,0 +1,19 @@
+{
+ "mode": "inspect",
+ "files": [
+  "regime-frontend/wave.js"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.7-flash",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"Verified all 3 fixes in regime-frontend/wave.js: (1) plain() cleanly guards missing/unmapped wave labels returning null; (2) AI stance badge background uses fixed rgba helper stanceBg; (3) sox_wave support and resistance arrays are defensively guarded with || []. No new bugs or regressions identified.\",\n  \"findings\": [],\n  \"coverage\": \"Inspected entire wave.js frontend implementation against data flow, DOM rendering, escaping/XSS safeguards, edge-case null checks, and LightweightCharts rendering.\",\n  \"limitations\": \"Live browser rendering and WebSocket/CDN integration were validated via static inspection.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "Verified all 3 fixes in regime-frontend/wave.js: (1) plain() cleanly guards missing/unmapped wave labels returning null; (2) AI stance badge background uses fixed rgba helper stanceBg; (3) sox_wave support and resistance arrays are defensively guarded with || []. No new bugs or regressions identified.",
+    "findings": [],
+    "coverage": "Inspected entire wave.js frontend implementation against data flow, DOM rendering, escaping/XSS safeguards, edge-case null checks, and LightweightCharts rendering.",
+    "limitations": "Live browser rendering and WebSocket/CDN integration were validated via static inspection."
+   }
+  }
+ ]
+}
