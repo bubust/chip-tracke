@@ -16,8 +16,9 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from . import composite as CP, data as D, engine as E, features as F, forecast as FC, futdata as FD, \
+from . import advice as AD, composite as CP, data as D, engine as E, features as F, forecast as FC, futdata as FD, \
     intraday as I, keylevel as KL, levels as LV
+from .plain import plain
 
 log = logging.getLogger(__name__)
 STATS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stats.json")
@@ -300,6 +301,19 @@ def _context(tw: pd.DataFrame) -> dict:
     try:
         from regime.db import db as rdb
         with rdb() as conn:
+            oh = {}
+            for ser, k in (("OVERHEATING_INDEX", "overheating"), ("PANIC_INDEX", "panic")):
+                x = conn.execute("SELECT date, value FROM market_daily WHERE series=? AND value IS NOT NULL ORDER BY date DESC LIMIT 1",
+                                 (ser,)).fetchone()
+                if x:
+                    oh[k], oh["date"] = float(x["value"]), str(x["date"])
+            if oh:
+                out["oh"] = oh               # B76：操作建議用（總經面板的過熱／恐慌）
+    except Exception as e:     # noqa: BLE001
+        log.debug(f"[wave] 過熱恐慌：{e}")
+    try:
+        from regime.db import db as rdb
+        with rdb() as conn:
             r = conn.execute("SELECT date, regime_label, direction, risk_score FROM factors ORDER BY date DESC LIMIT 1").fetchone()
         if r:
             from regime.factor import tw_label
@@ -538,24 +552,41 @@ def _intraday(sym: str, b: dict, price: float, lv_c, live_rows: list, st: dict) 
     trend = 0 if daily["ma20"] is None else (1 if price > daily["ma20"] else -1)
     a = I.analyze(sym, b60, b30, price, daily, trend)
     out = {"tf60": b60[-I.SHOW[60]:], "tf30": b30[-I.SHOW[30]:], "ok": a.get("ok"), "note": a.get("note")}
-    if not a.get("ok"):
-        return out
-    an, times = a["an"], a["times"]
-    f = an.get("fib")
-    out["wave"] = {"label": an["label"], "pivots": I.pts(an["pivots"][-20:], times),
-                   "tentative": I.pts([an["tentative"]], times)[0] if an.get("tentative") else None,
-                   "primary": I.with_times(an.get("primary"), times), "alternate": I.with_times(an.get("alternate"), times),
-                   "fib": None if not f else {**f, "from": {**f["from"], "time": int(times[f["from"]["i"]])},
-                                              "to": {**f["to"], "time": int(times[f["to"]["i"]])}},
-                   "time_based": True, "maybe_pivot": None}
-    if a.get("tf30"):
-        t3 = a["tf30"]
-        out["wave"]["tf30"] = {"pivots": I.pts(t3["pivots"][-30:], t3["times"]),
-                               "tentative": I.pts([t3["tentative"]], t3["times"])[0] if t3.get("tentative") else None}
-    out["levels"] = a["levels"]
-    out["key"] = _key_out(a["cands"], "ultra", price, a["atr"], st)
-    out["atr"] = _f(a["atr"], 0)
+    if a.get("ok"):
+        out["wave"] = I.wave_out(a)
+        out["levels"] = a["levels"]
+        out["key"] = _key_out(a["cands"], "ultra", price, a["atr"], st)
+        out["atr"] = _f(a["atr"], 0)
+    m30 = a.get("m30") or {}
+    out["m30"] = {"ok": bool(m30.get("ok")), "note": m30.get("note")}
+    if m30.get("ok"):
+        out["m30"].update(wave=I.wave_out(m30), levels=m30["levels"], key=_key_out(m30["cands"], "m30", price, m30["atr"], st),
+                          atr=_f(m30["atr"], 0))
     return out
+
+
+# ── B76 多週期一覽 ─────────────────────────────────────────────────────────
+# 週期 → (waves 的鍵, key／levels 的鍵)。舊鍵：ultra＝60 分、short＝日 K、swing＝週 K（B75 名稱沿用，AI 圓桌與推播相容）
+TF_KEYS = {"30m": ("intra30", "m30"), "60m": ("intra", "ultra"), "1d": ("small", "short"), "1wk": ("mid", "swing")}
+TF_LABEL = {"30m": "30 分", "60m": "60 分", "1d": "日 K", "1wk": "週 K"}
+
+
+def _ladder(waves: dict, key: dict, lv: dict) -> list:
+    rows = []
+    for tf, (wk, kk) in TF_KEYS.items():
+        w, k, l_ = waves.get(wk) or {}, key.get(kk), lv.get(kk) or {}
+        d = (k or {}).get("dir")
+        if d not in (1, -1):
+            tent = w.get("tentative")
+            d = (1 if tent["t"] == "H" else -1) if tent else 0
+        p = plain(w.get("primary"))
+        s1 = (l_.get("support") or [None])[0]
+        r1 = (l_.get("resistance") or [None])[0]
+        rows.append({"tf": tf, "label": TF_LABEL[tf], "dir": d, "title": p["title"] if p else ("結構不清楚" if w else "資料不足"),
+                     "key": None if not k else {x: k.get(x) for x in ("kind", "price", "side", "dist_pct", "broken")},
+                     "s1": None if not s1 else {"price": s1["price"], "dist_pct": s1["dist_pct"]},
+                     "r1": None if not r1 else {"price": r1["price"], "dist_pct": r1["dist_pct"]}})
+    return rows
 
 
 def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[list] = None) -> dict:
@@ -601,7 +632,7 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
         intra = _intraday(sym, b, price, lv_c, live_rows or [], st)
     except Exception as e:     # noqa: BLE001
         log.exception(f"[wave] 分 K 失敗 {sym}：{e}")
-        intra = {"ok": False, "note": f"分 K 計算失敗：{e}", "tf60": [], "tf30": []}
+        intra = {"ok": False, "note": f"分 K 計算失敗：{e}", "tf60": [], "tf30": [], "m30": {"ok": False, "note": f"分 K 計算失敗：{e}"}}
     if intra.get("ok"):
         waves["intra"] = intra["wave"]
         lv["ultra"] = intra["levels"]
@@ -609,6 +640,14 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
     else:
         lv["ultra"] = {"support": [], "resistance": [], "note": [intra.get("note") or "60 分 K 資料不足"]}
         key["ultra"] = None
+    m30 = intra.get("m30") or {}
+    if m30.get("ok"):
+        waves["intra30"] = m30["wave"]
+        lv["m30"] = m30["levels"]
+        key["m30"] = m30["key"]
+    else:
+        lv["m30"] = {"support": [], "resistance": [], "note": [m30.get("note") or "30 分 K 資料不足"]}
+        key["m30"] = None
     stale_reason = None
     if not use_live and FD.in_session(sym, now) and live is None:
         stale_reason = ("盤中即時加權抓不到" if sym == "TWII" else "台指期即時抓不到") + "，顯示最近收盤"
@@ -623,12 +662,14 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
         "price": _f(price), "prev_close": _f(prev), "chg": _f(price - prev), "chg_pct": _pct(price, prev),
         "atr": _f(b["atr"], 0), "trend240": b["trend"],
         "chart": {"bars": bars, "weekly": b["weekly"], "ma": mas, "i60": intra.get("tf60") or [], "i30": intra.get("tf30") or []},
-        "intra": {"ok": bool(intra.get("ok")), "note": intra.get("note"), "atr": intra.get("atr"), "m": E.INTRA["m"]},
+        "v": 76,
+        "intra": {"ok": bool(intra.get("ok")), "note": intra.get("note"), "atr": intra.get("atr"), "m": E.INTRA["m"],
+                  "m30": {"ok": bool(m30.get("ok")), "note": m30.get("note"), "atr": m30.get("atr"), "m": E.INTRA30["m"]}},
         "waves": waves, "levels": lv, "key": key, "forecast": fc,
         "chips": b["chips"], "global": b["global"], "context": b["context"], "research": b["research"],
         "fut_chips": _fut_chips_out(b["fchips"]), "margin": CP.margin_block(b["chips_df"], now.strftime("%Y-%m-%d")),
         "night": None if not night else {k: (_f(v * 100, 2) if k == "ret" else v) for k, v in night.items()},
-        "open_ref": _open_ref(b, st, night) if sym == "TWII" else None,
+        "open_ref": _open_ref(b, st, night),          # 夜盤 → 加權開盤參考（B76：台指期頁的操作建議也用）
         "composite": _composite(b, st, night),
         "problems": [{"src": p["src"], "fails": p["fails"], "last_ok": p["last_ok"]} for p in problems],
         "disclaimer": DISCLAIMER,
@@ -645,6 +686,9 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
             snap["basis"] = {"pts": _f(price - tw_px, 0), "pct": _pct(price, tw_px), "twii": _f(tw_px), "when": tw_when,
                              "label": "正價差" if price > tw_px else "逆價差"}
     snap["scenario"] = _scenario(an, lv, price, fc)
+    snap["ladder"] = _ladder(waves, key, lv)
+    snap["ladder_text"] = AD.ladder_summary(snap["ladder"])
+    snap["advice"] = AD.build(snap)
     kind = ("live" if use_live else "close") if sym == "TWII" else f"TX:{'live' if use_live else 'close'}"
     try:
         with D.db() as conn:

@@ -166,6 +166,11 @@ def push_lines(snap: dict | None = None) -> list:
     ks = (snap.get("key") or {}).get("short")
     if ks:
         L.append(f"短線{ks['kind']} {ks['price']:,.0f}（{'跌破' if ks['side'] == 'below' else '站上'}＝這一段可能結束）")
+    ad = snap.get("advice") or {}
+    if ad.get("ok"):
+        cs = "；".join(f"{'站上' if c['side'] == 'up' else '跌破'} {c['price']:,.0f} {_h.escape(c['act'].split('→')[-1].strip())}"
+                      for c in [next((x for x in ad.get("conds") or [] if x["side"] == sd), None) for sd in ("up", "down")] if c)
+        L.append(f"💡 操作：建議持股 {ad['range']['lo']}～{ad['range']['hi']}%" + (f"（{cs}）" if cs else ""))
     orf = snap.get("open_ref")
     if orf and orf.get("night_ret") is not None:
         L.append(f"台指期夜盤 {orf['night_ret']:+.2f}% → 加權今天開盤參考 {orf['gap']:+.2f}%（±{orf['gap_sd']:.1f}%）")

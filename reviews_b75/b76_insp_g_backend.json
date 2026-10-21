@@ -1,0 +1,33 @@
+{
+ "mode": "inspect",
+ "files": [
+  "PLAN-B76.md",
+  "wave/advice.py",
+  "wave/plain.py",
+  "wave/intraday.py",
+  "tests/test_b76.py",
+  "reviews_b75/b76_diff_backend.patch"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3-flash-preview",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"The implementation of B76 successfully establishes per-timeframe analysis independence, specifically calibrating 30m K with its own theta and sensitivity parameters (m30). The advice engine accurately implements the multi-period direction rules, exposure halving logic, and overheating caps defined in the plan. Legacy key mappings (ultra/short/swing) are preserved for push-notification compatibility while being correctly mapped to the new ladder structure. Risk warnings and margin history also meet the 10-day requirement with proper sorting.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"low\",\n      \"path\": \"wave/advice.py\",\n      \"issue\": \"Condition merging keeps the earlier price in the sorted list during label concatenation.\",\n      \"evidence\": \"In _cands.merge(), when prices are within 0.2%, 'out[-1]['price']' is kept while labels are combined. For 'up' targets, this keeps the slightly lower (more conservative) price.\",\n      \"suggestion\": \"Currently acceptable as 0.2% is a negligible distance, but keep in mind that the displayed price might be slightly lower than the 'swing' target if it was merged into a 'short' target.\"\n    }\n  ],\n  \"coverage\": \"Robust. tests/test_b76.py covers: 30m theta isolation from 60m, exposure percentage logic (Macro + matching directions), overheating index capping, condition merging (<0.2%) and broken key exclusion, margin 10-day descending order, and the ladder's fallback direction logic (using tentative pivots).\",\n  \"limitations\": \"The 30m K-line analysis is explicitly marked with a 60-day data warning in the frontend logic (as per PLAN) due to shorter backfill availability for weighted indices.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "The implementation of B76 successfully establishes per-timeframe analysis independence, specifically calibrating 30m K with its own theta and sensitivity parameters (m30). The advice engine accurately implements the multi-period direction rules, exposure halving logic, and overheating caps defined in the plan. Legacy key mappings (ultra/short/swing) are preserved for push-notification compatibility while being correctly mapped to the new ladder structure. Risk warnings and margin history also meet the 10-day requirement with proper sorting.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "low",
+      "path": "wave/advice.py",
+      "issue": "Condition merging keeps the earlier price in the sorted list during label concatenation.",
+      "evidence": "In _cands.merge(), when prices are within 0.2%, 'out[-1]['price']' is kept while labels are combined. For 'up' targets, this keeps the slightly lower (more conservative) price.",
+      "suggestion": "Currently acceptable as 0.2% is a negligible distance, but keep in mind that the displayed price might be slightly lower than the 'swing' target if it was merged into a 'short' target."
+     }
+    ],
+    "coverage": "Robust. tests/test_b76.py covers: 30m theta isolation from 60m, exposure percentage logic (Macro + matching directions), overheating index capping, condition merging (<0.2%) and broken key exclusion, margin 10-day descending order, and the ladder's fallback direction logic (using tentative pivots).",
+    "limitations": "The 30m K-line analysis is explicitly marked with a 60-day data warning in the frontend logic (as per PLAN) due to shorter backfill availability for weighted indices."
+   }
+  }
+ ]
+}

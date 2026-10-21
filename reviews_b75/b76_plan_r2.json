@@ -1,0 +1,60 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B76.md"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3-flash-preview",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"The plan successfully integrates per-timeframe analysis (30m to Weekly) and the new conditional position-sizing engine. It adheres to all previous round dispositions, including the v:76 versioning, risk overflow handling, and the 9-bar calibration target for the 30m timeframe. The layout reorganization places macro/advice at the top as requested while maintaining technical consistency across timeframes.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"low\",\n      \"section\": \"4.3\",\n      \"issue\": \"Proximity of conditional levels.\",\n      \"suggestion\": \"If the 1st and 2nd resistance/support levels are extremely close (e.g., < 0.2% apart), the advice logic should deduplicate or merge the conditions to avoid redundant 'Scale up' or 'Scale down' instructions.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"section\": \"2.0\",\n      \"issue\": \"Mapping of legacy keys.\",\n      \"suggestion\": \"Ensure that the mapping from 'ultra' to 60m and 'short' to 1d is explicitly documented in the code to prevent future confusion when 'ultra' might be misinterpreted as 30m.\"\n    }\n  ],\n  \"coverage\": \"UI (localStorage tf persistence, layout order), Backend (snapshot v:76, independent 30m theta, advice engine), Research (30m calibration with 9-bar target), and Validation (pytest, UI tests).\",\n  \"limitations\": \"Statistical significance of 30m analysis is limited by the 60-day historical window; the position-sizing engine is rule-based and not a predictive model.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "The plan successfully integrates per-timeframe analysis (30m to Weekly) and the new conditional position-sizing engine. It adheres to all previous round dispositions, including the v:76 versioning, risk overflow handling, and the 9-bar calibration target for the 30m timeframe. The layout reorganization places macro/advice at the top as requested while maintaining technical consistency across timeframes.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "low",
+      "section": "4.3",
+      "issue": "Proximity of conditional levels.",
+      "suggestion": "If the 1st and 2nd resistance/support levels are extremely close (e.g., < 0.2% apart), the advice logic should deduplicate or merge the conditions to avoid redundant 'Scale up' or 'Scale down' instructions."
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "section": "2.0",
+      "issue": "Mapping of legacy keys.",
+      "suggestion": "Ensure that the mapping from 'ultra' to 60m and 'short' to 1d is explicitly documented in the code to prevent future confusion when 'ultra' might be misinterpreted as 30m."
+     }
+    ],
+    "coverage": "UI (localStorage tf persistence, layout order), Backend (snapshot v:76, independent 30m theta, advice engine), Research (30m calibration with 9-bar target), and Validation (pytest, UI tests).",
+    "limitations": "Statistical significance of 30m analysis is limited by the 60-day historical window; the position-sizing engine is rule-based and not a predictive model."
+   }
+  },
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"The PLAN-B76 addresses all previously rejected items: 30‑minute wave calibration now targets ~9 bars per leg, theta is computed solely from past ATR data, and the advice UI is placed on top with no horizontal overflow. Snapshot extensions, advice format, risk overflow handling, and UI layout follow the accepted specifications. No critical defects remain.\",\n  \"findings\": [\n    {\n      \"id\": \"S1\",\n      \"severity\": \"low\",\n      \"section\": \"3. 研究 R-I30\",\n      \"issue\": \"The lower‑bound variable for theta is referenced as \\\"下限30\\\" without explicit definition; reviewers may need clarification of its numeric value and unit.\",\n      \"suggestion\": \"Add a brief comment or constant definition (e.g., LOWER_THETA = 0.4%) and reference it in the code to avoid ambiguity.\"\n    },\n    {\n      \"id\": \"S2\",\n      \"severity\": \"low\",\n      \"section\": \"6. 驗證\",\n      \"issue\": \"UI test for mobile overflow (Groq F6) is mentioned but not explicitly listed among the test cases.\",\n      \"suggestion\": \"Include an explicit pytest‑ui test that asserts the advice panel width does not exceed the viewport on mobile devices.\"\n    }\n  ],\n  \"coverage\": \"All four timeframes (30m, 60m, 1d, 1wk) have independent analysis, multi‑timeframe overview, financing 10‑day table, macro‑state advice, and rule‑based conditional position‑sizing. Snapshot fields, calibration scripts, advice logic, and UI layout are fully covered by unit and UI tests.\",\n  \"limitations\": \"30‑minute calibration relies on a very short data window (60 days for index, 30 days for futures), so statistical confidence is low; the system explicitly marks this as reference‑only. The advice remains discretionary and does not guarantee performance.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "The PLAN-B76 addresses all previously rejected items: 30‑minute wave calibration now targets ~9 bars per leg, theta is computed solely from past ATR data, and the advice UI is placed on top with no horizontal overflow. Snapshot extensions, advice format, risk overflow handling, and UI layout follow the accepted specifications. No critical defects remain.",
+    "findings": [
+     {
+      "id": "S1",
+      "severity": "low",
+      "section": "3. 研究 R-I30",
+      "issue": "The lower‑bound variable for theta is referenced as \"下限30\" without explicit definition; reviewers may need clarification of its numeric value and unit.",
+      "suggestion": "Add a brief comment or constant definition (e.g., LOWER_THETA = 0.4%) and reference it in the code to avoid ambiguity."
+     },
+     {
+      "id": "S2",
+      "severity": "low",
+      "section": "6. 驗證",
+      "issue": "UI test for mobile overflow (Groq F6) is mentioned but not explicitly listed among the test cases.",
+      "suggestion": "Include an explicit pytest‑ui test that asserts the advice panel width does not exceed the viewport on mobile devices."
+     }
+    ],
+    "coverage": "All four timeframes (30m, 60m, 1d, 1wk) have independent analysis, multi‑timeframe overview, financing 10‑day table, macro‑state advice, and rule‑based conditional position‑sizing. Snapshot fields, calibration scripts, advice logic, and UI layout are fully covered by unit and UI tests.",
+    "limitations": "30‑minute calibration relies on a very short data window (60 days for index, 30 days for futures), so statistical confidence is low; the system explicitly marks this as reference‑only. The advice remains discretionary and does not guarantee performance."
+   }
+  }
+ ]
+}

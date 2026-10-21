@@ -826,7 +826,7 @@
  },
  "n_tests": 91,
  "futures": {
-  "generated": "2026-10-21 09:49",
+  "generated": "2026-10-21 11:25",
   "is": "2017-05-16～2021-12-31",
   "oos": "2022-01-01～2026-10-20",
   "factors": {
@@ -1433,6 +1433,74 @@
       "practical": true
      }
     }
+   },
+   "m30": {
+    "data": "加權 30 分 K（Yahoo 60 天，樣本短只當參考）",
+    "cands": {
+     "K1": {
+      "n": 471,
+      "dist_atr_med": 3.7636,
+      "dist_atr_p90": 10.2456,
+      "dist_pct_med": 0.0158,
+      "dist_pct_p90": 0.0446,
+      "hit_rate": 0.259,
+      "n_break": 75,
+      "ft_rate": 0.6267,
+      "placebo_rate": 0.631,
+      "diff": -0.0043,
+      "ci": [
+       -0.0897,
+       0.0897
+      ],
+      "p": 0.947,
+      "practical": false,
+      "q": 0.947,
+      "sig": false
+     },
+     "K2": {
+      "n": 471,
+      "dist_atr_med": 3.1184,
+      "dist_atr_p90": 9.3307,
+      "dist_pct_med": 0.0134,
+      "dist_pct_p90": 0.0431,
+      "hit_rate": 0.38,
+      "n_break": 131,
+      "ft_rate": 0.6565,
+      "placebo_rate": 0.7181,
+      "diff": -0.0616,
+      "ci": [
+       -0.1578,
+       0.0448
+      ],
+      "p": 0.278,
+      "practical": false,
+      "q": 0.834,
+      "sig": false
+     },
+     "K3": {
+      "n": 471,
+      "dist_atr_med": 2.6775,
+      "dist_atr_p90": 6.9585,
+      "dist_pct_med": 0.0121,
+      "dist_pct_p90": 0.0326,
+      "hit_rate": 0.4013,
+      "n_break": 154,
+      "ft_rate": 0.7338,
+      "placebo_rate": 0.747,
+      "diff": -0.0133,
+      "ci": [
+       -0.0949,
+       0.0661
+      ],
+      "p": 0.769,
+      "practical": false,
+      "q": 0.947,
+      "sig": false
+     }
+    },
+    "rule": "K3",
+    "how": "closest_to_band",
+    "sig": false
    }
   },
   "intra_m": 2.0
@@ -1472,5 +1540,12 @@
     "n_pivots": 50
    }
   }
+ },
+ "intraday30": {
+  "m": 2.0,
+  "floor": 0.004,
+  "target_days": 1.0,
+  "cal_period": "2026-07-27～2026-09-18",
+  "n_days": 60
  }
 }

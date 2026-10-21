@@ -27,10 +27,14 @@ DEGREES = {
 # B75 超短線：60 分 K 的級數（θ＝max(下限, m × 60 分 K ATR% 近 60 根中位數)；m 由 research/futures/calibrate_intraday.py 校準，
 # 結果寫 wave/stats.json intraday，service 讀到就覆蓋這裡的預設）。不放進 DEGREES，B74 研究照舊只跑日 K 三個級數
 INTRA = {"m": 3.0, "floor": 0.005, "label": "60 分 K（超短線）"}
+# B76：30 分 K 自己的級數（下限 0.4%；m 由 research/futures/r30.py 校準，寫 stats.json intraday30）
+INTRA30 = {"m": 2.5, "floor": 0.004, "label": "30 分 K（當沖～隔天）"}
 
 
 def deg_cfg(deg: str) -> dict:
-    return DEGREES.get(deg) or INTRA
+    if deg in DEGREES:
+        return DEGREES[deg]
+    return INTRA30 if deg == "intra30" else INTRA
 
 
 WAVE_SYM = {"1": "①", "2": "②", "3": "③", "4": "④", "5": "⑤", "A": "Ⓐ", "B": "Ⓑ", "C": "Ⓒ", "0": "◯"}

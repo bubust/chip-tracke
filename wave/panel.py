@@ -288,7 +288,13 @@ def facts_b75(snap: dict) -> list:
     """B75：轉折點、超短線（60 分 K）、夜盤→開盤、台指期、綜合研判、散戶小台／外資選擇權、融資增減"""
     L = []
     ky = snap.get("key") or {}
-    L.append("【轉折點（加權）】" + "；".join(_key(ky.get(m), nm) for m, nm in (("ultra", "超短線"), ("short", "短線"), ("swing", "波段"))))
+    L.append("【轉折點（加權）】" + "；".join(_key(ky.get(m), nm) for m, nm in (("m30", "30 分 K"), ("ultra", "60 分 K"), ("short", "日 K"), ("swing", "週 K"))))
+    if snap.get("ladder_text"):
+        L.append(f"【多週期一覽（加權，小→大）】{snap['ladder_text']}")
+    ad = snap.get("advice") or {}
+    if ad.get("ok"):
+        L.append(f"【系統操作建議（規則推的，不是預測）】{ad['headline']}；" + "；".join(f"{x['k']}：{x['t']}" for x in ad.get("lines") or []) +
+                 "；條件：" + ("；".join(f"{'站上' if c['side'] == 'up' else '跌破'} {c['price']:,.0f}（{c['label']}）{c['act']}" for c in ad.get("conds") or []) or "無"))
     iw = (snap.get("waves") or {}).get("intra") or {}
     if iw.get("primary"):
         L.append(f"【超短線 60 分 K 數浪（加權）】{iw['primary'].get('text')}")
@@ -386,6 +392,8 @@ def allowed_levels(snap: dict) -> list:
     for k in (snap.get("key") or {}).values():
         if k:
             out += [k.get("price"), k.get("wave_invalid")]
+    for z in [z for side in ("support", "resistance") for z in (((snap.get("levels") or {}).get("m30") or {}).get(side) or [])]:
+        out += [z["price"], z["lo"], z["hi"]] + [s_["price"] for s_ in z["sources"]]
     tx = snap.get("tx") or {}
     if tx.get("ok"):
         out += allowed_levels({k: v for k, v in tx.items() if k != "tx"})

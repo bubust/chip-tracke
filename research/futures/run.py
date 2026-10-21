@@ -175,5 +175,11 @@ if __name__ == "__main__":
             if key == "intraday":
                 x = {k: x[k] for k in ("m", "floor", "target_days", "cal_period") if k in x} | {"grid": x.get("grid")}
             st[key] = x
+    p30 = os.path.join(OUT, "r30.json")          # B76：30 分 K 級數與轉折點
+    if os.path.exists(p30):
+        x = json.load(open(p30, encoding="utf-8"))
+        st["intraday30"] = {k: x[k] for k in ("m", "floor", "target_days", "cal_period", "n_days") if k in x}
+        st.setdefault("keylevel", {}).setdefault("modes", {})["m30"] = {
+            "data": "加權 30 分 K（Yahoo 60 天，樣本短只當參考）", "cands": x["keylevel"]["TWII"], "rule": x["rule"], "how": x["how"], "sig": x["sig"]}
     json.dump(st, open(STATS, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print("stats.json 已更新")

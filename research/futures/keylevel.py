@@ -14,6 +14,7 @@ from wave import keylevel as KL
 
 MODES = {
     "ultra": {"band": (0.5, 3.0), "win": 0.03, "H": 15, "k3_look": 100},
+    "m30": {"band": (0.5, 3.0), "win": 0.02, "H": 18, "k3_look": 120},          # B76（r30.py 用）
     "short": {"band": (0.7, 3.5), "win": 0.06, "H": 10, "k3_look": 60, "deg": "small"},
     "swing": {"band": (1.5, 8.0), "win": 0.15, "H": 40, "k3_look": 120, "deg": "mid"},
 }

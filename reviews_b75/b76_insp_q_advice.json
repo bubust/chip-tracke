@@ -1,0 +1,36 @@
+{
+ "mode": "inspect",
+ "files": [
+  "reviews_b75/strip/advice.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\"verdict\":\"REVISE\",\"summary\":\"The implementation deviates from the specification in key logical checks and fails to sanitize dynamic output, creating functional and security issues.\",\"findings\":[{\"id\":\"F1\",\"severity\":\"high\",\"path\":\"advice.py\",\"issue\":\"All‑up / all‑down condition uses \\\"len(ds) >= 2\\\" instead of requiring all three time‑frames (60m, 1d, 1wk) to be present and equal. This triggers upper/lower‑half exposure incorrectly when only two directions are available, violating the spec.\",\"evidence\":\"if len(ds) >= 2 and all((d == 1 for d in ds)) ... elif len(ds) >= 2 and all((d == -1 for d in ds)) ...\",\"suggestion\":\"Change the condition to require exactly three aligned directions: \\\"if len(ds) == 3 and all(d == 1 for d in ds):\\\" and similarly for the down case.\"},{\"id\":\"F2\",\"severity\":\"high\",\"path\":\"advice.py\",\"issue\":\"Dynamic strings inserted into the output are not passed through an escaping function (_esc) as required by the security policy, opening XSS vectors for untrusted data (e.g., regime label, key level labels, risk messages).\",\"evidence\":\"f\\\"總經「{regime or '資料暫缺'}」...\\\", f\\\"日 K：{(dk['title'] if dk else '結構不清楚')}\\\", f\\\"外資連{('買' if fs > 0 else '賣')} {abs(fs)} 天...\\\" etc. No import or use of _esc.\",\"suggestion\":\"Import the project‑wide escaping helper (e.g., from .utils import _esc) and wrap every interpolated external value: _esc(regime), _esc(k1['kind']), _esc(risk_msg), etc. Ensure all user‑controlled data is escaped before inclusion in the response.\"}],\"coverage\":\"Core functions exposure, _cands, _risks, and build are exercised, but edge cases for missing direction data and XSS are not covered by tests.\",\"limitations\":\"The review assumes plain() and other imported helpers behave correctly; it does not test integration with external data sources or the escaping implementation itself.\"}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "The implementation deviates from the specification in key logical checks and fails to sanitize dynamic output, creating functional and security issues.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "path": "advice.py",
+      "issue": "All‑up / all‑down condition uses \"len(ds) >= 2\" instead of requiring all three time‑frames (60m, 1d, 1wk) to be present and equal. This triggers upper/lower‑half exposure incorrectly when only two directions are available, violating the spec.",
+      "evidence": "if len(ds) >= 2 and all((d == 1 for d in ds)) ... elif len(ds) >= 2 and all((d == -1 for d in ds)) ...",
+      "suggestion": "Change the condition to require exactly three aligned directions: \"if len(ds) == 3 and all(d == 1 for d in ds):\" and similarly for the down case."
+     },
+     {
+      "id": "F2",
+      "severity": "high",
+      "path": "advice.py",
+      "issue": "Dynamic strings inserted into the output are not passed through an escaping function (_esc) as required by the security policy, opening XSS vectors for untrusted data (e.g., regime label, key level labels, risk messages).",
+      "evidence": "f\"總經「{regime or '資料暫缺'}」...\", f\"日 K：{(dk['title'] if dk else '結構不清楚')}\", f\"外資連{('買' if fs > 0 else '賣')} {abs(fs)} 天...\" etc. No import or use of _esc.",
+      "suggestion": "Import the project‑wide escaping helper (e.g., from .utils import _esc) and wrap every interpolated external value: _esc(regime), _esc(k1['kind']), _esc(risk_msg), etc. Ensure all user‑controlled data is escaped before inclusion in the response."
+     }
+    ],
+    "coverage": "Core functions exposure, _cands, _risks, and build are exercised, but edge cases for missing direction data and XSS are not covered by tests.",
+    "limitations": "The review assumes plain() and other imported helpers behave correctly; it does not test integration with external data sources or the escaping implementation itself."
+   }
+  }
+ ]
+}

@@ -1,0 +1,106 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B76.md",
+  "wave/service.py",
+  "wave/intraday.py",
+  "wave/keylevel.py",
+  "wave/levels.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3-flash-preview",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"The plan for B76 is technically sound and maintains backward compatibility with B75. It correctly addresses the user's request for timeframe-specific analysis and introduces a more granular advice engine. Key strengths include the mapping of legacy mode keys to timeframes and the explicit acknowledgement of low statistical confidence for the 30-minute timeframe research.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"medium\",\n      \"section\": \"§3 Research R-I30/R-K30\",\n      \"issue\": \"The calibration target for 30m (9 bars) is based on the TWII 4.5-hour session. For TX (Taiwan Futures) which includes a night session, 9 bars represent only ~4.5 hours of a ~19-hour trading cycle, potentially leading to 'over-sensitive' wave counting compared to the Daily/Weekly counterparts.\",\n      \"suggestion\": \"Adjust the 30m calibration logic in `calibrate_intraday.py` to differentiate between TWII (target ~9 bars) and TX (target ~38 bars) to maintain the '1-day swing' logic across symbols.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"medium\",\n      \"section\": \"§4 Conditional Position-Sizing\",\n      \"issue\": \"The advice engine uses 'Upper/Lower half' of a range (e.g., half of 70-100% is 85-100%). However, if the market regime is 'Extreme Risk' (0-20%), the 'Upper half' (10-20%) still represents an 80-90% reduction from base, which might be ignored by users if the UI doesn't clearly display the percentage range.\",\n      \"suggestion\": \"The advice engine should explicitly return the calculated numeric range (e.g., '建議部位: 10-20%') alongside the prose to avoid ambiguity.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"low\",\n      \"section\": \"§2 Backend wave/intraday.py\",\n      \"issue\": \"The current `intraday.py` implementation explicitly uses the 60m theta for 30m bars ('30 分 K 用上一根收完的 60 分 K 的 θ'). The PLAN-B76 aims to replace this with an independent m30.\",\n      \"suggestion\": \"Ensure the `analyze` function in `intraday.py` is refactored to accept a timeframe-specific theta calculation rather than hardcoding the 60m dependency.\"\n    },\n    {\n      \"id\": \"F4\",\n      \"severity\": \"low\",\n      \"section\": \"§5 Front-end\",\n      \"issue\": \"Moving Macro/Advice to the top is beneficial for mobile users, but 'Multi-timeframe Ladder' and 'Advice' might conflict in space on small screens.\",\n      \"suggestion\": \"Use a collapsible 'Warning/Signal' banner for the Advice engine risks if more than 3 risk factors are active simultaneously.\"\n    }\n  ],\n  \"coverage\": \"Covers backend (snapshot expansion), quantitative research (30m calibration), business logic (advice engine), and UI/UX migration.\",\n  \"limitations\": \"Statistical validity for 30m ZigZag is limited to a small sample (30-60 days). Position sizing advice is rule-based (deterministic) and not a machine-learned optimal policy.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "The plan for B76 is technically sound and maintains backward compatibility with B75. It correctly addresses the user's request for timeframe-specific analysis and introduces a more granular advice engine. Key strengths include the mapping of legacy mode keys to timeframes and the explicit acknowledgement of low statistical confidence for the 30-minute timeframe research.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "medium",
+      "section": "§3 Research R-I30/R-K30",
+      "issue": "The calibration target for 30m (9 bars) is based on the TWII 4.5-hour session. For TX (Taiwan Futures) which includes a night session, 9 bars represent only ~4.5 hours of a ~19-hour trading cycle, potentially leading to 'over-sensitive' wave counting compared to the Daily/Weekly counterparts.",
+      "suggestion": "Adjust the 30m calibration logic in `calibrate_intraday.py` to differentiate between TWII (target ~9 bars) and TX (target ~38 bars) to maintain the '1-day swing' logic across symbols."
+     },
+     {
+      "id": "F2",
+      "severity": "medium",
+      "section": "§4 Conditional Position-Sizing",
+      "issue": "The advice engine uses 'Upper/Lower half' of a range (e.g., half of 70-100% is 85-100%). However, if the market regime is 'Extreme Risk' (0-20%), the 'Upper half' (10-20%) still represents an 80-90% reduction from base, which might be ignored by users if the UI doesn't clearly display the percentage range.",
+      "suggestion": "The advice engine should explicitly return the calculated numeric range (e.g., '建議部位: 10-20%') alongside the prose to avoid ambiguity."
+     },
+     {
+      "id": "F3",
+      "severity": "low",
+      "section": "§2 Backend wave/intraday.py",
+      "issue": "The current `intraday.py` implementation explicitly uses the 60m theta for 30m bars ('30 分 K 用上一根收完的 60 分 K 的 θ'). The PLAN-B76 aims to replace this with an independent m30.",
+      "suggestion": "Ensure the `analyze` function in `intraday.py` is refactored to accept a timeframe-specific theta calculation rather than hardcoding the 60m dependency."
+     },
+     {
+      "id": "F4",
+      "severity": "low",
+      "section": "§5 Front-end",
+      "issue": "Moving Macro/Advice to the top is beneficial for mobile users, but 'Multi-timeframe Ladder' and 'Advice' might conflict in space on small screens.",
+      "suggestion": "Use a collapsible 'Warning/Signal' banner for the Advice engine risks if more than 3 risk factors are active simultaneously."
+     }
+    ],
+    "coverage": "Covers backend (snapshot expansion), quantitative research (30m calibration), business logic (advice engine), and UI/UX migration.",
+    "limitations": "Statistical validity for 30m ZigZag is limited to a small sample (30-60 days). Position sizing advice is rule-based (deterministic) and not a machine-learned optimal policy."
+   }
+  },
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"REVISE\",\n  \"summary\": \"The plan is comprehensive and respects existing B75 logic, but there are material concerns around look‑ahead safety, statistical honesty for the very short 30 m sample, deterministic handling of missing data in the advice engine, and explicit backward‑compatibility mapping for snapshot keys and localStorage values.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"high\",\n      \"section\": \"3. 研究 R‑I30／R‑K30\",\n      \"issue\": \"Calibration of the 30 m θ and key‑level thresholds uses the full 40‑day window to pick the best m30 value, but the selection criteria (average wave length closest to 1 day) implicitly looks at the *future* of the calibration window (e.g., wave counts that span the end of the window). This creates a subtle look‑ahead bias when the same parameters are later applied to live data.\",\n      \"suggestion\": \"Restrict the calibration to only use data that is fully known at each point (e.g., use a rolling window that ends 1 day before the evaluation period) and store the chosen m30 per day. In the production snapshot, use the parameter that was selected on the previous day only.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"high\",\n      \"section\": \"4. 條件式操作建議\",\n      \"issue\": \"The advice engine does not define deterministic fall‑backs when required inputs are missing (e.g., regime tags, multi‑timeframe direction, or key‑level objects). The current description says “沒有就寫‘沒有特別警訊’”, but the code may still attempt to access undefined fields, causing runtime errors.\",\n      \"suggestion\": \"Implement explicit guard clauses in `wave/advice.py` that return a minimal advice object with `hold_range: null` and an empty `conditions` array when any required input is absent. Document the fallback behavior in the function docstring.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"medium\",\n      \"section\": \"2. 後端（wave/）\",\n      \"issue\": \"The new snapshot fields (`levels.m30`, `key.m30`, `waves.intra30`) are added without versioning. Clients that only understand B75 may ignore unknown keys, but older UI code that iterates over snapshot keys could break if it assumes a fixed set.\",\n      \"suggestion\": \"Add a `snapshot_version` field (e.g., `2`) and update the frontend to filter keys based on the version it supports. Also, ensure that any generic loops over `snapshot` keys skip unknown prefixes safely.\"\n    },\n    {\n      \"id\": \"F4\",\n      \"severity\": \"medium\",\n      \"section\": \"1. 驗收條件 – 多週期一覽\",\n      \"issue\": \"The UI spec states that clicking a row switches the timeframe, but does not specify how the state is persisted across page reloads or when the user switches symbols.\",\n      \"suggestion\": \"Persist the selected timeframe in `localStorage.wv_tf` and, on symbol change, retain the current `wv_tf` value. Add a unit test in `tests_ui/b76_ui.py` that verifies the timeframe remains after a symbol switch.\"\n    },\n    {\n      \"id\": \"F5\",\n      \"severity\": \"low\",\n      \"section\": \"3. 研究 R‑I30／R‑K30 – 統計力\",\n      \"issue\": \"The plan mentions “樣本只有 60 天（加權）／30 天（台指期），統計力很低” but does not require a disclaimer in the UI.\",\n      \"suggestion\": \"Add a small footnote under the 30 m analysis card: “基於短期樣本，僅供參考，勿作為唯一決策依據”。\"\n    },\n    {\n      \"id\": \"F6\",\n      \"severity\": \"low\",\n      \"section\": \"5. 前端 – UI 排列\",\n      \"issue\": \"The new “操作建議” block is placed above the K 線圖, but the existing CSS grid may not have enough vertical space on mobile, causing overflow.\",\n      \"suggestion\": \"Introduce a collapsible accordion for the advice block on screens < 768 px and add a UI test that checks the block is hidden/collapsible on mobile viewport.\"\n    }\n  ],\n  \"coverage\": \"The review covers look‑ahead safety, consistency with B75 validated rules, statistical honesty for tiny 30 m samples, deterministic behavior of the rule‑based advice engine (including edge cases), backward compatibility of snapshot keys and localStorage mappings, UI clarity for multi‑timeframe interactions, and test completeness for new features.\",\n  \"limitations\": \"The assessment is based on the provided PLAN document and assumed existing codebase. Actual runtime behavior may differ if hidden dependencies exist in the current B75 modules. A full code audit of `wave/advice.py` and UI components is required to validate the suggested guard clauses and layout adjustments.\"\n}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "The plan is comprehensive and respects existing B75 logic, but there are material concerns around look‑ahead safety, statistical honesty for the very short 30 m sample, deterministic handling of missing data in the advice engine, and explicit backward‑compatibility mapping for snapshot keys and localStorage values.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "section": "3. 研究 R‑I30／R‑K30",
+      "issue": "Calibration of the 30 m θ and key‑level thresholds uses the full 40‑day window to pick the best m30 value, but the selection criteria (average wave length closest to 1 day) implicitly looks at the *future* of the calibration window (e.g., wave counts that span the end of the window). This creates a subtle look‑ahead bias when the same parameters are later applied to live data.",
+      "suggestion": "Restrict the calibration to only use data that is fully known at each point (e.g., use a rolling window that ends 1 day before the evaluation period) and store the chosen m30 per day. In the production snapshot, use the parameter that was selected on the previous day only."
+     },
+     {
+      "id": "F2",
+      "severity": "high",
+      "section": "4. 條件式操作建議",
+      "issue": "The advice engine does not define deterministic fall‑backs when required inputs are missing (e.g., regime tags, multi‑timeframe direction, or key‑level objects). The current description says “沒有就寫‘沒有特別警訊’”, but the code may still attempt to access undefined fields, causing runtime errors.",
+      "suggestion": "Implement explicit guard clauses in `wave/advice.py` that return a minimal advice object with `hold_range: null` and an empty `conditions` array when any required input is absent. Document the fallback behavior in the function docstring."
+     },
+     {
+      "id": "F3",
+      "severity": "medium",
+      "section": "2. 後端（wave/）",
+      "issue": "The new snapshot fields (`levels.m30`, `key.m30`, `waves.intra30`) are added without versioning. Clients that only understand B75 may ignore unknown keys, but older UI code that iterates over snapshot keys could break if it assumes a fixed set.",
+      "suggestion": "Add a `snapshot_version` field (e.g., `2`) and update the frontend to filter keys based on the version it supports. Also, ensure that any generic loops over `snapshot` keys skip unknown prefixes safely."
+     },
+     {
+      "id": "F4",
+      "severity": "medium",
+      "section": "1. 驗收條件 – 多週期一覽",
+      "issue": "The UI spec states that clicking a row switches the timeframe, but does not specify how the state is persisted across page reloads or when the user switches symbols.",
+      "suggestion": "Persist the selected timeframe in `localStorage.wv_tf` and, on symbol change, retain the current `wv_tf` value. Add a unit test in `tests_ui/b76_ui.py` that verifies the timeframe remains after a symbol switch."
+     },
+     {
+      "id": "F5",
+      "severity": "low",
+      "section": "3. 研究 R‑I30／R‑K30 – 統計力",
+      "issue": "The plan mentions “樣本只有 60 天（加權）／30 天（台指期），統計力很低” but does not require a disclaimer in the UI.",
+      "suggestion": "Add a small footnote under the 30 m analysis card: “基於短期樣本，僅供參考，勿作為唯一決策依據”。"
+     },
+     {
+      "id": "F6",
+      "severity": "low",
+      "section": "5. 前端 – UI 排列",
+      "issue": "The new “操作建議” block is placed above the K 線圖, but the existing CSS grid may not have enough vertical space on mobile, causing overflow.",
+      "suggestion": "Introduce a collapsible accordion for the advice block on screens < 768 px and add a UI test that checks the block is hidden/collapsible on mobile viewport."
+     }
+    ],
+    "coverage": "The review covers look‑ahead safety, consistency with B75 validated rules, statistical honesty for tiny 30 m samples, deterministic behavior of the rule‑based advice engine (including edge cases), backward compatibility of snapshot keys and localStorage mappings, UI clarity for multi‑timeframe interactions, and test completeness for new features.",
+    "limitations": "The assessment is based on the provided PLAN document and assumed existing codebase. Actual runtime behavior may differ if hidden dependencies exist in the current B75 modules. A full code audit of `wave/advice.py` and UI components is required to validate the suggested guard clauses and layout adjustments."
+   }
+  }
+ ]
+}

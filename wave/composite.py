@@ -139,8 +139,11 @@ def margin_block(chips: pd.DataFrame, today: Optional[str] = None) -> dict:
     chg = lambda k: f(v[-1] - v[-1 - k]) if len(v) > k else None
     pct = lambda k: f((v[-1] / v[-1 - k] - 1) * 100) if len(v) > k and v[-1 - k] else None
     hist = [{"date": m["date"].iloc[i + 1], "chg": f(d[i]), "amt": f(v[i + 1])} for i in range(max(0, len(d) - 60), len(d))]
+    last10 = [{"date": m["date"].iloc[i], "amt": f(v[i]), "chg": f(v[i] - v[i - 1]) if i > 0 else None,
+               "pct": f((v[i] / v[i - 1] - 1) * 100) if i > 0 and v[i - 1] else None}
+              for i in range(len(v) - 1, max(-1, len(v) - 11), -1)]          # B76：近 10 天，最新在上
     out = {"ok": True, "date": m["date"].iloc[-1], "amt": f(v[-1]), "chg1": chg(1), "pct1": pct(1), "chg5": chg(5), "pct5": pct(5),
-           "chg20": chg(20), "pct20": pct(20), "streak": int(run), "hist": hist}
+           "chg20": chg(20), "pct20": pct(20), "streak": int(run), "hist": hist, "last10": last10}
     if today and m["date"].iloc[-1] < today:
         out["pending"] = "今天的融資晚上 21:30 後公布"
     return out

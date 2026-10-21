@@ -1,0 +1,21 @@
+{
+ "mode": "inspect",
+ "files": [
+  "PLAN-B76.md",
+  "regime-frontend/wave.js",
+  "regime-frontend/index.html"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3-flash-preview",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"The implementation of the 4-timeframe multi-period analysis, conditional advice system, and layout restructuring strictly follows the B76 plan. The migration logic for timeframe selection ensures backward compatibility with the legacy 'wv_mode' storage. XSS protection is consistently applied via the 'esc' helper for all dynamic data, and the multi-timeframe mapping accurately addresses the new snapshot keys (m30, ultra, short, swing).\",\n  \"findings\": [],\n  \"coverage\": \"Complete inspection of regime-frontend/wave.js and regime-frontend/index.html against PLAN-B76. Verified logic for timeframe switching, ladder rendering, margin last-10-days table, and advice engine UI.\",\n  \"limitations\": \"The inspection is limited to the frontend implementation; back-end logic for snapshot calculation (e.g., θ calibration for 30m K and the rule-based advice engine) is assumed to match the documented PLAN-B76 specifications.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "The implementation of the 4-timeframe multi-period analysis, conditional advice system, and layout restructuring strictly follows the B76 plan. The migration logic for timeframe selection ensures backward compatibility with the legacy 'wv_mode' storage. XSS protection is consistently applied via the 'esc' helper for all dynamic data, and the multi-timeframe mapping accurately addresses the new snapshot keys (m30, ultra, short, swing).",
+    "findings": [],
+    "coverage": "Complete inspection of regime-frontend/wave.js and regime-frontend/index.html against PLAN-B76. Verified logic for timeframe switching, ladder rendering, margin last-10-days table, and advice engine UI.",
+    "limitations": "The inspection is limited to the frontend implementation; back-end logic for snapshot calculation (e.g., θ calibration for 30m K and the rule-based advice engine) is assumed to match the documented PLAN-B76 specifications."
+   }
+  }
+ ]
+}
