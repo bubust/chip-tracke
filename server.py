@@ -547,7 +547,11 @@ def _startup_catchup():
                 cu[key] = attempts + 1
                 _jobs.write_json_atomic(CATCHUP_FILE, cu)
                 _jobs.event("catchup", what="scan_1800", day=key, attempt=attempts + 1)
-                _scan_daily_sync(resume_refresh=_refresh_recent_interrupted())
+                _refresh_all_status["catchup"] = "scan_1800"      # 網頁顯示「先補今天的掃描，跑完接著跑」（不是倒數 0 秒）
+                try:
+                    _scan_daily_sync(resume_refresh=_refresh_recent_interrupted())
+                finally:
+                    _refresh_all_status["catchup"] = None
                 return
         if _refresh_recent_interrupted() and not _refresh_all_status["running"]:
             _refresh_all_status["resume_at"] = (datetime.now() + timedelta(seconds=120)).isoformat(timespec="seconds")
@@ -2695,6 +2699,7 @@ _refresh_all_status: dict = {
     "crash": {},          # PLAN-B77 B1：每步「跑到一半伺服器重開」的次數（同一步 2 次就略過）
     "resume_at": None,    # 重開後預定自動接著跑的時間（網頁顯示倒數）
     "queued": None,       # 排隊中：等哪個重工作跑完
+    "catchup": None,      # 重開機補跑中（scan_1800＝先補 18:00 掃描，跑完接著跑全系統更新）
 }
 RESUME_WINDOW_H = 6       # 6 小時內中斷的才接著跑（再久就整個重跑）
 STEP_SKIP_AFTER = 2       # 同一步中斷 2 次 → 略過
@@ -2729,6 +2734,7 @@ def _load_refresh_status():
                                     if k in _refresh_all_status["steps"]}
     _refresh_all_status["resume_at"] = None
     _refresh_all_status["queued"] = None
+    _refresh_all_status["catchup"] = None
     if saved.get("running") or saved.get("interrupted"):
         # 上次跑到一半伺服器就重開了：正在跑的那步＝中斷（記一次），後面的維持等待中
         for k, v in _refresh_all_status["steps"].items():

@@ -51,3 +51,12 @@
 | G | Groq | swr.py、health.py | **APPROVED** |
 | G | Groq | warrant/calculator.py | REVISE 3 點 → 全駁回：bs_greeks 只在隱波算得出來時呼叫（S、K 必 > 0），delta 是 None 會先 return；Brent 初值跟 scipy brentq.c 一樣（5 萬組 0 差異） |
 | final | Gemini 3.7-flash（新的一輪） | 檢查後的最後小改（jobs.recent、chip_course finally、relationship skip） | **APPROVED** |
+
+## 部署後驗證（正式站 v290，2026-10-21 21:54 起）
+- 1 台機器、swap 512MB 生效（/proc/meminfo SwapTotal 512）、開機 RSS 153MB（原 234MB）
+- 重開補跑照設計：21:57:31 補今天 18:00 掃描（catchup.json 第 1 次）→ 22:12 掃描完成（1,946 檔、命中 566、失敗 2）→ 全系統更新**從權證合約接著跑**（前 6 步不重跑）→ 22:20 12 步全部完成
+  權證 79.6s、市場關聯 1.7s、連動 24.1s、庫藏股 20.8s、併購 131.8s、可轉債 22.6s；整段 1,374 秒、記憶體尖峰 226MB（機器 459MB）、swap 用 1MB、0 次 OOM
+- 籌碼型策略恢復：投信連買 1、融券大增 11、融券退潮 18、大戶增散戶減 326、投信倒貨 8（10-20 那次全 0；當時真正原因 log 已輪替看不到，S_BIGHOLD 的 None 例外已修）
+- 🩺 系統健康：✅ 全部正常
+- 慢端點：處置股重開後第一次 8.3s（第一次建存檔）→ 0.16～0.22s；可轉債 2.3s → 0.26s；連動 0.2s；/healthz 0.14s
+- 追加修正 B77b：補跑掃描那 15 分鐘按鈕顯示「⏳ 0 秒後接著跑」→ 新欄位 catchup＝scan_1800，顯示「先補今天的掃描」；Gemini 3.7-flash 檢查 APPROVED

@@ -3970,9 +3970,11 @@ function _rfRender(st) {
     btn.textContent = `⏳ 更新中 ${fin}/${steps.length}`; btn.title = '點一下看進度';
     if (hint) hint.textContent = st.queued ? `排隊中：等「${_rfJobName(st.queued)}」跑完再開始（同一時間只跑一個大工作，免得記憶體不夠）`
                                            : '可以先關掉，更新會在背景繼續；按右上角按鈕可再打開';
+  } else if (st.catchup === 'scan_1800') {
+    btn.textContent = '⏳ 先補今天的掃描'; btn.title = '伺服器剛重新啟動：先補今天 18:00 的全市場掃描（約 10 分鐘），跑完自動接著跑全系統更新';
   } else if (st.resume_at) {
     const left = Math.max(0, Math.round((new Date(st.resume_at) - Date.now()) / 1000));
-    btn.textContent = `⏳ ${left} 秒後接著跑`; btn.title = '伺服器剛重新啟動，會自動從中斷的地方接著跑';
+    btn.textContent = left > 0 ? `⏳ ${left} 秒後接著跑` : '⏳ 準備接著跑'; btn.title = '伺服器剛重新啟動，會自動從中斷的地方接著跑';
   }
   return { steps, fin };
 }
@@ -4006,12 +4008,14 @@ function _rfStartPolling() {
     let st;
     try { st = await api('GET', '/api/refresh_all/status'); } catch (_) { return; }   // 伺服器重啟中：下次再問
     const { steps } = _rfRender(st);
-    if (st.running || st.resume_at) {
+    if (st.running || st.resume_at || st.catchup) {
       sawActive = true;
-      if (st.resume_at && !st.running) {
+      if (!st.running && (st.resume_at || st.catchup)) {
         const at = steps.find(v => v.status === 'interrupted');
         doneMsg.style.color = '#d29922';
-        doneMsg.innerHTML = `⚠️ 伺服器剛重新啟動${at ? `（當時在跑「${_esc(at.label)}」）` : ''}<br><span style="font-weight:400;font-size:.8rem;color:#8b949e">不用再按，會自動從中斷的地方接著跑（已完成的不重跑）</span>`;
+        doneMsg.innerHTML = `⚠️ 伺服器剛重新啟動${at ? `（當時在跑「${_esc(at.label)}」）` : ''}<br><span style="font-weight:400;font-size:.8rem;color:#8b949e">` +
+          (st.catchup === 'scan_1800' ? '正在先補今天 18:00 的全市場掃描（約 10 分鐘），跑完會自動接著跑（已完成的不重跑），不用再按'
+                                      : '不用再按，會自動從中斷的地方接著跑（已完成的不重跑）') + '</span>';
         doneMsg.style.display = 'block';
       } else {
         doneMsg.style.display = 'none';
@@ -4077,7 +4081,7 @@ async function globalRefreshAll() {
 setTimeout(async () => {
   try {
     const st = await api('GET', '/api/refresh_all/status');
-    if (st && (st.running || st.resume_at)) { _rfRender(st); _rfStartPolling(); }
+    if (st && (st.running || st.resume_at || st.catchup)) { _rfRender(st); _rfStartPolling(); }
   } catch (e) {}
 }, 1500);
 

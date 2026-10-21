@@ -1,0 +1,346 @@
+diff --git a/dashboard.html b/dashboard.html
+index f550479..5047809 100644
+--- a/dashboard.html
++++ b/dashboard.html
+@@ -3943,102 +3943,106 @@ function closeRefreshModal() {
+   document.getElementById('refresh-progress-modal').style.display = 'none';
+ }
+ function _rfOpen() { document.getElementById('refresh-progress-modal').style.display = 'flex'; }
+ 
+ function _rfSec(v) {
+   if (v.sec == null || !['done', 'error', 'busy'].includes(v.status)) return '';
+   const x = v.sec >= 60 ? `${Math.floor(v.sec / 60)}分${Math.round(v.sec % 60)}秒` : `${Math.round(v.sec)}秒`;
+   return ` · ${x}`;
+ }
+ 
+ function _rfJobName(n) {
+   return ({ scan_1800: '18:00 全市場掃描', refresh_all: '全系統更新', warrant_ingest: '權證合約更新', sector_refresh: '產業輪動計算',
+             treasury: '庫藏股', mna: '收購併購', cb: '可轉債', relationship: '市場關聯', positioning: '籌碼定位' })[n] || n;
+ }
+ 
+ function _rfRender(st) {
+   const steps = Object.values(st.steps || {});
+   const fin = steps.filter(v => ['done', 'error', 'busy', 'skipped'].includes(v.status)).length;
+   document.getElementById('refresh-steps-list').innerHTML = steps.map(v => `
+     <div class="rf-item" title="${_esc(v.reason || '')}"><span>${_RF_ICON[v.status] || '⏳'}</span>
+       <span class="rf-l" style="color:${_RF_COLOR[v.status] || '#8b949e'}">${_esc(v.label)}</span>
+       <span class="rf-s">${_RF_TEXT[v.status] || '等待中'}${_rfSec(v)}</span></div>`).join('');
+   document.getElementById('rf-count').textContent = steps.length ? `${fin} / ${steps.length}` : '';
+   document.getElementById('rf-bar-fill').style.width = steps.length ? `${Math.round(fin / steps.length * 100)}%` : '0';
+   const btn = document.getElementById('btn-global-refresh');
+   const hint = document.getElementById('rf-hint');
+   if (st.running) {
+     btn.textContent = `⏳ 更新中 ${fin}/${steps.length}`; btn.title = '點一下看進度';
+     if (hint) hint.textContent = st.queued ? `排隊中：等「${_rfJobName(st.queued)}」跑完再開始（同一時間只跑一個大工作，免得記憶體不夠）`
+                                            : '可以先關掉，更新會在背景繼續；按右上角按鈕可再打開';
++  } else if (st.catchup === 'scan_1800') {
++    btn.textContent = '⏳ 先補今天的掃描'; btn.title = '伺服器剛重新啟動：先補今天 18:00 的全市場掃描（約 10 分鐘），跑完自動接著跑全系統更新';
+   } else if (st.resume_at) {
+     const left = Math.max(0, Math.round((new Date(st.resume_at) - Date.now()) / 1000));
+-    btn.textContent = `⏳ ${left} 秒後接著跑`; btn.title = '伺服器剛重新啟動，會自動從中斷的地方接著跑';
++    btn.textContent = left > 0 ? `⏳ ${left} 秒後接著跑` : '⏳ 準備接著跑'; btn.title = '伺服器剛重新啟動，會自動從中斷的地方接著跑';
+   }
+   return { steps, fin };
+ }
+ 
+ // 跑完後：各分頁的畫面重新載入（目前開著的那頁馬上重載，其他頁下次點進去會重抓）
+ function _rfReloadTabs() {
+   try { loadWatchlist(); loadPill(); } catch (e) {}
+   ['regime-iframe', 'sector-iframe', 'relationship-iframe'].forEach(id => {
+     const f = document.getElementById(id);
+     if (f && f.dataset.loaded) { try { f.contentWindow.location.reload(); } catch (e) { f.src = f.src; } }
+   });
+   const wf = document.querySelector('#tab-warrant iframe');
+   if (wf && wf.dataset.loaded) { try { wf.contentWindow.location.reload(); } catch (e) {} }
+   try { _tbLoaded = false; } catch (e) {}
+   try { _mnaLoaded = false; } catch (e) {}
+   try { _cbLoaded = false; } catch (e) {}
+   try { _linkLoaded = 0; } catch (e) {}
+   try { _mktLoadedAt = 0; } catch (e) {}
+   try { _tailLoaded = 0; } catch (e) {}
+   const act = (document.querySelector('.tab.active') || {}).id || '';
+   const onShow = { 'tab-treasury': 'tbOnShow', 'tab-mna': 'mnaOnShow', 'tab-cb': 'cbOnShow', 'tab-link': 'linkOnShow', 'tab-market': '_mktOnShow', 'tab-tail': 'tailOnShow' }[act];
+   if (onShow && typeof window[onShow] === 'function') { try { window[onShow](); } catch (e) {} }
+ }
+ 
+ // 輪詢進度：跑完（或確定不會自動續跑）才停；伺服器重開中問不到就下次再問（PLAN-B77 B1）
+ function _rfStartPolling() {
+   const btn = document.getElementById('btn-global-refresh');
+   const doneMsg = document.getElementById('refresh-all-done-msg');
+   let sawActive = false;
+   const tick = async () => {
+     let st;
+     try { st = await api('GET', '/api/refresh_all/status'); } catch (_) { return; }   // 伺服器重啟中：下次再問
+     const { steps } = _rfRender(st);
+-    if (st.running || st.resume_at) {
++    if (st.running || st.resume_at || st.catchup) {
+       sawActive = true;
+-      if (st.resume_at && !st.running) {
++      if (!st.running && (st.resume_at || st.catchup)) {
+         const at = steps.find(v => v.status === 'interrupted');
+         doneMsg.style.color = '#d29922';
+-        doneMsg.innerHTML = `⚠️ 伺服器剛重新啟動${at ? `（當時在跑「${_esc(at.label)}」）` : ''}<br><span style="font-weight:400;font-size:.8rem;color:#8b949e">不用再按，會自動從中斷的地方接著跑（已完成的不重跑）</span>`;
++        doneMsg.innerHTML = `⚠️ 伺服器剛重新啟動${at ? `（當時在跑「${_esc(at.label)}」）` : ''}<br><span style="font-weight:400;font-size:.8rem;color:#8b949e">` +
++          (st.catchup === 'scan_1800' ? '正在先補今天 18:00 的全市場掃描（約 10 分鐘），跑完會自動接著跑（已完成的不重跑），不用再按'
++                                      : '不用再按，會自動從中斷的地方接著跑（已完成的不重跑）') + '</span>';
+         doneMsg.style.display = 'block';
+       } else {
+         doneMsg.style.display = 'none';
+       }
+       return;
+     }
+     clearInterval(_rfPoll); _rfPoll = null;
+     btn.textContent = '🔄 全系統更新'; btn.title = '';
+     if (!sawActive && !st.interrupted) return;     // 打開網頁時只是看一下：沒在跑就不顯示結果
+     const stuck = steps.filter(v => !['done', 'error', 'busy', 'skipped'].includes(v.status));
+     const errs = steps.filter(v => v.status === 'error');
+     const skipped = steps.filter(v => v.status === 'skipped');
+     if (st.interrupted || stuck.length) {
+       const at = steps.find(v => v.status === 'interrupted');
+       doneMsg.style.color = '#d29922';
+       doneMsg.innerHTML = `⚠️ 更新沒有跑完${at ? `：在「${_esc(at.label)}」途中伺服器重新啟動` : ''}<br><span style="font-weight:400;font-size:.8rem;color:#8b949e">已完成的有效；伺服器起來後會自動接著跑（6 小時內），也可以再按一次「🔄 全系統更新」補跑</span>`;
+     } else if (errs.length || skipped.length) {
+       doneMsg.style.color = '#d29922';
+       doneMsg.textContent = '✅ 更新完成' + (errs.length ? `，${errs.length} 項失敗：${errs.map(v => v.label).join('、')}` : '') +
+         (skipped.length ? `；略過 ${skipped.map(v => v.label).join('、')}（連續兩次跑到一半伺服器重開）` : '');
+     } else {
+       doneMsg.style.color = '#3fb950';
+       doneMsg.textContent = '✅ 全系統更新完成！各分頁已重新載入';
+       document.getElementById('rf-hint').textContent = '3 秒後自動關閉';
+       _rfAutoClose = setTimeout(closeRefreshModal, 3000);
+     }
+     doneMsg.style.display = 'block';
+     _rfReloadTabs();
+     if (document.getElementById('refresh-progress-modal').style.display === 'none') toast(doneMsg.textContent.replace(/\s+/g, ' '));
+   };
+@@ -4050,61 +4054,61 @@ function _rfStartPolling() {
+ async function globalRefreshAll() {
+   const btn = document.getElementById('btn-global-refresh');
+   const doneMsg = document.getElementById('refresh-all-done-msg');
+   if (_rfPoll) { _rfOpen(); return; }          // 更新中再按＝打開進度
+   clearTimeout(_rfAutoClose);
+   btn.disabled = false;
+   btn.textContent = '⏳ 啟動中...';
+   doneMsg.style.display = 'none';
+   document.getElementById('rf-hint').textContent = '可以先關掉，更新會在背景繼續；按右上角按鈕可再打開';
+   document.getElementById('refresh-steps-list').innerHTML = '';
+   document.getElementById('rf-count').textContent = '';
+   document.getElementById('rf-bar-fill').style.width = '0';
+   _rfOpen();
+   try {
+     const r = await api('POST', '/api/refresh_all');
+     if (!r.ok && r.message && !/執行中/.test(r.message)) throw new Error(r.message);
+     if (r.resume) document.getElementById('rf-hint').textContent = '接著上次中斷的地方跑，已完成的不重跑';
+   } catch (e) {
+     toast('全系統更新失敗：' + e.message, true);
+     closeRefreshModal();
+     btn.textContent = '🔄 全系統更新';
+     return;
+   }
+   _rfStartPolling();
+ }
+ 
+ // 打開網頁時：背景正在更新、或伺服器剛重開等著接著跑 → 按鈕顯示進度（不自動跳出框）
+ setTimeout(async () => {
+   try {
+     const st = await api('GET', '/api/refresh_all/status');
+-    if (st && (st.running || st.resume_at)) { _rfRender(st); _rfStartPolling(); }
++    if (st && (st.running || st.resume_at || st.catchup)) { _rfRender(st); _rfStartPolling(); }
+   } catch (e) {}
+ }, 1500);
+ 
+ // Esc 關進度框
+ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRefreshModal(); });
+ 
+ // ── 全部更新 ──
+ async function refreshAll() {
+   const btn  = document.getElementById('btn-refresh-all');
+   const days = parseInt(document.getElementById('backfill-days').value) || 30;
+   btn.disabled = true;
+   btn.textContent = '⏳ 更新中...';
+   try {
+     // 帶入目前前端清單，防止 Render 重啟後 server SQLite 是空的
+     const extraIds = (_wlData || []).map(x => x.stock_id).filter(Boolean);
+     const r = await api('POST', '/api/refresh', { backfill: days, extra_stocks: extraIds });
+     toast(`✅ 更新完成：${r.updated.join(', ')}（${r.days} 天）`);
+     await loadWatchlist();
+     await loadPill();
+   } catch (e) {
+     toast(e.message, true);
+   } finally {
+     btn.disabled = false;
+     btn.textContent = '🔄 全部更新';
+   }
+ }
+ 
+ // ── 個股詳細 ──
+ // ── 查詢記錄 ────────────────────────────────────────────────────────────────
+ const HISTORY_KEY = 'chip_query_history';
+diff --git a/server.py b/server.py
+index 64bb995..3994193 100644
+--- a/server.py
++++ b/server.py
+@@ -520,61 +520,65 @@ def _scan_daily_sync(resume_refresh: bool = False):
+ 
+ def _startup_catchup():
+     """重開機補跑（PLAN-B77 B1／B2，同一條執行緒，審查 Gemini F1）：
+     要補 18:00 掃描 → 等 180 秒（第 2 次 600 秒）跑掃描＋全系統更新（6 小時內中斷就接著跑）；
+     不用補掃描、只有全系統更新中斷 → 等 120 秒接著跑；最後預熱。"""
+     import logging as _lg, time as _t
+     import jobs as _jobs
+     from yahoo_price import get_scan_status
+     lg = _lg.getLogger(__name__)
+     try:
+         cu = _jobs.read_json(CATCHUP_FILE, {})
+         if not isinstance(cu, dict):
+             cu = {}
+         now = datetime.now()
+         _, key = need_scan_catchup(now, None, 0)
+         attempts = int(cu.get(key, 0)) if key else 0
+         need, key = need_scan_catchup(now, get_scan_status().get("finished_at"), attempts)
+         resume = _refresh_recent_interrupted(now)
+         if need:
+             delay = 180 if attempts == 0 else 600
+             if resume:
+                 _refresh_all_status["resume_at"] = (now + timedelta(seconds=delay)).isoformat(timespec="seconds")
+             lg.info(f"[catchup] {key} 晚上的掃描沒跑完，{delay} 秒後補跑（第 {attempts + 1} 次）")
+             _t.sleep(delay)
+             need2, _ = need_scan_catchup(datetime.now(), get_scan_status().get("finished_at"), attempts)
+             if need2 and not get_scan_status().get("running"):
+                 cu = {k: v for k, v in cu.items() if k >= (now.date() - timedelta(days=10)).isoformat()}
+                 cu[key] = attempts + 1
+                 _jobs.write_json_atomic(CATCHUP_FILE, cu)
+                 _jobs.event("catchup", what="scan_1800", day=key, attempt=attempts + 1)
+-                _scan_daily_sync(resume_refresh=_refresh_recent_interrupted())
++                _refresh_all_status["catchup"] = "scan_1800"      # 網頁顯示「先補今天的掃描，跑完接著跑」（不是倒數 0 秒）
++                try:
++                    _scan_daily_sync(resume_refresh=_refresh_recent_interrupted())
++                finally:
++                    _refresh_all_status["catchup"] = None
+                 return
+         if _refresh_recent_interrupted() and not _refresh_all_status["running"]:
+             _refresh_all_status["resume_at"] = (datetime.now() + timedelta(seconds=120)).isoformat(timespec="seconds")
+             _save_refresh_status()
+             lg.info("[catchup] 全系統更新上次跑到一半，120 秒後接著跑")
+             _t.sleep(120)
+             if _refresh_recent_interrupted() and not _refresh_all_status["running"]:
+                 _jobs.event("catchup", what="refresh_all")
+                 _do_system_refresh(resume=True)
+         else:
+             _t.sleep(60)
+         _prewarm()
+     except Exception as e:      # noqa: BLE001
+         lg.warning(f"[catchup] 失敗：{e}")
+     finally:
+         _refresh_all_status["resume_at"] = None
+ 
+ 
+ def _sched_heavy(name: str, fn, *a, skip_if_recent: bool = False, **kw):
+     """排程版重工作：排隊（jobs.heavy）；skip_if_recent＝全系統更新 90 分鐘內剛成功做過同一項就跳過（PLAN-B77 A4）"""
+     import logging as _lg
+     import jobs as _jobs
+     if skip_if_recent and _jobs.recently_ok(name):
+         _jobs.event("skip", name=name, reason="全系統更新 90 分鐘內剛做過")
+         return None
+     try:
+         return _jobs.run_heavy(name, fn, *a, **kw)
+     except Exception as e:      # noqa: BLE001
+         _lg.getLogger(__name__).warning(f"[sched] {name} 失敗：{e}")
+         return None
+@@ -2668,94 +2672,96 @@ async def api_refresh(body: RefreshBody):
+     results = await update_stocks(stock_ids, days=days, end_date=end_dt)
+     settings_set("last_refresh", datetime.now().isoformat())
+     return {"ok": True, "updated": list(results.keys()), "days": days}
+ 
+ 
+ # ════════════════════════════════════════════════════════════════════════════
+ # 全系統更新 API（一鍵更新所有引擎）
+ # ════════════════════════════════════════════════════════════════════════════
+ 
+ _refresh_all_status: dict = {
+     "running": False,
+     "started_at": None,
+     "steps": {
+         "watchlist":   {"label": "觀察清單股票",    "status": "pending"},
+         "regime":      {"label": "總經 Regime 引擎", "status": "pending"},
+         "wave":        {"label": "大盤解析（波浪＋費波那契）", "status": "pending"},
+         "tdcc":        {"label": "千張大戶 TDCC",    "status": "pending"},
+         "positioning": {"label": "籌碼定位引擎",     "status": "pending"},
+         "sector":      {"label": "產業輪動引擎",     "status": "pending"},
+         "warrant":     {"label": "權證合約更新",     "status": "pending"},
+         # 2026-10-18：各分頁的資料也一起更新（以前要自己點進分頁按更新）
+         "relationship": {"label": "市場關聯",        "status": "pending"},
+         "link":        {"label": "連動／處置股",     "status": "pending"},
+         "treasury":    {"label": "庫藏股",          "status": "pending"},
+         "mna":         {"label": "收購併購",        "status": "pending"},
+         "cb":          {"label": "可轉債",          "status": "pending"},
+     },
+     "crash": {},          # PLAN-B77 B1：每步「跑到一半伺服器重開」的次數（同一步 2 次就略過）
+     "resume_at": None,    # 重開後預定自動接著跑的時間（網頁顯示倒數）
+     "queued": None,       # 排隊中：等哪個重工作跑完
++    "catchup": None,      # 重開機補跑中（scan_1800＝先補 18:00 掃描，跑完接著跑全系統更新）
+ }
+ RESUME_WINDOW_H = 6       # 6 小時內中斷的才接著跑（再久就整個重跑）
+ STEP_SKIP_AFTER = 2       # 同一步中斷 2 次 → 略過
+ 
+ # 進度存檔（2026-10-18）：伺服器跑到一半重新啟動（例如記憶體不夠被 Fly 重開）時，
+ # 記憶體裡的進度會變回全部「等待中」、running=False，網頁就誤報「全系統更新完成」。
+ # 每一步都寫進 chip_data/refresh_all_status.json，重啟後讀回來把卡住的那步標成「中斷」。
+ _REFRESH_STATUS_FILE = DATA_DIR / "refresh_all_status.json"
+ 
+ 
+ def _save_refresh_status():
+     try:
+         import jobs as _jobs
+         _jobs.write_json_atomic(_REFRESH_STATUS_FILE, _refresh_all_status)
+     except Exception:
+         pass
+ 
+ 
+ def _load_refresh_status():
+     try:
+         saved = json.loads(_REFRESH_STATUS_FILE.read_text(encoding="utf-8"))
+     except Exception:
+         return
+     for k, v in (saved.get("steps") or {}).items():
+         if k in _refresh_all_status["steps"] and isinstance(v, dict):
+             _refresh_all_status["steps"][k]["status"] = v.get("status", "pending")
+             if v.get("sec") is not None:
+                 _refresh_all_status["steps"][k]["sec"] = v.get("sec")
+     _refresh_all_status["started_at"] = saved.get("started_at")
+     _refresh_all_status["finished_at"] = saved.get("finished_at")
+     _refresh_all_status["crash"] = {k: int(v) for k, v in (saved.get("crash") or {}).items()
+                                     if k in _refresh_all_status["steps"]}
+     _refresh_all_status["resume_at"] = None
+     _refresh_all_status["queued"] = None
++    _refresh_all_status["catchup"] = None
+     if saved.get("running") or saved.get("interrupted"):
+         # 上次跑到一半伺服器就重開了：正在跑的那步＝中斷（記一次），後面的維持等待中
+         for k, v in _refresh_all_status["steps"].items():
+             if v["status"] == "running":
+                 v["status"] = "interrupted"
+                 _refresh_all_status["crash"][k] = _refresh_all_status["crash"].get(k, 0) + 1
+         _refresh_all_status["interrupted"] = True
+     _refresh_all_status["running"] = False
+     if saved.get("running"):
+         _save_refresh_status()          # 中斷次數要存回去，再重開一次才數得到
+ 
+ 
+ _load_refresh_status()
+ 
+ 
+ def _refresh_recent_interrupted(now=None) -> bool:
+     """上次全系統更新是 6 小時內、跑到一半中斷的 → 可以接著跑（已完成的不重跑）"""
+     from datetime import datetime as _dt, timedelta as _td
+     if not _refresh_all_status.get("interrupted"):
+         return False
+     try:
+         st = _dt.fromisoformat(str(_refresh_all_status.get("started_at")))
+     except Exception:
+         return False
+     return (now or _dt.now()) - st < _td(hours=RESUME_WINDOW_H)
+ 
+ 
+ def _set_step(step: str, status: str, sec=None):
+     _refresh_all_status["steps"][step]["status"] = status
+     if sec is not None:
