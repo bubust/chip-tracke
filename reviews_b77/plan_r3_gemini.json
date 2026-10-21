@@ -1,0 +1,39 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B77.md",
+  "warrant/ingester.py",
+  "warrant/calculator.py",
+  "sector/prices.py",
+  "disposal.py",
+  "server.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.7-flash",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"The PLAN-B77 implementation plan thoroughly addresses the root causes of the 512MB Fly.io OOM kill and missed jobs with solid empirical measurements. Replacing scipy with math.erf and a pure-Python Brent implementation eliminates ~54MB resident overhead. Streaming warrant JSON via ijson and incremental sector price sync slash peak allocations from ~206MB and ~173MB to bounded streaming buffers. Global heavy-job serialization via RLock with 60-minute timeouts and loop-detection prevents concurrent job stacking and event-loop blocking. Crash-loop prevention (max 2 catchup attempts, 2-strike step skipping, 6-hour resume window, 512MB disk swap safety net) is well-bounded. Acceptance tests and Playwright UI tests provide rigorous validation.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"low\",\n      \"section\": \"A1\",\n      \"issue\": \"During the two passes of ijson parsing on the temporary contract file, Pass 1 consumes the stream to construct the warrant-to-underlying mapping. If the file pointer is not rewound before Pass 2, Pass 2 will read EOF.\",\n      \"suggestion\": \"Explicitly include `f.seek(0)` between Pass 1 and Pass 2 on the temporary file object before initializing the second ijson iterator.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"section\": \"B2\",\n      \"issue\": \"If `chip_data/catchup.json` is partially written or truncated during a sudden SIGKILL or power cycle, standard JSON deserialization at boot could raise JSONDecodeError.\",\n      \"suggestion\": \"Wrap the `catchup.json` read in a try/except block that falls back to an empty tracking dictionary if corrupted, and use atomic write (write to temp file and rename) when persisting attempt counts.\"\n    }\n  ],\n  \"coverage\": \"Reviewed memory optimization (ijson, incremental sync, math.erf/brentq), execution safety (heavy RLock, event-loop guards, APScheduler overlap), startup catch-up & crash recovery (need_scan_catchup, crash step skipping, 6h resume TTL), frontend polling & caching (SWR, single-flight locks, LWC autoscale margins), and acceptance test coverage against provided server, ingester, calculator, prices, and disposal implementations.\",\n  \"limitations\": \"Static code and plan review based on provided codebase and scratchpad measurements; runtime verification on Fly.io (memory behavior under Linux glibc malloc_trim and actual swap paging performance) depends on deployment.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "The PLAN-B77 implementation plan thoroughly addresses the root causes of the 512MB Fly.io OOM kill and missed jobs with solid empirical measurements. Replacing scipy with math.erf and a pure-Python Brent implementation eliminates ~54MB resident overhead. Streaming warrant JSON via ijson and incremental sector price sync slash peak allocations from ~206MB and ~173MB to bounded streaming buffers. Global heavy-job serialization via RLock with 60-minute timeouts and loop-detection prevents concurrent job stacking and event-loop blocking. Crash-loop prevention (max 2 catchup attempts, 2-strike step skipping, 6-hour resume window, 512MB disk swap safety net) is well-bounded. Acceptance tests and Playwright UI tests provide rigorous validation.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "low",
+      "section": "A1",
+      "issue": "During the two passes of ijson parsing on the temporary contract file, Pass 1 consumes the stream to construct the warrant-to-underlying mapping. If the file pointer is not rewound before Pass 2, Pass 2 will read EOF.",
+      "suggestion": "Explicitly include `f.seek(0)` between Pass 1 and Pass 2 on the temporary file object before initializing the second ijson iterator."
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "section": "B2",
+      "issue": "If `chip_data/catchup.json` is partially written or truncated during a sudden SIGKILL or power cycle, standard JSON deserialization at boot could raise JSONDecodeError.",
+      "suggestion": "Wrap the `catchup.json` read in a try/except block that falls back to an empty tracking dictionary if corrupted, and use atomic write (write to temp file and rename) when persisting attempt counts."
+     }
+    ],
+    "coverage": "Reviewed memory optimization (ijson, incremental sync, math.erf/brentq), execution safety (heavy RLock, event-loop guards, APScheduler overlap), startup catch-up & crash recovery (need_scan_catchup, crash step skipping, 6h resume TTL), frontend polling & caching (SWR, single-flight locks, LWC autoscale margins), and acceptance test coverage against provided server, ingester, calculator, prices, and disposal implementations.",
+    "limitations": "Static code and plan review based on provided codebase and scratchpad measurements; runtime verification on Fly.io (memory behavior under Linux glibc malloc_trim and actual swap paging performance) depends on deployment."
+   }
+  }
+ ]
+}

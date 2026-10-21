@@ -235,14 +235,17 @@ def fetch_and_store_today() -> dict:
     return {"dates": sorted(by_date), "twse": len(twse), "tpex": len(tpex), "stored": n}
 
 
-def sync_from_price_cache(days: int = 200) -> dict:
+def sync_from_price_cache(days: int = 200, full: bool = False) -> dict:
     """
     從主價格快取（cache.db 的 price_daily：全市場掃描／每日收盤更新，日期正確、有 2 年歷史）同步到 sector_stock_daily。
     price_daily 成交量是「張」，這裡換成「股」（×1000）跟 openapi 一致。
     某天在 price_daily 有 ≥ 1000 支（完整的一天）→ 先清掉該天舊資料再寫入（清掉以前存錯日期的列）。
+    PLAN-B77 A2：以前每次把 200 天 × 2,100 檔（約 28 萬列）一次讀進記憶體再整段重寫（正式站 +170MB）；
+    現在預設只同步 sector_stock_daily 最新日期往前 10 天之後的日子、一天一天讀寫；
+    sector_stock_daily 不到 60 天或 full=True（產業頁「計算」按鈕）才同步整個 days 天。
     """
     import sqlite3
-    from datetime import timedelta as _td
+    from datetime import datetime as _dtm, timedelta as _td
     try:
         from chip_tracker_v2 import DB_PATH as _CACHE_DB
     except Exception as e:
@@ -251,31 +254,47 @@ def sync_from_price_cache(days: int = 200) -> dict:
     cutoff = (date.today() - _td(days=days)).strftime("%Y%m%d")
     with db() as conn:
         mapped = {r[0] for r in conn.execute("SELECT stock_id FROM stock_sector_map").fetchall()}
+        last, n_days = conn.execute("SELECT MAX(date), COUNT(DISTINCT date) FROM sector_stock_daily").fetchone()
+    mode = "full"
+    if not full and last and n_days >= 60:
+        try:
+            inc = (_dtm.strptime(str(last), "%Y%m%d").date() - _td(days=10)).strftime("%Y%m%d")
+            if inc > cutoff:
+                cutoff, mode = inc, "incremental"
+        except ValueError:
+            pass
     src = sqlite3.connect(str(_CACHE_DB), timeout=30)
+    total, stock_set, n_seen, full_days = 0, set(), 0, 0
     try:
-        rows = src.execute(
-            "SELECT date, stock_id, open, high, low, close, volume FROM price_daily WHERE date >= ? AND close > 0",
-            (cutoff,)).fetchall()
+        dates = [r[0] for r in src.execute(
+            "SELECT DISTINCT date FROM price_daily WHERE date >= ? ORDER BY date", (cutoff,)).fetchall()]
+        for d in dates:
+            if len(str(d)) != 8:
+                continue
+            rows = [(d, sid, o, h, l, c, (v or 0) * 1000) for sid, o, h, l, c, v in src.execute(
+                "SELECT stock_id, open, high, low, close, volume FROM price_daily WHERE date = ? AND close > 0", (d,))
+                if sid in mapped]
+            if not rows:
+                continue
+            n_seen += 1
+            with db() as conn:
+                if len(rows) >= 1000:
+                    conn.execute("DELETE FROM sector_stock_daily WHERE date = ?", (d,))
+                    full_days += 1
+                conn.executemany(
+                    """INSERT OR REPLACE INTO sector_stock_daily (date, stock_id, open, high, low, close, volume)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""", rows)
+            total += len(rows)
+            stock_set.update(r[1] for r in rows)
     finally:
         src.close()
-    rows = [(d, s, o, h, l, c, (v or 0) * 1000) for d, s, o, h, l, c, v in rows if s in mapped and len(str(d)) == 8]
-    per_day: dict = {}
-    for r in rows:
-        per_day[r[0]] = per_day.get(r[0], 0) + 1
-    full_days = [d for d, n in per_day.items() if n >= 1000]
-    with db() as conn:
-        conn.executemany("DELETE FROM sector_stock_daily WHERE date = ?", [(d,) for d in full_days])
-        conn.executemany(
-            """INSERT OR REPLACE INTO sector_stock_daily (date, stock_id, open, high, low, close, volume)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""", rows)
-    stocks = len({r[1] for r in rows})
-    log.info(f"[prices] 從價格快取同步 {len(rows)} 筆、{stocks} 支、{len(per_day)} 天（完整 {len(full_days)} 天）")
-    return {"rows": len(rows), "stocks": stocks, "days": len(per_day), "full_days": len(full_days)}
+    log.info(f"[prices] 從價格快取同步（{mode}，從 {cutoff}）{total} 筆、{len(stock_set)} 支、{n_seen} 天（完整 {full_days} 天）")
+    return {"rows": total, "stocks": len(stock_set), "days": n_seen, "full_days": full_days, "mode": mode, "since": cutoff}
 
 
-def update_prices() -> dict:
-    """每日更新：先從價格快取同步，再用 openapi 補最新一天（快取沒有的話）"""
-    out = {"cache": sync_from_price_cache(days=200)}
+def update_prices(full: bool = False) -> dict:
+    """每日更新：先從價格快取同步（預設增量，full=True 整段），再用 openapi 補最新一天（快取沒有的話）"""
+    out = {"cache": sync_from_price_cache(days=200, full=full)}
     try:
         out["openapi"] = fetch_and_store_today()
     except Exception as e:
@@ -447,20 +466,24 @@ def load_prices_from_db(stock_ids: list[str], min_dates: int = 60) -> dict:
 
     init_db()
     placeholders = ",".join("?" * len(stock_ids))
+    # PLAN-B77：以前 fetchall 一次把約 26 萬列變成 Python tuple 再轉 DataFrame（正式站尖峰 +160MB）；
+    # 改成分批（每批 4 萬列）讀進 DataFrame 再接起來，記憶體尖峰只剩一批
     with db() as conn:
-        rows = conn.execute(
+        parts = list(pd.read_sql_query(
             f"""SELECT date, stock_id, open, high, low, close, volume
                 FROM sector_stock_daily
                 WHERE stock_id IN ({placeholders})
                 ORDER BY stock_id, date""",
-            stock_ids,
-        ).fetchall()
-
-    if not rows:
+            conn, params=stock_ids, chunksize=40000))
+    if not parts:
         return {}
-
-    import pandas as pd
-    df_all = pd.DataFrame(rows, columns=["date", "stock_id", "open", "high", "low", "close", "volume"])
+    df_all = pd.concat(parts, ignore_index=True) if len(parts) > 1 else parts[0]
+    del parts
+    if df_all.empty:
+        return {}
+    for _c in ("open", "high", "low", "close", "volume"):       # 某一批整欄是空值時會變 object，統一成數字（跟以前一次讀一樣）
+        if df_all[_c].dtype == object:
+            df_all[_c] = pd.to_numeric(df_all[_c], errors="coerce")
 
     result = {}
     for sid, grp in df_all.groupby("stock_id"):

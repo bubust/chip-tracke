@@ -122,6 +122,15 @@ def regime_series(series: str, days: int = 120):
     return [{"date": r["date"], "value": r["value"]} for r in reversed(rows)]
 
 
+@router.get("/api/regime/series_multi")
+def regime_series_multi(names: str = "", days: int = 2):
+    """一次回多個 series（PLAN-B77 C2：總經頁以前每次重整打 20 個請求）；最多 40 個"""
+    out = {}
+    for n in [x.strip() for x in names.split(",") if x.strip()][:40]:
+        out[n] = regime_series(n, max(1, min(int(days or 2), 500)))
+    return out
+
+
 @router.get("/api/regime/overheating")
 def regime_overheating():
     """取最新的過熱/恐慌指數"""

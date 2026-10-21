@@ -19,7 +19,7 @@ import httpx
 import uvicorn
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from warrant.router import router as warrant_router, init_warrant, start_warrant_scheduler, stop_warrant_scheduler
@@ -409,6 +409,207 @@ def _is_tw_trading_hours() -> bool:
     return 540 <= mins <= 815  # 09:00 ~ 13:35
 
 
+# ════════════════════════════════════════════════════════════════════════════
+# 18:00 全市場掃描＋全系統更新、重開機補跑、預熱（PLAN-B77 B2／E5）
+# ════════════════════════════════════════════════════════════════════════════
+CATCHUP_FILE = DATA_DIR / "catchup.json"
+CATCHUP_MAX = 2            # 每個掃描日最多補 2 次（防重開迴圈）
+
+
+def need_scan_catchup(now: datetime, finished_at, attempts: int = 0):
+    """重開機後要不要補 18:00 掃描 → (要不要, 應有掃描日 'YYYY-MM-DD' 或 None)
+    平日 18:00 之後 → 今天；隔天 08:00 前 → 前一個平日；其他時間不補。
+    掃描完成時間早於「應有掃描日 17:30」＝那天晚上的掃描沒跑完。"""
+    d = now.date()
+    if d.weekday() < 5 and now.hour >= 18:
+        day = d
+    elif now.hour < 8:
+        day = d - timedelta(days=1)
+        while day.weekday() >= 5:
+            day -= timedelta(days=1)
+    else:
+        return False, None
+    key = day.isoformat()
+    if attempts >= CATCHUP_MAX:
+        return False, key
+    try:
+        fin = datetime.fromisoformat(str(finished_at)) if finished_at else None
+        if fin is not None and fin.tzinfo is not None:
+            fin = fin.replace(tzinfo=None)
+    except ValueError:
+        fin = None
+    if fin is not None and fin >= datetime(day.year, day.month, day.day, 17, 30):
+        return False, key
+    return True, key
+
+
+def _scan_step1():
+    """18:00 Step 1：全市場策略掃描（等待完成）＋研究候選／連動／大跌／講義推播"""
+    import asyncio as _aio, logging as _lg
+    from yahoo_price import get_scan_status, run_market_scan
+    lg = _lg.getLogger(__name__)
+    try:
+        if not get_scan_status()["running"]:
+            params = _load_strategy_params()
+            lg.info("[scan_scheduler] Step 1: 全市場策略掃描啟動")
+            async def _update_then_scan():
+                # 先寫入今日官方收盤（rwd/TPEX），掃描可直接命中快取，少打 Yahoo
+                try:
+                    from price_cache import update_price_cache, init_price_db
+                    init_price_db()
+                    await update_price_cache(local_mode=False)
+                except Exception as _pu_e:
+                    lg.warning(f"[scan_scheduler] price update 失敗（繼續掃描）: {_pu_e}")
+                await run_market_scan(strategy_params=params)
+            _aio.run(_update_then_scan())
+            lg.info("[scan_scheduler] Step 1 完成")
+            # 🔬 研究候選（PLAN-BEST）：今天的訊號、持有中的出場（同一天只推一次）
+            try:
+                from best_routes import push_best_signals, push_best_exits
+                lg.info(f"[best] 訊號推播 {push_best_signals()}；出場推播 {len(push_best_exits())} 則")
+            except Exception as _be:
+                lg.warning(f"[best] 推播失敗: {_be}")
+            # 🔗 連動股重算＋處置股清單更新（PLAN-LINK）
+            try:
+                from link_routes import refresh_all as _link_refresh
+                lg.info(f"[link] 連動股 {_link_refresh()}")
+            except Exception as _le:
+                lg.warning(f"[link] 更新失敗: {_le}")
+            # 📉 大跌買點：深跌條件第一次成立 → Telegram（同一波只推一次）
+            try:
+                from crash_routes import push_crash
+                lg.info(f"[crash] {push_crash()}")
+            except Exception as _ce:
+                lg.warning(f"[crash] 推播失敗: {_ce}")
+            # 📋 講義訊號（PLAN-COURSE）：出貨日、族群大跌、當沖名單、漲停候選、大盤出貨日
+            try:
+                import course_live as _cl
+                lg.info(f"[course] {_cl.nightly()}")
+            except Exception as _cle:
+                lg.warning(f"[course] 失敗: {_cle}")
+        else:
+            lg.info("[scan_scheduler] 掃描進行中，跳過 Step 1")
+    except Exception as _e1:
+        lg.error(f"[scan_scheduler] Step 1 例外（繼續執行 Step 2）: {_e1}")
+
+
+def _scan_daily_sync(resume_refresh: bool = False):
+    """18:00 那一套：Step 1 掃描＋推播 → Step 2 全系統更新 → 預熱；整套在 jobs.heavy 裡（同一時間只跑一個重工作）"""
+    import logging as _lg
+    import jobs as _jobs
+    lg = _lg.getLogger(__name__)
+    try:
+        with _jobs.heavy("scan_1800"):
+            _scan_step1()
+            _jobs.release_memory()
+            # Step 2: 全系統更新（watchlist/regime/tdcc/positioning/sector/warrant/各分頁）
+            try:
+                if not _refresh_all_status["running"]:
+                    lg.info("[scan_scheduler] Step 2: 全系統更新啟動" + ("（接著上次中斷的）" if resume_refresh else ""))
+                    _do_system_refresh(resume=resume_refresh)
+                    lg.info("[scan_scheduler] Step 2 完成")
+                else:
+                    lg.info("[scan_scheduler] 全系統更新進行中，跳過 Step 2")
+            except Exception as _e2:
+                lg.error(f"[scan_scheduler] Step 2 例外: {_e2}")
+    except _jobs.QueueTimeout:
+        lg.warning("[scan_scheduler] 排隊超過 60 分鐘，這次沒跑")
+        return
+    _prewarm()
+
+
+def _startup_catchup():
+    """重開機補跑（PLAN-B77 B1／B2，同一條執行緒，審查 Gemini F1）：
+    要補 18:00 掃描 → 等 180 秒（第 2 次 600 秒）跑掃描＋全系統更新（6 小時內中斷就接著跑）；
+    不用補掃描、只有全系統更新中斷 → 等 120 秒接著跑；最後預熱。"""
+    import logging as _lg, time as _t
+    import jobs as _jobs
+    from yahoo_price import get_scan_status
+    lg = _lg.getLogger(__name__)
+    try:
+        cu = _jobs.read_json(CATCHUP_FILE, {})
+        if not isinstance(cu, dict):
+            cu = {}
+        now = datetime.now()
+        _, key = need_scan_catchup(now, None, 0)
+        attempts = int(cu.get(key, 0)) if key else 0
+        need, key = need_scan_catchup(now, get_scan_status().get("finished_at"), attempts)
+        resume = _refresh_recent_interrupted(now)
+        if need:
+            delay = 180 if attempts == 0 else 600
+            if resume:
+                _refresh_all_status["resume_at"] = (now + timedelta(seconds=delay)).isoformat(timespec="seconds")
+            lg.info(f"[catchup] {key} 晚上的掃描沒跑完，{delay} 秒後補跑（第 {attempts + 1} 次）")
+            _t.sleep(delay)
+            need2, _ = need_scan_catchup(datetime.now(), get_scan_status().get("finished_at"), attempts)
+            if need2 and not get_scan_status().get("running"):
+                cu = {k: v for k, v in cu.items() if k >= (now.date() - timedelta(days=10)).isoformat()}
+                cu[key] = attempts + 1
+                _jobs.write_json_atomic(CATCHUP_FILE, cu)
+                _jobs.event("catchup", what="scan_1800", day=key, attempt=attempts + 1)
+                _scan_daily_sync(resume_refresh=_refresh_recent_interrupted())
+                return
+        if _refresh_recent_interrupted() and not _refresh_all_status["running"]:
+            _refresh_all_status["resume_at"] = (datetime.now() + timedelta(seconds=120)).isoformat(timespec="seconds")
+            _save_refresh_status()
+            lg.info("[catchup] 全系統更新上次跑到一半，120 秒後接著跑")
+            _t.sleep(120)
+            if _refresh_recent_interrupted() and not _refresh_all_status["running"]:
+                _jobs.event("catchup", what="refresh_all")
+                _do_system_refresh(resume=True)
+        else:
+            _t.sleep(60)
+        _prewarm()
+    except Exception as e:      # noqa: BLE001
+        lg.warning(f"[catchup] 失敗：{e}")
+    finally:
+        _refresh_all_status["resume_at"] = None
+
+
+def _sched_heavy(name: str, fn, *a, skip_if_recent: bool = False, **kw):
+    """排程版重工作：排隊（jobs.heavy）；skip_if_recent＝全系統更新 90 分鐘內剛成功做過同一項就跳過（PLAN-B77 A4）"""
+    import logging as _lg
+    import jobs as _jobs
+    if skip_if_recent and _jobs.recently_ok(name):
+        _jobs.event("skip", name=name, reason="全系統更新 90 分鐘內剛做過")
+        return None
+    try:
+        return _jobs.run_heavy(name, fn, *a, **kw)
+    except Exception as e:      # noqa: BLE001
+        _lg.getLogger(__name__).warning(f"[sched] {name} 失敗：{e}")
+        return None
+
+
+def _prewarm():
+    """預熱（PLAN-B77 E5）：重開 60 秒後、18:00 那套跑完後，依序（不並行）把常用的慢頁算好"""
+    import logging as _lg, asyncio as _aio
+    lg = _lg.getLogger(__name__)
+    def _ind():
+        # 自己的 event loop：不能碰 _IDX_LOCK（asyncio.Lock 會綁到第一個用到它的 loop，之後網站的 loop 用就出錯）
+        import time as _t
+        d = _aio.run(_indices_fetch())
+        if any((v or {}).get("price") is not None for v in d.values()):
+            _IDX.update(t=_t.time(), data=d)
+    def _disp():
+        import disposal
+        disposal.today()
+    def _cb():
+        from cb.router import _rebuild_cache
+        _rebuild_cache()
+    def _movers():
+        from link_routes import _movers_swr
+        _movers_swr().get()
+    def _wave(sym):
+        from wave import service as _ws
+        _ws.snapshot(sym=sym)
+    for name, fn in (("指數", _ind), ("處置股", _disp), ("可轉債清單", _cb), ("連動", _movers),
+                     ("大盤解析加權", lambda: _wave("TWII")), ("大盤解析台指期", lambda: _wave("TX"))):
+        try:
+            fn()
+        except Exception as e:      # noqa: BLE001
+            lg.warning(f"[prewarm] {name}：{e}")
+
+
 # ── price_cache warmup 狀態（供前端顯示） ────────────────────────────────────
 # phase: "init" | "supabase" | "finmind" | "ready"
 _warmup_status: dict = {"phase": "init", "days": 0}
@@ -420,6 +621,13 @@ _warmup_status: dict = {"phase": "init", "days": 0}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    try:
+        import jobs as _jobs_boot
+        _boot = _jobs_boot.on_boot()       # PLAN-B77 D3：開機紀錄、清 chip_data/tmp、找出上次跑到一半的工作
+        if _boot.get("interrupted"):
+            print(f"[startup] 上次重開時正在跑：{_boot['interrupted']}")
+    except Exception as _jb_e:
+        print(f"[startup] 開機紀錄失敗：{_jb_e}")
     init_db()
     init_warrant()
     regime_init_db()
@@ -578,7 +786,7 @@ async def lifespan(app: FastAPI):
         import pytz as _pytz
         _rel_scheduler = _RelSched(timezone=_pytz.timezone("Asia/Taipei"))
         _rel_scheduler.add_job(
-            lambda: __import__('threading').Thread(target=lambda: __import__('relationship.router', fromlist=['_run_refresh'])._run_refresh(days=30), daemon=True).start(),
+            lambda: _sched_heavy("relationship", __import__('relationship.router', fromlist=['_run_refresh'])._run_refresh, days=30, skip_if_recent=True),
             "cron", day_of_week="mon-fri", hour=17, minute=0,
             id="relationship_daily", replace_existing=True,
         )
@@ -595,7 +803,7 @@ async def lifespan(app: FastAPI):
         from apscheduler.schedulers.background import BackgroundScheduler as _TbSched
         from zoneinfo import ZoneInfo as _TbZone
         _tb_scheduler = _TbSched(timezone=_TbZone("Asia/Taipei"))
-        _tb_scheduler.add_job(lambda: _tb_refresh(days=180), "cron", day_of_week="mon-fri",
+        _tb_scheduler.add_job(lambda: _sched_heavy("treasury", _tb_refresh, days=180, skip_if_recent=True), "cron", day_of_week="mon-fri",
                               hour=18, minute=40, id="treasury_daily", replace_existing=True)
         _tb_scheduler.start()
     except Exception as _tb_e:
@@ -609,7 +817,7 @@ async def lifespan(app: FastAPI):
         from apscheduler.schedulers.background import BackgroundScheduler as _MnaSched
         from zoneinfo import ZoneInfo as _MnaZone
         _mna_scheduler = _MnaSched(timezone=_MnaZone("Asia/Taipei"))
-        _mna_scheduler.add_job(lambda: _mna_refresh(days=5), "cron", day_of_week="mon-fri",
+        _mna_scheduler.add_job(lambda: _sched_heavy("mna", _mna_refresh, days=5, skip_if_recent=True), "cron", day_of_week="mon-fri",
                                hour=18, minute=50, id="mna_daily", replace_existing=True)
         _mna_scheduler.start()
     except Exception as _mna_e:
@@ -625,7 +833,7 @@ async def lifespan(app: FastAPI):
         from apscheduler.schedulers.background import BackgroundScheduler as _CbSched
         from zoneinfo import ZoneInfo as _CbZone
         _cb_scheduler = _CbSched(timezone=_CbZone("Asia/Taipei"))
-        _cb_scheduler.add_job(_cb_refresh, "cron", day_of_week="mon-fri",
+        _cb_scheduler.add_job(lambda: _sched_heavy("cb", _cb_refresh, skip_if_recent=True), "cron", day_of_week="mon-fri",
                               hour=19, minute=5, id="cb_daily", replace_existing=True)
         _cb_scheduler.start()
     except Exception as _cb_e:
@@ -636,7 +844,7 @@ async def lifespan(app: FastAPI):
         import pytz
         _pos_scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Taipei"))
         _pos_scheduler.add_job(
-            lambda: positioning_run_refresh(),
+            lambda: _sched_heavy("positioning", positioning_run_refresh),
             "cron",
             day_of_week="mon-fri",
             hour=16,
@@ -815,66 +1023,6 @@ async def lifespan(app: FastAPI):
         from apscheduler.schedulers.background import BackgroundScheduler as _ScanSched
         import pytz as _spytz
         _scan_sched = _ScanSched(timezone=_spytz.timezone("Asia/Taipei"))
-        def _scan_daily_sync():
-            import asyncio as _aio, logging as _lg
-            from yahoo_price import get_scan_status, run_market_scan
-            lg = _lg.getLogger(__name__)
-
-            # Step 1: 全市場策略掃描（等待完成後再進行 Step 2）
-            try:
-                if not get_scan_status()["running"]:
-                    params = _load_strategy_params()
-                    lg.info("[scan_scheduler] 18:00 Step 1: 全市場策略掃描啟動")
-                    async def _update_then_scan():
-                        # 先寫入今日官方收盤（rwd/TPEX），掃描可直接命中快取，少打 Yahoo
-                        try:
-                            from price_cache import update_price_cache, init_price_db
-                            init_price_db()
-                            await update_price_cache(local_mode=False)
-                        except Exception as _pu_e:
-                            lg.warning(f"[scan_scheduler] price update 失敗（繼續掃描）: {_pu_e}")
-                        await run_market_scan(strategy_params=params)
-                    _aio.run(_update_then_scan())
-                    lg.info("[scan_scheduler] Step 1 完成")
-                    # 🔬 研究候選（PLAN-BEST）：今天的訊號、持有中的出場（同一天只推一次）
-                    try:
-                        from best_routes import push_best_signals, push_best_exits
-                        lg.info(f"[best] 訊號推播 {push_best_signals()}；出場推播 {len(push_best_exits())} 則")
-                    except Exception as _be:
-                        lg.warning(f"[best] 推播失敗: {_be}")
-                    # 🔗 連動股重算＋處置股清單更新（PLAN-LINK）
-                    try:
-                        from link_routes import refresh_all as _link_refresh
-                        lg.info(f"[link] 連動股 {_link_refresh()}")
-                    except Exception as _le:
-                        lg.warning(f"[link] 更新失敗: {_le}")
-                    # 📉 大跌買點：深跌條件第一次成立 → Telegram（同一波只推一次）
-                    try:
-                        from crash_routes import push_crash
-                        lg.info(f"[crash] {push_crash()}")
-                    except Exception as _ce:
-                        lg.warning(f"[crash] 推播失敗: {_ce}")
-                    # 📋 講義訊號（PLAN-COURSE）：出貨日、族群大跌、當沖名單、漲停候選、大盤出貨日
-                    try:
-                        import course_live as _cl
-                        lg.info(f"[course] {_cl.nightly()}")
-                    except Exception as _cle:
-                        lg.warning(f"[course] 失敗: {_cle}")
-                else:
-                    lg.info("[scan_scheduler] 掃描進行中，跳過 Step 1")
-            except Exception as _e1:
-                lg.error(f"[scan_scheduler] Step 1 例外（繼續執行 Step 2）: {_e1}")
-
-            # Step 2: 全系統更新（watchlist/regime/tdcc/positioning/sector/warrant）
-            try:
-                if not _refresh_all_status["running"]:
-                    lg.info("[scan_scheduler] 18:00 Step 2: 全系統更新啟動")
-                    _do_system_refresh()
-                    lg.info("[scan_scheduler] Step 2 完成")
-                else:
-                    lg.info("[scan_scheduler] 全系統更新進行中，跳過 Step 2")
-            except Exception as _e2:
-                lg.error(f"[scan_scheduler] Step 2 例外: {_e2}")
         _scan_sched.add_job(
             _scan_daily_sync, "cron",
             day_of_week="mon-fri", hour=18, minute=0,
@@ -1003,6 +1151,11 @@ async def lifespan(app: FastAPI):
         unadjust_fix.start_if_needed(delay=120)
     except Exception as _ua_e:
         import logging; logging.getLogger(__name__).warning(f"[unadjust_fix] {_ua_e}")
+    # PLAN-B77 B1／B2／E5：重開機補跑 18:00 掃描、接著跑中斷的全系統更新、預熱慢頁（同一條執行緒）
+    try:
+        threading.Thread(target=_startup_catchup, daemon=True, name="startup-catchup").start()
+    except Exception as _cu_e:
+        import logging; logging.getLogger(__name__).warning(f"[catchup] {_cu_e}")
     yield
     stop_warrant_scheduler()
     if _scan_sched:
@@ -1412,9 +1565,8 @@ def api_server_time():
         "is_trading_hours": _is_tw_trading_hours(),
     }
 
-@app.get("/api/indices")
-async def api_indices():
-    """市場指數列：加權指數、上櫃指數、台指近、金融近、電子近"""
+async def _indices_fetch() -> dict:
+    """市場指數列：加權指數、上櫃指數、台指近、金融近、電子近（實際去外面抓；加權／上櫃 與 期貨 兩組並行，PLAN-B77 C1）"""
     result = {
         "taiex": {"name": "加權指數", "price": None, "change_pct": None},
         "otc":   {"name": "上櫃指數",  "price": None, "change_pct": None},
@@ -1424,276 +1576,330 @@ async def api_indices():
     }
     UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
-    # ── 1. TWSE MIS 加權 + 上櫃 ──
-    MIS_BASE = "https://mis.twse.com.tw"
-    try:
-        async with httpx.AsyncClient(
-            timeout=12, follow_redirects=True, verify=False,
-            headers={"User-Agent": UA, "Accept-Language": "zh-TW,zh;q=0.9"},
-        ) as client:
-            try:
-                await client.get(f"{MIS_BASE}/stock/index.jsp", timeout=8)
-            except Exception:
-                pass
-            r = await client.get(
-                f"{MIS_BASE}/stock/api/getStockInfo.jsp",
-                headers={
-                    "Accept": "application/json, text/javascript, */*; q=0.01",
-                    "Referer": f"{MIS_BASE}/stock/index.jsp",
-                    "X-Requested-With": "XMLHttpRequest",
-                },
-                params={
-                    "ex_ch": "tse_t00.tw|otc_o00.tw",
-                    "json": "1", "delay": "0",
-                    "_": str(int(_time.time() * 1000)),
-                },
-            )
-            for item in r.json().get("msgArray", []):
-                code = item.get("c", "")
-                z = _sf_price(item.get("z"))
-                y = _sf_price(item.get("y"))
-                if y and y > 0:
-                    price = z if z else y
-                    pct = round((z - y) / y * 100, 2) if z else None
-                    key = "taiex" if code == "t00" else ("otc" if code == "o00" else None)
-                    if key:
-                        result[key].update({"price": round(price, 2), "change_pct": pct})
-    except Exception as e:
-        print(f"[indices] TWSE MIS 失敗: {e}")
-
-    # ── 1.5. TPEX MIS 上櫃指數（TWSE MIS 雲端 IP 常被擋時備援）──
-    if result["otc"]["price"] is None:
+    async def _grp_index():      # 加權、上櫃（MIS → 櫃買 MIS → 櫃買 OpenAPI → Yahoo）
+        # ── 1. TWSE MIS 加權 + 上櫃 ──
+        MIS_BASE = "https://mis.twse.com.tw"
         try:
             async with httpx.AsyncClient(
-                timeout=8, follow_redirects=True, verify=False,
-                headers={"User-Agent": UA},
-            ) as tpex_mis:
+                timeout=12, follow_redirects=True, verify=False,
+                headers={"User-Agent": UA, "Accept-Language": "zh-TW,zh;q=0.9"},
+            ) as client:
                 try:
-                    await tpex_mis.get("https://mis.tpex.org.tw/", timeout=5)
+                    await client.get(f"{MIS_BASE}/stock/index.jsp", timeout=8)
                 except Exception:
                     pass
-                r_tpex = await tpex_mis.get(
-                    "https://mis.tpex.org.tw/api/getStockInfo.php",
+                r = await client.get(
+                    f"{MIS_BASE}/stock/api/getStockInfo.jsp",
+                    headers={
+                        "Accept": "application/json, text/javascript, */*; q=0.01",
+                        "Referer": f"{MIS_BASE}/stock/index.jsp",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
                     params={
-                        "ex_ch": "otc_o00.tw",
+                        "ex_ch": "tse_t00.tw|otc_o00.tw",
                         "json": "1", "delay": "0",
                         "_": str(int(_time.time() * 1000)),
                     },
-                    headers={"Referer": "https://mis.tpex.org.tw/"},
                 )
-                for item in r_tpex.json().get("msgArray", []):
+                for item in r.json().get("msgArray", []):
+                    code = item.get("c", "")
                     z = _sf_price(item.get("z"))
                     y = _sf_price(item.get("y"))
                     if y and y > 0:
                         price = z if z else y
                         pct = round((z - y) / y * 100, 2) if z else None
-                        result["otc"].update({"price": round(price, 2), "change_pct": pct})
-        except Exception as _tpex_mis_e:
-            print(f"[indices] TPEX MIS 失敗: {_tpex_mis_e}")
+                        key = "taiex" if code == "t00" else ("otc" if code == "o00" else None)
+                        if key:
+                            result[key].update({"price": round(price, 2), "change_pct": pct})
+        except Exception as e:
+            print(f"[indices] TWSE MIS 失敗: {e}")
 
-    # ── 2. TAIFEX MIS 台指近 / 金融近 / 電子近 ──
-    try:
-        async with httpx.AsyncClient(
-            timeout=10, follow_redirects=True,
-            headers={
-                "User-Agent": UA,
-                "Referer": "https://mis.taifex.com.tw/",
-                "Accept": "application/json, */*",
-            },
-        ) as client:
-            quotes = []
-            for market_type in ["0", "1"]:   # 0=日盤, 1=夜盤
-                try:
-                    r = await client.get(
-                        "https://mis.taifex.com.tw/futures/api/getQuoteList",
-                        params={"MarketType": market_type},
-                    )
-                    if r.status_code == 200:
-                        ql = r.json().get("RtData", {}).get("QuoteList", [])
-                        if ql:
-                            quotes = ql
-                            break
-                except Exception:
-                    pass
-
-            # 找各商品的近月合約（最早到期 = CID 字典序最小）
-            _near: dict[str, dict] = {}
-            for q in quotes:
-                cid = q.get("CID", "")
-                for prod, key in [("TX", "tx"), ("TF", "tf"), ("TE", "te")]:
-                    if cid.startswith(prod) and len(cid) > len(prod):
-                        rest = cid[len(prod):]
-                        # skip 選擇權 (O...) and 永續 (AM...)
-                        if rest.startswith("O") or rest.startswith("AM"):
-                            continue
-                        if key not in _near or cid < _near[key].get("CID", "zzzz"):
-                            _near[key] = q
-                        break
-            for key, q in _near.items():
-                try:
-                    # 優先取成交價, 依序 fallback 到 SettlementPrice / ReferencePrice (昨結)
-                    price_s = (q.get("LastPrice") or q.get("MatchPrice") or
-                               q.get("ClosingPrice") or q.get("SettlementPrice") or "")
-                    price_s = price_s.strip() if isinstance(price_s, str) else ""
-                    ref_s   = (q.get("ReferencePrice") or "").strip()
-                    price = float(price_s.replace(",", "")) if price_s and price_s != "-" else None
-                    ref   = float(ref_s.replace(",", ""))   if ref_s   and ref_s   != "-" else None
-                    if price and ref and ref > 0:
-                        pct = round((price - ref) / ref * 100, 2)
-                        result[key].update({"price": price, "change_pct": pct})
-                    elif price:
-                        result[key].update({"price": price, "change_pct": None})
-                except Exception:
-                    pass
-    except Exception as e:
-        print(f"[indices] TAIFEX MIS 失敗: {e}")
-
-    # 若 TAIFEX MIS 失敗，TX 用 ^TWII 近似值補充
-    try:
-        if result["tx"]["price"] is None:
-            async with httpx.AsyncClient(timeout=8, verify=False, follow_redirects=True,
-                headers={"User-Agent": UA, "Accept": "application/json"}) as yc:
-                yr = await yc.get(
-                    "https://query1.finance.yahoo.com/v8/finance/chart/%5ETWII",
-                    params={"interval": "1d", "range": "5d"},
-                )
-                if yr.status_code == 200:
-                    res = (yr.json().get("chart", {}).get("result") or [])
-                    if res:
-                        closes = res[0]["indicators"]["quote"][0].get("close", [])
-                        closes = [c for c in closes if c]
-                        if len(closes) >= 2:
-                            price = round(float(closes[-1]), 2)
-                            prev  = round(float(closes[-2]), 2)
-                            pct   = round((price - prev) / prev * 100, 2) if prev else None
-                            result["tx"].update({"price": price, "change_pct": pct, "name": "台指近(近似)"})
-    except Exception:
-        pass
-
-    # ── 3. FinMind 備援：TF/TE 最近日收盤 ──
-    import datetime as _dt_idx
-    _FM_TOKEN_IDX = _FINMIND_TOKEN
-    missing_fut = [k for k in ("tf", "te") if result[k]["price"] is None]
-    if missing_fut:
-        start_fm = (_dt_idx.datetime.now(_dt_idx.timezone(_dt_idx.timedelta(hours=8))).date() - _dt_idx.timedelta(days=10)).strftime("%Y-%m-%d")
-        prod_map = {"tf": "TF", "te": "TE"}
-        try:
-            async with httpx.AsyncClient(timeout=12, verify=False, follow_redirects=True) as fm_c:
-                for key in missing_fut:
-                    try:
-                        fm_r = await fm_c.get(
-                            "https://api.finmindtrade.com/api/v4/data",
-                            params={"dataset": "TaiwanFuturesDaily",
-                                    "data_id": prod_map[key],
-                                    "start_date": start_fm,
-                                    "token": _FM_TOKEN_IDX},
-                        )
-                        if fm_r.status_code == 429:
-                            print(f"[indices] FinMind rate-limit for {key}")
-                            continue
-                        rows = fm_r.json().get("data", [])
-                        if not rows:
-                            continue
-                        # 取最新日期的近月合約 (contract_date 最小即近月)
-                        latest_date = max(r.get("date", "") for r in rows)
-                        today_rows = [r for r in rows if r.get("date") == latest_date]
-                        today_rows.sort(key=lambda r: r.get("contract_date", ""))
-                        near = today_rows[0] if today_rows else rows[-1]
-                        # 優先 close，備援 settlement_price
-                        raw_price = near.get("close") or near.get("settlement_price")
-                        try:
-                            price = float(str(raw_price).replace(",", "")) if raw_price else None
-                        except (ValueError, TypeError):
-                            price = None
-                        if not price:
-                            continue
-                        # 昨收：同合約前一日
-                        cdate = near.get("contract_date")
-                        prev_rows = [r for r in rows
-                                     if r.get("contract_date") == cdate
-                                     and r.get("date", "") < latest_date]
-                        raw_prev = None
-                        if prev_rows:
-                            raw_prev = prev_rows[-1].get("close") or prev_rows[-1].get("settlement_price")
-                        try:
-                            prev_c = float(str(raw_prev).replace(",", "")) if raw_prev else None
-                        except (ValueError, TypeError):
-                            prev_c = None
-                        pct = round((price - prev_c) / prev_c * 100, 2) if prev_c and prev_c > 0 else None
-                        result[key].update({"price": price, "change_pct": pct})
-                    except Exception as _fe:
-                        print(f"[indices] FinMind {key} 備援失敗: {_fe}")
-        except Exception as _e:
-            print(f"[indices] FinMind 備援區塊失敗: {_e}")
-
-    # ── 4. TPEX OpenAPI 備援：上櫃加權指數（TPEX_Indexes，盤後更新）──
-    try:
+        # ── 1.5. TPEX MIS 上櫃指數（TWSE MIS 雲端 IP 常被擋時備援）──
         if result["otc"]["price"] is None:
-            async with httpx.AsyncClient(timeout=10, verify=False, follow_redirects=True,
-                headers={"User-Agent": UA}) as tpex_c:
-                _tpex_r = await tpex_c.get(
-                    "https://www.tpex.org.tw/openapi/v1/TPEX_Indexes",
-                    timeout=8,
-                )
-                if _tpex_r.status_code == 200:
-                    _tpex_rows = _tpex_r.json() or []
-                    # 取最近 2 筆（rows 已按日期排序，取最後 2 筆）
-                    _recent = _tpex_rows[-2:] if len(_tpex_rows) >= 2 else _tpex_rows
-                    def _parse_tpex_idx_val(row):
-                        for _k in ["CloseIndex", "WeightedIndex", "上市(OTC)加權指數",
-                                   "OtcWeightedIndex", "Index", "Close"]:
-                            _raw = str(row.get(_k, "")).replace(",", "").strip()
-                            if _raw and _raw not in ("", "-", "--"):
-                                try:
-                                    _v = float(_raw)
-                                    if _v > 0:
-                                        return _v
-                                except Exception:
-                                    pass
-                        return None
-                    if _recent:
-                        _price_otc = _parse_tpex_idx_val(_recent[-1])
-                        _pct_otc   = None
-                        if len(_recent) >= 2 and _price_otc:
-                            _prev_otc = _parse_tpex_idx_val(_recent[-2])
-                            if _prev_otc and _prev_otc > 0:
-                                _pct_otc = round((_price_otc - _prev_otc) / _prev_otc * 100, 2)
-                        if _price_otc:
-                            result["otc"].update({"price": round(_price_otc, 2), "change_pct": _pct_otc, "name": "上櫃指數(收盤)"})
-    except Exception as _tpex_e:
-        print(f"[indices] TPEX openapi 失敗: {_tpex_e}")
-
-    # ── 5. Yahoo Finance 備援：OTC 上櫃指數（多 ticker 輪試，注意不要預編碼 ^ 符號）──
-    _OTC_TICKERS = ["^TWOII", "^TWOTC", "^TWO"]  # 不預編碼，httpx 自動處理
-    try:
-        if result["otc"]["price"] is None:
-            async with httpx.AsyncClient(timeout=10, verify=False, follow_redirects=True,
-                headers={"User-Agent": UA, "Accept": "application/json"}) as yc_otc:
-                for _ticker in _OTC_TICKERS:
+            try:
+                async with httpx.AsyncClient(
+                    timeout=8, follow_redirects=True, verify=False,
+                    headers={"User-Agent": UA},
+                ) as tpex_mis:
                     try:
-                        yr_otc = await yc_otc.get(
-                            "https://query1.finance.yahoo.com/v8/finance/chart/" + _ticker.replace("^", "%5E"),
-                            params={"interval": "1d", "range": "5d"},
-                        )
-                        if yr_otc.status_code != 200:
-                            continue
-                        res_otc = (yr_otc.json().get("chart", {}).get("result") or [])
-                        if not res_otc:
-                            continue
-                        closes_otc = res_otc[0]["indicators"]["quote"][0].get("close", [])
-                        closes_otc = [c for c in closes_otc if c]
-                        if len(closes_otc) >= 2:
-                            price_otc = round(float(closes_otc[-1]), 2)
-                            prev_otc  = round(float(closes_otc[-2]), 2)
-                            pct_otc   = round((price_otc - prev_otc) / prev_otc * 100, 2) if prev_otc else None
-                            result["otc"].update({"price": price_otc, "change_pct": pct_otc, "name": "上櫃指數(延遲)"})
-                            break  # 成功拿到，停止輪試
+                        await tpex_mis.get("https://mis.tpex.org.tw/", timeout=5)
                     except Exception:
-                        continue
-    except Exception:
-        pass
+                        pass
+                    r_tpex = await tpex_mis.get(
+                        "https://mis.tpex.org.tw/api/getStockInfo.php",
+                        params={
+                            "ex_ch": "otc_o00.tw",
+                            "json": "1", "delay": "0",
+                            "_": str(int(_time.time() * 1000)),
+                        },
+                        headers={"Referer": "https://mis.tpex.org.tw/"},
+                    )
+                    for item in r_tpex.json().get("msgArray", []):
+                        z = _sf_price(item.get("z"))
+                        y = _sf_price(item.get("y"))
+                        if y and y > 0:
+                            price = z if z else y
+                            pct = round((z - y) / y * 100, 2) if z else None
+                            result["otc"].update({"price": round(price, 2), "change_pct": pct})
+            except Exception as _tpex_mis_e:
+                print(f"[indices] TPEX MIS 失敗: {_tpex_mis_e}")
 
+        # ── 4. TPEX OpenAPI 備援：上櫃加權指數（TPEX_Indexes，盤後更新）──
+        try:
+            if result["otc"]["price"] is None:
+                async with httpx.AsyncClient(timeout=10, verify=False, follow_redirects=True,
+                    headers={"User-Agent": UA}) as tpex_c:
+                    _tpex_r = await tpex_c.get(
+                        "https://www.tpex.org.tw/openapi/v1/TPEX_Indexes",
+                        timeout=8,
+                    )
+                    if _tpex_r.status_code == 200:
+                        _tpex_rows = _tpex_r.json() or []
+                        # 取最近 2 筆（rows 已按日期排序，取最後 2 筆）
+                        _recent = _tpex_rows[-2:] if len(_tpex_rows) >= 2 else _tpex_rows
+                        def _parse_tpex_idx_val(row):
+                            for _k in ["CloseIndex", "WeightedIndex", "上市(OTC)加權指數",
+                                       "OtcWeightedIndex", "Index", "Close"]:
+                                _raw = str(row.get(_k, "")).replace(",", "").strip()
+                                if _raw and _raw not in ("", "-", "--"):
+                                    try:
+                                        _v = float(_raw)
+                                        if _v > 0:
+                                            return _v
+                                    except Exception:
+                                        pass
+                            return None
+                        if _recent:
+                            _price_otc = _parse_tpex_idx_val(_recent[-1])
+                            _pct_otc   = None
+                            if len(_recent) >= 2 and _price_otc:
+                                _prev_otc = _parse_tpex_idx_val(_recent[-2])
+                                if _prev_otc and _prev_otc > 0:
+                                    _pct_otc = round((_price_otc - _prev_otc) / _prev_otc * 100, 2)
+                            if _price_otc:
+                                result["otc"].update({"price": round(_price_otc, 2), "change_pct": _pct_otc, "name": "上櫃指數(收盤)"})
+        except Exception as _tpex_e:
+            print(f"[indices] TPEX openapi 失敗: {_tpex_e}")
+
+        # ── 5. Yahoo Finance 備援：OTC 上櫃指數（多 ticker 輪試，注意不要預編碼 ^ 符號）──
+        _OTC_TICKERS = ["^TWOII", "^TWOTC", "^TWO"]  # 不預編碼，httpx 自動處理
+        try:
+            if result["otc"]["price"] is None:
+                async with httpx.AsyncClient(timeout=10, verify=False, follow_redirects=True,
+                    headers={"User-Agent": UA, "Accept": "application/json"}) as yc_otc:
+                    for _ticker in _OTC_TICKERS:
+                        try:
+                            yr_otc = await yc_otc.get(
+                                "https://query1.finance.yahoo.com/v8/finance/chart/" + _ticker.replace("^", "%5E"),
+                                params={"interval": "1d", "range": "5d"},
+                            )
+                            if yr_otc.status_code != 200:
+                                continue
+                            res_otc = (yr_otc.json().get("chart", {}).get("result") or [])
+                            if not res_otc:
+                                continue
+                            closes_otc = res_otc[0]["indicators"]["quote"][0].get("close", [])
+                            closes_otc = [c for c in closes_otc if c]
+                            if len(closes_otc) >= 2:
+                                price_otc = round(float(closes_otc[-1]), 2)
+                                prev_otc  = round(float(closes_otc[-2]), 2)
+                                pct_otc   = round((price_otc - prev_otc) / prev_otc * 100, 2) if prev_otc else None
+                                result["otc"].update({"price": price_otc, "change_pct": pct_otc, "name": "上櫃指數(延遲)"})
+                                break  # 成功拿到，停止輪試
+                        except Exception:
+                            continue
+        except Exception:
+            pass
+
+
+    async def _grp_futures():    # 台指近、金融近、電子近（期交所 MIS → Yahoo 近似 → FinMind）
+        # ── 2. TAIFEX MIS 台指近 / 金融近 / 電子近 ──
+        try:
+            async with httpx.AsyncClient(
+                timeout=10, follow_redirects=True,
+                headers={
+                    "User-Agent": UA,
+                    "Referer": "https://mis.taifex.com.tw/",
+                    "Accept": "application/json, */*",
+                },
+            ) as client:
+                quotes = []
+                for market_type in ["0", "1"]:   # 0=日盤, 1=夜盤
+                    try:
+                        r = await client.get(
+                            "https://mis.taifex.com.tw/futures/api/getQuoteList",
+                            params={"MarketType": market_type},
+                        )
+                        if r.status_code == 200:
+                            ql = r.json().get("RtData", {}).get("QuoteList", [])
+                            if ql:
+                                quotes = ql
+                                break
+                    except Exception:
+                        pass
+
+                # 找各商品的近月合約（最早到期 = CID 字典序最小）
+                _near: dict[str, dict] = {}
+                for q in quotes:
+                    cid = q.get("CID", "")
+                    for prod, key in [("TX", "tx"), ("TF", "tf"), ("TE", "te")]:
+                        if cid.startswith(prod) and len(cid) > len(prod):
+                            rest = cid[len(prod):]
+                            # skip 選擇權 (O...) and 永續 (AM...)
+                            if rest.startswith("O") or rest.startswith("AM"):
+                                continue
+                            if key not in _near or cid < _near[key].get("CID", "zzzz"):
+                                _near[key] = q
+                            break
+                for key, q in _near.items():
+                    try:
+                        # 優先取成交價, 依序 fallback 到 SettlementPrice / ReferencePrice (昨結)
+                        price_s = (q.get("LastPrice") or q.get("MatchPrice") or
+                                   q.get("ClosingPrice") or q.get("SettlementPrice") or "")
+                        price_s = price_s.strip() if isinstance(price_s, str) else ""
+                        ref_s   = (q.get("ReferencePrice") or "").strip()
+                        price = float(price_s.replace(",", "")) if price_s and price_s != "-" else None
+                        ref   = float(ref_s.replace(",", ""))   if ref_s   and ref_s   != "-" else None
+                        if price and ref and ref > 0:
+                            pct = round((price - ref) / ref * 100, 2)
+                            result[key].update({"price": price, "change_pct": pct})
+                        elif price:
+                            result[key].update({"price": price, "change_pct": None})
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"[indices] TAIFEX MIS 失敗: {e}")
+
+        # 若 TAIFEX MIS 失敗，TX 用 ^TWII 近似值補充
+        try:
+            if result["tx"]["price"] is None:
+                async with httpx.AsyncClient(timeout=8, verify=False, follow_redirects=True,
+                    headers={"User-Agent": UA, "Accept": "application/json"}) as yc:
+                    yr = await yc.get(
+                        "https://query1.finance.yahoo.com/v8/finance/chart/%5ETWII",
+                        params={"interval": "1d", "range": "5d"},
+                    )
+                    if yr.status_code == 200:
+                        res = (yr.json().get("chart", {}).get("result") or [])
+                        if res:
+                            closes = res[0]["indicators"]["quote"][0].get("close", [])
+                            closes = [c for c in closes if c]
+                            if len(closes) >= 2:
+                                price = round(float(closes[-1]), 2)
+                                prev  = round(float(closes[-2]), 2)
+                                pct   = round((price - prev) / prev * 100, 2) if prev else None
+                                result["tx"].update({"price": price, "change_pct": pct, "name": "台指近(近似)"})
+        except Exception:
+            pass
+
+        # ── 3. FinMind 備援：TF/TE 最近日收盤 ──
+        import datetime as _dt_idx
+        _FM_TOKEN_IDX = _FINMIND_TOKEN
+        missing_fut = [k for k in ("tf", "te") if result[k]["price"] is None]
+        if missing_fut:
+            start_fm = (_dt_idx.datetime.now(_dt_idx.timezone(_dt_idx.timedelta(hours=8))).date() - _dt_idx.timedelta(days=10)).strftime("%Y-%m-%d")
+            prod_map = {"tf": "TF", "te": "TE"}
+            try:
+                async with httpx.AsyncClient(timeout=12, verify=False, follow_redirects=True) as fm_c:
+                    for key in missing_fut:
+                        try:
+                            fm_r = await fm_c.get(
+                                "https://api.finmindtrade.com/api/v4/data",
+                                params={"dataset": "TaiwanFuturesDaily",
+                                        "data_id": prod_map[key],
+                                        "start_date": start_fm,
+                                        "token": _FM_TOKEN_IDX},
+                            )
+                            if fm_r.status_code == 429:
+                                print(f"[indices] FinMind rate-limit for {key}")
+                                continue
+                            rows = fm_r.json().get("data", [])
+                            if not rows:
+                                continue
+                            # 取最新日期的近月合約 (contract_date 最小即近月)
+                            latest_date = max(r.get("date", "") for r in rows)
+                            today_rows = [r for r in rows if r.get("date") == latest_date]
+                            today_rows.sort(key=lambda r: r.get("contract_date", ""))
+                            near = today_rows[0] if today_rows else rows[-1]
+                            # 優先 close，備援 settlement_price
+                            raw_price = near.get("close") or near.get("settlement_price")
+                            try:
+                                price = float(str(raw_price).replace(",", "")) if raw_price else None
+                            except (ValueError, TypeError):
+                                price = None
+                            if not price:
+                                continue
+                            # 昨收：同合約前一日
+                            cdate = near.get("contract_date")
+                            prev_rows = [r for r in rows
+                                         if r.get("contract_date") == cdate
+                                         and r.get("date", "") < latest_date]
+                            raw_prev = None
+                            if prev_rows:
+                                raw_prev = prev_rows[-1].get("close") or prev_rows[-1].get("settlement_price")
+                            try:
+                                prev_c = float(str(raw_prev).replace(",", "")) if raw_prev else None
+                            except (ValueError, TypeError):
+                                prev_c = None
+                            pct = round((price - prev_c) / prev_c * 100, 2) if prev_c and prev_c > 0 else None
+                            result[key].update({"price": price, "change_pct": pct})
+                        except Exception as _fe:
+                            print(f"[indices] FinMind {key} 備援失敗: {_fe}")
+            except Exception as _e:
+                print(f"[indices] FinMind 備援區塊失敗: {_e}")
+
+
+    await asyncio.gather(_grp_index(), _grp_futures())
     return result
+
+
+# ── 指數列伺服器快取（PLAN-B77 C1）：以前每個開著的分頁每 10 秒各打一次外部（MIS 暖機＋MIS＋期交所日盤／夜盤，1～1.7 秒）
+_IDX = {"t": 0.0, "data": None}
+_IDX_LOCK = None
+
+
+def _idx_ttl(now=None) -> int:
+    """交易時段（08:45～13:45 現貨、15:00～隔天 05:00 期貨夜盤）8 秒；其他 60 秒"""
+    now = now or datetime.now(timezone(timedelta(hours=8)))
+    m = now.hour * 60 + now.minute
+    wd = now.weekday()
+    day_session = wd < 5 and 525 <= m <= 825
+    night = (wd < 5 and m >= 900) or (1 <= wd <= 5 and m <= 300)
+    return 8 if (day_session or night) else 60
+
+
+async def _indices_get(force: bool = False) -> dict:
+    """單飛：同時很多請求只有一個去外面抓，其他等它；失敗回上一份並標 stale"""
+    global _IDX_LOCK
+    import time as _t
+    if _IDX_LOCK is None:
+        _IDX_LOCK = asyncio.Lock()
+    if not force and _IDX["data"] is not None and _t.time() - _IDX["t"] < _idx_ttl():
+        return _IDX["data"]
+    t_call = _t.time()
+    async with _IDX_LOCK:
+        if not force and _IDX["data"] is not None and _IDX["t"] >= t_call:
+            return _IDX["data"]                    # 等鎖時別人剛抓好
+        try:
+            data = await _indices_fetch()
+            if any((v or {}).get("price") is not None for v in data.values()) or _IDX["data"] is None:
+                _IDX.update(t=_t.time(), data=data)
+            else:                                   # 全部抓不到 → 回上一份，標 stale
+                _IDX["t"] = _t.time()
+                _IDX["data"] = {**_IDX["data"], "_stale": True}
+        except Exception as e:      # noqa: BLE001
+            print(f"[indices] 失敗：{e}")
+            if _IDX["data"] is None:
+                raise
+            _IDX["t"] = _t.time()
+    return _IDX["data"]
+
+
+@app.get("/api/indices")
+async def api_indices():
+    """市場指數列：加權指數、上櫃指數、台指近、金融近、電子近（伺服器快取，PLAN-B77 C1）"""
+    d = await _indices_get()
+    return {k: v for k, v in d.items() if not k.startswith("_")}
 
 
 @app.get("/api/watchlist/prices")
@@ -2166,6 +2372,7 @@ def _added_prices(rows) -> dict:
 
 
 _WL_YAHOO_CACHE: dict = {}   # {sid: (時間, Yahoo 日 K 算的收盤／布林／階段)}（B74：本機日 K 不夠的股票）
+_WL_YAHOO_INFLIGHT: set = set()   # 背景重抓中的股票（同一檔同時只抓一次）
 
 
 @app.get("/api/watchlist/summary")
@@ -2237,11 +2444,28 @@ async def api_watchlist_summary():
     _tm["local"] = _time.time()
     need_yahoo = [sid for sid in stock_ids if sid not in latest_prices]
     # 本機日 K 不夠的（ETF、新上市）→ Yahoo 結果快取 10 分鐘（現價另外由即時報價蓋上；正式站一檔 Yahoo 要 2.5 秒）
+    # PLAN-B77：過期（10 分鐘）的先用舊的、背景重抓（以前過期就讓打開的人等 Yahoo 3～4 秒；收盤／布林是日資料，現價另外蓋上）
     _now = _time.time()
+    _stale = []
     for sid in need_yahoo:
         _c = _WL_YAHOO_CACHE.get(sid)
-        if _c and _now - _c[0] < 600:
+        if _c:
             latest_prices[sid] = _c[1]
+            if _now - _c[0] >= 600 and sid not in _WL_YAHOO_INFLIGHT:
+                _stale.append(sid)
+    if _stale:
+        _WL_YAHOO_INFLIGHT.update(_stale)
+
+        async def _bg_yahoo(ids):
+            try:
+                _g = await fetch_prices_for_stocks([(x, mkt_map.get(x, "twse")) for x in ids])
+                for x, info in _g.items():
+                    _WL_YAHOO_CACHE[x] = (_time.time(), info)
+            except Exception as _ye:      # noqa: BLE001
+                print(f"[wl-summary] 背景 Yahoo 失敗：{_ye}")
+            finally:
+                _WL_YAHOO_INFLIGHT.difference_update(ids)
+        asyncio.create_task(_bg_yahoo(list(_stale)))
     _ask = [sid for sid in need_yahoo if sid not in latest_prices]
     if _ask:
         _got = await fetch_prices_for_stocks([(sid, mkt_map.get(sid, "twse")) for sid in _ask])
@@ -2468,7 +2692,12 @@ _refresh_all_status: dict = {
         "mna":         {"label": "收購併購",        "status": "pending"},
         "cb":          {"label": "可轉債",          "status": "pending"},
     },
+    "crash": {},          # PLAN-B77 B1：每步「跑到一半伺服器重開」的次數（同一步 2 次就略過）
+    "resume_at": None,    # 重開後預定自動接著跑的時間（網頁顯示倒數）
+    "queued": None,       # 排隊中：等哪個重工作跑完
 }
+RESUME_WINDOW_H = 6       # 6 小時內中斷的才接著跑（再久就整個重跑）
+STEP_SKIP_AFTER = 2       # 同一步中斷 2 次 → 略過
 
 # 進度存檔（2026-10-18）：伺服器跑到一半重新啟動（例如記憶體不夠被 Fly 重開）時，
 # 記憶體裡的進度會變回全部「等待中」、running=False，網頁就誤報「全系統更新完成」。
@@ -2478,7 +2707,8 @@ _REFRESH_STATUS_FILE = DATA_DIR / "refresh_all_status.json"
 
 def _save_refresh_status():
     try:
-        _REFRESH_STATUS_FILE.write_text(json.dumps(_refresh_all_status, ensure_ascii=False), encoding="utf-8")
+        import jobs as _jobs
+        _jobs.write_json_atomic(_REFRESH_STATUS_FILE, _refresh_all_status)
     except Exception:
         pass
 
@@ -2491,204 +2721,259 @@ def _load_refresh_status():
     for k, v in (saved.get("steps") or {}).items():
         if k in _refresh_all_status["steps"] and isinstance(v, dict):
             _refresh_all_status["steps"][k]["status"] = v.get("status", "pending")
+            if v.get("sec") is not None:
+                _refresh_all_status["steps"][k]["sec"] = v.get("sec")
     _refresh_all_status["started_at"] = saved.get("started_at")
     _refresh_all_status["finished_at"] = saved.get("finished_at")
+    _refresh_all_status["crash"] = {k: int(v) for k, v in (saved.get("crash") or {}).items()
+                                    if k in _refresh_all_status["steps"]}
+    _refresh_all_status["resume_at"] = None
+    _refresh_all_status["queued"] = None
     if saved.get("running") or saved.get("interrupted"):
-        # 上次跑到一半伺服器就重開了：正在跑的那步＝中斷，後面的維持等待中
-        for v in _refresh_all_status["steps"].values():
+        # 上次跑到一半伺服器就重開了：正在跑的那步＝中斷（記一次），後面的維持等待中
+        for k, v in _refresh_all_status["steps"].items():
             if v["status"] == "running":
                 v["status"] = "interrupted"
+                _refresh_all_status["crash"][k] = _refresh_all_status["crash"].get(k, 0) + 1
         _refresh_all_status["interrupted"] = True
     _refresh_all_status["running"] = False
+    if saved.get("running"):
+        _save_refresh_status()          # 中斷次數要存回去，再重開一次才數得到
 
 
 _load_refresh_status()
 
 
-def _set_step(step: str, status: str):
+def _refresh_recent_interrupted(now=None) -> bool:
+    """上次全系統更新是 6 小時內、跑到一半中斷的 → 可以接著跑（已完成的不重跑）"""
+    from datetime import datetime as _dt, timedelta as _td
+    if not _refresh_all_status.get("interrupted"):
+        return False
+    try:
+        st = _dt.fromisoformat(str(_refresh_all_status.get("started_at")))
+    except Exception:
+        return False
+    return (now or _dt.now()) - st < _td(hours=RESUME_WINDOW_H)
+
+
+def _set_step(step: str, status: str, sec=None):
     _refresh_all_status["steps"][step]["status"] = status
+    if sec is not None:
+        _refresh_all_status["steps"][step]["sec"] = sec
     _save_refresh_status()
 
 @app.get("/api/refresh_all/status")
 def api_refresh_all_status():
     return _refresh_all_status
 
-def _do_system_refresh():
-    """執行全系統更新（同步，可在任意 thread 直接呼叫）。
-    包含：watchlist → regime → tdcc → positioning → sector → warrant → 市場關聯 → 連動 → 庫藏股 → 收購併購 → 可轉債
+
+@app.get("/healthz")
+def healthz():
+    """Fly 健康檢查（PLAN-B77 A6）：只回 ok，不讀 DB、不回 534KB 首頁"""
+    return PlainTextResponse("ok")
+
+
+@app.get("/api/system/health")
+def api_system_health():
+    """🩺 系統健康（PLAN-B77 D3）：記憶體、最近重開、背景工作紀錄、各資料最新日期"""
+    import health
+    return JSONResponse(content=_sanitize_for_json(health.report(_refresh_all_status)))
+
+
+@app.get("/api/tdcc/trends")
+def api_tdcc_trends(ids: str = ""):
+    """觀察清單千張大戶趨勢一次拿（PLAN-B77 E3：以前每檔 1 個請求、整串跑 2 次）；最多 150 檔"""
+    from tdcc_chip import get_stock_tdcc_history
+    out = {}
+    for sid in [x.strip() for x in ids.split(",") if x.strip()][:150]:
+        if not sid.replace("-", "").isalnum() or len(sid) > 10:
+            continue
+        try:
+            out[sid] = get_stock_tdcc_history(sid, weeks=12)
+        except Exception:
+            out[sid] = []
+    return {"trends": out}
+
+
+def _refresh_steps():
+    """全系統更新的每一步：(key, 函式)。函式回傳 dict 時：busy＝分頁自己在更新、error／ok=False＝失敗"""
+    import logging as _log, asyncio as _asyncio
+    lg = _log.getLogger(__name__)
+
+    def _watchlist():
+        sb_ids = sb.wl_get_ids()
+        if sb_ids:
+            stock_ids = sb_ids
+        else:
+            conn = get_conn()
+            rows = conn.execute("SELECT stock_id FROM watchlist").fetchall()
+            conn.close()
+            stock_ids = [r["stock_id"] for r in rows]
+        if stock_ids:
+            try:
+                _asyncio.run(update_stocks(stock_ids, days=30))
+            except Exception as _we:
+                lg.warning(f"[refresh_all] watchlist update_stocks: {_we}（保留舊資料）")
+
+    def _regime():
+        # 增加 breadth lookback 確保歷史夠長
+        regime_fetch_all(days=5)
+        fetch_twse_margin()
+        try:
+            from regime.fetcher import fetch_twse_margin_history, fetch_mis_index_today
+            fetch_mis_index_today()
+            fetch_twse_margin_history(days=60)   # 只補缺的日子（已有就跳過，很快）
+        except Exception as _mh_e:
+            lg.warning(f"[refresh_all] 融資歷史/MIS 指數: {_mh_e}")
+        fetch_twse_foreign_spot()
+        fetch_twse_market_breadth(lookback=90)
+        fetch_taifex_foreign_futures()
+        fetch_mi5mins()
+        regime_calc_factors()
+        regime_backfill_factors(days=90)
+
+    def _wave():
+        # 🌊 大盤解析（PLAN-B74）：國外指數＋籌碼＋重算（不叫 AI）
+        from wave.router import refresh_job as _wave_refresh
+        _wave_refresh(chips=True)
+
+    def _tdcc():
+        from tdcc_chip import refresh_for_stocks
+        _asyncio.run(refresh_for_stocks())
+
+    def _positioning():
+        positioning_run_refresh()      # 同步函數，內部自行處理 asyncio
+
+    def _sector():
+        # 先從價格快取同步（增量，PLAN-B77 A2），再執行引擎計算
+        from sector.prices import update_prices, backfill
+        from sector.engine import run_sector_engine
+        from sector.db import db as _sdb, init_db as _sector_init_db
+        _sector_init_db()
+        update_prices()
+        with _sdb() as _sc:
+            _cnt = _sc.execute("SELECT COUNT(DISTINCT date) FROM sector_stock_daily").fetchone()[0]
+        if _cnt < 60:
+            lg.info(f"[sector] sector_stock_daily 只有 {_cnt} 天，開始補抓歷史...")
+            backfill(days=130)
+        run_sector_engine(days_back=5)
+
+    def _warrant():
+        # 權證合約更新（串流，PLAN-B77 A1）＋盤後掃描
+        from warrant.ingester import ingest_contracts
+        ingest_contracts()
+        from warrant.router import run_scanner as _warrant_scan
+        _warrant_scan()
+
+    def _rel():
+        from relationship.router import _run_refresh as _rel_refresh
+        _rel_refresh(days=30)
+
+    def _link():
+        from link_routes import refresh_all as _link_refresh
+        return _link_refresh()
+
+    def _tb():
+        from treasury.router import run_refresh as _tb_refresh
+        return _tb_refresh(days=180)
+
+    def _mna():
+        from mna.router import run_refresh as _mna_refresh
+        return _mna_refresh(days=5)
+
+    def _cb():
+        from cb.router import run_refresh as _cb_refresh
+        return _cb_refresh()
+
+    return [("watchlist", _watchlist), ("regime", _regime), ("wave", _wave), ("tdcc", _tdcc),
+            ("positioning", _positioning), ("sector", _sector), ("warrant", _warrant),
+            ("relationship", _rel), ("link", _link), ("treasury", _tb), ("mna", _mna), ("cb", _cb)]
+
+
+def _do_system_refresh(resume: bool = False):
+    """執行全系統更新（同步，可在任意 thread 直接呼叫；不能在 event loop 上呼叫）。
+    包含：watchlist → regime → 大盤解析 → tdcc → positioning → sector → warrant → 市場關聯 → 連動 → 庫藏股 → 收購併購 → 可轉債
+    resume=True（PLAN-B77 B1）：上次中斷的接著跑——已完成的跳過；同一步中斷 2 次標「略過」繼續後面的。
     同時更新 _refresh_all_status dict，供 /api/refresh_all/status 查詢。
     """
-    import logging as _log, asyncio as _asyncio
+    import logging as _log, time as _time
     from datetime import datetime as _dt
+    import jobs as _jobs
     lg = _log.getLogger(__name__)
 
     _refresh_all_status["running"] = True
-    _refresh_all_status["interrupted"] = False
-    _refresh_all_status["started_at"] = _dt.now().isoformat()
+    _refresh_all_status["resume_at"] = None
+    _cur = _jobs.current().get("name")
+    _refresh_all_status["queued"] = _cur          # 有別的重工作在跑 → 網頁顯示「排隊中」
+    if not resume:
+        _refresh_all_status["interrupted"] = False
+        _refresh_all_status["started_at"] = _dt.now().isoformat()
+        _refresh_all_status["crash"] = {}
+        for k in _refresh_all_status["steps"]:
+            _refresh_all_status["steps"][k]["status"] = "pending"
+            _refresh_all_status["steps"][k].pop("sec", None)
     _refresh_all_status["finished_at"] = None
-    for k in _refresh_all_status["steps"]:
-        _refresh_all_status["steps"][k]["status"] = "pending"
     _save_refresh_status()
 
     try:
-        # 0. 觀察清單股票（優先更新，供後續引擎使用）
-        try:
-            _set_step("watchlist", "running")
-            sb_ids = sb.wl_get_ids()
-            if sb_ids:
-                stock_ids = sb_ids
-            else:
-                conn = get_conn()
-                rows = conn.execute("SELECT stock_id FROM watchlist").fetchall()
-                conn.close()
-                stock_ids = [r["stock_id"] for r in rows]
-            if stock_ids:
-                try:
-                    _asyncio.run(update_stocks(stock_ids, days=30))
-                except Exception as _we:
-                    lg.warning(f"[refresh_all] watchlist update_stocks: {_we}（保留舊資料）")
-            _set_step("watchlist", "done")
-        except Exception as e:
-            lg.error(f"[refresh_all] watchlist: {e}")
-            _set_step("watchlist", "error")
-
-        # 1. Regime（增加 breadth lookback 確保歷史夠長）
-        try:
-            _set_step("regime", "running")
-            regime_fetch_all(days=5)
-            fetch_twse_margin()
-            try:
-                from regime.fetcher import fetch_twse_margin_history, fetch_mis_index_today
-                fetch_mis_index_today()
-                fetch_twse_margin_history(days=60)   # 只補缺的日子（已有就跳過，很快）
-            except Exception as _mh_e:
-                lg.warning(f"[refresh_all] 融資歷史/MIS 指數: {_mh_e}")
-            fetch_twse_foreign_spot()
-            fetch_twse_market_breadth(lookback=90)
-            fetch_taifex_foreign_futures()
-            fetch_mi5mins()
-            regime_calc_factors()
-            regime_backfill_factors(days=90)
-            _set_step("regime", "done")
-        except Exception as e:
-            lg.error(f"[refresh_all] regime: {e}")
-            _set_step("regime", "error")
-
-        # 1b. 🌊 大盤解析（PLAN-B74）：國外指數＋籌碼＋重算（不叫 AI）
-        try:
-            _set_step("wave", "running")
-            from wave.router import refresh_job as _wave_refresh
-            _wave_refresh(chips=True)
-            _set_step("wave", "done")
-        except Exception as e:
-            lg.error(f"[refresh_all] wave: {e}")
-            _set_step("wave", "error")
-
-        # 2. 千張大戶 TDCC
-        try:
-            _set_step("tdcc", "running")
-            from tdcc_chip import refresh_for_stocks
-            _asyncio.run(refresh_for_stocks())
-            _set_step("tdcc", "done")
-        except Exception as e:
-            lg.error(f"[refresh_all] tdcc: {e}")
-            _set_step("tdcc", "error")
-
-        # 3. Positioning（positioning_run_refresh 是同步函數，內部自行處理 asyncio）
-        try:
-            _set_step("positioning", "running")
-            positioning_run_refresh()
-            _set_step("positioning", "done")
-        except Exception as e:
-            lg.error(f"[refresh_all] positioning: {e}")
-            _set_step("positioning", "error")
-
-        # 4. Sector（先抓今日全市場價格存入DB，再執行引擎計算）
-        try:
-            _set_step("sector", "running")
-            from sector.prices import update_prices, backfill
-            from sector.engine import run_sector_engine
-            from sector.db import db as _sdb, init_db as _sector_init_db
-            _sector_init_db()
-            update_prices()                      # 從價格快取同步（日期正確、歷史完整）＋ openapi 補最新一天
-            with _sdb() as _sc:
-                _cnt = _sc.execute("SELECT COUNT(DISTINCT date) FROM sector_stock_daily").fetchone()[0]
-            if _cnt < 60:
-                lg.info(f"[sector] sector_stock_daily 只有 {_cnt} 天，開始補抓歷史...")
-                backfill(days=130)
-            run_sector_engine(days_back=5)
-            _set_step("sector", "done")
-        except Exception as e:
-            lg.error(f"[refresh_all] sector: {e}")
-            _set_step("sector", "error")
-
-        # 5. 權證合約更新 + 盤後掃描
-        try:
-            _set_step("warrant", "running")
-            from warrant.ingester import ingest_contracts
-            ingest_contracts()
-            # 合約更新完再跑一次盤外掃描，讓盤後也能看到結果
-            from warrant.router import run_scanner as _warrant_scan
-            _warrant_scan()
-            _set_step("warrant", "done")
-        except Exception as e:
-            lg.error(f"[refresh_all] warrant: {e}")
-            _set_step("warrant", "error")
-
-        # 6～10. 各分頁資料（市場關聯、連動／處置、庫藏股、收購併購、可轉債）
-        def _tab_step(step, fn):
-            try:
+        with _jobs.heavy("refresh_all"):
+            _refresh_all_status["queued"] = None
+            _refresh_all_status["interrupted"] = False
+            for step, fn in _refresh_steps():
+                st = _refresh_all_status["steps"][step]
+                if resume and st["status"] in ("done", "busy"):
+                    continue                                   # 上次已完成
+                if resume and _refresh_all_status["crash"].get(step, 0) >= STEP_SKIP_AFTER:
+                    st["reason"] = f"連續 {_refresh_all_status['crash'][step]} 次跑到一半伺服器重開（多半是記憶體不夠），先略過"
+                    _set_step(step, "skipped")
+                    lg.warning(f"[refresh_all] {step} 略過：{st['reason']}")
+                    continue
+                st.pop("reason", None)
                 _set_step(step, "running")
-                r = fn()
-                if isinstance(r, dict) and r.get("busy"):
-                    _set_step(step, "busy")            # 那個分頁自己正在更新（例如排程剛好在跑）
-                elif isinstance(r, dict) and r.get("error"):
-                    _set_step(step, "error")
-                elif isinstance(r, dict) and r.get("ok") is False:
-                    _set_step(step, "busy" if "更新中" in str(r.get("message", "")) else "error")
-                else:
-                    _set_step(step, "done")
-            except Exception as e:
-                lg.error(f"[refresh_all] {step}: {e}")
-                _set_step(step, "error")
-
-        def _rel():
-            from relationship.router import _run_refresh as _rel_refresh
-            _rel_refresh(days=30)
-
-        def _link():
-            from link_routes import refresh_all as _link_refresh
-            return _link_refresh()
-
-        def _tb():
-            from treasury.router import run_refresh as _tb_refresh
-            return _tb_refresh(days=180)
-
-        def _mna():
-            from mna.router import run_refresh as _mna_refresh
-            return _mna_refresh(days=5)
-
-        def _cb():
-            from cb.router import run_refresh as _cb_refresh
-            return _cb_refresh()
-
-        for _st, _fn in (("relationship", _rel), ("link", _link), ("treasury", _tb), ("mna", _mna), ("cb", _cb)):
-            _tab_step(_st, _fn)
-
+                t0 = _time.time()
+                try:
+                    r = fn()
+                    sec = round(_time.time() - t0, 1)
+                    if isinstance(r, dict) and r.get("busy"):
+                        _set_step(step, "busy", sec)               # 那個分頁自己正在更新（例如排程剛好在跑）
+                    elif isinstance(r, dict) and r.get("error"):
+                        _set_step(step, "error", sec)
+                    elif isinstance(r, dict) and r.get("ok") is False:
+                        _set_step(step, "busy" if "更新中" in str(r.get("message", "")) else "error", sec)
+                    else:
+                        _set_step(step, "done", sec)
+                        _jobs.mark_ok(step)                       # 18:40 庫藏股等排程看到剛做過就跳過
+                except Exception as e:
+                    lg.error(f"[refresh_all] {step}: {e}")
+                    _set_step(step, "error", round(_time.time() - t0, 1))
+                finally:
+                    _jobs.release_memory()                         # 每步做完把記憶體還給系統
+            _refresh_all_status["crash"] = {}
+    except _jobs.QueueTimeout:
+        lg.warning("[refresh_all] 排隊超過 60 分鐘，這次沒跑")
+        for v in _refresh_all_status["steps"].values():
+            if v["status"] in ("pending", "running"):
+                v["status"] = "error"
+                v["reason"] = "排隊超過 60 分鐘（其他重工作還在跑）"
     finally:
         _refresh_all_status["running"] = False
+        _refresh_all_status["queued"] = None
         _refresh_all_status["finished_at"] = _dt.now().isoformat()
         _save_refresh_status()
 
 
 @app.post("/api/refresh_all")
 async def api_refresh_all():
-    """一鍵觸發所有引擎更新（背景執行）：千張大戶、Regime、Positioning、Sector、權證、市場關聯、連動、庫藏股、收購併購、可轉債"""
+    """一鍵觸發所有引擎更新（背景執行）：千張大戶、Regime、Positioning、Sector、權證、市場關聯、連動、庫藏股、收購併購、可轉債
+    6 小時內有中斷的 → 接著跑（已完成的不重跑，PLAN-B77 B1）"""
     import threading
     if _refresh_all_status["running"]:
         return {"ok": False, "message": "更新已在執行中，請稍候"}
-    threading.Thread(target=_do_system_refresh, daemon=True).start()
-    return {"ok": True, "message": "全系統更新已啟動（背景執行）"}
+    resume = _refresh_recent_interrupted()
+    _refresh_all_status["running"] = True            # 先標起來，連按兩下不會開兩條
+    threading.Thread(target=_do_system_refresh, kwargs={"resume": resume}, daemon=True).start()
+    return {"ok": True, "resume": resume,
+            "message": "接著上次中斷的地方繼續更新（已完成的不重跑）" if resume else "全系統更新已啟動（背景執行）"}
 
 
 # ════════════════════════════════════════════════════════════════════════════

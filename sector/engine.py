@@ -560,19 +560,21 @@ def run_sector_engine(days_back: int = 120) -> dict:
 
     log.info(f"[engine] 共 {len(all_stock_ids)} 支股票需要載入價格")
 
-    # ── 批次從 DB 讀取所有股票價格（單一 SQL 查詢，不打 Yahoo）──────────────
-    price_data = load_all_prices_from_db(list(all_stock_ids), min_dates=60)
-    loaded = len(price_data)
-    failed = len(all_stock_ids) - loaded
-    log.info(f"[engine] 價格載入完成：成功={loaded}，失敗={failed}（無 DB 資料）")
+    # ── 價格：一個產業一個產業從 DB 讀（PLAN-B77：以前一次把約 2,000 檔都變成 DataFrame 放在記憶體，
+    #    正式站 512MB 尖峰 +160MB；現在同一時間只有一個產業的股票，結果跟以前一樣）──────────────
+    def _sector_prices(sector_id: str) -> dict:
+        slist = sector_stocks.get(sector_id, [])
+        d = load_all_prices_from_db(slist, min_dates=60)
+        return {sid: d[sid] for sid in slist if sid in d}       # 跟以前一樣照產業股票清單的順序
 
     # ── 計算各產業指數 ────────────────────────────────────────────────────────
     sector_index_series: dict[str, pd.Series] = {}  # sector_id → index_level series
     sector_index_df: dict[str, pd.DataFrame] = {}
+    loaded_ids: set = set()
 
     for sector_id in sector_stocks:
-        slist = sector_stocks[sector_id]
-        p_dict = {sid: price_data[sid] for sid in slist if sid in price_data}
+        p_dict = _sector_prices(sector_id)
+        loaded_ids.update(p_dict)
         if len(p_dict) < 2:
             continue
         idx_df = calc_sector_index(p_dict, lookback=max(days_back + 60, 250))
@@ -582,6 +584,7 @@ def run_sector_engine(days_back: int = 120) -> dict:
         level_series = idx_df.set_index("date")["index_level"]
         sector_index_series[sector_id] = level_series
 
+    log.info(f"[engine] 價格載入完成：成功={len(loaded_ids)}，失敗={len(all_stock_ids) - len(loaded_ids)}（無 DB 資料）")
     log.info(f"[engine] 成功計算指數的產業：{len(sector_index_series)} 個")
 
     # ── 大盤代理（所有產業等權平均）──────────────────────────────────────────
@@ -627,12 +630,8 @@ def run_sector_engine(days_back: int = 120) -> dict:
             if v <= np.min(left) and v <= np.min(right):
                 _sl_list.append((float(v), s_dates[i]))
 
-        # 取得該產業的股票 price_dict
-        p_dict_sector = {
-            sid: price_data[sid]
-            for sid in sector_stocks.get(sector_id, [])
-            if sid in price_data
-        }
+        # 取得該產業的股票 price_dict（這個產業算完就放掉）
+        p_dict_sector = _sector_prices(sector_id)
 
         # 對 target_date = 最新一天（計算最節省）
         # 但我們要計算 days_back 天，所以逐日計算

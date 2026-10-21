@@ -4,8 +4,69 @@
 """
 import math
 from typing import Optional
-from scipy.optimize import brentq
-from scipy.stats import norm
+
+# PLAN-B77 A3：以前 import scipy（stats＋optimize）只為了 norm.cdf／pdf 和 brentq，常駐記憶體多約 54MB；
+# 正式站只有 512MB → 改成標準函式庫的等價寫法（tests/test_b77.py 跟 scipy 逐點比對）
+_SQRT2 = math.sqrt(2.0)
+_INV_SQRT_2PI = 1.0 / math.sqrt(2.0 * math.pi)
+
+
+class _Norm:
+    """標準常態分配：cdf 用 erfc（尾端也準），pdf 用公式"""
+    @staticmethod
+    def cdf(x: float) -> float:
+        return 0.5 * math.erfc(-x / _SQRT2)
+
+    @staticmethod
+    def pdf(x: float) -> float:
+        return _INV_SQRT_2PI * math.exp(-0.5 * x * x)
+
+
+norm = _Norm()
+
+
+def brentq(f, xa: float, xb: float, xtol: float = 2e-12, rtol: float = 8.881784197001252e-16, maxiter: int = 100) -> float:
+    """Brent 法求根（逐行照 scipy/optimize/Zeros/brentq.c；收斂不了丟 RuntimeError、同號丟 ValueError，跟 scipy 一樣）"""
+    xpre, xcur = float(xa), float(xb)
+    xblk = fblk = spre = scur = 0.0
+    fpre, fcur = f(xpre), f(xcur)
+    if fpre == 0:
+        return xpre
+    if fcur == 0:
+        return xcur
+    if math.copysign(1.0, fpre) == math.copysign(1.0, fcur):
+        raise ValueError("f(a) and f(b) must have different signs")
+    for _ in range(maxiter):
+        if fpre != 0 and fcur != 0 and math.copysign(1.0, fpre) != math.copysign(1.0, fcur):
+            xblk, fblk = xpre, fpre
+            spre = scur = xcur - xpre
+        if abs(fblk) < abs(fcur):
+            xpre, xcur, xblk = xcur, xblk, xcur
+            fpre, fcur, fblk = fcur, fblk, fcur
+        delta = (xtol + rtol * abs(xcur)) / 2
+        sbis = (xblk - xcur) / 2
+        if fcur == 0 or abs(sbis) < delta:
+            return xcur
+        if abs(spre) > delta and abs(fcur) < abs(fpre):
+            try:
+                if xpre == xblk:
+                    stry = -fcur * (xcur - xpre) / (fcur - fpre)             # 內插
+                else:
+                    dpre = (fpre - fcur) / (xpre - xcur)                      # 外插
+                    dblk = (fblk - fcur) / (xblk - xcur)
+                    stry = -fcur * (fblk * dblk - fpre * dpre) / (dblk * dpre * (fblk - fpre))
+            except ZeroDivisionError:
+                stry = math.nan        # C 除以 0 得到 inf／nan → 下面的比較不成立 → 改用二分（跟 scipy 一樣）
+            if 2 * abs(stry) < min(abs(spre), 3 * abs(sbis) - delta):
+                spre, scur = scur, stry
+            else:
+                spre = scur = sbis
+        else:
+            spre = scur = sbis
+        xpre, fpre = xcur, fcur
+        xcur += scur if abs(scur) > delta else (delta if sbis > 0 else -delta)
+        fcur = f(xcur)
+    raise RuntimeError("brentq 沒有收斂")
 
 # 升降單位（§5.3）— 注意與股票不同
 def warrant_tick(price: float) -> float:

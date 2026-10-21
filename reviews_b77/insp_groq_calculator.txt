@@ -1,0 +1,11 @@
+
+== Groq openai/gpt-oss-120b: REVISE
+   The calculator module mostly follows the plan, but there are edge‑case bugs that can cause runtime exceptions and incorrect results, especially when inputs contain zero or negative underlying price or strike, or when Greeks are missing. These need guarding before use.
+   [high] F1 calculator.py: bs_greeks does not validate S > 0 and K > 0 before calling math.log(S / K). If either is zero or negative, a ValueError or ZeroDivisionError is raised, crashing the service.
+        -> Add early validation: if S <= 0 or K <= 0 return {"delta": null, "vega": null, "theta_daily": null} (or raise a controlled error).
+   [medium] F2 calculator.py: total_hurdle assumes delta, vega and theta_daily are numeric. If any of these are None (e.g., bs_greeks returned None for invalid inputs), the arithmetic will raise TypeError.
+        -> Validate inputs at the start of total_hurdle: if any of delta, vega, theta_daily is None, return {} or a sentinel indicating unavailable calculation.
+   [low] F3 calculator.py: brentq sets `xblk, fblk = 0.0, 0.0` initially. In the very first loop iteration, if the sign‑change condition is not met (unlikely but possible with NaN returns), `xblk` remains 0.0, leading to an incorrect bisection step.
+        -> Initialize `xblk` to `xa` and `fblk` to `fpre` after the sign‑check, mirroring SciPy's implementation, to guarantee a valid bracket.
+   coverage: All core functions (norm, brentq, warrant_tick, bs_price, bs_greeks, implied_vol, total_hurdle, three_lights) are exercised by the existing test suite, but edge cases with zero/negative S or K and None Greeks are not covered.
+   limitations: The review is limited to the calculator module; lock handling, cache behavior, and UI XSS are outside this file's scope.

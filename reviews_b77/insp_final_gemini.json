@@ -1,0 +1,20 @@
+{
+ "mode": "inspect",
+ "files": [
+  "jobs.py",
+  "chip_course.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.7-flash",
+   "raw": "{\"verdict\":\"APPROVED\",\"summary\":\"All edits strictly conform to the approved PLAN-B77 specifications. In `jobs.py`, `recent()` safely consumes lines using `collections.deque(maxlen=n)` preventing excessive memory use on long logs, and `on_boot()` correctly analyzes up to 2000 lines to detect interrupted jobs while pruning the persistent log to 300 entries. In `chip_course.py`, SQLite connection lifetime is properly guarded with `try...finally` in `run_all()`, preventing connection/file descriptor leaks, and error reporting via `last_errors` cleanly surfaces failures per strategy. No regressions, deadlocks, or unhandled edge cases detected.\",\"findings\":[],\"coverage\":\"Inspected jobs.py (process-wide RLock concurrency, memory sampling, deque-based recent reading, atomic boot log rotation, on_boot crash detection) and chip_course.py (connection lifecycle management, SQLite query safety, exception handling, data parsing, division-by-zero guards, and screener edge cases).\",\"limitations\":\"Static code analysis of provided files; live TWSE/TPEx/TDCC HTTP API endpoint connectivity was not tested dynamically during this inspection.\"}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "All edits strictly conform to the approved PLAN-B77 specifications. In `jobs.py`, `recent()` safely consumes lines using `collections.deque(maxlen=n)` preventing excessive memory use on long logs, and `on_boot()` correctly analyzes up to 2000 lines to detect interrupted jobs while pruning the persistent log to 300 entries. In `chip_course.py`, SQLite connection lifetime is properly guarded with `try...finally` in `run_all()`, preventing connection/file descriptor leaks, and error reporting via `last_errors` cleanly surfaces failures per strategy. No regressions, deadlocks, or unhandled edge cases detected.",
+    "findings": [],
+    "coverage": "Inspected jobs.py (process-wide RLock concurrency, memory sampling, deque-based recent reading, atomic boot log rotation, on_boot crash detection) and chip_course.py (connection lifecycle management, SQLite query safety, exception handling, data parsing, division-by-zero guards, and screener edge cases).",
+    "limitations": "Static code analysis of provided files; live TWSE/TPEx/TDCC HTTP API endpoint connectivity was not tested dynamically during this inspection."
+   }
+  }
+ ]
+}

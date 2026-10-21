@@ -1,0 +1,13 @@
+Other files already inspected separately: server.py (startup catch-up, refresh-all resume, indices cache, health endpoints), jobs.py, swr.py, health.py.
+Context for this inspection (PLAN-B77, approved by Gemini round 3 and Groq round 2):
+- Production is ONE Fly.io machine with 512MB RAM, FastAPI + uvicorn single worker, many APScheduler BackgroundSchedulers (each runs jobs in its own thread pool), SQLite files under chip_data/.
+- jobs.heavy(name) is a process-wide RLock that serialises memory-heavy jobs; it must never be awaited on an asyncio event loop (it raises RuntimeError there). Starlette BackgroundTasks sync functions run in a worker thread (no running loop) so heavy() is allowed there.
+- swr.SWR = stale-while-revalidate cache (serve old data, refresh in a background thread, single flight, optional JSON persistence).
+- health.py builds the settings-page "system health" report.
+- The warrant contract ingest was rewritten to stream JSON with ijson (two passes over a temp file). A comparison against the old implementation on the real 45MB/17MB files produced identical DB rows (64,000 warrants, 907 underlyings) and peak memory +35MB vs +142MB.
+- warrant/calculator.py replaced scipy norm/brentq with math.erfc + a line-by-line port of scipy's brentq.c (incl. C's divide-by-zero -> bisection behaviour); compared with scipy on 50,000 random cases: 0 mismatches, max |diff| 0.
+- The sector engine now loads prices per sector instead of all ~2,000 stocks at once; old vs new produced identical sector_daily (602 rows) and sector_events (51 rows); chunked loader identical for 1,965 stocks incl. dtypes.
+- pytest: 403 passed (365 existing + 38 new). tests_ui/b77_ui.py (Playwright on a local server): all checks pass.
+- LightweightCharts 4.2.0 autoscale margins are PIXELS (verified on the production page: the original provider returns {"above":39,"below":39}); do not report that as a bug.
+- Line endings / CRLF noise and Chinese comments are not issues.
+Focus on real bugs: deadlocks or lock misuse, crash-loop risks in startup catch-up, wrong resume semantics, cache staleness bugs, exceptions on edge cases, JS errors, XSS (dynamic strings must pass through _esc), and backward-compat breaks.

@@ -46,6 +46,8 @@ def fetch_disposals(days: int = 45) -> list:
     j = _get("https://www.twse.com.tw/rwd/zh/announcement/punish",
              {"startDate": start.strftime("%Y%m%d"), "endDate": end.strftime("%Y%m%d"), "response": "json"})
     for r in j.get("data") or []:
+        if len(r) < 9:                              # 欄位不夠的列跳過（審查 Gemini B-F4：以前一列格式怪就整個處置股抓不到）
+            continue
         se = re.split(r"[～~]", str(r[6]))
         out.append({"stock_id": str(r[2]).strip(), "name": str(r[3]).strip(), "pub": _roc(r[1]),
                     "start": _roc(se[0]) if se else "", "end": _roc(se[1]) if len(se) > 1 else "",
@@ -56,7 +58,7 @@ def fetch_disposals(days: int = 45) -> list:
              {"startDate": start.strftime("%Y/%m/%d"), "endDate": end.strftime("%Y/%m/%d"), "response": "json"})
     for t in j.get("tables") or []:
         for r in t.get("data") or []:
-            if not str(r[2]).strip():
+            if len(r) < 9 or not str(r[2]).strip():
                 continue
             se = re.split(r"[～~]", str(r[5]))
             txt = str(r[8])
@@ -74,6 +76,8 @@ def fetch_attention(days: int = 45) -> list:
     j = _get("https://www.twse.com.tw/rwd/zh/announcement/notice",
              {"startDate": start.strftime("%Y%m%d"), "endDate": end.strftime("%Y%m%d"), "response": "json"})
     for r in j.get("data") or []:
+        if len(r) < 6:
+            continue
         out.append({"stock_id": str(r[1]).strip(), "name": str(r[2]).strip(), "date": _roc(r[5]),
                     "reason": re.sub(r"<[^>]+>", "", str(r[4]))[:80], "market": "上市"})
     time.sleep(1)
@@ -81,6 +85,8 @@ def fetch_attention(days: int = 45) -> list:
              {"startDate": start.strftime("%Y/%m/%d"), "endDate": end.strftime("%Y/%m/%d"), "response": "json"})
     for t in j.get("tables") or []:
         for r in t.get("data") or []:
+            if len(r) < 6:
+                continue
             out.append({"stock_id": str(r[1]).strip(), "name": str(r[2]).strip(), "date": _roc(r[5]),
                         "reason": str(r[4])[:80], "market": "上櫃"})
     return [x for x in out if re.fullmatch(r"\d{4}", x["stock_id"])]
@@ -150,9 +156,7 @@ def second_candidates(disp: list, tdays: list) -> list:
     return out
 
 
-def today(force: bool = False) -> dict:
-    if not force and _CACHE["data"] and time.time() - _CACHE["t"] < TTL:
-        return _CACHE["data"]
+def _build_today() -> dict:
     tdays = _trading_days(40)
     today_s = tdays[-1] if tdays else date.today().strftime("%Y%m%d")
     disp = fetch_disposals()
@@ -207,3 +211,27 @@ def today(force: bool = False) -> dict:
             "near": near[:60], "second": second}
     _CACHE.update(t=time.time(), data=data)
     return data
+
+
+# PLAN-B77 C3：以前快取 30 分鐘過期後，第一個打開的人要等約 14 秒（打證交所＋櫃買 4 支 API＋算雙刀）；
+# 現在過期先回舊資料、背景更新，結果存檔（重開機後馬上有）
+def _swr():
+    global _SWR
+    if _SWR is None:
+        import json as _json
+        from pathlib import Path as _P
+        from swr import SWR
+        _SWR = SWR("disposal", TTL, _build_today, persist=_P(__file__).parent / "chip_data" / "disposal_cache.json")
+        try:   # 存檔的資料先過一次 JSON（集合等型別），跟現算的一樣
+            _json.dumps(_SWR.data)
+        except Exception:
+            _SWR.data, _SWR.t = None, 0.0
+    return _SWR
+
+
+_SWR = None
+
+
+def today(force: bool = False) -> dict:
+    """force＝當場重算（18:00 連動重算後用）；平常＝有資料就馬上回，過期在背景更新"""
+    return _swr().get(force=force)

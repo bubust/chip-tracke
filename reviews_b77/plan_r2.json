@@ -1,0 +1,50 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B77.md",
+  "warrant/ingester.py",
+  "warrant/calculator.py",
+  "sector/prices.py",
+  "disposal.py",
+  "server.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.6-flash",
+   "error": "429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.6-flash\\nPlease retry in 18h7m24.341457735s.', 'status': 'RESOURCE_EXHA"
+  },
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"The plan directly addresses the documented root causes—memory peaks, OOM, missed jobs, slow endpoints, and silent failures—using streaming JSON, incremental sync, custom numeric routines, a disciplined global RLock, swap provisioning, and robust resume/catch‑up logic. The safety measures (temp‑file cleanup, download caps, lock time‑outs, retry limits) and the expanded test suite (unit + integration + UI) provide reasonable confidence that the changes will not introduce regressions. Minor low‑severity refinements are suggested.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"low\",\n      \"section\": \"A4 / jobs.heavy\",\n      \"issue\": \"The 60 minute RLock timeout could cause prolonged periods where scheduled jobs are skipped, potentially leading to data staleness if a heavy job repeatedly exceeds the limit.\",\n      \"suggestion\": \"Add monitoring/metrics for lock wait times and consider a shorter timeout (e.g., 15 min) with a back‑off retry strategy to reduce the window of missed work.\"\n    },\n    {\n      \"id\": \"F6\",\n      \"severity\": \"low\",\n      \"section\": \"A5 / swap provisioning\",\n      \"issue\": \"Relying on swap on a 512 MiB machine may increase latency for latency‑sensitive endpoints.\",\n      \"suggestion\": \"Instrument swap usage and set an alert if swap consumption exceeds 25 % of the allocated 512 MiB, so that further optimisation can be triggered before performance degrades.\"\n    },\n    {\n      \"id\": \"F8\",\n      \"severity\": \"low\",\n      \"section\": \"C1 / index cache\",\n      \"issue\": \"Stale‑while‑refresh with a single‑flight lock prevents thundering herd, but a sudden cache miss after expiry could still cause a brief surge of requests waiting on the lock.\",\n      \"suggestion\": \"Consider pre‑warming the cache shortly before known high‑traffic windows (e.g., market open) to keep the lock warm and avoid the initial latency spike.\"\n    }\n  ],\n  \"coverage\": \"All previously identified failure modes (memory peaks, OOM, missed scheduled jobs, slow endpoints, wasteful polling, silent failures) are covered by concrete mitigations. The plan includes incremental data handling, streaming parsers, custom numeric functions, disciplined job serialization, swap safety net, health‑check enhancements, and comprehensive test coverage (unit, integration, UI).\",\n  \"limitations\": \"The swap‑based safety net depends on Fly.io allowing swap on the chosen machine tier; if the tier changes, the plan must be revisited. The custom Brent implementation, while tested, may have edge‑case performance differences from SciPy in extreme market scenarios; ongoing monitoring is recommended. The global RLock approach assumes that only one heavy job runs at a time; future feature additions that introduce additional heavy workloads will need to respect this serialization contract.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "The plan directly addresses the documented root causes—memory peaks, OOM, missed jobs, slow endpoints, and silent failures—using streaming JSON, incremental sync, custom numeric routines, a disciplined global RLock, swap provisioning, and robust resume/catch‑up logic. The safety measures (temp‑file cleanup, download caps, lock time‑outs, retry limits) and the expanded test suite (unit + integration + UI) provide reasonable confidence that the changes will not introduce regressions. Minor low‑severity refinements are suggested.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "low",
+      "section": "A4 / jobs.heavy",
+      "issue": "The 60 minute RLock timeout could cause prolonged periods where scheduled jobs are skipped, potentially leading to data staleness if a heavy job repeatedly exceeds the limit.",
+      "suggestion": "Add monitoring/metrics for lock wait times and consider a shorter timeout (e.g., 15 min) with a back‑off retry strategy to reduce the window of missed work."
+     },
+     {
+      "id": "F6",
+      "severity": "low",
+      "section": "A5 / swap provisioning",
+      "issue": "Relying on swap on a 512 MiB machine may increase latency for latency‑sensitive endpoints.",
+      "suggestion": "Instrument swap usage and set an alert if swap consumption exceeds 25 % of the allocated 512 MiB, so that further optimisation can be triggered before performance degrades."
+     },
+     {
+      "id": "F8",
+      "severity": "low",
+      "section": "C1 / index cache",
+      "issue": "Stale‑while‑refresh with a single‑flight lock prevents thundering herd, but a sudden cache miss after expiry could still cause a brief surge of requests waiting on the lock.",
+      "suggestion": "Consider pre‑warming the cache shortly before known high‑traffic windows (e.g., market open) to keep the lock warm and avoid the initial latency spike."
+     }
+    ],
+    "coverage": "All previously identified failure modes (memory peaks, OOM, missed scheduled jobs, slow endpoints, wasteful polling, silent failures) are covered by concrete mitigations. The plan includes incremental data handling, streaming parsers, custom numeric functions, disciplined job serialization, swap safety net, health‑check enhancements, and comprehensive test coverage (unit, integration, UI).",
+    "limitations": "The swap‑based safety net depends on Fly.io allowing swap on the chosen machine tier; if the tier changes, the plan must be revisited. The custom Brent implementation, while tested, may have edge‑case performance differences from SciPy in extreme market scenarios; ongoing monitoring is recommended. The global RLock approach assumes that only one heavy job runs at a time; future feature additions that introduce additional heavy workloads will need to respect this serialization contract."
+   }
+  }
+ ]
+}

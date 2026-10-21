@@ -1,0 +1,26 @@
+{
+ "mode": "inspect",
+ "files": [
+  "jobs.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"REVISE\",\n  \"summary\": \"Potential OOM on startup due to reading entire job log file into memory; recent() reads whole file regardless of requested tail size, and on_boot() calls recent(5000) which can be huge. No other critical bugs found.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"high\",\n      \"path\": \"jobs.py\",\n      \"issue\": \"Function recent() reads the entire LOG_FILE into memory before slicing the last N lines. on_boot() invokes recent(5000) on every startup, which can cause excessive memory usage if the log file has grown large before the trimming step.\",\n      \"evidence\": \"def recent(n: int = 30):\\n    try:\\n        with open(LOG_FILE, encoding=\\\"utf-8\\\") as f:\\n            lines = f.readlines()[-n:]\\n    except Exception:\\n        return []\\n    ...\\n\\non_boot() calls rows = recent(5000) and later trims the file, but the initial read may already OOM.\",\n      \"suggestion\": \"Implement a true tail read that only loads the last N lines (e.g., using a reverse file iterator or reading in chunks). Also consider limiting the size of recent() calls or using a rotating log to keep the file bounded.\"\n    }]}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "Potential OOM on startup due to reading entire job log file into memory; recent() reads whole file regardless of requested tail size, and on_boot() calls recent(5000) which can be huge. No other critical bugs found.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "path": "jobs.py",
+      "issue": "Function recent() reads the entire LOG_FILE into memory before slicing the last N lines. on_boot() invokes recent(5000) on every startup, which can cause excessive memory usage if the log file has grown large before the trimming step.",
+      "evidence": "def recent(n: int = 30):\n    try:\n        with open(LOG_FILE, encoding=\"utf-8\") as f:\n            lines = f.readlines()[-n:]\n    except Exception:\n        return []\n    ...\n\non_boot() calls rows = recent(5000) and later trims the file, but the initial read may already OOM.",
+      "suggestion": "Implement a true tail read that only loads the last N lines (e.g., using a reverse file iterator or reading in chunks). Also consider limiting the size of recent() calls or using a rotating log to keep the file bounded."
+     }
+    ]
+   }
+  }
+ ]
+}

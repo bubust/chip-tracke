@@ -47,8 +47,9 @@ async function init() {
   }
   await loadStatus();
   await loadSectors(_currentTab);
-  // 每 30s 自動刷狀態
-  _statusTimer = setInterval(loadStatus, 30000);
+  // 每 60s 自動刷狀態，只在產業分頁看得到時（PLAN-B77 C2：以前藏在背景也每 30 秒打）
+  const _shown = () => { if (document.visibilityState !== "visible") return false; try { const fe = window.frameElement; return !fe || fe.offsetParent !== null; } catch (e) { return true; } };
+  _statusTimer = setInterval(() => { if (_shown()) loadStatus(); }, 60000);
 }
 
 // ── 狀態列 ──────────────────────────────────────────────────────────────────

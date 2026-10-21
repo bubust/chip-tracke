@@ -9,3 +9,4 @@ requests
 python-dotenv
 pytz
 tzdata
+ijson

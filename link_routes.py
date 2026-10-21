@@ -23,8 +23,19 @@ import linkage
 router = APIRouter()
 HERE = os.path.dirname(os.path.abspath(__file__))
 RES = os.path.join(HERE, "research", "link", "results")
-_MOVERS = {"t": 0.0, "data": None}
-_LOCK = threading.Lock()                  # 重算連動股同時只跑一個（排程＋手動＋查不到時背景補算）
+_MOVERS = {"t": 0.0, "data": None}          # 舊名稱保留（相容）；實際快取在 _movers_swr()
+_LOCK = threading.Lock()
+_MSWR = None
+
+
+def _movers_swr():
+    """今天的連動領頭股：10 分鐘內有效，過期先回舊資料背景更新、存檔（PLAN-B77 E6：冷快取要 2～3 秒）"""
+    global _MSWR
+    if _MSWR is None:
+        from pathlib import Path as _P
+        from swr import SWR
+        _MSWR = SWR("link_movers", 600, linkage.movers, persist=_P(HERE) / "chip_data" / "link_movers.json")
+    return _MSWR                  # 重算連動股同時只跑一個（排程＋手動＋查不到時背景補算）
 
 
 def _clean(o):
@@ -38,6 +49,10 @@ def refresh_all():
     try:
         r = linkage.compute_all()
         _MOVERS["t"] = 0.0
+        try:
+            _movers_swr().refresh()          # 連動重算完，領頭股跟著重算（不留給下一個打開的人等）
+        except Exception:
+            pass
         try:
             disposal.today(force=True)
         except Exception:
@@ -61,9 +76,8 @@ def api_link_stock(sid: str):
 
 @router.get("/api/link/movers")
 def api_link_movers():
-    if _MOVERS["data"] is None or time.time() - _MOVERS["t"] > 600:
-        _MOVERS.update(data=linkage.movers(), t=time.time())
-    return JSONResponse(content=_clean({"movers": _MOVERS["data"], "research": _research().get("follow")}))
+    data = _movers_swr().get()
+    return JSONResponse(content=_clean({"movers": data, "research": _research().get("follow")}))
 
 
 @router.get("/api/disposal/today")

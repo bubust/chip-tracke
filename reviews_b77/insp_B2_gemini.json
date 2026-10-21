@@ -1,0 +1,49 @@
+{
+ "mode": "inspect",
+ "files": [
+  "PLAN-B77.md",
+  "chip_course.py",
+  "warrant/router.py",
+  "warrant/ingester.py",
+  "disposal.py",
+  "jobs.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.7-flash",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"All 4 fixes from the previous round (F1 TDCC incomplete week filtering, F2 warrant ingest log dict validation, F3 immediate temp file registration for cleanup, F4 disposal row length guards) have been verified and confirmed correct. The core architecture under PLAN-B77—including RLock-based heavy job serialization, SWR caches, ijson streaming contract ingester, and error resilience—is robust with no medium or high severity bugs identified.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"low\",\n      \"path\": \"disposal.py\",\n      \"issue\": \"Date format mismatch in _closes SQL query when comparing ISO date with unhyphenated date string\",\n      \"evidence\": \"In disposal.py line 125, _closes receives upto='YYYYMMDD' from today_s, but queries price_daily where date is formatted as 'YYYY-MM-DD'. In ASCII comparison, '-' (45) < '0'..'9', meaning '2026-MM-DD' <= '2026MMDD' evaluates to true for all dates in the year regardless of month/day. While currently innocuous because today_s is the latest trading day in the DB, any historical or sub-range call will fail to bound future dates properly.\",\n      \"suggestion\": \"Normalize upto before querying: if len(upto) == 8 and '-' not in upto: upto = f'{upto[:4]}-{upto[4:6]}-{upto[6:]}'\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"path\": \"chip_course.py\",\n      \"issue\": \"run_all records errors into last_errors global but does not include '_errors' in the returned dictionary as described in PLAN-B77 D1\",\n      \"evidence\": \"PLAN-B77 D1 specifies 'chip_course.run_all 回傳每個策略的錯誤（_errors）'. In chip_course.py run_all(), errors are stored into last_errors[key], but out only contains the strategy keys. Callers inspecting results.get('_errors') will find None.\",\n      \"suggestion\": \"Add `if last_errors: out['_errors'] = dict(last_errors)` before returning `out` in `run_all()`.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"low\",\n      \"path\": \"chip_course.py\",\n      \"issue\": \"SQLite connection c is not closed in a try...finally block in run_all\",\n      \"evidence\": \"In run_all(), c = get_conn() is opened at line 439 and closed at line 452. If an exception is raised in _series() before the strategy loop, c.close() is bypassed until garbage collection.\",\n      \"suggestion\": \"Wrap the queries and loop in a try...finally block ensuring c.close() executes unconditionally.\"\n    }\n  ],\n  \"coverage\": \"Inspected PLAN-B77 requirements against complete source files for chip_course.py, warrant/router.py, warrant/ingester.py, disposal.py, and jobs.py. Checked concurrency safety of jobs.heavy RLock and event loop detection, atomic JSON file writes, crash handling, ijson two-pass parsing, and disposal SWR cache initialization.\",\n  \"limitations\": \"Did not inspect frontend JavaScript templates or scanner.py/server.pyLifespan implementation beyond the context provided.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "All 4 fixes from the previous round (F1 TDCC incomplete week filtering, F2 warrant ingest log dict validation, F3 immediate temp file registration for cleanup, F4 disposal row length guards) have been verified and confirmed correct. The core architecture under PLAN-B77—including RLock-based heavy job serialization, SWR caches, ijson streaming contract ingester, and error resilience—is robust with no medium or high severity bugs identified.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "low",
+      "path": "disposal.py",
+      "issue": "Date format mismatch in _closes SQL query when comparing ISO date with unhyphenated date string",
+      "evidence": "In disposal.py line 125, _closes receives upto='YYYYMMDD' from today_s, but queries price_daily where date is formatted as 'YYYY-MM-DD'. In ASCII comparison, '-' (45) < '0'..'9', meaning '2026-MM-DD' <= '2026MMDD' evaluates to true for all dates in the year regardless of month/day. While currently innocuous because today_s is the latest trading day in the DB, any historical or sub-range call will fail to bound future dates properly.",
+      "suggestion": "Normalize upto before querying: if len(upto) == 8 and '-' not in upto: upto = f'{upto[:4]}-{upto[4:6]}-{upto[6:]}'"
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "path": "chip_course.py",
+      "issue": "run_all records errors into last_errors global but does not include '_errors' in the returned dictionary as described in PLAN-B77 D1",
+      "evidence": "PLAN-B77 D1 specifies 'chip_course.run_all 回傳每個策略的錯誤（_errors）'. In chip_course.py run_all(), errors are stored into last_errors[key], but out only contains the strategy keys. Callers inspecting results.get('_errors') will find None.",
+      "suggestion": "Add `if last_errors: out['_errors'] = dict(last_errors)` before returning `out` in `run_all()`."
+     },
+     {
+      "id": "F3",
+      "severity": "low",
+      "path": "chip_course.py",
+      "issue": "SQLite connection c is not closed in a try...finally block in run_all",
+      "evidence": "In run_all(), c = get_conn() is opened at line 439 and closed at line 452. If an exception is raised in _series() before the strategy loop, c.close() is bypassed until garbage collection.",
+      "suggestion": "Wrap the queries and loop in a try...finally block ensuring c.close() executes unconditionally."
+     }
+    ],
+    "coverage": "Inspected PLAN-B77 requirements against complete source files for chip_course.py, warrant/router.py, warrant/ingester.py, disposal.py, and jobs.py. Checked concurrency safety of jobs.heavy RLock and event loop detection, atomic JSON file writes, crash handling, ijson two-pass parsing, and disposal SWR cache initialization.",
+    "limitations": "Did not inspect frontend JavaScript templates or scanner.py/server.pyLifespan implementation beyond the context provided."
+   }
+  }
+ ]
+}

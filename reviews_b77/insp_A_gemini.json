@@ -1,0 +1,40 @@
+{
+ "mode": "inspect",
+ "files": [
+  "PLAN-B77.md",
+  "jobs.py",
+  "swr.py",
+  "health.py",
+  "server.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.7-flash",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"Implementation of PLAN-B77 is robust, well-engineered, and meets all acceptance criteria. Memory constraints on the 512MB Fly.io instance are addressed with ijson streaming for warrant contracts, chunked sector prices, RLock-based heavy job serialization with RSS tracking, malloc_trim, and SWR caching for slow endpoints. Startup crash-loop protection correctly limits catch-up attempts to 2 with backoff and skips steps that repeatedly interrupt. Minor low-severity improvements identified for timezone robustness and scheduler parameter consistency.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"low\",\n      \"path\": \"server.py\",\n      \"issue\": \"relationship daily scheduler does not specify skip_if_recent=True\",\n      \"evidence\": \"In server.py line 673: _rel_scheduler.add_job(lambda: _sched_heavy('relationship', ...), ...) unlike treasury, mna, and cb which pass skip_if_recent=True.\",\n      \"suggestion\": \"Pass skip_if_recent=True in the relationship scheduled job lambda to avoid duplicate work if a manual or startup full refresh completed within 90 minutes.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"path\": \"server.py\",\n      \"issue\": \"datetime.now() in _startup_catchup relies on host OS timezone instead of explicit Taiwan timezone\",\n      \"evidence\": \"In _startup_catchup (line 478): now = datetime.now() is naive system time. If the host environment defaults to UTC without TZ=Asia/Taipei, need_scan_catchup(now, ...) would evaluate hour against UTC instead of Taiwan time (UTC+8).\",\n      \"suggestion\": \"Use datetime.now(timezone(timedelta(hours=8))) or ZoneInfo('Asia/Taipei') in _startup_catchup to ensure consistent Taiwan local time evaluation regardless of container host timezone.\"\n    }\n  ],\n  \"coverage\": \"Inspected PLAN-B77.md, jobs.py, swr.py, health.py, and server.py. Verified locking behavior in heavy(), SWR single-flight logic, catch-up and resume state machine, memory release with malloc_trim, prewarming sequence, and endpoint auth guards.\",\n  \"limitations\": \"Only the 5 provided files were inspected; external modules (warrant/ingester.py, warrant/calculator.py, sector/prices.py, and dashboard.html) were reviewed indirectly based on their interfaces and test suite context.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "Implementation of PLAN-B77 is robust, well-engineered, and meets all acceptance criteria. Memory constraints on the 512MB Fly.io instance are addressed with ijson streaming for warrant contracts, chunked sector prices, RLock-based heavy job serialization with RSS tracking, malloc_trim, and SWR caching for slow endpoints. Startup crash-loop protection correctly limits catch-up attempts to 2 with backoff and skips steps that repeatedly interrupt. Minor low-severity improvements identified for timezone robustness and scheduler parameter consistency.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "low",
+      "path": "server.py",
+      "issue": "relationship daily scheduler does not specify skip_if_recent=True",
+      "evidence": "In server.py line 673: _rel_scheduler.add_job(lambda: _sched_heavy('relationship', ...), ...) unlike treasury, mna, and cb which pass skip_if_recent=True.",
+      "suggestion": "Pass skip_if_recent=True in the relationship scheduled job lambda to avoid duplicate work if a manual or startup full refresh completed within 90 minutes."
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "path": "server.py",
+      "issue": "datetime.now() in _startup_catchup relies on host OS timezone instead of explicit Taiwan timezone",
+      "evidence": "In _startup_catchup (line 478): now = datetime.now() is naive system time. If the host environment defaults to UTC without TZ=Asia/Taipei, need_scan_catchup(now, ...) would evaluate hour against UTC instead of Taiwan time (UTC+8).",
+      "suggestion": "Use datetime.now(timezone(timedelta(hours=8))) or ZoneInfo('Asia/Taipei') in _startup_catchup to ensure consistent Taiwan local time evaluation regardless of container host timezone."
+     }
+    ],
+    "coverage": "Inspected PLAN-B77.md, jobs.py, swr.py, health.py, and server.py. Verified locking behavior in heavy(), SWR single-flight logic, catch-up and resume state machine, memory release with malloc_trim, prewarming sequence, and endpoint auth guards.",
+    "limitations": "Only the 5 provided files were inspected; external modules (warrant/ingester.py, warrant/calculator.py, sector/prices.py, and dashboard.html) were reviewed indirectly based on their interfaces and test suite context."
+   }
+  }
+ ]
+}

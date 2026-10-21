@@ -14,9 +14,11 @@ import io
 import re
 import sqlite3
 import threading
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
+from fastapi.encoders import jsonable_encoder
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
@@ -295,12 +297,36 @@ def group_deals(rows: list) -> list:
 
 @router.get("/api/mna/list")
 def list_deals(days: int = Query(365, ge=7, le=3650)):
-    since = (tw_today() - timedelta(days=days)).isoformat()
-    rows = enrich(group_deals(db.all_rows(since)))
-    counts = {}
-    for r in rows:
-        counts[r["status"]] = counts.get(r["status"], 0) + 1
-    return {"rows": rows, "counts": counts, "status": status()}
+    """PLAN-B77：以前每次都重新分組＋算溢價（約 0.6 秒、回 450KB）→ 60 秒內、資料庫沒變就用上次算好的；回 JSONResponse"""
+    from fastapi.responses import JSONResponse
+    key = (days, _db_stamp(), tw_today().isoformat())
+    hit = _list_cache.get("v")
+    if hit and hit[0] == key and time.time() - hit[1] < 60:
+        rows, counts = hit[2]
+    else:
+        since = (tw_today() - timedelta(days=days)).isoformat()
+        rows = enrich(group_deals(db.all_rows(since)))
+        counts = {}
+        for r in rows:
+            counts[r["status"]] = counts.get(r["status"], 0) + 1
+        _list_cache["v"] = (key, time.time(), (rows, counts))
+    return JSONResponse(content=jsonable_encoder({"rows": rows, "counts": counts, "status": status()}))
+
+
+_list_cache: dict = {}
+
+
+def _db_stamp():
+    """資料庫檔案（含 WAL）最後修改時間：有寫入就換掉快取"""
+    import os
+    p = str(getattr(db, "DB_PATH", ""))
+    out = 0.0
+    for f in (p, p + "-wal"):
+        try:
+            out = max(out, os.path.getmtime(f))
+        except OSError:
+            pass
+    return out
 
 
 class Deal(BaseModel):

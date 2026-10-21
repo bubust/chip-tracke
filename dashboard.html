@@ -553,6 +553,12 @@ details.guide[open]>summary::before{content:'▾ ';}
   #chart-tv-container { overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
 }
 /* 全系統更新進度（2026-10-18 改版：兩欄小格、進度條、一定關得掉） */
+.hl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px}
+.hl-item{background:var(--bg,#0d1117);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:.8rem;line-height:1.5;min-width:0}
+.hl-item b{font-size:.84rem}
+.hl-item .hl-n{color:var(--muted);font-size:.74rem}
+.hl-item.warn{border-color:#d2992288}
+.hl-job{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
 .rf-box{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:16px 18px;width:min(520px,100%);max-height:calc(100dvh - 24px);overflow-y:auto;box-sizing:border-box;box-shadow:0 12px 40px #000c}
 .rf-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
 .rf-head b{font-size:1rem}
@@ -1084,17 +1090,17 @@ details.guide[open]>summary::before{content:'▾ ';}
 
 <!-- ═══════════════════════ 權證股期選擇器 ═══════════════════════ -->
 <div id="tab-warrant" class="tab">
-  <iframe src="/warrant/" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
+  <iframe id="warrant-iframe" src="about:blank" data-src="/warrant/" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
 </div>
 
 <!-- ═══════════════════════ Regime 面板 ═══════════════════════ -->
 <div id="tab-regime" class="tab">
-  <iframe id="regime-iframe" src="/regime/" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
+  <iframe id="regime-iframe" src="about:blank" data-src="/regime/" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
 </div>
 
 <!-- ═══════════════════════ 產業輪動 ═══════════════════════ -->
 <div id="tab-sector" class="tab">
-  <iframe id="sector-iframe" src="/sector/" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
+  <iframe id="sector-iframe" src="about:blank" data-src="/sector/" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;"></iframe>
 </div>
 
 <!-- ═══════════════════════ 市場關聯研究 ═══════════════════════ -->
@@ -1277,6 +1283,20 @@ details.guide[open]>summary::before{content:'▾ ';}
 <div id="tab-settings" class="tab">
   <div id="auth-banner" class="card" style="font-size:.84rem;line-height:1.7;border-width:1px"></div>
 
+  <!-- 🩺 系統健康（PLAN-B77 D3）：先看結論，細節收起來 -->
+  <div class="card" id="health-card">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+      <div class="section-title" style="margin:0">🩺 系統健康</div>
+      <button class="btn sm ghost" onclick="loadHealth()">重新檢查</button>
+      <span id="health-time" style="font-size:.72rem;color:var(--muted)"></span>
+    </div>
+    <div id="health-summary" style="font-size:1.08rem;font-weight:700;margin-bottom:4px">檢查中…</div>
+    <div id="health-mem" style="font-size:.8rem;color:var(--muted);margin-bottom:8px"></div>
+    <div id="health-items" class="hl-grid"></div>
+    <details style="margin-top:8px"><summary style="cursor:pointer;font-size:.82rem;color:var(--muted)">最近重開</summary><div id="health-boots" style="font-size:.78rem;margin-top:6px"></div></details>
+    <details style="margin-top:6px"><summary style="cursor:pointer;font-size:.82rem;color:var(--muted)">背景工作紀錄（最近 30 筆：花多久、用多少記憶體）</summary><div id="health-jobs" style="font-size:.76rem;margin-top:6px"></div></details>
+  </div>
+
   <div class="sg">
     <div class="card">
       <div class="section-title">Telegram 推播設定</div>
@@ -1399,7 +1419,42 @@ function _renderAuthBanner(st) {
 }
 
 function _doSwitchSettings() {
-  loadSysStatus(); loadPushLog(); loadTGSettings(); loadParams(); loadAllStratParams(); updateLocalWlInfo();
+  loadHealth(); loadSysStatus(); loadPushLog(); loadTGSettings(); loadParams(); loadAllStratParams(); updateLocalWlInfo();
+}
+
+// ── 🩺 系統健康（PLAN-B77 D3）──
+const _HL_JOB = { scan_1800: '18:00 掃描＋全系統更新', refresh_all: '全系統更新', warrant_ingest: '權證合約更新', sector_refresh: '產業輪動計算',
+  treasury: '庫藏股', mna: '收購併購', cb: '可轉債', relationship: '市場關聯', positioning: '籌碼定位' };
+async function loadHealth() {
+  const sumEl = document.getElementById('health-summary');
+  if (!sumEl) return;
+  sumEl.textContent = '檢查中…';
+  let r;
+  try { r = await api('GET', '/api/system/health'); }
+  catch (e) { sumEl.textContent = '⚠ 讀不到系統狀態：' + e.message; return; }
+  sumEl.textContent = r.summary || '';
+  sumEl.style.color = r.ok ? '#3fb950' : '#d29922';
+  document.getElementById('health-time').textContent = `檢查時間 ${r.now}（應該要有 ${r.expected_day} 的資料）`;
+  const m = r.memory || {};
+  document.getElementById('health-mem').textContent = (m.text ? '記憶體：' + m.text : '') +
+    (r.running && r.running.name ? `　正在跑：${_HL_JOB[r.running.name] || r.running.name}（${r.running.since} 開始）` : '');
+  document.getElementById('health-items').innerHTML = (r.items || []).map(i => `
+    <div class="hl-item ${i.ok ? '' : 'warn'}"><b>${i.ok ? '✅' : '⚠'} ${_esc(i.label)}</b>
+      <span style="float:right;color:var(--muted);font-size:.74rem">${_esc(i.latest || '—')}</span><br>
+      <span>${_esc(i.note || '')}</span>${i.what ? `<br><span class="hl-n">${_esc(i.what)}</span>` : ''}</div>`).join('');
+  const boots = (r.boots || []).slice().reverse();
+  document.getElementById('health-boots').innerHTML = boots.length ? boots.map(b =>
+    `<div class="hl-job"><span>${_esc(b.t)}</span><span>伺服器啟動${(b.interrupted || []).length ? `<b style="color:#d29922">（上次重開時正在跑：${_esc(b.interrupted.map(n => _HL_JOB[n] || n).join('、'))}，多半是記憶體不夠）</b>` : ''}</span></div>`).join('')
+    : '<span class="muted">還沒有紀錄</span>';
+  document.getElementById('health-jobs').innerHTML = (r.jobs || []).length ? r.jobs.map(j => {
+    const nm = _esc(_HL_JOB[j.name] || j.name || j.what || '');
+    if (j.kind === 'end') return `<div class="hl-job"><span>${_esc(j.t)}</span><span>${j.ok ? '✅' : '❌'} ${nm}</span>
+      <span class="muted">${j.sec}秒${j.rss_peak ? `・記憶體尖峰 ${j.rss_peak}MB` : ''}${j.waited ? `・排隊 ${j.waited}秒` : ''}</span>${j.error ? `<span style="color:#f85149">${_esc(j.error)}</span>` : ''}</div>`;
+    if (j.kind === 'skip') return `<div class="hl-job"><span>${_esc(j.t)}</span><span>⏭️ ${nm} 略過</span><span class="muted">${_esc(j.reason || '')}</span></div>`;
+    if (j.kind === 'catchup') return `<div class="hl-job"><span>${_esc(j.t)}</span><span>🔁 重開後補跑：${_esc(_HL_JOB[j.what] || j.what || '')}${j.day ? `（${_esc(j.day)}）` : ''}</span></div>`;
+    if (j.kind === 'boot') return `<div class="hl-job"><span>${_esc(j.t)}</span><span>🔌 伺服器啟動</span></div>`;
+    return '';
+  }).join('') : '<span class="muted">還沒有紀錄</span>';
 }
 </script>
 
@@ -2321,7 +2376,29 @@ async function api(method, path, body = null) {
   return data;
 }
 
+// PLAN-B77 E4：同一個 GET 在 ttl 內只打一次；同時呼叫共用同一個請求（存 Promise 不是存結果）。失敗不快取
+const _apiOnceMap = {};
+function apiOnce(path, ttl = 60000) {
+  const e = _apiOnceMap[path];
+  if (e && (e.pending || Date.now() - e.at < ttl)) return e.p;
+  const ent = { pending: true, at: Date.now() };
+  ent.p = api('GET', path).then(r => { ent.pending = false; ent.at = Date.now(); return r; },
+                                 err => { if (_apiOnceMap[path] === ent) delete _apiOnceMap[path]; throw err; });
+  _apiOnceMap[path] = ent;
+  return ent.p;
+}
+
 // ───── Tab ─────
+function _lazyFrame(id) {
+  const f = document.getElementById(id);
+  if (!f || f.dataset.loaded) return f;
+  f.dataset.loaded = '1';
+  f.dataset.loading = '1';
+  f.addEventListener('load', () => { delete f.dataset.loading; }, { once: true });
+  f.src = f.dataset.src;
+  return f;
+}
+
 function switchTab(name) {
   // 設定頁：伺服器端驗證
   if (name === 'settings' && !_settingsUnlocked) { _openSettingsWithAuth(); return; }
@@ -2334,8 +2411,10 @@ function switchTab(name) {
     if (window.innerWidth < 900) { try { navBtn.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); } catch (e) { /* 舊瀏覽器 */ } }
   }
   if (name === 'settings') { _doSwitchSettings(); }
-  if (name === 'regime') { const rf = document.getElementById('regime-iframe'); if (rf && !rf.dataset.loaded) { rf.dataset.loaded = '1'; rf.src = '/regime/'; } }
-  if (name === 'sector') { const sf = document.getElementById('sector-iframe'); if (sf && !sf.dataset.loaded) { sf.dataset.loaded = '1'; sf.src = '/sector/'; } }
+  // 權證／總經／產業：第一次點分頁才載入（PLAN-B77 E2：以前首頁一打開就把 3 個 iframe 都載入，總經頁就 21 個請求＋171KB）
+  if (name === 'warrant') _lazyFrame('warrant-iframe');
+  if (name === 'regime') _lazyFrame('regime-iframe');
+  if (name === 'sector') _lazyFrame('sector-iframe');
   if (name === 'relationship') { const rf2 = document.getElementById('relationship-iframe'); if (rf2 && !rf2.dataset.loaded) { rf2.dataset.loaded = '1'; rf2.src = '/relationship/'; } }
   if (name === 'link') { linkOnShow(); }
   if (name === 'market') { _mktOnShow(); }
@@ -3190,10 +3269,28 @@ async function refreshIndices() {
   }
 }
 
+// PLAN-B77 C2：指數列以前不管有沒有在看、幾點都每 10 秒打；現在分頁在背景不打（切回來馬上補一次），
+// 交易時段（08:45～13:45 現貨、15:00～隔天 05:00 期貨夜盤）10 秒、其他 60 秒（伺服器也有快取）
+let _idxLast = 0;
+function _idxInterval() {
+  const tw = new Date(Date.now() + (new Date().getTimezoneOffset() + 480) * 60000);
+  const m = tw.getHours() * 60 + tw.getMinutes(), wd = tw.getDay();
+  const day = wd >= 1 && wd <= 5 && m >= 525 && m <= 825;
+  const night = (wd >= 1 && wd <= 5 && m >= 900) || (wd >= 2 && wd <= 6 && m <= 300);
+  return (day || night) ? 10000 : 60000;
+}
 function startIndicesRefresh() {
+  const tick = () => {
+    if (document.hidden) return;
+    if (Date.now() - _idxLast < _idxInterval() - 500) return;
+    _idxLast = Date.now();
+    refreshIndices();
+  };
+  _idxLast = Date.now();
   refreshIndices();
   if (_idxTimer) clearInterval(_idxTimer);
-  _idxTimer = setInterval(refreshIndices, 10000);   // 每 10 秒刷新
+  _idxTimer = setInterval(tick, 5000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { _idxLast = 0; tick(); } });
 }
 
 function openIndexChart(key, name) {
@@ -3782,6 +3879,8 @@ function openWarrant(code, name) {
   const iframe = document.querySelector('#tab-warrant iframe');
   if (!iframe) return;
   const send = () => iframe.contentWindow.postMessage({ type: 'selectStock', code, name }, '*');
+  // 第一次點才開始載入（延遲載入）→ 等載完再送；已載入的直接送
+  if (iframe.dataset.loading) { iframe.addEventListener('load', send, { once: true }); return; }
   // iframe 可能尚未載入完，稍等後再送
   if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
     send();
@@ -3835,9 +3934,9 @@ async function saveMemo(sid, memo) {
 // 一次更新：觀察清單、總經、千張大戶、籌碼定位、產業輪動、權證、市場關聯、連動、庫藏股、收購併購、可轉債；
 // 跑完各分頁畫面自動重新載入（不用再一頁一頁點進去按更新）。進度框隨時可以關（背景繼續），全部成功 3 秒後自動關。
 let _rfPoll = null, _rfAutoClose = null;
-const _RF_ICON = { pending: '⏳', running: '🔄', done: '✅', error: '❌', interrupted: '⚠️', busy: '⏭️' };
-const _RF_TEXT = { pending: '等待中', running: '更新中…', done: '完成', error: '失敗', interrupted: '中斷', busy: '分頁自己在更新' };
-const _RF_COLOR = { done: '#3fb950', error: '#f85149', running: '#d29922', interrupted: '#d29922', busy: '#8b949e' };
+const _RF_ICON = { pending: '⏳', running: '🔄', done: '✅', error: '❌', interrupted: '⚠️', busy: '⏭️', skipped: '⏭️' };
+const _RF_TEXT = { pending: '等待中', running: '更新中…', done: '完成', error: '失敗', interrupted: '中斷', busy: '分頁自己在更新', skipped: '略過' };
+const _RF_COLOR = { done: '#3fb950', error: '#f85149', running: '#d29922', interrupted: '#d29922', busy: '#8b949e', skipped: '#d29922' };
 
 function closeRefreshModal() {
   clearTimeout(_rfAutoClose);
@@ -3845,17 +3944,36 @@ function closeRefreshModal() {
 }
 function _rfOpen() { document.getElementById('refresh-progress-modal').style.display = 'flex'; }
 
+function _rfSec(v) {
+  if (v.sec == null || !['done', 'error', 'busy'].includes(v.status)) return '';
+  const x = v.sec >= 60 ? `${Math.floor(v.sec / 60)}分${Math.round(v.sec % 60)}秒` : `${Math.round(v.sec)}秒`;
+  return ` · ${x}`;
+}
+
+function _rfJobName(n) {
+  return ({ scan_1800: '18:00 全市場掃描', refresh_all: '全系統更新', warrant_ingest: '權證合約更新', sector_refresh: '產業輪動計算',
+            treasury: '庫藏股', mna: '收購併購', cb: '可轉債', relationship: '市場關聯', positioning: '籌碼定位' })[n] || n;
+}
+
 function _rfRender(st) {
   const steps = Object.values(st.steps || {});
-  const fin = steps.filter(v => ['done', 'error', 'busy'].includes(v.status)).length;
+  const fin = steps.filter(v => ['done', 'error', 'busy', 'skipped'].includes(v.status)).length;
   document.getElementById('refresh-steps-list').innerHTML = steps.map(v => `
-    <div class="rf-item"><span>${_RF_ICON[v.status] || '⏳'}</span>
+    <div class="rf-item" title="${_esc(v.reason || '')}"><span>${_RF_ICON[v.status] || '⏳'}</span>
       <span class="rf-l" style="color:${_RF_COLOR[v.status] || '#8b949e'}">${_esc(v.label)}</span>
-      <span class="rf-s">${_RF_TEXT[v.status] || '等待中'}</span></div>`).join('');
+      <span class="rf-s">${_RF_TEXT[v.status] || '等待中'}${_rfSec(v)}</span></div>`).join('');
   document.getElementById('rf-count').textContent = steps.length ? `${fin} / ${steps.length}` : '';
   document.getElementById('rf-bar-fill').style.width = steps.length ? `${Math.round(fin / steps.length * 100)}%` : '0';
   const btn = document.getElementById('btn-global-refresh');
-  if (st.running) { btn.textContent = `⏳ 更新中 ${fin}/${steps.length}`; btn.title = '點一下看進度'; }
+  const hint = document.getElementById('rf-hint');
+  if (st.running) {
+    btn.textContent = `⏳ 更新中 ${fin}/${steps.length}`; btn.title = '點一下看進度';
+    if (hint) hint.textContent = st.queued ? `排隊中：等「${_rfJobName(st.queued)}」跑完再開始（同一時間只跑一個大工作，免得記憶體不夠）`
+                                           : '可以先關掉，更新會在背景繼續；按右上角按鈕可再打開';
+  } else if (st.resume_at) {
+    const left = Math.max(0, Math.round((new Date(st.resume_at) - Date.now()) / 1000));
+    btn.textContent = `⏳ ${left} 秒後接著跑`; btn.title = '伺服器剛重新啟動，會自動從中斷的地方接著跑';
+  }
   return { steps, fin };
 }
 
@@ -3867,7 +3985,7 @@ function _rfReloadTabs() {
     if (f && f.dataset.loaded) { try { f.contentWindow.location.reload(); } catch (e) { f.src = f.src; } }
   });
   const wf = document.querySelector('#tab-warrant iframe');
-  if (wf) { try { wf.contentWindow.location.reload(); } catch (e) {} }
+  if (wf && wf.dataset.loaded) { try { wf.contentWindow.location.reload(); } catch (e) {} }
   try { _tbLoaded = false; } catch (e) {}
   try { _mnaLoaded = false; } catch (e) {}
   try { _cbLoaded = false; } catch (e) {}
@@ -3877,6 +3995,56 @@ function _rfReloadTabs() {
   const act = (document.querySelector('.tab.active') || {}).id || '';
   const onShow = { 'tab-treasury': 'tbOnShow', 'tab-mna': 'mnaOnShow', 'tab-cb': 'cbOnShow', 'tab-link': 'linkOnShow', 'tab-market': '_mktOnShow', 'tab-tail': 'tailOnShow' }[act];
   if (onShow && typeof window[onShow] === 'function') { try { window[onShow](); } catch (e) {} }
+}
+
+// 輪詢進度：跑完（或確定不會自動續跑）才停；伺服器重開中問不到就下次再問（PLAN-B77 B1）
+function _rfStartPolling() {
+  const btn = document.getElementById('btn-global-refresh');
+  const doneMsg = document.getElementById('refresh-all-done-msg');
+  let sawActive = false;
+  const tick = async () => {
+    let st;
+    try { st = await api('GET', '/api/refresh_all/status'); } catch (_) { return; }   // 伺服器重啟中：下次再問
+    const { steps } = _rfRender(st);
+    if (st.running || st.resume_at) {
+      sawActive = true;
+      if (st.resume_at && !st.running) {
+        const at = steps.find(v => v.status === 'interrupted');
+        doneMsg.style.color = '#d29922';
+        doneMsg.innerHTML = `⚠️ 伺服器剛重新啟動${at ? `（當時在跑「${_esc(at.label)}」）` : ''}<br><span style="font-weight:400;font-size:.8rem;color:#8b949e">不用再按，會自動從中斷的地方接著跑（已完成的不重跑）</span>`;
+        doneMsg.style.display = 'block';
+      } else {
+        doneMsg.style.display = 'none';
+      }
+      return;
+    }
+    clearInterval(_rfPoll); _rfPoll = null;
+    btn.textContent = '🔄 全系統更新'; btn.title = '';
+    if (!sawActive && !st.interrupted) return;     // 打開網頁時只是看一下：沒在跑就不顯示結果
+    const stuck = steps.filter(v => !['done', 'error', 'busy', 'skipped'].includes(v.status));
+    const errs = steps.filter(v => v.status === 'error');
+    const skipped = steps.filter(v => v.status === 'skipped');
+    if (st.interrupted || stuck.length) {
+      const at = steps.find(v => v.status === 'interrupted');
+      doneMsg.style.color = '#d29922';
+      doneMsg.innerHTML = `⚠️ 更新沒有跑完${at ? `：在「${_esc(at.label)}」途中伺服器重新啟動` : ''}<br><span style="font-weight:400;font-size:.8rem;color:#8b949e">已完成的有效；伺服器起來後會自動接著跑（6 小時內），也可以再按一次「🔄 全系統更新」補跑</span>`;
+    } else if (errs.length || skipped.length) {
+      doneMsg.style.color = '#d29922';
+      doneMsg.textContent = '✅ 更新完成' + (errs.length ? `，${errs.length} 項失敗：${errs.map(v => v.label).join('、')}` : '') +
+        (skipped.length ? `；略過 ${skipped.map(v => v.label).join('、')}（連續兩次跑到一半伺服器重開）` : '');
+    } else {
+      doneMsg.style.color = '#3fb950';
+      doneMsg.textContent = '✅ 全系統更新完成！各分頁已重新載入';
+      document.getElementById('rf-hint').textContent = '3 秒後自動關閉';
+      _rfAutoClose = setTimeout(closeRefreshModal, 3000);
+    }
+    doneMsg.style.display = 'block';
+    _rfReloadTabs();
+    if (document.getElementById('refresh-progress-modal').style.display === 'none') toast(doneMsg.textContent.replace(/\s+/g, ' '));
+  };
+  if (_rfPoll) clearInterval(_rfPoll);
+  _rfPoll = setInterval(tick, 3000);
+  setTimeout(tick, 800);
 }
 
 async function globalRefreshAll() {
@@ -3895,41 +4063,23 @@ async function globalRefreshAll() {
   try {
     const r = await api('POST', '/api/refresh_all');
     if (!r.ok && r.message && !/執行中/.test(r.message)) throw new Error(r.message);
+    if (r.resume) document.getElementById('rf-hint').textContent = '接著上次中斷的地方跑，已完成的不重跑';
   } catch (e) {
     toast('全系統更新失敗：' + e.message, true);
     closeRefreshModal();
     btn.textContent = '🔄 全系統更新';
     return;
   }
-  const tick = async () => {
-    let st;
-    try { st = await api('GET', '/api/refresh_all/status'); } catch (_) { return; }   // 伺服器重啟中：下次再問
-    const { steps } = _rfRender(st);
-    if (st.running) return;
-    clearInterval(_rfPoll); _rfPoll = null;
-    btn.textContent = '🔄 全系統更新'; btn.title = '';
-    const stuck = steps.filter(v => !['done', 'error', 'busy'].includes(v.status));
-    const errs = steps.filter(v => v.status === 'error');
-    if (st.interrupted || stuck.length) {
-      const at = steps.find(v => v.status === 'interrupted');
-      doneMsg.style.color = '#d29922';
-      doneMsg.innerHTML = `⚠️ 更新沒有跑完${at ? `：在「${_esc(at.label)}」途中伺服器重新啟動` : ''}<br><span style="font-weight:400;font-size:.8rem;color:#8b949e">已完成的有效；再按一次「🔄 全系統更新」補跑</span>`;
-    } else if (errs.length) {
-      doneMsg.style.color = '#d29922';
-      doneMsg.textContent = `✅ 更新完成，${errs.length} 項失敗：${errs.map(v => v.label).join('、')}`;
-    } else {
-      doneMsg.style.color = '#3fb950';
-      doneMsg.textContent = '✅ 全系統更新完成！各分頁已重新載入';
-      document.getElementById('rf-hint').textContent = '3 秒後自動關閉';
-      _rfAutoClose = setTimeout(closeRefreshModal, 3000);
-    }
-    doneMsg.style.display = 'block';
-    _rfReloadTabs();
-    if (document.getElementById('refresh-progress-modal').style.display === 'none') toast(doneMsg.textContent.replace(/\s+/g, ' '));
-  };
-  _rfPoll = setInterval(tick, 3000);
-  setTimeout(tick, 800);
+  _rfStartPolling();
 }
+
+// 打開網頁時：背景正在更新、或伺服器剛重開等著接著跑 → 按鈕顯示進度（不自動跳出框）
+setTimeout(async () => {
+  try {
+    const st = await api('GET', '/api/refresh_all/status');
+    if (st && (st.running || st.resume_at)) { _rfRender(st); _rfStartPolling(); }
+  } catch (e) {}
+}, 1500);
 
 // Esc 關進度框
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRefreshModal(); });
@@ -4154,14 +4304,26 @@ document.addEventListener('keydown', e => {
 });
 
 // ── 非同步補充千張大戶多週趨勢（渲染後執行）────────────────────────────────
+// PLAN-B77 E3：以前每檔各打 1 個請求、依序跑（31 檔約 2.5 秒），而且觀察清單畫兩次就跑兩次 → 一次拿全部，5 分鐘內同一批不重抓
+let _tdccTrendCache = { key: '', at: 0, data: null }, _tdccTrendBusy = null;
 async function enrichTdccTrends() {
   const sids = _wlData.map(s => s.stock_id);
+  if (!sids.length) return;
+  const key = sids.join(',');
+  let data = (_tdccTrendCache.key === key && Date.now() - _tdccTrendCache.at < 300000) ? _tdccTrendCache.data : null;
+  if (!data) {
+    if (!_tdccTrendBusy) {
+      _tdccTrendBusy = api('GET', `/api/tdcc/trends?ids=${encodeURIComponent(key)}`)
+        .then(r => { _tdccTrendCache = { key, at: Date.now(), data: (r && r.trends) || {} }; return _tdccTrendCache.data; })
+        .finally(() => { _tdccTrendBusy = null; });
+    }
+    try { data = await _tdccTrendBusy; } catch (e) { return; }
+  }
   for (const sid of sids) {
     const el = document.getElementById(`kpct-streak-${sid}`);
     if (!el) continue;
     try {
-      const r = await api('GET', `/api/stock/${sid}/tdcc`);
-      const hist = r.history || [];
+      const hist = (data && data[sid]) || [];
       if (hist.length < 2) continue;
       const { streak, dir } = _tdccTrend(hist);
       if (streak >= 2) {
@@ -4852,37 +5014,34 @@ let _cacheReady = false;
 let _cacheWarmupTimer = null;
 
 async function checkCacheStatus() {
-  try {
-    const s = await api('GET', '/api/price-cache/status');
-    const warmupBar  = document.getElementById('cache-warmup-bar');
-    const readyBar   = document.getElementById('cache-ready-bar');
-    const btnScreen  = document.getElementById('btn-screen');
-
-    if (s.ready) {
-      _cacheReady = true;
-      warmupBar.style.display  = 'none';
-      readyBar.style.display   = 'flex';
-      document.getElementById('cache-ready-msg').textContent =
-        `✅ 快取就緒 — ${s.days_cached} 天資料（最新 ${s.to || '—'}，${s.stocks || 0} 支股票）`;
-      if (btnScreen) btnScreen.disabled = false;
-      if (_cacheWarmupTimer) { clearInterval(_cacheWarmupTimer); _cacheWarmupTimer = null; }
-    } else {
-      _cacheReady = false;
-      const phase = s.warmup_phase || 'init';
-      const meta  = _WARMUP_LABELS[phase] || _WARMUP_LABELS.init;
-      warmupBar.style.display  = 'flex';
-      readyBar.style.display   = 'none';
-      document.getElementById('cache-warmup-icon').textContent = meta.icon;
-      document.getElementById('cache-warmup-msg').style.color  = meta.color;
-      document.getElementById('cache-warmup-msg').textContent  =
-        `${meta.msg}（目前 ${s.days_cached} 天）`;
-      const pct = Math.min(100, Math.round((s.days_cached / 260) * 100));
-      document.getElementById('cache-warmup-prog').style.width = pct + '%';
-      document.getElementById('cache-warmup-days').textContent = `${s.days_cached} / 260 天`;
-      // insufficient 時仍允許掃描（有警告就好）
-      if (btnScreen) btnScreen.disabled = (phase !== 'insufficient');
-    }
-  } catch(e) {}
+  // PLAN-B77：狀態列的元素（cache-ready-msg、cache-warmup-icon…）改版時拿掉了 → 以前這裡丟 TypeError 被吞掉、
+  // 輪詢永遠停不下來（每 8 秒打一次）。現在元素不存在就跳過，ready 一定停止輪詢
+  let s;
+  try { s = await api('GET', '/api/price-cache/status'); } catch (e) { return; }
+  const $id = id => document.getElementById(id);
+  const warmupBar = $id('cache-warmup-bar'), readyBar = $id('cache-ready-bar'), btnScreen = $id('btn-screen');
+  if (s.ready) {
+    _cacheReady = true;
+    if (_cacheWarmupTimer) { clearInterval(_cacheWarmupTimer); _cacheWarmupTimer = null; }
+    if (warmupBar) warmupBar.style.display = 'none';
+    if (readyBar) readyBar.style.display = 'flex';
+    const msg = $id('cache-ready-msg');
+    if (msg) msg.textContent = `✅ 快取就緒 — ${s.days_cached} 天資料（最新 ${s.to || '—'}，${s.stocks || 0} 支股票）`;
+    if (btnScreen) btnScreen.disabled = false;
+    return;
+  }
+  _cacheReady = false;
+  const phase = s.warmup_phase || 'init';
+  const meta  = _WARMUP_LABELS[phase] || _WARMUP_LABELS.init;
+  if (warmupBar) warmupBar.style.display = 'flex';
+  if (readyBar) readyBar.style.display = 'none';
+  const icon = $id('cache-warmup-icon'), wmsg = $id('cache-warmup-msg'), prog = $id('cache-warmup-prog'), days = $id('cache-warmup-days');
+  if (icon) icon.textContent = meta.icon;
+  if (wmsg) { wmsg.style.color = meta.color; wmsg.textContent = `${meta.msg}（目前 ${s.days_cached} 天）`; }
+  if (prog) prog.style.width = Math.min(100, Math.round((s.days_cached / 260) * 100)) + '%';
+  if (days) days.textContent = `${s.days_cached} / 260 天`;
+  // insufficient 時仍允許掃描（有警告就好）
+  if (btnScreen) btnScreen.disabled = (phase !== 'insufficient');
 }
 
 function startCacheWarmupPolling() {
@@ -5063,9 +5222,15 @@ async function showScanFailures() {
   document.body.appendChild(m);
 }
 
+let _chipErrors = {};     // PLAN-B77 D1：籌碼型策略算失敗的原因（策略 → 訊息），以前失敗只會默默顯示 0 檔
 function _scanWarrantNote(s) {
   const el = document.getElementById('scan-warrant-note');
-  if (el) el.textContent = (s && s.warrant_note) ? '🏷 ' + s.warrant_note : '';
+  _chipErrors = (s && s.chip_errors) || {};
+  const ce = Object.keys(_chipErrors);
+  const parts = [];
+  if (s && s.warrant_note) parts.push('🏷 ' + s.warrant_note);
+  if (ce.length) parts.push(`⚠ 籌碼型策略 ${ce.length} 個計算失敗（${ce.map(k => STRATEGY_LABELS[k] ? STRATEGY_LABELS[k].split('（')[0] : k).join('、')}），點進去看原因`);
+  if (el) el.textContent = parts.join('　');
 }
 
 function _ghBadgeSet(text, isOk, persist) {
@@ -5502,8 +5667,8 @@ function _courseResearchHtml(strategy) {
 async function _renderStratResearch(strategy) {
   const el = document.getElementById('strat-research');
   if (!el) return;
-  if (_best2 === null) { try { _best2 = await api('GET', '/api/best2/strategies'); } catch (e) { _best2 = {}; } }
-  if (_courseRes === null) { try { _courseRes = await api('GET', '/api/course/research'); } catch (e) { _courseRes = {}; } }
+  if (_best2 === null) { try { _best2 = await apiOnce('/api/best2/strategies', 6e5); } catch (e) { _best2 = {}; } }
+  if (_courseRes === null) { try { _courseRes = await apiOnce('/api/course/research', 6e5); } catch (e) { _courseRes = {}; } }
   await _getF825();
   await _getQRes();
   const r = (_best2.strategies || {})[strategy];
@@ -5593,7 +5758,7 @@ async function loadCourseCard(force) {
 // ── ⭐ 品質分（PLAN-B73）：個股條件 F1～F9，研究通過才拿來排序；不隱藏任何股票 ──
 let _qRes = null;
 async function _getQRes() {
-  if (_qRes === null) { try { _qRes = await api('GET', '/api/quality/research'); } catch (e) { _qRes = {}; } }
+  if (_qRes === null) { try { _qRes = await apiOnce('/api/quality/research', 6e5); } catch (e) { _qRes = {}; } }
   return _qRes || {};
 }
 const _qp = (x, d = 1) => x == null ? '—' : `${x >= 0 ? '+' : ''}${(x * 100).toFixed(d)}%`;
@@ -5669,7 +5834,7 @@ function _qualityStratHtml(strategy) {
 // ── 📊 全部策略 5 年回測：停損 8%／停利 25%、不限天數（PLAN-B72 C）──
 let _f825 = null;
 async function _getF825() {
-  if (_f825 === null) { try { _f825 = await api('GET', '/api/best2/fixed825'); } catch (e) { _f825 = {}; } }
+  if (_f825 === null) { try { _f825 = await apiOnce('/api/best2/fixed825', 6e5); } catch (e) { _f825 = {}; } }
   return _f825 || {};
 }
 const _f825p = (x, d = 1) => x == null ? '—' : `${x >= 0 ? '+' : ''}${(x * 100).toFixed(d)}%`;
@@ -5924,7 +6089,7 @@ async function _renderBestExplain() {
   if (!el) return;
   if (!_bestSummary) {
     el.innerHTML = '<div class="muted">載入研究結果…</div>';
-    try { _bestSummary = await api('GET', '/api/best/summary'); } catch (e) { el.innerHTML = `<div class="muted">研究結果載入失敗：${_esc(e.message)}</div>`; return; }
+    try { _bestSummary = await apiOnce('/api/best/summary', 6e5); } catch (e) { el.innerHTML = `<div class="muted">研究結果載入失敗：${_esc(e.message)}</div>`; return; }
   }
   const S = _bestSummary.summary || {}, passed = !!S.main, m = S.main || S.candidate;
   if (!m) {
@@ -5995,7 +6160,7 @@ async function _renderBestNear(nToday) {
   const el = document.getElementById('best-near');
   if (!el) return;
   let r;
-  try { r = await api('GET', '/api/best/near'); } catch (e) { el.innerHTML = ''; return; }
+  try { r = await apiOnce('/api/best/near', 20000); } catch (e) { el.innerHTML = ''; return; }
   const items = r.items || [], cnt = r.counts || {}, kinds = r.kinds || {}, pool = r.pool || {};
   const md = d => d ? `${String(d).slice(4, 6)}/${String(d).slice(6, 8)}` : '—';
   const all = items.map(x => ({ id: x.stock_id, name: x.name }));
@@ -6044,7 +6209,7 @@ async function _renderFbdLive() {
 // 🔬 研究候選重測（PLAN-B72 E2／E3）：放寬股票池、改用停損 8%／停利 25%；採用規則事先定好
 async function _bestRetestHtml() {
   let R;
-  try { R = await api('GET', '/api/best/retest'); } catch (e) { return ''; }
+  try { R = await apiOnce('/api/best/retest', 6e5); } catch (e) { return ''; }
   if (!R || !R.orig) return '';
   const cell = o => !o || !o.n ? '<td class="muted">—</td>' : `<td>${_bp(o.win)}／<span style="${_bcol(o.mean)}">${_bp2(o.mean)}</span>（${o.n} 筆）</td>`;
   const pc = p => p ? `<td><span style="${_bcol(p.cagr)}">${_bp2(p.cagr)}</span>／<span style="color:var(--down)">${_bp2(p.mdd)}</span></td>` : '<td>—</td>';
@@ -6067,7 +6232,7 @@ async function _bestRetestHtml() {
 // 觀察清單：🔬 研究候選（PLAN-BEST）的計畫／出場狀態
 let _bestWatch = {};
 async function _loadBestWatch() {
-  try { _bestWatch = await api('GET', '/api/best/watch') || {}; } catch (e) { return; }
+  try { _bestWatch = await apiOnce('/api/best/watch', 5000) || {}; } catch (e) { return; }
   Object.entries(_bestWatch).forEach(([sid, p]) => {
     const el = document.getElementById(`best-${sid}`);
     if (!el || !p.text) return;   // 文字由 best_routes.status_text 產生（🔬 明天開盤買／抱第幾天／🔔 明天開盤賣）
@@ -6180,7 +6345,10 @@ function renderScreenTable(strategy, data) {
 
   const tbody = document.getElementById('screen-tbody');
   if (!sorted.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="empty">本日無符合條件的股票</td></tr>`;
+    const ce = _chipErrors && _chipErrors[strategy];
+    tbody.innerHTML = ce
+      ? `<tr><td colspan="8" class="empty" style="color:#d29922">⚠ 這個策略這次計算失敗，不是真的 0 檔：${_esc(ce)}<br><span class="muted">重新掃描一次通常就好；一直失敗請回報</span></td></tr>`
+      : `<tr><td colspan="8" class="empty">本日無符合條件的股票</td></tr>`;
     return;
   }
   _screenChartList = sorted.map(r => r.stock_id);
@@ -7133,15 +7301,14 @@ async function openChart(stockId, savedRange = null) {
     const _mob = _isChartMobile();
     const _ph = _mob ? (() => {
       const H = container.clientHeight || (window.innerHeight - 150);
-      return { c: Math.max(300, Math.round(H * 0.72)), v: 64, ms: 70, m: 96 };
+      return { c: Math.max(300, Math.round(H * 0.72)), v: 64, m: 96 };
     })() : null;
     const _pst = (flex, px, top = true) => `width:100%;${_mob ? `height:${px}px;flex:none` : `flex:${flex};min-height:0`};${top ? 'border-top:1px solid #2a2e39;' : ''}position:relative`;
     container.innerHTML = `
       <div id="lwc-candle" style="${_pst(5, _ph && _ph.c, false)}"></div>
       <div id="lwc-vol"    style="${_pst(1, _ph && _ph.v)}"></div>
       <div id="lwc-macd"  style="${_pst(2, _ph && _ph.m)}"></div>
-      <div id="lwc-macd2" style="${_pst(2, _ph && _ph.m)}"></div>
-      ${_chartInterval === '1d' && !stockId.startsWith('__idx_') ? `<div id="lwc-ms" style="${_pst(1.3, _ph && _ph.ms)}"></div>` : ''}`;   // 月線斜率放最下面（2026-10-17）
+      <div id="lwc-macd2" style="${_pst(2, _ph && _ph.m)}"></div>`;   // 副圖只留成交量、小 MACD、大 MACD（2026-10-21 用戶：月斜率拿掉；觀察清單的月線斜率欄保留）
 
     const BASE = {
       layout: { background: { color: '#131722' }, textColor: '#9598a1', fontSize: window.innerWidth >= 1200 ? 13 : 11 },
@@ -7162,19 +7329,26 @@ async function openChart(stockId, savedRange = null) {
     const ma10 = _calcMA(closes, 10);
     const ma20 = _calcMA(closes, 20);
     const ma60 = _calcMA(closes, 60);
-    // 月線斜率（%）＝(今天 MA20 ÷ 昨天 MA20 − 1) × 100（B71）
-    const msl = ma20.map((v, i) => (i > 0 && !isNaN(v) && !isNaN(ma20[i - 1]) && ma20[i - 1] > 0) ? (v / ma20[i - 1] - 1) * 100 : NaN);
-    const msStreak = i => { let k = 0, sg = 0; for (let j = i; j > 0 && !isNaN(msl[j]); j--) { const g = Math.sign(msl[j]); if (!g || (sg && g !== sg)) break; sg = g; k++; } return k * sg; };
 
     // ── 蠟燭圖 ──
     const cEl = document.getElementById('lwc-candle');
-    const cChart = LightweightCharts.createChart(cEl, { ...BASE, width: cEl.offsetWidth, height: cEl.offsetHeight });
+    // 主圖上下留白縮小（預設上 20%、下 10%）：標記多的股票 K 棒才不會被擠成一小條（PLAN-B77 E1）
+    const cChart = LightweightCharts.createChart(cEl, { ...BASE, width: cEl.offsetWidth, height: cEl.offsetHeight,
+      rightPriceScale: { ...BASE.rightPriceScale, scaleMargins: { top: 0.12, bottom: 0.08 } } });
     _lwcCharts.push(cChart);
     const cSeries = cChart.addCandlestickSeries({
       upColor: '#ef5350', downColor: '#26a69a',
       borderUpColor: '#ef5350', borderDownColor: '#26a69a',
       wickUpColor: '#ef5350', wickDownColor: '#26a69a',
       priceLineVisible: false, lastValueVisible: false,
+      // 標記（假跌破箭頭、前高前低）會讓套件在上下各留一大段空白（3441 一邊 39px，主圖只剩 1/3 給 K 棒，用戶 10-21 截圖價格軸 −100～500）
+      // → 價格範圍照原本，標記留白上下各最多 max(16px, 主圖高 8%)（單位是像素，已在正式站實測）
+      autoscaleInfoProvider: orig => {
+        const r = orig();
+        if (!r || !r.margins) return r;
+        const cap = Math.max(16, Math.round((cEl.offsetHeight || 300) * 0.08));
+        return { priceRange: r.priceRange, margins: { above: Math.min(r.margins.above, cap), below: Math.min(r.margins.below, cap) } };
+      },
     });
     cSeries.setData(ohlcv.map(r => ({
       time: r.ts != null ? r.ts : _toDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close
@@ -7232,7 +7406,7 @@ async function openChart(stockId, savedRange = null) {
       const chgColor = chg == null || chg === 0 ? '#d1d4dc' : chg > 0 ? '#ef5350' : '#26a69a';
       const gap = _mob ? '' : ' ';   // 手機：標籤跟數字中間不留空，兩行放得下
       const px = (label, v) => `${label}${gap}<b style="color:${pc == null || v === pc ? '#d1d4dc' : v > pc ? '#ef5350' : '#26a69a'}">${_fmtN(v)}</b>`;
-      // 均線：數值＋箭頭（比前一天的均線高 ↑紅、低 ↓綠，跟看盤軟體一樣）；月線斜率在下面自己的副圖，不再擠在這行
+      // 均線：數值＋箭頭（比前一天的均線高 ↑紅、低 ↓綠，跟看盤軟體一樣）；月線斜率看觀察清單「月斜率」欄（K 線副圖 10-21 用戶要求拿掉）
       const ar = a => i > 0 && !isNaN(a[i]) && !isNaN(a[i - 1]) && a[i] !== a[i - 1]
         ? `<span style="color:${a[i] > a[i - 1] ? '#ef5350' : '#26a69a'};font-size:.85em">${a[i] > a[i - 1] ? '↑' : '↓'}</span>` : '';
       const ma = (label, a, color) => `<span style="white-space:nowrap;color:${color}">${label}${_mob ? ':' : ' '}${_fmtN(a[i])}${ar(a)}</span>`;
@@ -7264,29 +7438,6 @@ async function openChart(stockId, savedRange = null) {
       vLeg.innerHTML = `<span style="color:#9598a1">成交量：${_fmtVol(ohlcv[i].volume)}</span>`;
     }
     updateVLeg(n - 1);
-
-    // ── 月線斜率副圖（B71，只有日線）：柱子＝每天月線斜率 %，顏色＝強弱分級；參考線 ±1%、0.4%、0 ──
-    const msEl = document.getElementById('lwc-ms');
-    let msChart = null, msSeries = null, updateMsLeg = () => {};
-    if (msEl) {
-      msChart = LightweightCharts.createChart(msEl, { ...BASE, width: msEl.offsetWidth, height: msEl.offsetHeight });
-      _lwcCharts.push(msChart);
-      // 刻度至少涵蓋 −1%～+1%：斜率小的股票柱子就小，碰到 1% 線＝強勢，一眼看出強弱（不會被自動放大）
-      msSeries = msChart.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false, priceFormat: { type: 'custom', formatter: v => v.toFixed(2) + '%' },
-        autoscaleInfoProvider: orig => { const r = orig(); const lo = Math.min(-1.2, r?.priceRange?.minValue ?? 0), hi = Math.max(1.2, r?.priceRange?.maxValue ?? 0);
-          return { priceRange: { minValue: lo, maxValue: hi } }; } });
-      msSeries.setData(ohlcv.map((r, i) => isNaN(msl[i]) ? { time: _rt(r) } : { time: _rt(r), value: msl[i], color: _msTier(msl[i]).color }));
-      [[1, 'rgba(239,83,80,.55)', '強勢 1%'], [0.4, 'rgba(242,139,130,.35)', '上揚 0.4%'], [0, 'rgba(255,255,255,.4)', ''], [-1, 'rgba(38,166,154,.55)', '急跌 −1%']]
-        .forEach(([p, c, t]) => msSeries.createPriceLine({ price: p, color: c, lineWidth: 1, lineStyle: p === 0 ? 0 : 2, axisLabelVisible: false, title: t }));
-      const msLeg = _mkLegend(msEl);
-      updateMsLeg = idx => {
-        const i = Math.min(Math.max(idx, 0), n - 1), t = _msTier(msl[i]);
-        msLeg.innerHTML = !t ? '<span style="color:#9598a1">月線斜率：—</span>' :
-          `<span style="color:#9598a1">月線斜率</span> <b style="color:${t.color}">${msl[i] > 0 ? '+' : ''}${msl[i].toFixed(2)}% ${t.name}</b>　` +
-          `<span style="color:#9598a1">${_msStreakTxt(msStreak(i)) || ''}${msStreak(i) ? '　' : ''}回測之後 20 天 ${t.x20 > 0 ? '+' : ''}${t.x20}%</span>`;
-      };
-      updateMsLeg(n - 1);
-    }
 
     // ── 小MACD (12,26,9) ──
     const mEl = document.getElementById('lwc-macd');
@@ -7347,9 +7498,9 @@ async function openChart(stockId, savedRange = null) {
     updateM2Leg(n - 1);
 
     // ── 同步時間軸 + crosshair（主副圖垂直線一起顯示）──
-    const charts = [cChart, vChart, mChart, m2Chart].concat(msChart ? [msChart] : []);
-    if (_mob) [vChart, mChart].concat(msChart ? [m2Chart] : []).forEach(c => c.applyOptions({ timeScale: { visible: false } }));   // 手機：副圖不重複畫日期軸，只留最下面那張
-    const primarySeries = [cSeries, vSeries, hSeries, h2Series].concat(msSeries ? [msSeries] : []);
+    const charts = [cChart, vChart, mChart, m2Chart];
+    if (_mob) [vChart, mChart].forEach(c => c.applyOptions({ timeScale: { visible: false } }));   // 手機：副圖不重複畫日期軸，只留最下面那張
+    const primarySeries = [cSeries, vSeries, hSeries, h2Series];
 
     // 建立時間 → 各圖數值對照表，供 setCrosshairPosition 使用
     const _tMap = {};
@@ -7359,12 +7510,11 @@ async function openChart(stockId, savedRange = null) {
         vol:   r.volume,
         macd:  hist1[i],
         macd2: hist2[i],
-        ms:    isNaN(msl[i]) ? 0 : msl[i],
       };
     });
     const _priceFor = (ti, t) => {
       const d = _tMap[t]; if (!d) return 0;
-      return [d.close, d.vol, d.macd, d.macd2, d.ms][ti] ?? 0;
+      return [d.close, d.vol, d.macd, d.macd2][ti] ?? 0;
     };
 
     charts.forEach((src, si) => {
@@ -7375,7 +7525,7 @@ async function openChart(stockId, savedRange = null) {
       src.subscribeCrosshairMove(param => {
         const idx = (param.logical !== null && param.logical !== undefined)
           ? Math.round(param.logical) : n - 1;
-        updateCLeg(idx); updateVLeg(idx); updateMLeg(idx); updateM2Leg(idx); updateMsLeg(idx);
+        updateCLeg(idx); updateVLeg(idx); updateMLeg(idx); updateM2Leg(idx);
 
         // 同步其他圖的垂直準線
         charts.forEach((tgt, ti) => {
@@ -7918,7 +8068,7 @@ async function saveAllStratParams() {
 <script src="/mna/static/mna.js?v=20261005f"></script>
 <script src="/cb/static/cb.js?v=20261005f"></script>
 <script src="/tail/static/tail.js?v=20261020a"></script>
-<script src="/notes/static/notes.js?v=20261013b"></script>
+<script src="/notes/static/notes.js?v=20261021b77"></script>
 <script src="/discuss/static/discuss.js?v=20261007a"></script>
 </body>
 </html>

@@ -508,9 +508,13 @@ def screen_bighold(c, get_df, names, p):
         ws = sorted(by_d)
         if len(ws) < 2 or ws[-1] != dates[0]:
             continue
-        ratios = [holder_ratios(by_d[d], lots) for d in ws]
+        # 某週集保資料不完整 → holder_ratios 回 (None, None)；只用完整的週（審查 Gemini B-F1：以前 min()／比大小碰到 None
+        # 丟 TypeError，整個 S_BIGHOLD 變 0 檔）
+        ratios = [x for x in (holder_ratios(by_d[d], lots) for d in ws) if x[0] is not None and x[1] is not None]
+        if len(ratios) < 2:
+            continue
         (b1, r1), (b0, r0) = ratios[-1], ratios[-2]
-        if None in (b1, r1, b0, r0) or b1 - b0 < mbc or r1 >= r0:
+        if b1 - b0 < mbc or r1 >= r0:
             continue
         df = get_df(sid)
         if df is None or len(df) < 5 or float(df.iloc[-1]["close"]) < float(p.get("min_price", 10)):
@@ -548,17 +552,24 @@ def run_all(names: dict = None, strategy_params: dict = None, do_refresh: bool =
         return cache[sid]
 
     c = get_conn()
-    since = (datetime.now(_TW).date() - timedelta(days=30)).isoformat()
-    trust = _series(c, "inst_trust", "net", since)
-    shorts = _series(c, "short_bal", "bal", since)
     out = {}
-    for key, fn, arg in (("S_TRUST5", screen_trust5, trust), ("S_SHORT_UP", screen_short_up, shorts),
-                         ("S_SHORT_EBB", screen_short_ebb, shorts), ("S_BIGHOLD", screen_bighold, c),
-                         ("S_TRUST_DUMP", screen_trust_dump, trust)):
-        try:
-            out[key] = fn(arg, get_df, names, p(key))
-        except Exception as e:
-            print(f"[COURSE] {key} 失敗：{e}")
-            out[key] = []
-    c.close()
+    last_errors.clear()
+    try:
+        since = (datetime.now(_TW).date() - timedelta(days=30)).isoformat()
+        trust = _series(c, "inst_trust", "net", since)
+        shorts = _series(c, "short_bal", "bal", since)
+        for key, fn, arg in (("S_TRUST5", screen_trust5, trust), ("S_SHORT_UP", screen_short_up, shorts),
+                             ("S_SHORT_EBB", screen_short_ebb, shorts), ("S_BIGHOLD", screen_bighold, c),
+                             ("S_TRUST_DUMP", screen_trust_dump, trust)):
+            try:
+                out[key] = fn(arg, get_df, names, p(key))
+            except Exception as e:
+                print(f"[COURSE] {key} 失敗：{e}")
+                last_errors[key] = f"{type(e).__name__}: {e}"[:200]     # PLAN-B77 D1：掃描狀態看得到，不再默默 0 檔
+                out[key] = []
+    finally:
+        c.close()
     return out
+
+
+last_errors: dict = {}      # 上一次 run_all 每個策略的錯誤（策略 → 訊息）

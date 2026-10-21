@@ -1,0 +1,20 @@
+{
+ "mode": "inspect",
+ "files": [
+  "PLAN-B77.md",
+  "reviews_b77/frontend_diff.patch"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.7-flash",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"Implementation matches PLAN-B77 requirements across all components. Memory management (swap, MALLOC_ARENA_MAX, healthz), frontend query deduplication (apiOnce), iframe lazy loading (data-src / _lazyFrame), batching of TDCC trends, visibility-aware polling, K-line subchart cleanup & autoscale margin capping, and health card reporting are implemented cleanly with robust error handling, null guards, and XSS escaping.\",\n  \"findings\": [],\n  \"coverage\": \"Inspected all diff lines across dashboard.html, fly.toml, requirements.txt, notes.js, regime-frontend/index.html, regime-frontend/wave.js, and sector-frontend/app.js against PLAN-B77 specifications (P1-P16, A1-A6, B1-B2, C1-C4, D1-D3, E1-E6).\",\n  \"limitations\": \"Review limited to frontend diffs and config files provided in this batch; backend endpoints and Python modules were verified during prior review rounds as stated in context.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "Implementation matches PLAN-B77 requirements across all components. Memory management (swap, MALLOC_ARENA_MAX, healthz), frontend query deduplication (apiOnce), iframe lazy loading (data-src / _lazyFrame), batching of TDCC trends, visibility-aware polling, K-line subchart cleanup & autoscale margin capping, and health card reporting are implemented cleanly with robust error handling, null guards, and XSS escaping.",
+    "findings": [],
+    "coverage": "Inspected all diff lines across dashboard.html, fly.toml, requirements.txt, notes.js, regime-frontend/index.html, regime-frontend/wave.js, and sector-frontend/app.js against PLAN-B77 specifications (P1-P16, A1-A6, B1-B2, C1-C4, D1-D3, E1-E6).",
+    "limitations": "Review limited to frontend diffs and config files provided in this batch; backend endpoints and Python modules were verified during prior review rounds as stated in context."
+   }
+  }
+ ]
+}

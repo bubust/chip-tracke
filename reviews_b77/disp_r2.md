@@ -1,0 +1,6 @@
+Round 2: Groq APPROVED (3 low notes: lock wait metrics -> job log records wait seconds; swap usage -> health page shows swap used; prewarm -> E5 already).
+Gemini 3.7-flash REVISE, dispositions:
+- F1 B1/B2 race: ACCEPTED. One startup catch-up thread: if scan catch-up is needed, run step1 then refresh-all (resume if interrupted within 6h); the standalone 120s resume is only scheduled when no scan catch-up is pending. All inside heavy().
+- F2 heavy() blocking the event loop: ACCEPTED. heavy() raises RuntimeError if called on a thread with a running asyncio loop (tested); API-triggered heavy work always starts a background thread first.
+- F3 LWC autoscale margins are fractions: REJECTED WITH EVIDENCE. Measured in the production page (LWC 4.2.0): the original provider returns margins {"above":39,"below":39} (integers); returning 18 gives price range 418..-23, returning 0.08 gives 360..26 (i.e. ~no margin). So margins are pixels. Plan now caps at max(16px, 8% of pane height) and also reduces scaleMargins to top 0.12 / bottom 0.08, with a screenshot check that markers are not clipped.
+- F4 orphan temp files after SIGKILL: ACCEPTED. Temp files live in chip_data/tmp/ and the folder is purged at startup.

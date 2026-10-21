@@ -1,11 +1,15 @@
 app = "qiangni-tactics"
 primary_region = "nrt"  # Tokyo, Japan
+# PLAN-B77 A5：記憶體只有 512MB，2026-10-21 全系統更新跑到權證合約被系統砍掉（OOM）→ 加 512MB swap 當安全網（用機器本身磁碟，不另收費）
+swap_size_mb = 512
 
 [build]
   dockerfile = "Dockerfile"
 
 [env]
   PORT = "8080"
+  # PLAN-B77：多執行緒（排程、掃描 12 個 worker）時 glibc 每條執行緒開自己的記憶體區（arena），閒置也吃很多 → 限 2 個
+  MALLOC_ARENA_MAX = "2"
 
 [http_service]
   internal_port = 8080
@@ -18,7 +22,7 @@ primary_region = "nrt"  # Tokyo, Japan
     grace_period = "10s"
     interval = "30s"
     method = "GET"
-    path = "/"
+    path = "/healthz"     # PLAN-B77 A6：以前每 30 秒拿一次 534KB 首頁
     timeout = "5s"
 
 [[mounts]]

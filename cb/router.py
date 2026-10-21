@@ -136,7 +136,7 @@ def run_refresh(full: bool = False) -> dict:
         msg = "、".join(msgs)
         db.set_status(last_refresh=datetime.now(_TW).strftime("%Y-%m-%d %H:%M"), last_message=msg,
                       last_errors="\n".join(errs[:6]) or None)
-        _cache["data"] = None
+        _rebuild_cache()                  # 更新完立刻重建清單（PLAN-B77 C4：以前清掉，下一個打開的人要等重算）
         return {"ok": True, "message": msg}
     except Exception as e:
         db.set_status(last_refresh=datetime.now(_TW).strftime("%Y-%m-%d %H:%M"), last_message=f"更新失敗：{e}")
@@ -223,16 +223,45 @@ def build_list(conn=None, today: date = None, prices: dict = None) -> list:
     return out
 
 
+def _rebuild_cache():
+    try:
+        _cache.update(t=time.time(), data=build_list())
+    except Exception as e:      # noqa: BLE001
+        _cache["data"] = None
+        import logging
+        logging.getLogger(__name__).warning(f"[cb] 清單重建失敗：{e}")
+
+
+_rebuild_lock = threading.Lock()
+
+
+def _rebuild_bg():
+    if not _rebuild_lock.acquire(blocking=False):
+        return
+
+    def _run():
+        try:
+            _rebuild_cache()
+        finally:
+            _rebuild_lock.release()
+    threading.Thread(target=_run, daemon=True, name="cb-list").start()
+
+
 @router.get("/api/cb/list")
 def list_cb():
-    now = time.time()
-    if not _cache["data"] or now - _cache["t"] > 300:
-        _cache.update(t=now, data=build_list())
-    rows = _cache["data"]
+    """清單 5 分鐘內有效；過期先回舊的、背景重建（PLAN-B77 C4）；回 JSONResponse 省掉 jsonable_encoder（約 380 列）"""
+    from fastapi.responses import JSONResponse
+    if not _cache["data"]:
+        with _rebuild_lock:
+            if not _cache["data"]:
+                _rebuild_cache()
+    elif time.time() - _cache["t"] > 300:
+        _rebuild_bg()
+    rows = _cache["data"] or []
     counts = {}
     for r in rows:
         counts[r["tier"]] = counts.get(r["tier"], 0) + 1
-    return {"rows": rows, "counts": counts, "status": status()}
+    return JSONResponse(content={"rows": rows, "counts": counts, "status": status()})
 
 
 class Manual(BaseModel):
@@ -253,5 +282,5 @@ def set_manual(code: str, m: Manual):
               (code, m.conv_price, m.holders, note))
     c.commit()
     c.close()
-    _cache["data"] = None
+    _rebuild_cache()                      # 手動補資料後馬上看得到
     return {"ok": True}

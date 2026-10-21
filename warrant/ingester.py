@@ -2,9 +2,11 @@
 資料層 — 合約檔、盤後資料、永豐 BIV backfill
 """
 import json
+import os
 import re
 import time
 import logging
+from pathlib import Path
 from datetime import date, datetime
 from typing import Optional
 
@@ -117,46 +119,125 @@ def load_sinopac_basic() -> dict:
 
 
 # ── TWSE / TPEx 合約檔 ──────────────────────────────────────────────
-def fetch_twse_warrants() -> list[dict]:
-    urls = [
-        "https://openapi.twse.com.tw/v1/opendata/t187ap37_L",
-        "https://www.twse.com.tw/rwd/zh/warrant/t187ap37_L?response=json",
-    ]
-    for url in urls:
-        try:
-            log.info(f"[ingester] 抓 TWSE 權證: {url}")
-            r = requests.get(url, headers=HEADERS, timeout=90)
-            r.raise_for_status()
-            data = r.json() if "json" in r.headers.get("content-type","") else json.loads(r.content.decode("utf-8", errors="replace"))
-            if isinstance(data, list) and data:
-                return data
-            if isinstance(data, dict) and data.get("data"):
-                fields = data.get("fields", [])
-                return [dict(zip(fields, row)) for row in data["data"]] if fields else data["data"]
-        except Exception as e:
-            log.warning(f"[ingester] TWSE {url} 失敗: {e}")
-    raise RuntimeError("TWSE 所有端點均失敗")
+# 證交所合約 JSON 約 45MB（4.5 萬檔）、櫃買約 17MB：以前 r.json() 整包載入，記憶體一次多 200MB 以上，
+# 正式站（512MB）跑全系統更新時被系統砍掉（2026-10-21 OOM）。PLAN-B77 A1：串流下載到暫存檔，ijson 一筆一筆讀。
+TWSE_URLS = [
+    "https://openapi.twse.com.tw/v1/opendata/t187ap37_L",
+    "https://www.twse.com.tw/rwd/zh/warrant/t187ap37_L?response=json",
+]
+TPEX_URLS = [
+    "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap37_O",
+    "https://www.tpex.org.tw/web/bond/warrant/q_warrant/warrant_detail_lists.php?o=json",
+]
+TMP_DIR = Path(__file__).parent.parent / "chip_data" / "tmp"
+MAX_DOWNLOAD = 200 * 1024 * 1024     # 超過就中止（正常約 45MB）
 
 
-def fetch_tpex_warrants() -> list[dict]:
-    urls = [
-        "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap37_O",
-        "https://www.tpex.org.tw/web/bond/warrant/q_warrant/warrant_detail_lists.php?o=json",
-    ]
+def _top_char(path: Path) -> str:
+    with open(path, "rb") as f:
+        head = f.read(256).lstrip(b"\xef\xbb\xbf \t\r\n")
+    return chr(head[0]) if head else ""
+
+
+def iter_rows(path: Path):
+    """逐筆讀合約檔：頂層陣列 [{...}] 或 rwd 格式 {"fields":[...], "data":[[...]]}；每次只有一筆在記憶體"""
+    import ijson
+    top = _top_char(path)
+    with open(path, "rb") as f:
+        if top == "[":
+            for row in ijson.items(f, "item", use_float=True):
+                if isinstance(row, dict):
+                    yield row
+        elif top == "{":
+            fields = list(ijson.items(f, "fields.item"))
+            if not fields:
+                return
+            f.seek(0)                                   # 第二次從頭讀（審查 Gemini 第 3 輪 F1）
+            for row in ijson.items(f, "data.item", use_float=True):
+                if isinstance(row, list):
+                    yield dict(zip(fields, row))
+
+
+def download_rows_file(urls: list, label: str) -> Optional[Path]:
+    """依序試每個網址，串流存成暫存檔，至少讀得到 1 筆才算成功；回傳檔案路徑（用完要自己刪）"""
+    TMP_DIR.mkdir(parents=True, exist_ok=True)
     for url in urls:
+        tmp = TMP_DIR / f"{label}_{os.getpid()}_{int(time.time() * 1000)}.json"
         try:
-            log.info(f"[ingester] 抓 TPEx 權證: {url}")
-            r = requests.get(url, headers=HEADERS, timeout=90)
-            r.raise_for_status()
-            data = r.json() if "json" in r.headers.get("content-type","") else json.loads(r.content.decode("utf-8", errors="replace"))
-            if isinstance(data, list) and data:
-                return data
-            if isinstance(data, dict) and data.get("data"):
-                fields = data.get("fields", [])
-                return [dict(zip(fields, row)) for row in data["data"]] if fields else data["data"]
+            log.info(f"[ingester] 抓 {label} 權證: {url}")
+            size = 0
+            with requests.get(url, headers=HEADERS, timeout=90, stream=True) as r:
+                r.raise_for_status()
+                with open(tmp, "wb") as f:
+                    for chunk in r.iter_content(1 << 16):
+                        size += len(chunk)
+                        if size > MAX_DOWNLOAD:
+                            raise RuntimeError(f"檔案超過 {MAX_DOWNLOAD // 1024 // 1024}MB，中止")
+                        f.write(chunk)
+            if next(iter_rows(tmp), None) is not None:
+                log.info(f"[ingester] {label} 下載 {size / 1e6:.1f}MB")
+                return tmp
+            log.warning(f"[ingester] {label} {url} 沒有資料")
         except Exception as e:
-            log.warning(f"[ingester] TPEx {url} 失敗: {e}")
-    raise RuntimeError("TPEx 所有端點均失敗")
+            log.warning(f"[ingester] {label} {url} 失敗: {e}")
+        try:
+            tmp.unlink()
+        except Exception:
+            pass
+    return None
+
+
+def _fetch_rows(urls: list, label: str, limit: Optional[int]) -> list:
+    path = download_rows_file(urls, label)
+    if not path:
+        raise RuntimeError(f"{label} 所有端點均失敗")
+    try:
+        out = []
+        for row in iter_rows(path):
+            out.append(row)
+            if limit and len(out) >= limit:
+                break
+        return out
+    finally:
+        try:
+            path.unlink()
+        except Exception:
+            pass
+
+
+def fetch_twse_warrants(limit: Optional[int] = None) -> list:
+    """證交所合約（診斷用；limit 只拿前幾筆。整批更新用 ingest_contracts，它不會整包放進記憶體）"""
+    return _fetch_rows(TWSE_URLS, "TWSE", limit)
+
+
+def fetch_tpex_warrants(limit: Optional[int] = None) -> list:
+    return _fetch_rows(TPEX_URLS, "TPEx", limit)
+
+
+def count_rows(urls: list, label: str) -> dict:
+    """診斷：串流數筆數＋前 3 筆，不整包載入"""
+    path = download_rows_file(urls, label)
+    if not path:
+        return {"error": f"{label} 所有端點均失敗"}
+    try:
+        n, head = 0, []
+        for row in iter_rows(path):
+            n += 1
+            if len(head) < 3:
+                head.append(row)
+        return {"count": n, "head": head}
+    finally:
+        try:
+            path.unlink()
+        except Exception:
+            pass
+
+
+def release_sinopac():
+    """永豐對照表（4.4 萬筆）用完就放掉；flow.py 需要時會重新下載"""
+    global _sinopac_warrant_map, _sinopac_loaded_at
+    _sinopac_warrant_map = {}
+    _sinopac_loaded_at = None
 
 
 def _parse_warrant_row(row: dict, market: str, sinopac_map: dict, name_to_code: dict = {}) -> Optional[dict]:
@@ -241,7 +322,7 @@ def _parse_warrant_row(row: dict, market: str, sinopac_map: dict, name_to_code: 
 
 
 def ingest_contracts():
-    """每日 08:00：更新合約檔"""
+    """每日 08:00＋全系統更新：更新合約檔（串流兩趟，記憶體只放對照表，PLAN-B77 A1）"""
     # 永豐 basic.js（失敗不中斷，繼續用 TWSE 欄位解析）
     try:
         sinopac_map = load_sinopac_basic()
@@ -249,83 +330,90 @@ def ingest_contracts():
         log.warning(f"[ingester] sinopac basic.js 失敗，繼續: {e}")
         sinopac_map = {}
 
-    # TWSE 權證合約（失敗則用空列表繼續）
-    try:
-        twse_rows = fetch_twse_warrants()
-        log.info(f"[ingester] TWSE 合約: {len(twse_rows)} 筆")
-    except Exception as e:
-        log.error(f"[ingester] TWSE 合約抓取失敗: {e}")
-        twse_rows = []
-
-    # TPEx 權證合約（失敗則用空列表繼續）
-    try:
-        tpex_rows = fetch_tpex_warrants()
-        log.info(f"[ingester] TPEx 合約: {len(tpex_rows)} 筆")
-    except Exception as e:
-        log.error(f"[ingester] TPEx 合約抓取失敗: {e}")
-        tpex_rows = []
-
-    if not twse_rows and not tpex_rows:
-        log.error("[ingester] TWSE 與 TPEx 皆無資料，嘗試用現有 DB 重建 underlyings")
-        rebuild_underlyings_from_warrants()
-        return 0
-
-    # ── 建立 標的名稱 → 標的代號 對照表 ────────────────────────────────
-    # 方法：用 TWSE/TPEx 的 '標的證券/指數'（名稱）+ 永豐 basic.js（代號）交叉比對
-    # 例：TWSE 資料有 "04004S": 標的="台積電"；永豐有 "04004S": underlying_code="2330"
-    # → 推導出 "台積電" → "2330"
-    warrant_to_ul_name: dict = {}
-    for row in twse_rows + tpex_rows:
-        w_code = row.get("權證代號", "").strip()
-        ul_name = row.get("標的證券/指數", "").strip()
-        if w_code and ul_name:
-            warrant_to_ul_name[w_code] = ul_name
-
-    name_to_code: dict = {}
-    for w_code, sp in sinopac_map.items():
-        ul_code = sp.get("underlying_code", "")
-        ul_name = warrant_to_ul_name.get(w_code, "")
-        if ul_code and ul_name and ul_name not in name_to_code:
-            name_to_code[ul_name] = ul_code
-
-    # fallback: 從 stocks.csv 建立股名→股號對照（涵蓋 sinopac 未覆蓋的股票）
-    try:
-        import csv as _csv
-        from pathlib import Path as _Path
-        _csv_path = _Path(__file__).parent.parent / "stocks.csv"
-        if _csv_path.exists():
-            with open(_csv_path, encoding="utf-8") as _f:
-                for _row in _csv.DictReader(_f):
-                    _sid = _row.get("stock_id", "").strip()
-                    _sname = _row.get("stock_name", "").strip()
-                    if _sid and _sname and _sname not in name_to_code:
-                        name_to_code[_sname] = _sid
-    except Exception as _e:
-        log.warning(f"[ingester] stocks.csv fallback 失敗: {_e}")
-
-    log.info(f"[ingester] name_to_code: {len(name_to_code)} 個標的（含 stocks.csv）")
-
-    today_str = date.today().strftime("%Y-%m-%d")
+    files = []
     warrants_upserted = 0
     underlyings_upserted = set()
+    try:
+        twse_path = download_rows_file(TWSE_URLS, "TWSE")
+        if twse_path:
+            files.append(twse_path)                 # 下載好就登記，中途出錯 finally 也刪得到（審查 Gemini B-F3）
+        else:
+            log.error("[ingester] TWSE 合約抓取失敗")
+        tpex_path = download_rows_file(TPEX_URLS, "TPEx")
+        if tpex_path:
+            files.append(tpex_path)
+        else:
+            log.error("[ingester] TPEx 合約抓取失敗")
+        sources = [(p, m) for p, m in ((twse_path, "TSE"), (tpex_path, "OTC")) if p]
+        if not sources:
+            log.error("[ingester] TWSE 與 TPEx 皆無資料，嘗試用現有 DB 重建 underlyings")
+            rebuild_underlyings_from_warrants()
+            return 0
 
-    with db() as conn:
-        for row, market in [(r, "TSE") for r in twse_rows] + \
-                           [(r, "OTC") for r in tpex_rows]:
-            w = _parse_warrant_row(row, market, sinopac_map, name_to_code)
-            if not w:
-                continue
+        # ── 第 1 趟：標的名稱 → 標的代號 對照表 ────────────────────────────
+        # 方法：用 TWSE/TPEx 的 '標的證券/指數'（名稱）+ 永豐 basic.js（代號）交叉比對
+        # 例：TWSE 資料有 "04004S": 標的="台積電"；永豐有 "04004S": underlying_code="2330"
+        # → 推導出 "台積電" → "2330"
+        warrant_to_ul_name: dict = {}
+        for path, market in sources:
+            n = 0
+            for row in iter_rows(path):
+                n += 1
+                w_code = str(row.get("權證代號", "") or "").strip()
+                ul_name = str(row.get("標的證券/指數", "") or "").strip()
+                if w_code and ul_name:
+                    warrant_to_ul_name[w_code] = ul_name
+            log.info(f"[ingester] {'TWSE' if market == 'TSE' else 'TPEx'} 合約: {n} 筆")
 
-            # Upsert underlying（只用名稱，代號來自 basic.js）
-            ul_code = w["underlying_code"]
-            ul_name = row.get("標的證券/指數", "")
-            if ul_code and ul_code not in underlyings_upserted:
-                ul_market = "TSE" if market == "TSE" else "OTC"
-                upsert_underlying(conn, ul_code, ul_name, ul_market)
-                underlyings_upserted.add(ul_code)
+        name_to_code: dict = {}
+        for w_code, sp in sinopac_map.items():
+            ul_code = sp.get("underlying_code", "")
+            ul_name = warrant_to_ul_name.get(w_code, "")
+            if ul_code and ul_name and ul_name not in name_to_code:
+                name_to_code[ul_name] = ul_code
+        del warrant_to_ul_name
 
-            upsert_warrant(conn, w)
-            warrants_upserted += 1
+        # fallback: 從 stocks.csv 建立股名→股號對照（涵蓋 sinopac 未覆蓋的股票）
+        try:
+            import csv as _csv
+            _csv_path = Path(__file__).parent.parent / "stocks.csv"
+            if _csv_path.exists():
+                with open(_csv_path, encoding="utf-8") as _f:
+                    for _row in _csv.DictReader(_f):
+                        _sid = _row.get("stock_id", "").strip()
+                        _sname = _row.get("stock_name", "").strip()
+                        if _sid and _sname and _sname not in name_to_code:
+                            name_to_code[_sname] = _sid
+        except Exception as _e:
+            log.warning(f"[ingester] stocks.csv fallback 失敗: {_e}")
+
+        log.info(f"[ingester] name_to_code: {len(name_to_code)} 個標的（含 stocks.csv）")
+
+        # ── 第 2 趟：逐筆解析＋寫入（同一個交易，跟以前一樣）────────────────
+        with db() as conn:
+            for path, market in sources:
+                for row in iter_rows(path):
+                    w = _parse_warrant_row(row, market, sinopac_map, name_to_code)
+                    if not w:
+                        continue
+
+                    # Upsert underlying（只用名稱，代號來自 basic.js）
+                    ul_code = w["underlying_code"]
+                    ul_name = row.get("標的證券/指數", "")
+                    if ul_code and ul_code not in underlyings_upserted:
+                        ul_market = "TSE" if market == "TSE" else "OTC"
+                        upsert_underlying(conn, ul_code, ul_name, ul_market)
+                        underlyings_upserted.add(ul_code)
+
+                    upsert_warrant(conn, w)
+                    warrants_upserted += 1
+    finally:
+        for p in files:
+            try:
+                p.unlink()
+            except Exception:
+                pass
+        release_sinopac()
 
     log.info(f"[ingester] 合約檔更新完成: {warrants_upserted} 筆, "
              f"{len(underlyings_upserted)} 個標的")

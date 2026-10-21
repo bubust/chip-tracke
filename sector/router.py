@@ -236,19 +236,22 @@ def api_refresh(background_tasks: BackgroundTasks, days_back: int = Query(30, ge
         _engine_running = True
 
     def _run():
+        # BackgroundTasks 的同步函式在 threadpool 跑（不在 event loop），可以排隊等重工作（PLAN-B77 A4）
         global _engine_running
         try:
+            import jobs as _jobs
             from .prices import update_prices, backfill
             from .db import db as _sdb, init_db as _sector_init_db
             from .engine import run_sector_engine
-            _sector_init_db()
-            update_prices()                      # 從價格快取同步（日期正確、歷史完整）＋ openapi 補最新一天
-            with _sdb() as _sc:
-                _cnt = _sc.execute("SELECT COUNT(DISTINCT date) FROM sector_stock_daily").fetchone()[0]
-            if _cnt < 60:
-                log.info(f"[sector] sector_stock_daily 只有 {_cnt} 天，開始補抓歷史...")
-                backfill(days=130)
-            run_sector_engine(days_back=days_back)
+            with _jobs.heavy("sector_refresh"):
+                _sector_init_db()
+                update_prices(full=True)             # 手動「計算」：整段同步（一天一天讀寫，記憶體不會暴增）
+                with _sdb() as _sc:
+                    _cnt = _sc.execute("SELECT COUNT(DISTINCT date) FROM sector_stock_daily").fetchone()[0]
+                if _cnt < 60:
+                    log.info(f"[sector] sector_stock_daily 只有 {_cnt} 天，開始補抓歷史...")
+                    backfill(days=130)
+                run_sector_engine(days_back=days_back)
         except Exception as e:
             log.error(f"[sector] 引擎錯誤: {e}", exc_info=True)
         finally:

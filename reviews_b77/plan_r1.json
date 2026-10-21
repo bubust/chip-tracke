@@ -1,0 +1,85 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B77.md",
+  "warrant/ingester.py",
+  "warrant/calculator.py",
+  "sector/prices.py",
+  "disposal.py",
+  "server.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.6-flash",
+   "error": "503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}"
+  },
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"REVISE\",\n  \"summary\": \"The plan addresses many root causes but contains material risks: global RLock can cause deadlock/starvation, streaming JSON fallback may still OOM, custom Brent implementation lacks proven robustness, auto‑resume may create crash loops, health endpoint may expose large data, swap‑size change may be ineffective on the free tier, and the test suite does not fully validate concurrency and memory‑pressure scenarios.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"high\",\n      \"section\": \"A4 / jobs.heavy\",\n      \"issue\": \"A single global RLock serialises all heavy jobs. Overlapping schedules (18:00 scan, full update, warrant update, industry sync, etc.) can lead to long wait times, possible deadlock if a job spawns a sub‑task that also acquires the lock, and starvation of lower‑priority jobs.\",\n      \"suggestion\": \"Replace the global RLock with per‑job locks or a priority queue/work‑pool. Ensure that sub‑tasks do not acquire the same lock, or use a re‑entrant lock only within a single job context.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"high\",\n      \"section\": \"A1\",\n      \"issue\": \"The ijson streaming fallback to the original `r.json()` still loads the entire 45 MB+ JSON into memory if ijson fails, reproducing the OOM scenario.\",\n      \"suggestion\": \"Enforce a hard limit on the temporary file size and abort with a clear error if the file exceeds a safe threshold. Ensure the temporary file is always deleted, even on exception paths.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"medium\",\n      \"section\": \"A3\",\n      \"issue\": \"Replacing SciPy's `norm.cdf`/`brentq` with hand‑rolled Python versions may introduce numerical inaccuracies or non‑convergence for edge cases, affecting downstream calculations.\",\n      \"suggestion\": \"Add a comprehensive numeric test matrix (including extreme tails, flat regions, and pathological inputs). Keep SciPy as an optional dependency and fall back to it when available.\"\n    },\n    {\n      \"id\": \"F4\",\n      \"severity\": \"high\",\n      \"section\": \"B1 / B2\",\n      \"issue\": \"Auto‑resume after a crash with a fixed 120 s / 180 s delay can create a rapid crash‑loop if the underlying error persists, exhausting resources and causing repeated OOM kills.\",\n      \"suggestion\": \"Implement exponential back‑off with a maximum retry count. Log the failure reason and alert operators after the limit is reached.\"\n    },\n    {\n      \"id\": \"F5\",\n      \"severity\": \"medium\",\n      \"section\": \"A6 / health endpoint\",\n      \"issue\": \"Changing the health check to `/healthz` does not guarantee a lightweight response; the endpoint may still embed large logs or full job status, leading to unnecessary bandwidth and memory usage.\",\n      \"suggestion\": \"Design `/healthz` to return only essential metrics (e.g., RSS, swap, recent job statuses) and keep payload < 5 KB. Provide a separate detailed `/system/health` for debugging.\"\n    },\n    {\n      \"id\": \"F6\",\n      \"severity\": \"medium\",\n      \"section\": \"驗收\",\n      \"issue\": \"The acceptance tests focus on unit‑level correctness (ijson vs old parser, scipy replacement, etc.) but do not simulate concurrent job execution, memory pressure, or the swap‑size change on Fly.io.\",\n      \"suggestion\": \"Add integration tests that run multiple scheduled jobs in parallel on a constrained container, monitor RSS peaks, and verify that the system does not OOM. Include tests for the auto‑resume back‑off logic.\"\n    },\n    {\n      \"id\": \"F7\",\n      \"severity\": \"low\",\n      \"section\": \"A5\",\n      \"issue\": \"Setting `swap_size_mb=512` may not be honored on Fly.io's free tier, and relying on swap can mask underlying memory leaks.\",\n      \"suggestion\": \"Confirm swap support on the target plan. Prefer reducing in‑process memory usage (streaming, incremental sync) over increasing swap.\"\n    },\n    {\n      \"id\": \"F8\",\n      \"severity\": \"low\",\n      \"section\": \"C1 / C2\",\n      \"issue\": \"Cache stampede protection uses a single `asyncio.Lock` per endpoint, but high‑traffic bursts could still cause thundering‑herd when the lock is released.\",\n      \"suggestion\": \"Implement a short‑lived cache‑aside pattern with probabilistic early refresh or use a library like `aiocache` that supports lock‑free stale‑while‑revalidate.\"\n    }\n  ],\n  \"coverage\": \"The plan covers most identified symptoms (memory peaks, missed jobs, slow endpoints, wasteful polling, silent failures) and proposes concrete mitigations. However, concurrency safety, numerical correctness, and crash‑loop resilience are only partially addressed.\",\n  \"limitations\": \"Evaluation is based on the provided plan text; actual codebase was not executed. Some Fly.io platform constraints (swap support, free‑tier limits) need verification in the deployment environment.\"\n}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "The plan addresses many root causes but contains material risks: global RLock can cause deadlock/starvation, streaming JSON fallback may still OOM, custom Brent implementation lacks proven robustness, auto‑resume may create crash loops, health endpoint may expose large data, swap‑size change may be ineffective on the free tier, and the test suite does not fully validate concurrency and memory‑pressure scenarios.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "section": "A4 / jobs.heavy",
+      "issue": "A single global RLock serialises all heavy jobs. Overlapping schedules (18:00 scan, full update, warrant update, industry sync, etc.) can lead to long wait times, possible deadlock if a job spawns a sub‑task that also acquires the lock, and starvation of lower‑priority jobs.",
+      "suggestion": "Replace the global RLock with per‑job locks or a priority queue/work‑pool. Ensure that sub‑tasks do not acquire the same lock, or use a re‑entrant lock only within a single job context."
+     },
+     {
+      "id": "F2",
+      "severity": "high",
+      "section": "A1",
+      "issue": "The ijson streaming fallback to the original `r.json()` still loads the entire 45 MB+ JSON into memory if ijson fails, reproducing the OOM scenario.",
+      "suggestion": "Enforce a hard limit on the temporary file size and abort with a clear error if the file exceeds a safe threshold. Ensure the temporary file is always deleted, even on exception paths."
+     },
+     {
+      "id": "F3",
+      "severity": "medium",
+      "section": "A3",
+      "issue": "Replacing SciPy's `norm.cdf`/`brentq` with hand‑rolled Python versions may introduce numerical inaccuracies or non‑convergence for edge cases, affecting downstream calculations.",
+      "suggestion": "Add a comprehensive numeric test matrix (including extreme tails, flat regions, and pathological inputs). Keep SciPy as an optional dependency and fall back to it when available."
+     },
+     {
+      "id": "F4",
+      "severity": "high",
+      "section": "B1 / B2",
+      "issue": "Auto‑resume after a crash with a fixed 120 s / 180 s delay can create a rapid crash‑loop if the underlying error persists, exhausting resources and causing repeated OOM kills.",
+      "suggestion": "Implement exponential back‑off with a maximum retry count. Log the failure reason and alert operators after the limit is reached."
+     },
+     {
+      "id": "F5",
+      "severity": "medium",
+      "section": "A6 / health endpoint",
+      "issue": "Changing the health check to `/healthz` does not guarantee a lightweight response; the endpoint may still embed large logs or full job status, leading to unnecessary bandwidth and memory usage.",
+      "suggestion": "Design `/healthz` to return only essential metrics (e.g., RSS, swap, recent job statuses) and keep payload < 5 KB. Provide a separate detailed `/system/health` for debugging."
+     },
+     {
+      "id": "F6",
+      "severity": "medium",
+      "section": "驗收",
+      "issue": "The acceptance tests focus on unit‑level correctness (ijson vs old parser, scipy replacement, etc.) but do not simulate concurrent job execution, memory pressure, or the swap‑size change on Fly.io.",
+      "suggestion": "Add integration tests that run multiple scheduled jobs in parallel on a constrained container, monitor RSS peaks, and verify that the system does not OOM. Include tests for the auto‑resume back‑off logic."
+     },
+     {
+      "id": "F7",
+      "severity": "low",
+      "section": "A5",
+      "issue": "Setting `swap_size_mb=512` may not be honored on Fly.io's free tier, and relying on swap can mask underlying memory leaks.",
+      "suggestion": "Confirm swap support on the target plan. Prefer reducing in‑process memory usage (streaming, incremental sync) over increasing swap."
+     },
+     {
+      "id": "F8",
+      "severity": "low",
+      "section": "C1 / C2",
+      "issue": "Cache stampede protection uses a single `asyncio.Lock` per endpoint, but high‑traffic bursts could still cause thundering‑herd when the lock is released.",
+      "suggestion": "Implement a short‑lived cache‑aside pattern with probabilistic early refresh or use a library like `aiocache` that supports lock‑free stale‑while‑revalidate."
+     }
+    ],
+    "coverage": "The plan covers most identified symptoms (memory peaks, missed jobs, slow endpoints, wasteful polling, silent failures) and proposes concrete mitigations. However, concurrency safety, numerical correctness, and crash‑loop resilience are only partially addressed.",
+    "limitations": "Evaluation is based on the provided plan text; actual codebase was not executed. Some Fly.io platform constraints (swap support, free‑tier limits) need verification in the deployment environment."
+   }
+  }
+ ]
+}

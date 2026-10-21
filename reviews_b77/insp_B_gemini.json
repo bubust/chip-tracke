@@ -1,0 +1,67 @@
+{
+ "mode": "inspect",
+ "files": [
+  "PLAN-B77.md",
+  "jobs.py",
+  "swr.py",
+  "warrant/ingester.py",
+  "warrant/calculator.py",
+  "warrant/router.py",
+  "sector/prices.py",
+  "sector/engine.py",
+  "sector/router.py",
+  "disposal.py",
+  "link_routes.py",
+  "cb/router.py",
+  "mna/router.py",
+  "chip_course.py",
+  "regime/router.py",
+  "yahoo_price.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.7-flash",
+   "raw": "{\n  \"verdict\": \"REVISE\",\n  \"summary\": \"Implementation closely adheres to PLAN-B77: ijson streaming ingestion dramatically lowers peak memory, pure Python Brent/Norm replaces scipy, sector price queries are chunked per sector, and SWR caching provides stale-while-revalidate protection. Two medium-severity edge case bugs were identified: (1) S_BIGHOLD in chip_course.py can raise TypeError when comparing None with float if TDCC historical weeks contain missing or zero-share tiers, which directly reproduces the P11 silent strategy failure; and (2) warrant/router.py unpacks _load_json without an isinstance(dict) check, risking an unhandled TypeError on startup if warrant_ingest_log.json contains null.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"medium\",\n      \"path\": \"chip_course.py\",\n      \"issue\": \"Unhandled None comparison in screen_bighold raises TypeError and causes S_BIGHOLD to crash\",\n      \"evidence\": \"In holder_ratios(), if total shares <= 0, (None, None) is returned. In screen_bighold(), lines 417-422, 'ratios' can contain (None, None). While (b1, r1) and (b0, r0) are checked, 'new_low = len(ratios) >= 3 and r1 <= min(r for _, r in ratios)' and 'if ratios[i][0] > ratios[i - 1][0]:' do not filter out None values. In Python 3, comparing float with None raises 'TypeError: '<=' not supported between instances of 'float' and 'NoneType'', which aborts the entire screen_bighold calculation and leaves S_BIGHOLD empty (directly explaining P11).\",\n      \"suggestion\": \"Filter ratios to valid numerical pairs before computing new_low and big_up_weeks, e.g.: 'valid_ratios = [(b, r) for b, r in ratios if b is not None and r is not None]'; if len(valid_ratios) < 2, continue, and perform the min() and loop checks on valid_ratios.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"medium\",\n      \"path\": \"warrant/router.py\",\n      \"issue\": \"Unsafe dictionary unpacking of JSON file can crash module import on startup\",\n      \"evidence\": \"Lines 47-50 execute at module import: '_last_ingest_log: dict = {\\\"ran_at\\\": None, \\\"result\\\": None, \\\"error\\\": None, **_load_json(_INGEST_LOG_FILE, {})}' where _load_json uses json.loads. If the file contains valid JSON 'null' or a non-dict type, _load_json returns None without throwing an exception. Unpacking '**None' raises 'TypeError: 'NoneType' is not a mapping' at top level, crashing server startup.\",\n      \"suggestion\": \"Validate with isinstance: '_saved_log = _load_json(_INGEST_LOG_FILE, {}); _last_ingest_log = {\\\"ran_at\\\": None, \\\"result\\\": None, \\\"error\\\": None, **(_saved_log if isinstance(_saved_log, dict) else {})}' matching the defensive check already implemented for _saved_scan.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"low\",\n      \"path\": \"warrant/ingester.py\",\n      \"issue\": \"Temporary JSON file leak if exception occurs between TWSE and TPEx downloads\",\n      \"evidence\": \"In ingest_contracts(), 'files = [p for p, _ in sources]' is constructed only after both TWSE and TPEx downloads complete. If download_rows_file(TPEX_URLS) raises an unhandled exception, twse_path was created on disk but not added to 'files', leaving it orphaned in chip_data/tmp until next server reboot.\",\n      \"suggestion\": \"Initialize 'files = []' before downloads and immediately append downloaded paths: 'twse_path = download_rows_file(...); if twse_path: files.append(twse_path)'.\"\n    },\n    {\n      \"id\": \"F4\",\n      \"severity\": \"low\",\n      \"path\": \"disposal.py\",\n      \"issue\": \"Unchecked row lengths when parsing TWSE and TPEx disposal/attention responses\",\n      \"evidence\": \"In fetch_disposals() and fetch_attention(), code accesses fixed indices such as r[6], r[7], r[8] and r[4], r[5]. If upstream APIs return abbreviated error structures or malformed rows, an unhandled IndexError will be raised inside _build_today().\",\n      \"suggestion\": \"Add row length guards before accessing indices, e.g. 'if len(r) < 9: continue' in fetch_disposals and 'if len(r) < 6: continue' in fetch_attention.\"\n    }\n  ],\n  \"coverage\": \"Inspected all files provided: jobs.py, swr.py, warrant/ingester.py, warrant/calculator.py, warrant/router.py, sector/prices.py, sector/engine.py, sector/router.py, disposal.py, link_routes.py, cb/router.py, mna/router.py, chip_course.py, regime/router.py, and yahoo_price.py. Evaluated concurrency safety, memory footprint, math accuracy against scipy, database schema constraints, and edge case resilience against empty or missing external inputs.\",\n  \"limitations\": \"Server startup catch-up logic, indices cache lock implementation, and health check endpoints were previously inspected in server.py and were not reviewed in this pass. Playwright UI rendering and LightweightCharts pixel scale behavior were taken as verified per instruction context.\"\n}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "Implementation closely adheres to PLAN-B77: ijson streaming ingestion dramatically lowers peak memory, pure Python Brent/Norm replaces scipy, sector price queries are chunked per sector, and SWR caching provides stale-while-revalidate protection. Two medium-severity edge case bugs were identified: (1) S_BIGHOLD in chip_course.py can raise TypeError when comparing None with float if TDCC historical weeks contain missing or zero-share tiers, which directly reproduces the P11 silent strategy failure; and (2) warrant/router.py unpacks _load_json without an isinstance(dict) check, risking an unhandled TypeError on startup if warrant_ingest_log.json contains null.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "medium",
+      "path": "chip_course.py",
+      "issue": "Unhandled None comparison in screen_bighold raises TypeError and causes S_BIGHOLD to crash",
+      "evidence": "In holder_ratios(), if total shares <= 0, (None, None) is returned. In screen_bighold(), lines 417-422, 'ratios' can contain (None, None). While (b1, r1) and (b0, r0) are checked, 'new_low = len(ratios) >= 3 and r1 <= min(r for _, r in ratios)' and 'if ratios[i][0] > ratios[i - 1][0]:' do not filter out None values. In Python 3, comparing float with None raises 'TypeError: '<=' not supported between instances of 'float' and 'NoneType'', which aborts the entire screen_bighold calculation and leaves S_BIGHOLD empty (directly explaining P11).",
+      "suggestion": "Filter ratios to valid numerical pairs before computing new_low and big_up_weeks, e.g.: 'valid_ratios = [(b, r) for b, r in ratios if b is not None and r is not None]'; if len(valid_ratios) < 2, continue, and perform the min() and loop checks on valid_ratios."
+     },
+     {
+      "id": "F2",
+      "severity": "medium",
+      "path": "warrant/router.py",
+      "issue": "Unsafe dictionary unpacking of JSON file can crash module import on startup",
+      "evidence": "Lines 47-50 execute at module import: '_last_ingest_log: dict = {\"ran_at\": None, \"result\": None, \"error\": None, **_load_json(_INGEST_LOG_FILE, {})}' where _load_json uses json.loads. If the file contains valid JSON 'null' or a non-dict type, _load_json returns None without throwing an exception. Unpacking '**None' raises 'TypeError: 'NoneType' is not a mapping' at top level, crashing server startup.",
+      "suggestion": "Validate with isinstance: '_saved_log = _load_json(_INGEST_LOG_FILE, {}); _last_ingest_log = {\"ran_at\": None, \"result\": None, \"error\": None, **(_saved_log if isinstance(_saved_log, dict) else {})}' matching the defensive check already implemented for _saved_scan."
+     },
+     {
+      "id": "F3",
+      "severity": "low",
+      "path": "warrant/ingester.py",
+      "issue": "Temporary JSON file leak if exception occurs between TWSE and TPEx downloads",
+      "evidence": "In ingest_contracts(), 'files = [p for p, _ in sources]' is constructed only after both TWSE and TPEx downloads complete. If download_rows_file(TPEX_URLS) raises an unhandled exception, twse_path was created on disk but not added to 'files', leaving it orphaned in chip_data/tmp until next server reboot.",
+      "suggestion": "Initialize 'files = []' before downloads and immediately append downloaded paths: 'twse_path = download_rows_file(...); if twse_path: files.append(twse_path)'."
+     },
+     {
+      "id": "F4",
+      "severity": "low",
+      "path": "disposal.py",
+      "issue": "Unchecked row lengths when parsing TWSE and TPEx disposal/attention responses",
+      "evidence": "In fetch_disposals() and fetch_attention(), code accesses fixed indices such as r[6], r[7], r[8] and r[4], r[5]. If upstream APIs return abbreviated error structures or malformed rows, an unhandled IndexError will be raised inside _build_today().",
+      "suggestion": "Add row length guards before accessing indices, e.g. 'if len(r) < 9: continue' in fetch_disposals and 'if len(r) < 6: continue' in fetch_attention."
+     }
+    ],
+    "coverage": "Inspected all files provided: jobs.py, swr.py, warrant/ingester.py, warrant/calculator.py, warrant/router.py, sector/prices.py, sector/engine.py, sector/router.py, disposal.py, link_routes.py, cb/router.py, mna/router.py, chip_course.py, regime/router.py, and yahoo_price.py. Evaluated concurrency safety, memory footprint, math accuracy against scipy, database schema constraints, and edge case resilience against empty or missing external inputs.",
+    "limitations": "Server startup catch-up logic, indices cache lock implementation, and health check endpoints were previously inspected in server.py and were not reviewed in this pass. Playwright UI rendering and LightweightCharts pixel scale behavior were taken as verified per instruction context."
+   }
+  }
+ ]
+}

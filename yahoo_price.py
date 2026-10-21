@@ -766,6 +766,7 @@ def get_scan_status() -> dict:
         "skipped_list":   _scan_status.get("skipped_list", []),
         "failed_detail":  _scan_status.get("failed_detail", {}),
         "warrant_note":   _scan_status.get("warrant_note", ""),
+        "chip_errors":    _scan_status.get("chip_errors", {}),
         "counts":         counts,
         "finished_at":    _scan_status["finished_at"],
         "error":          _scan_status["error"],
@@ -1101,15 +1102,25 @@ async def run_market_scan(strategy_params: dict = None):
             all_results["S_WARRANT_TOP"] = []
 
         # 上課筆記籌碼面（投信連買、融券大增／退潮、大戶散戶）：抓投信／融券／集保後另外算
+        # PLAN-B77 D1：以前整段失敗只 print，5 個籌碼策略默默變 0 檔（10-20 正式站）→ 記錯誤、重試 1 次（不重抓資料）
+        _scan_status["chip_errors"] = {}
         try:
-            from chip_course import run_all as _course_run
+            import chip_course as _cc
             _scan_status["phase"] = "chip_course"
-            _cr = await loop.run_in_executor(None, lambda: _course_run(names, _strategy_params))
+            try:
+                _cr = await loop.run_in_executor(None, lambda: _cc.run_all(names, _strategy_params))
+            except Exception as _ce1:
+                print(f"[SCAN] 籌碼面（上課筆記）第 1 次失敗，不重抓資料再算一次: {_ce1}")
+                _cr = await loop.run_in_executor(None, lambda: _cc.run_all(names, _strategy_params, do_refresh=False))
             for _k, _v in _cr.items():
                 all_results[_k] = _v
-            print(f"[SCAN] 籌碼面（上課筆記）：" + "、".join(f"{k}={len(v)}" for k, v in _cr.items()))
+            _scan_status["chip_errors"] = dict(_cc.last_errors)
+            print(f"[SCAN] 籌碼面（上課筆記）：" + "、".join(f"{k}={len(v)}" for k, v in _cr.items())
+                  + (f"；失敗 {_scan_status['chip_errors']}" if _scan_status["chip_errors"] else ""))
         except Exception as _ce:
             print(f"[SCAN] 籌碼面（上課筆記）失敗: {_ce}")
+            from chip_course import CHIP_STRATEGIES as _CHK
+            _scan_status["chip_errors"] = {k: f"{type(_ce).__name__}: {_ce}"[:200] for k in _CHK}
 
         # ⭐ 品質分（PLAN-B73）：做多策略每一列加 q（分數＋符合哪些條件）；失敗不影響結果
         try:

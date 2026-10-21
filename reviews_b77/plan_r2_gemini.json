@@ -1,0 +1,53 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B77.md",
+  "warrant/ingester.py",
+  "warrant/calculator.py",
+  "sector/prices.py",
+  "disposal.py",
+  "server.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.7-flash",
+   "raw": "{\"verdict\":\"REVISE\",\"summary\":\"PLAN-B77 addresses the root causes of memory peaks (streaming warrants, incremental sector sync, removal of scipy, swap), missed jobs, and wasteful polling. However, revisions are required to resolve a startup job race between B1 and B2, prevent potential event-loop blocking from the heavy RLock on API routes, correct margin unit semantics in the Lightweight Charts autoscale provider, and handle orphaned streaming temp files after SIGKILL.\",\"findings\":[{\"id\":\"F1\",\"severity\":\"medium\",\"section\":\"3.B (B1 & B2)\",\"issue\":\"B1 schedules an auto-resume of `refresh_all` at boot+120s, while B2 checks for 18:00 catch-up at boot+180s. If the system crashed during the 18:00 scan (which includes both scan and refresh-all), B1 will resume refresh-all at 120s, and then at 180s B2 will queue behind the heavy lock, run the scan, and then execute refresh-all a second time back-to-back, thrashing CPU and memory on a 512MB machine.\",\"suggestion\":\"Coordinate B1 and B2 at startup: evaluate `need_scan_catchup` first. If catch-up is required, suppress B1's standalone 120s resume and let B2 run `_scan_step1` followed by the resumed `refresh_all`. Only trigger B1's standalone resume if no 18:00 scan catch-up is pending.\"},{\"id\":\"F2\",\"severity\":\"medium\",\"section\":\"3.A (A4)\",\"issue\":\"A4 states that `heavy(name)` (a `threading.RLock`) will be applied to the '產業重算（排程與 API）'. If `heavy()` is called directly inside an `async def` FastAPI route, blocking on `rlock.acquire()` will block the main asyncio event loop thread for up to 60 minutes, freezing the entire application and failing Fly health checks.\",\"suggestion\":\"Ensure that any API endpoint wrapped with `heavy()` executes the critical section off the event loop via `asyncio.to_thread` or `BackgroundTasks`, or define the endpoint with standard `def` (which FastAPI executes in the threadpool). Add an explicit check in `jobs.py`: `if asyncio._get_running_loop() is not None: raise RuntimeError('heavy lock must not block the event loop')`.\"},{\"id\":\"F3\",\"severity\":\"medium\",\"section\":\"3.E (E1)\",\"issue\":\"E1 states that `autoscaleInfoProvider` will cap margins to `max(18px, 主圖高 × 10%)`. In Lightweight Charts, `autoscaleInfo.margins.above` and `margins.below` are normalized fractions of the plot area height (0.0 to 1.0, e.g. 0.08 for 8%), not pixel values. Passing an integer like 18 into `margins` will be interpreted as an 1800% vertical margin, flattening the candlesticks into an unreadable line.\",\"suggestion\":\"Normalize the margin calculation in JavaScript: calculate the fractional margin as `Math.min(0.12, Math.max(18 / chartHeight, 0.08))` so the return value is a valid normalized decimal fraction within the expected range.\"},{\"id\":\"F4\",\"severity\":\"low\",\"section\":\"3.A (A1)\",\"issue\":\"A1 streams warrant downloads to `chip_data/tmp/` and deletes the file in a `finally` block. However, if the process is terminated by the Linux OOM-killer via `SIGKILL` (exit code 137), Python `finally` blocks never execute. Over multiple crash-restarts, 40-60MB temp files will accumulate on Fly's ephemeral rootfs and waste disk space.\",\"suggestion\":\"Add an explicit cleanup routine in `lifespan` on startup to purge any leftover `chip_data/tmp/*.tmp` files created before the current boot.\"}],\"coverage\":\"Reviewed memory root causes (streaming JSON parsing with ijson, incremental sync in sector prices, mathematical replacement of scipy norm/brentq), concurrency and starvation dynamics of global heavy-job RLock, crash-loop resilience in B1/B2, frontend polling / de-duplication / prewarm logic, and Lightweight Charts autoscale logic.\",\"limitations\":\"Static code and architectural plan analysis only; unable to execute live Playwright UI tests or measure actual memory consumption on Fly.io Linux cgroups.\"}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "PLAN-B77 addresses the root causes of memory peaks (streaming warrants, incremental sector sync, removal of scipy, swap), missed jobs, and wasteful polling. However, revisions are required to resolve a startup job race between B1 and B2, prevent potential event-loop blocking from the heavy RLock on API routes, correct margin unit semantics in the Lightweight Charts autoscale provider, and handle orphaned streaming temp files after SIGKILL.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "medium",
+      "section": "3.B (B1 & B2)",
+      "issue": "B1 schedules an auto-resume of `refresh_all` at boot+120s, while B2 checks for 18:00 catch-up at boot+180s. If the system crashed during the 18:00 scan (which includes both scan and refresh-all), B1 will resume refresh-all at 120s, and then at 180s B2 will queue behind the heavy lock, run the scan, and then execute refresh-all a second time back-to-back, thrashing CPU and memory on a 512MB machine.",
+      "suggestion": "Coordinate B1 and B2 at startup: evaluate `need_scan_catchup` first. If catch-up is required, suppress B1's standalone 120s resume and let B2 run `_scan_step1` followed by the resumed `refresh_all`. Only trigger B1's standalone resume if no 18:00 scan catch-up is pending."
+     },
+     {
+      "id": "F2",
+      "severity": "medium",
+      "section": "3.A (A4)",
+      "issue": "A4 states that `heavy(name)` (a `threading.RLock`) will be applied to the '產業重算（排程與 API）'. If `heavy()` is called directly inside an `async def` FastAPI route, blocking on `rlock.acquire()` will block the main asyncio event loop thread for up to 60 minutes, freezing the entire application and failing Fly health checks.",
+      "suggestion": "Ensure that any API endpoint wrapped with `heavy()` executes the critical section off the event loop via `asyncio.to_thread` or `BackgroundTasks`, or define the endpoint with standard `def` (which FastAPI executes in the threadpool). Add an explicit check in `jobs.py`: `if asyncio._get_running_loop() is not None: raise RuntimeError('heavy lock must not block the event loop')`."
+     },
+     {
+      "id": "F3",
+      "severity": "medium",
+      "section": "3.E (E1)",
+      "issue": "E1 states that `autoscaleInfoProvider` will cap margins to `max(18px, 主圖高 × 10%)`. In Lightweight Charts, `autoscaleInfo.margins.above` and `margins.below` are normalized fractions of the plot area height (0.0 to 1.0, e.g. 0.08 for 8%), not pixel values. Passing an integer like 18 into `margins` will be interpreted as an 1800% vertical margin, flattening the candlesticks into an unreadable line.",
+      "suggestion": "Normalize the margin calculation in JavaScript: calculate the fractional margin as `Math.min(0.12, Math.max(18 / chartHeight, 0.08))` so the return value is a valid normalized decimal fraction within the expected range."
+     },
+     {
+      "id": "F4",
+      "severity": "low",
+      "section": "3.A (A1)",
+      "issue": "A1 streams warrant downloads to `chip_data/tmp/` and deletes the file in a `finally` block. However, if the process is terminated by the Linux OOM-killer via `SIGKILL` (exit code 137), Python `finally` blocks never execute. Over multiple crash-restarts, 40-60MB temp files will accumulate on Fly's ephemeral rootfs and waste disk space.",
+      "suggestion": "Add an explicit cleanup routine in `lifespan` on startup to purge any leftover `chip_data/tmp/*.tmp` files created before the current boot."
+     }
+    ],
+    "coverage": "Reviewed memory root causes (streaming JSON parsing with ijson, incremental sync in sector prices, mathematical replacement of scipy norm/brentq), concurrency and starvation dynamics of global heavy-job RLock, crash-loop resilience in B1/B2, frontend polling / de-duplication / prewarm logic, and Lightweight Charts autoscale logic.",
+    "limitations": "Static code and architectural plan analysis only; unable to execute live Playwright UI tests or measure actual memory consumption on Fly.io Linux cgroups."
+   }
+  }
+ ]
+}

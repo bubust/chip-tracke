@@ -785,6 +785,8 @@
     bind();
     load(false);
     loadPanel();
-    setInterval(() => { if (isSession(st.sym) && document.visibilityState === 'visible') load(false); }, 120000);
+    // 盤中每 2 分鐘；總經分頁沒在看（iframe 藏起來）就不抓（PLAN-B77 C2）
+    const shown = () => { if (document.visibilityState !== 'visible') return false; try { const fe = window.frameElement; return !fe || fe.offsetParent !== null; } catch (e) { return true; } };
+    setInterval(() => { if (isSession(st.sym) && shown()) load(false); }, 120000);
   });
 })();

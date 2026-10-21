@@ -40,27 +40,58 @@ router = APIRouter()
 router.include_router(_futures_router)
 
 # ── Ingest 執行紀錄 ─────────────────────────────────────────────────
-_last_ingest_log: dict = {"ran_at": None, "result": None, "error": None}
+# PLAN-B77 D2：紀錄和掃描結果存檔，伺服器重開後還看得到（以前重開就變「沒跑過」、權證掃描清單變空）
+_DATA = Path(__file__).parent.parent / "chip_data"
+_INGEST_LOG_FILE = _DATA / "warrant_ingest_log.json"
+_SCAN_FILE = _DATA / "warrant_scan.json"
+
+
+def _load_json(path, default):
+    try:
+        import json as _json
+        return _json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return default
+
+
+def _save_json(path, data):
+    try:
+        import jobs as _jobs
+        _jobs.write_json_atomic(path, data)
+    except Exception as _e:
+        log.warning(f"[warrant] 存檔失敗 {path.name}: {_e}")
+
+
+_saved_log = _load_json(_INGEST_LOG_FILE, {})
+_last_ingest_log: dict = {"ran_at": None, "result": None, "error": None,
+                          **(_saved_log if isinstance(_saved_log, dict) else {})}      # 檔案壞掉／是 null 也不能讓啟動失敗
+del _saved_log
 _ingest_running: bool = False
 
 _orig_ingest = ingester.ingest_contracts
 def _instrumented_ingest():
+    """合約更新一律排隊（jobs.heavy，PLAN-B77 A4）：08:00 排程、全系統更新、手動按鈕、初次啟動都走這裡"""
     global _last_ingest_log, _ingest_running
-    _ingest_running = True
-    _last_ingest_log["ran_at"] = datetime.now().isoformat(timespec="seconds")
-    _last_ingest_log["result"] = None
-    _last_ingest_log["error"]  = None
-    try:
-        result = _orig_ingest()
-        _last_ingest_log["result"] = result
-        _last_ingest_log["error"] = None
-    except Exception as e:
-        import traceback
+    import jobs as _jobs
+    with _jobs.heavy("warrant_ingest"):
+        _ingest_running = True
+        _last_ingest_log["ran_at"] = datetime.now().isoformat(timespec="seconds")
         _last_ingest_log["result"] = None
-        _last_ingest_log["error"] = traceback.format_exc()[-800:]
-        raise
-    finally:
-        _ingest_running = False
+        _last_ingest_log["error"]  = None
+        try:
+            result = _orig_ingest()
+            _last_ingest_log["result"] = result
+            _last_ingest_log["error"] = None
+            return result
+        except Exception as e:
+            import traceback
+            _last_ingest_log["result"] = None
+            _last_ingest_log["error"] = traceback.format_exc()[-800:]
+            raise
+        finally:
+            _ingest_running = False
+            _last_ingest_log["finished_at"] = datetime.now().isoformat(timespec="seconds")
+            _save_json(_INGEST_LOG_FILE, _last_ingest_log)
 ingester.ingest_contracts = _instrumented_ingest
 
 # ── 掃描器快取 ──────────────────────────────────────────────────────
@@ -72,6 +103,12 @@ _scanner_cache: dict = {
     "total_scanned": 0,
     "errors":        0,
 }
+_saved_scan = _load_json(_SCAN_FILE, {})
+if isinstance(_saved_scan, dict) and _saved_scan.get("scanned_at"):
+    for _k in ("results", "scanned_at", "total_scanned", "errors", "mode", "vol_available"):
+        if _k in _saved_scan:
+            _scanner_cache[_k] = _saved_scan[_k]
+del _saved_scan
 SCAN_PRE_FILTER    = 500
 SCAN_WARRANT_LIMIT = 2000
 
@@ -274,6 +311,8 @@ def run_scanner():
                 "mode":          mode,
                 "vol_available": bool(twse_vol) if not market_open else True,
             })
+            _snap = {k: _scanner_cache.get(k) for k in ("results", "scanned_at", "total_scanned", "errors", "mode", "vol_available")}
+        _save_json(_SCAN_FILE, _snap)
         log.info(f"[scanner] 完成（{mode}）：{len(results)} 檔，掃 {len(candidates)} 檔")
 
         # ── A1: 盤外掃描後直接聚合 warrant_flow（不依賴 geo-blocked TWSE API）──
@@ -468,7 +507,12 @@ def init_warrant():
             threading.Thread(target=_bg_flow_init, daemon=True).start()
 
 def start_warrant_scheduler():
-    scheduler.add_job(lambda: ingester.ingest_contracts(), "cron", hour=8, minute=0, id="w_contracts", replace_existing=True)
+    def _sched_ingest():
+        try:
+            ingester.ingest_contracts()
+        except Exception as _e:      # 排隊逾時／抓不到：已記在 _last_ingest_log 與 job_log
+            log.warning(f"[warrant] 08:00 合約更新失敗: {_e}")
+    scheduler.add_job(_sched_ingest, "cron", hour=8, minute=0, id="w_contracts", replace_existing=True)
     scheduler.add_job(lambda: ingester.backfill_biv_for_underlyings(ingester.get_active_underlying_codes()[:50]), "cron", hour=8, minute=45, id="w_biv", replace_existing=True)
     scheduler.add_job(run_scanner, "cron", day_of_week="mon-fri",
                       hour="9-13", minute="0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45,48,51,54,57",
@@ -1038,32 +1082,21 @@ def ingest_log():
 
 @router.get("/api/ingest/fields")
 def ingest_fields():
-    """只看 TWSE/TPEx API 回傳的欄位名稱，不做完整解析"""
-    import requests as _req
+    """只看 TWSE/TPEx API 回傳的欄位名稱（串流數筆數，不整包載入，PLAN-B77）"""
     out = {}
-    try:
-        r = _req.get("https://openapi.twse.com.tw/v1/opendata/t187ap37_L",
-                     headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
-        data = r.json()
-        if isinstance(data, list) and data:
-            out["twse_rows"]   = len(data)
-            out["twse_fields"] = list(data[0].keys())
-            out["twse_row0"]   = {k: v for k, v in list(data[0].items())[:10]}
-        else:
-            out["twse_raw_type"] = str(type(data))
-    except Exception as e:
-        out["twse_error"] = str(e)
-    try:
-        r2 = _req.get("https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap37_O",
-                      headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
-        data2 = r2.json()
-        if isinstance(data2, list) and data2:
-            out["tpex_rows"]   = len(data2)
-            out["tpex_fields"] = list(data2[0].keys())
-        else:
-            out["tpex_raw_type"] = str(type(data2))
-    except Exception as e:
-        out["tpex_error"] = str(e)
+    tw = ingester.count_rows(ingester.TWSE_URLS[:1], "TWSE")
+    if "error" in tw:
+        out["twse_error"] = tw["error"]
+    else:
+        out["twse_rows"] = tw["count"]
+        out["twse_fields"] = list(tw["head"][0].keys()) if tw["head"] else []
+        out["twse_row0"] = {k: v for k, v in list(tw["head"][0].items())[:10]} if tw["head"] else {}
+    tp = ingester.count_rows(ingester.TPEX_URLS[:1], "TPEx")
+    if "error" in tp:
+        out["tpex_error"] = tp["error"]
+    else:
+        out["tpex_rows"] = tp["count"]
+        out["tpex_fields"] = list(tp["head"][0].keys()) if tp["head"] else []
     return out
 
 
@@ -1075,8 +1108,11 @@ def ingest_debug():
 
     # 1. TWSE
     try:
-        rows = ingester.fetch_twse_warrants()
-        result["twse_count"] = len(rows)
+        _tw = ingester.count_rows(ingester.TWSE_URLS, "TWSE")      # 串流，不整包載入
+        if "error" in _tw:
+            raise RuntimeError(_tw["error"])
+        rows = _tw["head"]
+        result["twse_count"] = _tw["count"]
         result["twse_fields"] = list(rows[0].keys()) if rows else []
         # 試解析前 3 筆
         parsed = []
@@ -1093,8 +1129,11 @@ def ingest_debug():
 
     # 2. TPEx
     try:
-        rows2 = ingester.fetch_tpex_warrants()
-        result["tpex_count"] = len(rows2)
+        _tp = ingester.count_rows(ingester.TPEX_URLS, "TPEx")
+        if "error" in _tp:
+            raise RuntimeError(_tp["error"])
+        rows2 = _tp["head"]
+        result["tpex_count"] = _tp["count"]
         result["tpex_fields"] = list(rows2[0].keys()) if rows2 else []
     except Exception as e:
         result["tpex_error"] = str(e)
