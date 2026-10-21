@@ -40,6 +40,11 @@ CREATE TABLE IF NOT EXISTS wave_snapshot (day TEXT, kind TEXT, created_at TEXT, 
 CREATE TABLE IF NOT EXISTS ai_panel (id INTEGER PRIMARY KEY AUTOINCREMENT, day TEXT, created_at TEXT, ok INTEGER, json TEXT);
 CREATE TABLE IF NOT EXISTS ai_usage (day TEXT, model TEXT, tokens INTEGER, PRIMARY KEY (day, model));
 CREATE TABLE IF NOT EXISTS src_status (src TEXT PRIMARY KEY, last_ok TEXT, fails INTEGER DEFAULT 0, last_err TEXT, last_try TEXT);
+CREATE TABLE IF NOT EXISTS fut_daily (date TEXT, sess TEXT, contract TEXT, o REAL, h REAL, l REAL, c REAL, v REAL, oi REAL,
+    ref_close REAL, src TEXT, PRIMARY KEY (date, sess));
+CREATE TABLE IF NOT EXISTS bars5 (sym TEXT, ts INTEGER, o REAL, h REAL, l REAL, c REAL, v REAL, src TEXT, PRIMARY KEY (sym, ts));
+CREATE TABLE IF NOT EXISTS fut_chips (date TEXT PRIMARY KEY, mtx_oi REAL, mtx_inst_long REAL, mtx_inst_short REAL,
+    retail_ratio REAL, opt_f_bull REAL, src TEXT);
 """
 
 
@@ -241,8 +246,9 @@ def update_indices(days: int = 25):
 # ── 籌碼 ─────────────────────────────────────────────────────────────────────
 def _finmind(dataset: str, start: str, **kw) -> pd.DataFrame:
     tok = os.environ.get("FINMIND_TOKEN", "")
-    r = httpx.get("https://api.finmindtrade.com/api/v4/data",
-                  params={"dataset": dataset, "start_date": start, **({"token": tok} if tok else {}), **kw}, timeout=60)
+    # 金鑰放標頭（B75：放網址參數會被 httpx 的 log 印出來）
+    r = httpx.get("https://api.finmindtrade.com/api/v4/data", params={"dataset": dataset, "start_date": start, **kw},
+                  headers={"Authorization": f"Bearer {tok}"} if tok else None, timeout=60)
     j = r.json()
     if j.get("status") != 200:
         raise RuntimeError(f"{dataset}: {j.get('msg')}")

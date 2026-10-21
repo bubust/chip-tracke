@@ -173,3 +173,55 @@ def build(h, l, c, t: int, an: dict, atr_v: float, dates=None, hold: Optional[di
         p["note"] = note
         out[which] = p
     return out
+
+
+# ── B75 超短線（60 分 K；PLAN-B75 §4.3）────────────────────────────────────────
+ULTRA_WIN = 0.03
+ULTRA_K3_LOOK = 100
+CATEGORY.update({"prev": "pivot", "night": "pivot", "ipivot": "pivot", "ipivot_k3": "pivot", "ifib": "fib"})
+TYPE_NAME.update({"prev": "昨天高低收", "night": "夜盤高低", "ipivot": "60 分 K 轉折", "ipivot_k3": "60 分 K 近期高低",
+                  "ifib": "60 分 K 回檔"})
+
+
+def candidates_ultra(h, l, c, t: int, an: dict, label=None, daily: dict | None = None) -> list:
+    """60 分 K 第 t 根收完時的候選：轉折、k3 高低、回檔、昨天高低收、（台指期）夜盤高低、日 K 月線、整數關卡（500 點）
+    label(i)＝第 i 根的顯示文字（例 10/20 13:00）；daily＝{prev_h, prev_l, prev_c, night_h, night_l, ma20, price}"""
+    lb = label or (lambda i: str(i))
+    out = []
+    for p in (an.get("pivots") or [])[-12:]:
+        out.append({"type": "ipivot", "price": p["p"], "deg": "intra", "label": f"60 分{'高' if p['t'] == 'H' else '低'}點 {lb(p['i'])}"})
+    f = an.get("fib")
+    if f:
+        for x in f["levels"]:
+            out.append({"type": "ifib", "price": x["price"], "deg": "intra", "label": f"60 分回檔 {x['ratio']:g}"})
+    for p in k3_pivots(h, l, t, look=ULTRA_K3_LOOK):
+        out.append({"type": "ipivot_k3", "price": p["p"], "deg": "k3", "label": f"近期 60 分{'高' if p['t'] == 'H' else '低'}點 {lb(p['i'])}"})
+    dl = daily or {}
+    for k, nm, typ in (("prev_h", "昨天最高", "prev"), ("prev_l", "昨天最低", "prev"), ("prev_c", "昨天收盤", "prev"),
+                       ("night_h", "夜盤最高", "night"), ("night_l", "夜盤最低", "night"), ("ma20", "日 K 月線（MA20）", "ma20")):
+        v = dl.get(k)
+        if v is not None and math.isfinite(v):
+            out.append({"type": typ, "price": float(v), "deg": "", "label": nm})
+    price = float(dl.get("price") or c[t])
+    step = 500.0
+    base = math.floor(price * (1 - ULTRA_WIN) / step) * step
+    while base <= price * (1 + ULTRA_WIN):
+        if base > 0:
+            out.append({"type": "round", "price": base, "deg": "", "label": f"整數關卡 {base:,.0f}"})
+        base += step
+    return [x for x in out if x["price"] and math.isfinite(x["price"])]
+
+
+def build_ultra(h, l, c, t: int, an: dict, atr_v: float, price: float, label=None, daily: dict | None = None,
+                hold: Optional[dict] = None) -> dict:
+    """超短線支撐壓力：0.5×ATR60 內合併、±3% 內上下各 3 區"""
+    cands = candidates_ultra(h, l, c, t, an, label, {**(daily or {}), "price": price})
+    z = make_zones(cands, price, atr_v, hold)
+    sup = sorted([x for x in z if x["side"] == "support" and x["price"] >= price * (1 - ULTRA_WIN)], key=lambda x: -x["price"])[:3]
+    res = sorted([x for x in z if x["side"] == "resistance" and x["price"] <= price * (1 + ULTRA_WIN)], key=lambda x: x["price"])[:3]
+    note = []
+    if not sup:
+        note.append("下方 3% 內沒有支撐區")
+    if not res:
+        note.append("上方 3% 內沒有壓力區")
+    return {"support": sup, "resistance": res, "note": note}

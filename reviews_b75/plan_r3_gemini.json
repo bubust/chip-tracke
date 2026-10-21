@@ -1,0 +1,37 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B75.md",
+  "wave/service.py",
+  "wave/levels.py",
+  "wave/engine.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-flash-latest",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"PLAN-B75 successfully addresses all previous round findings (R1 & R2) and satisfies all user requirements without introducing look-ahead bias or statistical errors. The transition from wave invalidation to key turning points (K1-K3) is pre-registered with strict FDR control (BH q < 0.10) and practical distance constraints. The TX continuous contract and night-session pipeline correctly binds night sessions (15:00 T-1 to 05:00 T) to trading date T, eliminating settlement-day splits. Post-close chip factors properly account for overnight returns and use tradable next-day open prices. Low-resource 512MB streaming limits, UTC epoch timestamps with Asia/Taipei LWC formatters, and fallback mechanisms are sound.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"low\",\n      \"section\": \"3.4\",\n      \"issue\": \"For TAIEX cash index (TWII) 5-minute bars, TAIFEX zip only covers futures (TX). If Cnyes fails to fetch TWII intraday 5m bars, the plan relies on startup backfill from Yahoo (^TWII 5m 60d), but does not explicitly schedule a Yahoo fallback if Cnyes fails at 13:50.\",\n      \"suggestion\": \"In the 13:50 or 16:30 schedule, if TWII bars5 for the current day are incomplete (< 54 bars) and Cnyes retry fails, allow a fallback fetch to Yahoo Finance (^TWII 5m) to ensure cash index intraday data remains uninterrupted.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"section\": \"5\",\n      \"issue\": \"On Taiwan national holidays where Friday night has a session running until Saturday 05:00 but the following Monday is a holiday, the next trading day T is Tuesday rather than Monday.\",\n      \"suggestion\": \"Ensure the trading day resolver maps the Saturday 05:00 night session to the actual next open trading day as verified by FinMind's fut_daily calendar, rather than assuming Monday.\"\n    }\n  ],\n  \"coverage\": \"Verified sections 1-13 with special focus on key level selection criteria (§2), futures continuous roll and ref_close (§3.2), low-memory streaming (§3.5), intraday timeframes & timezone handling (§4.1), session state detection (§5), post-close chip factor testing methodology (§6.1), composite direction aggregation (§6.2), and test suites (§11).\",\n  \"limitations\": \"Review is based on code context in service.py, levels.py, engine.py and PLAN-B75 specifications. Execution performance of TAIFEX zip parsing on Fly.io 512MB RAM will depend on network throughput and CPU throttling during concurrent web traffic.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "PLAN-B75 successfully addresses all previous round findings (R1 & R2) and satisfies all user requirements without introducing look-ahead bias or statistical errors. The transition from wave invalidation to key turning points (K1-K3) is pre-registered with strict FDR control (BH q < 0.10) and practical distance constraints. The TX continuous contract and night-session pipeline correctly binds night sessions (15:00 T-1 to 05:00 T) to trading date T, eliminating settlement-day splits. Post-close chip factors properly account for overnight returns and use tradable next-day open prices. Low-resource 512MB streaming limits, UTC epoch timestamps with Asia/Taipei LWC formatters, and fallback mechanisms are sound.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "low",
+      "section": "3.4",
+      "issue": "For TAIEX cash index (TWII) 5-minute bars, TAIFEX zip only covers futures (TX). If Cnyes fails to fetch TWII intraday 5m bars, the plan relies on startup backfill from Yahoo (^TWII 5m 60d), but does not explicitly schedule a Yahoo fallback if Cnyes fails at 13:50.",
+      "suggestion": "In the 13:50 or 16:30 schedule, if TWII bars5 for the current day are incomplete (< 54 bars) and Cnyes retry fails, allow a fallback fetch to Yahoo Finance (^TWII 5m) to ensure cash index intraday data remains uninterrupted."
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "section": "5",
+      "issue": "On Taiwan national holidays where Friday night has a session running until Saturday 05:00 but the following Monday is a holiday, the next trading day T is Tuesday rather than Monday.",
+      "suggestion": "Ensure the trading day resolver maps the Saturday 05:00 night session to the actual next open trading day as verified by FinMind's fut_daily calendar, rather than assuming Monday."
+     }
+    ],
+    "coverage": "Verified sections 1-13 with special focus on key level selection criteria (§2), futures continuous roll and ref_close (§3.2), low-memory streaming (§3.5), intraday timeframes & timezone handling (§4.1), session state detection (§5), post-close chip factor testing methodology (§6.1), composite direction aggregation (§6.2), and test suites (§11).",
+    "limitations": "Review is based on code context in service.py, levels.py, engine.py and PLAN-B75 specifications. Execution performance of TAIFEX zip parsing on Fly.io 512MB RAM will depend on network throughput and CPU throttling during concurrent web traffic."
+   }
+  }
+ ]
+}

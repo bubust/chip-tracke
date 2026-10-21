@@ -1,0 +1,1 @@
+- R3 low items accepted: Yahoo ^TWII 5m fallback at 16:30 when today's TWII bars5 incomplete (§3.4); trading date from cnyes daily latest bar / FinMind dates, never inferred (§5).

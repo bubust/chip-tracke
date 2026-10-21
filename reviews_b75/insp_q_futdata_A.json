@@ -1,0 +1,44 @@
+{
+ "mode": "inspect",
+ "files": [
+  "reviews_b75/strip/futdata_A.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\"verdict\":\"REVISE\",\"summary\":\"Logic errors in aggregation and bar construction may produce NaN volumes or raise exceptions on missing price fields, and edge‑case handling in TAIFEX parsing is questionable.\",\"findings\":[{\"id\":\"F1\",\"severity\":\"high\",\"path\":\"futdata_A.py\",\"issue\":\"NaN volume values are not sanitized in agg_bars (and parse_cnyes_hist) – using `v or 0` treats np.nan as truthy, propagating NaN into the aggregated volume field.\",\"evidence\":\"`out[k] = {...,'volume': v or 0}` and `b['volume'] += v or 0` – when `v` is np.nan the expression yields np.nan, breaking downstream calculations that expect numeric volume.\",\"suggestion\":\"Replace `v or 0` with a safe conversion, e.g. `float(v) if v is not None and math.isfinite(v) else 0`.\"},{\"id\":\"F2\",\"severity\":\"high\",\"path\":\"futdata_A.py\",\"issue\":\"full_bars assumes night bar fields (`h`, `l`) are always present and numeric; if a night record exists with missing high/low (None), `float(None)` raises TypeError.\",\"evidence\":\"`h = max([float(dy.h)] + ([float(nt.iloc[0].h)] if len(nt) else []))` and similar for `l` – `float(None)` is invalid.\",\"suggestion\":\"Guard against None/NaN before casting, e.g. `night_h = nt.iloc[0].h; h = max(float(dy.h), float(night_h) if night_h is not None else float(dy.h))`.\"},{\"id\":\"F3\",\"severity\":\"medium\",\"path\":\"futdata_A.py\",\"issue\":\"parse_taifex_ticks divides the raw volume by 2 without explanation; if the source data already represents contract volume, the division yields incorrect totals.\",\"evidence\":\"`q = float(p[5]) / 2` – the divisor is hard‑coded and not documented, potentially mis‑representing volume.\",\"suggestion\":\"Validate the source specification; either remove the division or make it configurable with a comment explaining the rationale.\"}],\"coverage\":\"Core data‑ingestion functions (session detection, bar aggregation, continuous contract selection, TAIFEX parsing) are exercised, but edge cases for missing numeric fields and NaN handling are not covered by tests.\",\"limitations\":\"Analysis limited to the provided excerpt; interactions with external modules (wave/data, wave/engine) are assumed correct. Runtime environment specifics (e.g., HTTP timeouts) are not validated.\"}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "Logic errors in aggregation and bar construction may produce NaN volumes or raise exceptions on missing price fields, and edge‑case handling in TAIFEX parsing is questionable.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "path": "futdata_A.py",
+      "issue": "NaN volume values are not sanitized in agg_bars (and parse_cnyes_hist) – using `v or 0` treats np.nan as truthy, propagating NaN into the aggregated volume field.",
+      "evidence": "`out[k] = {...,'volume': v or 0}` and `b['volume'] += v or 0` – when `v` is np.nan the expression yields np.nan, breaking downstream calculations that expect numeric volume.",
+      "suggestion": "Replace `v or 0` with a safe conversion, e.g. `float(v) if v is not None and math.isfinite(v) else 0`."
+     },
+     {
+      "id": "F2",
+      "severity": "high",
+      "path": "futdata_A.py",
+      "issue": "full_bars assumes night bar fields (`h`, `l`) are always present and numeric; if a night record exists with missing high/low (None), `float(None)` raises TypeError.",
+      "evidence": "`h = max([float(dy.h)] + ([float(nt.iloc[0].h)] if len(nt) else []))` and similar for `l` – `float(None)` is invalid.",
+      "suggestion": "Guard against None/NaN before casting, e.g. `night_h = nt.iloc[0].h; h = max(float(dy.h), float(night_h) if night_h is not None else float(dy.h))`."
+     },
+     {
+      "id": "F3",
+      "severity": "medium",
+      "path": "futdata_A.py",
+      "issue": "parse_taifex_ticks divides the raw volume by 2 without explanation; if the source data already represents contract volume, the division yields incorrect totals.",
+      "evidence": "`q = float(p[5]) / 2` – the divisor is hard‑coded and not documented, potentially mis‑representing volume.",
+      "suggestion": "Validate the source specification; either remove the division or make it configurable with a comment explaining the rationale."
+     }
+    ],
+    "coverage": "Core data‑ingestion functions (session detection, bar aggregation, continuous contract selection, TAIFEX parsing) are exercised, but edge cases for missing numeric fields and NaN handling are not covered by tests.",
+    "limitations": "Analysis limited to the provided excerpt; interactions with external modules (wave/data, wave/engine) are assumed correct. Runtime environment specifics (e.g., HTTP timeouts) are not validated."
+   }
+  }
+ ]
+}

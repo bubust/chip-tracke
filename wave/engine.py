@@ -24,6 +24,15 @@ DEGREES = {
     "big":   {"m": 11.5, "floor": 0.12, "label": "大級（背景）"},
 }
 
+# B75 超短線：60 分 K 的級數（θ＝max(下限, m × 60 分 K ATR% 近 60 根中位數)；m 由 research/futures/calibrate_intraday.py 校準，
+# 結果寫 wave/stats.json intraday，service 讀到就覆蓋這裡的預設）。不放進 DEGREES，B74 研究照舊只跑日 K 三個級數
+INTRA = {"m": 3.0, "floor": 0.005, "label": "60 分 K（超短線）"}
+
+
+def deg_cfg(deg: str) -> dict:
+    return DEGREES.get(deg) or INTRA
+
+
 WAVE_SYM = {"1": "①", "2": "②", "3": "③", "4": "④", "5": "⑤", "A": "Ⓐ", "B": "Ⓑ", "C": "Ⓒ", "0": "◯"}
 
 # 軟指引（實際比例跟最近的指引比較，懲罰＝|ln(實際/指引)|）
@@ -66,7 +75,7 @@ def atr_pct_median(h, l, c, n: int = 14, look: int = 60) -> np.ndarray:
 
 
 def thresholds(h, l, c, deg: str) -> np.ndarray:
-    cfg = DEGREES[deg]
+    cfg = deg_cfg(deg)
     ap = atr_pct_median(h, l, c)
     ap = np.where(np.isnan(ap), cfg["floor"] / cfg["m"], ap)
     return np.maximum(cfg["floor"], cfg["m"] * ap)
@@ -362,5 +371,5 @@ def analyze(o, h, l, c, deg: str = "mid", t: Optional[int] = None, trend: int = 
     if len(conf) >= 2:
         a, b = conf[-2], conf[-1]
         fib = {"from": {"i": a["i"], "p": a["p"]}, "to": {"i": b["i"], "p": b["p"]}, "levels": fib_retrace(a["p"], b["p"])}
-    return {"deg": deg, "label": DEGREES[deg]["label"], "t": t, "pivots": conf, "tentative": tent,
+    return {"deg": deg, "label": deg_cfg(deg)["label"], "t": t, "pivots": conf, "tentative": tent,
             "primary": prim, "alternate": alt, "n_counts": len(counts), "fib": fib}

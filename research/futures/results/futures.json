@@ -1,0 +1,444 @@
+{
+ "generated": "2026-10-21 09:49",
+ "is": "2017-05-16～2021-12-31",
+ "oos": "2022-01-01～2026-10-20",
+ "tests": {
+  "night_ret:gap": {
+   "n_is": 1128,
+   "n_oos": 1162,
+   "is_beta": [
+    0.0003,
+    0.5826
+   ],
+   "oos_beta": [
+    0.0004,
+    0.4962
+   ],
+   "oos_r2": 0.548,
+   "ci": [
+    0.4396,
+    0.6229
+   ],
+   "p": 0.0005,
+   "years_same": "5/5",
+   "same_sign": true,
+   "alpha": 0.0004,
+   "beta": 0.4962,
+   "resid_sd": 0.0043,
+   "polarity": 1,
+   "kind": "reg",
+   "crit": true,
+   "q": 0.0023,
+   "pass": true
+  },
+  "night_ret:r1": {
+   "n_is": 1128,
+   "n_oos": 1162,
+   "is_beta": [
+    0.0001,
+    0.8669
+   ],
+   "oos_beta": [
+    0.0002,
+    0.9539
+   ],
+   "oos_r2": 0.4602,
+   "ci": [
+    0.4169,
+    0.4955
+   ],
+   "p": 0.0005,
+   "years_same": "5/5",
+   "same_sign": true,
+   "alpha": 0.0002,
+   "beta": 0.9539,
+   "resid_sd": 0.0101,
+   "polarity": 1,
+   "kind": "reg",
+   "crit": true,
+   "q": 0.0023,
+   "pass": true
+  },
+  "sox_ret1:r1": {
+   "n_is": 1133,
+   "n_oos": 1162,
+   "is_beta": [
+    0.0003,
+    0.2
+   ],
+   "oos_beta": [
+    0.0004,
+    0.3091
+   ],
+   "oos_r2": 0.2638,
+   "ci": [
+    0.2394,
+    0.2842
+   ],
+   "p": 0.0005,
+   "years_same": "5/5",
+   "same_sign": true,
+   "alpha": 0.0004,
+   "beta": 0.3091,
+   "resid_sd": 0.0115,
+   "polarity": 1,
+   "kind": "reg",
+   "crit": true,
+   "q": 0.0023,
+   "pass": true
+  },
+  "sox_ret1:gap": {
+   "n_is": 1133,
+   "n_oos": 1162,
+   "is_beta": [
+    0.0004,
+    0.1379
+   ],
+   "oos_beta": [
+    0.0005,
+    0.171
+   ],
+   "oos_r2": 0.3996,
+   "ci": [
+    0.3452,
+    0.4461
+   ],
+   "p": 0.0005,
+   "years_same": "5/5",
+   "same_sign": true,
+   "alpha": 0.0005,
+   "beta": 0.171,
+   "resid_sd": 0.005,
+   "polarity": 1,
+   "kind": "reg",
+   "crit": true,
+   "q": 0.0023,
+   "pass": true
+  },
+  "fut_chg1:res_next": {
+   "n_is": 872,
+   "n_oos": 1161,
+   "edges": [
+    -1248.6667,
+    1038.3333
+   ],
+   "is_diff": 0.0008,
+   "oos_diff": 0.0012,
+   "ci": [
+    -0.0001,
+    0.0027
+   ],
+   "p": 0.08,
+   "years_same": "5/5",
+   "same_sign": true,
+   "polarity": 1,
+   "kind": "terc",
+   "crit": false,
+   "q": 0.267,
+   "pass": false
+  },
+  "opt_chg1:res_next": {
+   "n_is": 872,
+   "n_oos": 1161,
+   "edges": [
+    -14796.6667,
+    15300.3333
+   ],
+   "is_diff": -0.0011,
+   "oos_diff": 0.0007,
+   "ci": [
+    -0.0006,
+    0.0019
+   ],
+   "p": 0.285,
+   "years_same": "1/5",
+   "same_sign": false,
+   "polarity": -1,
+   "kind": "terc",
+   "crit": false,
+   "q": 0.5122,
+   "pass": false
+  },
+  "retail_chg1:res_next": {
+   "n_is": 872,
+   "n_oos": 1161,
+   "edges": [
+    -0.0327,
+    0.0351
+   ],
+   "is_diff": -0.0012,
+   "oos_diff": -0.0003,
+   "ci": [
+    -0.0014,
+    0.0008
+   ],
+   "p": 0.647,
+   "years_same": "3/5",
+   "same_sign": true,
+   "polarity": -1,
+   "kind": "terc",
+   "crit": false,
+   "q": 0.8319,
+   "pass": false
+  },
+  "f_net:res_next": {
+   "n_is": 981,
+   "n_oos": 1161,
+   "edges": [
+    -36.9105,
+    32.3583
+   ],
+   "is_diff": 0.0008,
+   "oos_diff": 0.0007,
+   "ci": [
+    -0.0002,
+    0.0016
+   ],
+   "p": 0.152,
+   "years_same": "4/5",
+   "same_sign": true,
+   "polarity": 1,
+   "kind": "terc",
+   "crit": false,
+   "q": 0.3909,
+   "pass": false
+  },
+  "basis_z:fwdo5": {
+   "n_is": 1133,
+   "n_oos": 1157,
+   "edges": [
+    -0.2744,
+    0.606
+   ],
+   "is_diff": 0.0003,
+   "oos_diff": -0.0004,
+   "ci": [
+    -0.0069,
+    0.0061
+   ],
+   "p": 0.91,
+   "years_same": "2/5",
+   "same_sign": false,
+   "polarity": 1,
+   "kind": "terc",
+   "crit": false,
+   "q": 0.991,
+   "pass": false
+  },
+  "basis_z:fwdo20": {
+   "n_is": 1133,
+   "n_oos": 1142,
+   "edges": [
+    -0.2744,
+    0.606
+   ],
+   "is_diff": -0.0039,
+   "oos_diff": 0.0085,
+   "ci": [
+    -0.008,
+    0.0261
+   ],
+   "p": 0.313,
+   "years_same": "1/5",
+   "same_sign": false,
+   "polarity": -1,
+   "kind": "terc",
+   "crit": false,
+   "q": 0.5122,
+   "pass": false
+  },
+  "basis_d5:fwdo5": {
+   "n_is": 1133,
+   "n_oos": 1157,
+   "edges": [
+    -0.0009,
+    0.0014
+   ],
+   "is_diff": 0.0028,
+   "oos_diff": -0.0033,
+   "ci": [
+    -0.0086,
+    0.0014
+   ],
+   "p": 0.204,
+   "years_same": "0/5",
+   "same_sign": false,
+   "polarity": 1,
+   "kind": "terc",
+   "crit": false,
+   "q": 0.408,
+   "pass": false
+  },
+  "basis_d5:fwdo20": {
+   "n_is": 1133,
+   "n_oos": 1142,
+   "edges": [
+    -0.0009,
+    0.0014
+   ],
+   "is_diff": -0.0042,
+   "oos_diff": 0.0002,
+   "ci": [
+    -0.0091,
+    0.0092
+   ],
+   "p": 0.991,
+   "years_same": "2/5",
+   "same_sign": false,
+   "polarity": -1,
+   "kind": "terc",
+   "crit": false,
+   "q": 0.991,
+   "pass": false
+  },
+  "opt_z:fwdo5": {
+   "n_is": 835,
+   "n_oos": 1157,
+   "edges": [
+    -0.2138,
+    0.6026
+   ],
+   "is_diff": 0.0072,
+   "oos_diff": 0.0046,
+   "ci": [
+    -0.0026,
+    0.0108
+   ],
+   "p": 0.197,
+   "years_same": "5/5",
+   "same_sign": true,
+   "polarity": 1,
+   "kind": "terc",
+   "crit": false,
+   "q": 0.408,
+   "pass": false
+  },
+  "opt_z:fwdo20": {
+   "n_is": 835,
+   "n_oos": 1142,
+   "edges": [
+    -0.2138,
+    0.6026
+   ],
+   "is_diff": 0.0251,
+   "oos_diff": -0.0061,
+   "ci": [
+    -0.0281,
+    0.0169
+   ],
+   "p": 0.593,
+   "years_same": "2/5",
+   "same_sign": false,
+   "polarity": 1,
+   "kind": "terc",
+   "crit": false,
+   "q": 0.8211,
+   "pass": false
+  },
+  "retail:fwdo5": {
+   "n_is": 875,
+   "n_oos": 1157,
+   "edges": [
+    -0.1211,
+    0.0312
+   ],
+   "is_diff": -0.0054,
+   "oos_diff": -0.0048,
+   "ci": [
+    -0.0106,
+    0.0008
+   ],
+   "p": 0.089,
+   "years_same": "4/4",
+   "same_sign": true,
+   "polarity": -1,
+   "kind": "terc",
+   "crit": false,
+   "q": 0.267,
+   "pass": false
+  },
+  "retail:fwdo20": {
+   "n_is": 875,
+   "n_oos": 1142,
+   "edges": [
+    -0.1211,
+    0.0312
+   ],
+   "is_diff": -0.0112,
+   "oos_diff": -0.0042,
+   "ci": [
+    -0.0243,
+    0.0159
+   ],
+   "p": 0.699,
+   "years_same": "3/4",
+   "same_sign": true,
+   "polarity": -1,
+   "kind": "terc",
+   "crit": false,
+   "q": 0.8388,
+   "pass": false
+  },
+  "margin_chg5:fwdo5": {
+   "n_is": 1133,
+   "n_oos": 1157,
+   "edges": [
+    -0.0013,
+    0.0132
+   ],
+   "is_diff": 0.0037,
+   "oos_diff": -0.0025,
+   "ci": [
+    -0.011,
+    0.0056
+   ],
+   "p": 0.54,
+   "years_same": "2/5",
+   "same_sign": false,
+   "polarity": 1,
+   "kind": "terc",
+   "crit": false,
+   "q": 0.81,
+   "pass": false
+  },
+  "margin_chg5:fwdo20": {
+   "n_is": 1133,
+   "n_oos": 1142,
+   "edges": [
+    -0.0013,
+    0.0132
+   ],
+   "is_diff": 0.0024,
+   "oos_diff": -0.0001,
+   "ci": [
+    -0.023,
+    0.0226
+   ],
+   "p": 0.941,
+   "years_same": "1/5",
+   "same_sign": false,
+   "polarity": 1,
+   "kind": "terc",
+   "crit": false,
+   "q": 0.991,
+   "pass": false
+  }
+ },
+ "incremental": {
+  "gap": {
+   "both_r2": 0.5664,
+   "sox_r2": 0.3996,
+   "incr_r2": 0.1668
+  },
+  "r1": {
+   "both_r2": 0.4615,
+   "sox_r2": 0.2638,
+   "incr_r2": 0.1977
+  }
+ },
+ "night_r1_is": {
+  "alpha": 0.0001,
+  "beta": 0.8669
+ },
+ "n_tests": 18
+}

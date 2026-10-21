@@ -1,0 +1,37 @@
+{
+ "mode": "inspect",
+ "files": [
+  "reviews_b75/strip/intraday.py",
+  "reviews_b75/strip/futdata_B.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"REVISE\",\n  \"summary\": \"Critical runtime errors in futdata_B.py prevent loading of saved futures data, breaking downstream analysis.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"high\",\n      \"path\": \"futdata_B.py\",\n      \"issue\": \"load_fut_daily constructs DataFrames using `dict(r)` on SQLite row tuples, which raises a TypeError because a tuple cannot be directly converted to a dict of column/value pairs.\",\n      \"evidence\": \"```python\\nreturn pd.DataFrame([dict(r) for r in rs], columns=['date', 'sess', 'contract', 'o', 'h', 'l', 'c', 'v', 'oi', 'ref_close'])\\n```\\n`rs` is a list of tuples, so `dict(r)` is invalid.\",\n      \"suggestion\": \"Replace the list comprehension with `pd.DataFrame(rs, columns=[...])` or `pd.DataFrame([dict(zip(columns, r)) for r in rs], columns=columns)`.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"high\",\n      \"path\": \"futdata_B.py\",\n      \"issue\": \"load_fut_chips suffers the same `dict(r)` misuse, causing a TypeError when loading chip data.\",\n      \"evidence\": \"```python\\nreturn pd.DataFrame([dict(r) for r in rs], columns=['date', 'mtx_oi', 'mtx_inst_long', 'mtx_inst_short', 'retail_ratio', 'opt_f_bull'])\\n```\\n`rs` is a list of tuples.\",\n      \"suggestion\": \"Construct the DataFrame directly from the tuple list: `pd.DataFrame(rs, columns=[...])`.\"\n    }\n  ],\n  \"coverage\": \"The review covered all functions in intraday.py and futdata_B.py, focusing on data loading/saving, array handling, and edge‑case logic.\",\n  \"limitations\": \"The analysis assumes that external symbols (e.g., D, log, threading, math, pd, httpx, etc.) are correctly provided by other modules as per the project’s architecture. Missing imports were not flagged per the instruction that such names may be defined elsewhere.\"\n}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "Critical runtime errors in futdata_B.py prevent loading of saved futures data, breaking downstream analysis.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "path": "futdata_B.py",
+      "issue": "load_fut_daily constructs DataFrames using `dict(r)` on SQLite row tuples, which raises a TypeError because a tuple cannot be directly converted to a dict of column/value pairs.",
+      "evidence": "```python\nreturn pd.DataFrame([dict(r) for r in rs], columns=['date', 'sess', 'contract', 'o', 'h', 'l', 'c', 'v', 'oi', 'ref_close'])\n```\n`rs` is a list of tuples, so `dict(r)` is invalid.",
+      "suggestion": "Replace the list comprehension with `pd.DataFrame(rs, columns=[...])` or `pd.DataFrame([dict(zip(columns, r)) for r in rs], columns=columns)`."
+     },
+     {
+      "id": "F2",
+      "severity": "high",
+      "path": "futdata_B.py",
+      "issue": "load_fut_chips suffers the same `dict(r)` misuse, causing a TypeError when loading chip data.",
+      "evidence": "```python\nreturn pd.DataFrame([dict(r) for r in rs], columns=['date', 'mtx_oi', 'mtx_inst_long', 'mtx_inst_short', 'retail_ratio', 'opt_f_bull'])\n```\n`rs` is a list of tuples.",
+      "suggestion": "Construct the DataFrame directly from the tuple list: `pd.DataFrame(rs, columns=[...])`."
+     }
+    ],
+    "coverage": "The review covered all functions in intraday.py and futdata_B.py, focusing on data loading/saving, array handling, and edge‑case logic.",
+    "limitations": "The analysis assumes that external symbols (e.g., D, log, threading, math, pd, httpx, etc.) are correctly provided by other modules as per the project’s architecture. Missing imports were not flagged per the instruction that such names may be defined elsewhere."
+   }
+  }
+ ]
+}

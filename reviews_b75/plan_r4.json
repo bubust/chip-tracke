@@ -1,0 +1,41 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B75.md",
+  "wave/service.py",
+  "wave/levels.py",
+  "wave/engine.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-flash-latest",
+   "error": "429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.8-flash\\nPlease retry in 5h20m56.760538943s.', 'status': 'RESOURCE_EXHA"
+  },
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\"verdict\":\"APPROVED\",\"summary\":\"The plan addresses all previously raised concerns: night‑session return handling, chip timing, cache keys, session detection, look‑ahead bias, multiple‑testing correction, roll handling, timestamps, memory usage, retry logic, and UI wording. Statistical methodology and back‑testing procedures are well defined, and failure handling and resource constraints are adequately covered. Minor low‑severity suggestions are noted.\",\"findings\":[{\"id\":\"F1\",\"severity\":\"low\",\"section\":\"3.5\",\"issue\":\"Ensure the per‑file aggregation dict is cleared promptly after each zip to keep memory footprint minimal.\",\"suggestion\":\"Explicitly delete or reassign the dict after processing each zip file.\"},{\"id\":\"F2\",\"severity\":\"low\",\"section\":\"3.4\",\"issue\":\"No alert channel for persistent source failures beyond UI flag.\",\"suggestion\":\"Consider adding optional email/Slack alerts for sources that fail repeatedly (e.g., >3 consecutive days).\"}],\"coverage\":\"All required sections (2, 3.2‑3.5, 6) are present and meet the coordinator’s dispositions. Statistical tests, back‑testing, and BH correction are fully described.\",\"limitations\":\"Reliance on external data providers (FinMind, cnyes, TAIFEX) may introduce occasional gaps; current retry/backfill strategy mitigates but does not guarantee zero missing days.\"}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "The plan addresses all previously raised concerns: night‑session return handling, chip timing, cache keys, session detection, look‑ahead bias, multiple‑testing correction, roll handling, timestamps, memory usage, retry logic, and UI wording. Statistical methodology and back‑testing procedures are well defined, and failure handling and resource constraints are adequately covered. Minor low‑severity suggestions are noted.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "low",
+      "section": "3.5",
+      "issue": "Ensure the per‑file aggregation dict is cleared promptly after each zip to keep memory footprint minimal.",
+      "suggestion": "Explicitly delete or reassign the dict after processing each zip file."
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "section": "3.4",
+      "issue": "No alert channel for persistent source failures beyond UI flag.",
+      "suggestion": "Consider adding optional email/Slack alerts for sources that fail repeatedly (e.g., >3 consecutive days)."
+     }
+    ],
+    "coverage": "All required sections (2, 3.2‑3.5, 6) are present and meet the coordinator’s dispositions. Statistical tests, back‑testing, and BH correction are fully described.",
+    "limitations": "Reliance on external data providers (FinMind, cnyes, TAIFEX) may introduce occasional gaps; current retry/backfill strategy mitigates but does not guarantee zero missing days."
+   }
+  }
+ ]
+}

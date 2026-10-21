@@ -1,4 +1,4 @@
-"""B74 大盤解析 API（PLAN-B74 §7）"""
+"""B74 大盤解析 API（PLAN-B74 §7）；B75 加 sym＝TWII／TX、分 K 排程（PLAN-B75 §3.4、§9）"""
 from __future__ import annotations
 
 import logging
@@ -6,7 +6,7 @@ import threading
 
 from fastapi import APIRouter, HTTPException
 
-from . import data as D, panel as P, service as S
+from . import data as D, futdata as FD, panel as P, service as S
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -19,18 +19,27 @@ def startup():
         D.init_db()
         D.ensure_history(background=True)
         D.ensure_chips_history(background=True)
+        FD.ensure_history(background=True)
     except Exception as e:     # noqa: BLE001
         log.warning(f"[wave] 啟動初始化失敗：{e}")
 
 
 @router.get("/api/wave/snapshot")
-def api_snapshot(force: int = 0):
-    return S.snapshot(force=bool(force))
+def api_snapshot(force: int = 0, sym: str = "TWII"):
+    if sym not in S.SYMS:
+        raise HTTPException(status_code=400, detail="sym 只能是 TWII 或 TX")
+    return S.snapshot(force=bool(force), sym=sym)
 
 
 @router.get("/api/wave/status")
 def api_status():
-    return {"sources": D.status(), "refresh": _refresh, "counts": {s: D.count_idx(s) for s in D.SYMS}}
+    with D.db() as c:
+        b5 = {r["sym"]: {"n": r["n"], "last": FD.tw_dt(r["mx"]).strftime("%Y-%m-%d %H:%M")}
+              for r in c.execute("SELECT sym, COUNT(*) n, MAX(ts) mx FROM bars5 GROUP BY sym").fetchall()}
+        fd = c.execute("SELECT COUNT(*) n, MAX(date) mx FROM fut_daily").fetchone()
+        fc = c.execute("SELECT COUNT(*) n, MAX(date) mx FROM fut_chips").fetchone()
+    return {"sources": D.status(), "refresh": _refresh, "counts": {s: D.count_idx(s) for s in D.SYMS},
+            "bars5": b5, "fut_daily": {"n": fd["n"], "last": fd["mx"]}, "fut_chips": {"n": fc["n"], "last": fc["mx"]}}
 
 
 def refresh_job(chips: bool = True):
@@ -56,11 +65,13 @@ def api_refresh():
 
 
 @router.get("/api/wave/report")
-def api_report():
-    """研究報告（research/wave/REPORT.md，純文字）"""
+def api_report(part: str = "wave"):
+    """研究報告（純文字）：part＝wave（B74 research/wave/REPORT.md）／futures（B75 research/futures/REPORT.md）"""
     import os
     from fastapi.responses import PlainTextResponse
-    p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "research", "wave", "REPORT.md")
+    if part not in ("wave", "futures"):
+        raise HTTPException(status_code=400, detail="part 只能是 wave 或 futures")
+    p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "research", part, "REPORT.md")
     try:
         with open(p, encoding="utf-8") as fh:
             return PlainTextResponse(fh.read(), media_type="text/plain; charset=utf-8")
@@ -78,7 +89,7 @@ def api_panel_run():
     if not P.providers():
         raise HTTPException(status_code=400, detail="還沒設定任何 AI 金鑰（GEMINI_API_KEY／GROQ_API_KEY）")
     try:
-        jid = P.start(lambda: S.snapshot(), "manual")
+        jid = P.start(S.panel_snapshot, "manual")
     except OverflowError as e:
         raise HTTPException(status_code=429, detail=str(e))
     return {"job": jid}
@@ -91,9 +102,24 @@ def api_panel_job(jid: str):
 
 # ── 排程與推播用 ──────────────────────────────────────────────────────────────
 def scheduled(kind: str):
-    """08:20 國外指數＋重算；13:45 加權收盤；16:30 籌碼＋重算＋AI 圓桌；21:40 融資"""
+    """08:20 國外指數＋台指期夜盤＋重算；13:45 加權收盤；13:50 分 K 存檔；16:30 籌碼＋逐筆檔補分 K＋重算＋AI 圓桌；
+    21:40 融資；05:10（二～六）夜盤分 K 存檔"""
     try:
-        if D.tw_now().weekday() >= 5:
+        wd = D.tw_now().weekday()
+        if kind == "night_close":
+            if 1 <= wd <= 5:
+                FD.live_bars("TX")
+                S.snapshot(force=True, sym="TX")
+            return
+        if kind == "intraday_close":
+            if wd < 5:
+                FD.live_bars("TX")
+                FD.live_bars("TWII")
+                S.fill_twii_today()
+                S.snapshot(force=True, sym="TX")
+                S.snapshot(force=True)
+            return
+        if wd >= 5:
             return
         if kind == "premarket":
             refresh_job(chips=False)
@@ -102,7 +128,7 @@ def scheduled(kind: str):
         elif kind == "chips":
             refresh_job(chips=True)
             if P.providers():
-                P.start(lambda: S.snapshot(), "auto")
+                P.start(S.panel_snapshot, "auto")
         elif kind == "margin":
             refresh_job(chips=True)
     except Exception as e:     # noqa: BLE001
@@ -137,6 +163,12 @@ def push_lines(snap: dict | None = None) -> list:
     for k, nm in (("short", "短線"), ("swing", "波段")):
         lv = snap["levels"][k]
         L.append(f"{nm}　撐 {zz(lv['support'])}／壓 {zz(lv['resistance'])}")
+    ks = (snap.get("key") or {}).get("short")
+    if ks:
+        L.append(f"短線{ks['kind']} {ks['price']:,.0f}（{'跌破' if ks['side'] == 'below' else '站上'}＝這一段可能結束）")
+    orf = snap.get("open_ref")
+    if orf and orf.get("night_ret") is not None:
+        L.append(f"台指期夜盤 {orf['night_ret']:+.2f}% → 加權今天開盤參考 {orf['gap']:+.2f}%（±{orf['gap_sd']:.1f}%）")
     so = (snap.get("global") or {}).get("sox_overnight")
     if so and so.get("tw_expect") is not None:
         L.append(f"費半 {md(so['date'])} {so['sox_ret']:+.2f}% → 加權今天歷史平均 {so['tw_expect']:+.2f}%（±{so['sd']:.1f}%）")

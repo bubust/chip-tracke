@@ -266,10 +266,70 @@ def facts(snap: dict, nw: Optional[dict] = None) -> str:
         L.append(f"【格局】{ctx['box']}；月線斜率 {((ctx.get('mslope') or {}).get('slope'))}%（{(ctx.get('mslope') or {}).get('tier')}）")
     if ctx.get("crash"):
         L.append(f"【大跌買點研究】比 60 日高點 {ctx['crash']['dd'] * 100:.1f}%；深跌訊號：{ctx['crash']['deep'] or '無'}")
+    L += facts_b75(snap)
     L.append("【研究結論】" + "；".join((snap.get("research") or {}).get("summary") or []))
     if nw and nw.get("items"):
         L.append("【近 7 天新聞（Google 搜尋）】" + "；".join(f"{x.get('date', '')} {x['title']}（{x.get('why', '')}）" for x in nw["items"]))
     return "\n".join(L)
+
+
+def _key(k: Optional[dict], nm: str) -> str:
+    if not k:
+        return f"{nm}：沒有"
+    s = f"{nm}{k['kind']} {k['price']:,.0f}（{'跌破' if k['side'] == 'below' else '站上'}＝這一段可能結束；離現價 {k.get('dist_pct')}%"
+    if k.get("broken"):
+        s += "；現在已經" + ("跌破" if k["side"] == "below" else "站上")
+    if k.get("wave_invalid") is not None:
+        s += f"；波浪規則最後防線 {k['wave_invalid']:,.0f}"
+    return s + "；回測跟隨便畫線差不多 △）"
+
+
+def facts_b75(snap: dict) -> list:
+    """B75：轉折點、超短線（60 分 K）、夜盤→開盤、台指期、綜合研判、散戶小台／外資選擇權、融資增減"""
+    L = []
+    ky = snap.get("key") or {}
+    L.append("【轉折點（加權）】" + "；".join(_key(ky.get(m), nm) for m, nm in (("ultra", "超短線"), ("short", "短線"), ("swing", "波段"))))
+    iw = (snap.get("waves") or {}).get("intra") or {}
+    if iw.get("primary"):
+        L.append(f"【超短線 60 分 K 數浪（加權）】{iw['primary'].get('text')}")
+    lu = (snap.get("levels") or {}).get("ultra") or {}
+    if lu.get("support") or lu.get("resistance"):
+        L.append("【超短線支撐】" + ("；".join(_z(z) for z in lu.get("support") or []) or "無") +
+                 "【超短線壓力】" + ("；".join(_z(z) for z in lu.get("resistance") or []) or "無"))
+    orf = snap.get("open_ref")
+    if orf:
+        L.append(f"【台指期夜盤 → 加權】夜盤 {orf['night_ret']}%（{orf.get('src')}）→ 歷史平均加權開盤 {orf['gap']}%（±{orf['gap_sd']}%）、"
+                 f"收盤 {orf['r1']}%（±{orf['r1_sd']}%）；樣本外 R² {orf.get('oos_r2')} ✅（回測最有效的領先指標）")
+    tx = snap.get("tx") or {}
+    if tx.get("ok"):
+        b = tx.get("basis") or {}
+        txw = tx.get("waves") or {}
+        L.append(f"【台指期（近月，含夜盤）】{tx['price']:,.0f}（{tx.get('chg_pct')}%，{(tx.get('asof') or {}).get('session', '')}）；"
+                 + (f"期現價差 {b.get('pts')} 點（{b.get('label')}）；" if b else "")
+                 + f"小級：{((txw.get('small') or {}).get('primary') or {}).get('text', '結構不清楚')}；"
+                 + f"中級：{((txw.get('mid') or {}).get('primary') or {}).get('text', '結構不清楚')}；"
+                 + f"60 分 K：{((txw.get('intra') or {}).get('primary') or {}).get('text', '—')}")
+        tk = tx.get("key") or {}
+        L.append("【轉折點（台指期）】" + "；".join(_key(tk.get(m), nm) for m, nm in (("ultra", "超短線"), ("short", "短線"), ("swing", "波段"))))
+        for k, nm in (("ultra", "超短線"), ("short", "短線")):
+            lv = (tx.get("levels") or {}).get(k) or {}
+            L.append(f"【台指期{nm}支撐／壓力】" + "、".join(f"{z['price']:,.0f}" for z in lv.get("support") or []) + "／" +
+                     "、".join(f"{z['price']:,.0f}" for z in lv.get("resistance") or []))
+    cp = snap.get("composite") or {}
+    if cp.get("rows"):
+        H = cp.get("horizons") or {}
+        st = lambda c: "—" if c is None or c.get("state") is None else ("偏多" if c["state"] > 0 else "偏空" if c["state"] < 0 else "中性") + ("✅" if c.get("pass") else "△")
+        L.append("【期貨＋籌碼綜合研判（✅＝回測有效，△＝沒有預測力只能描述）】" + "；".join(
+            f"{r['name']} 現在 {r.get('value')}：" + "、".join(f"{H.get(h, h)}{st(c)}" for h, c in (r.get("cells") or {}).items()) for r in cp["rows"]))
+        L.append("【綜合方向（只算 ✅）】" + "；".join(f"{H.get(h, h)}：{d.get('label')}" for h, d in (cp.get("dir") or {}).items()))
+    fc = snap.get("fut_chips") or {}
+    if fc.get("ok"):
+        L.append(f"【散戶小台多空比 {fc['date']}】{fc['retail_ratio']}（正＝散戶淨多）、外資選擇權未平倉偏多金額 {fc.get('opt_f_bull')} 千元 △")
+    mg = snap.get("margin") or {}
+    if mg.get("ok"):
+        L.append(f"【融資 {mg['date']}】餘額 {mg['amt']} 億；1 天 {mg['chg1']} 億、5 天 {mg['chg5']} 億、20 天 {mg['chg20']} 億（{mg['pct20']}%）；"
+                 f"連續 {'增加' if mg['streak'] > 0 else '減少'} {abs(mg['streak'])} 天 △")
+    return L
 
 
 RULES = ("規則：只用繁體中文；價位只能用上面資料裡出現的數字（支撐壓力、劇本目標、失效價、歷史分布），不要自己算新點位；"
@@ -320,6 +380,16 @@ def allowed_levels(snap: dict) -> list:
     for hz in ("h5", "h20", "h60"):
         x = (snap.get("forecast") or {}).get(hz) or {}
         out += [x.get("lo_px"), x.get("mid_px"), x.get("hi_px")]
+    # B75：超短線價位、轉折點、台指期（價格、價位、轉折、數浪）
+    for z in [z for side in ("support", "resistance") for z in (((snap.get("levels") or {}).get("ultra") or {}).get(side) or [])]:
+        out += [z["price"], z["lo"], z["hi"]] + [s_["price"] for s_ in z["sources"]]
+    for k in (snap.get("key") or {}).values():
+        if k:
+            out += [k.get("price"), k.get("wave_invalid")]
+    tx = snap.get("tx") or {}
+    if tx.get("ok"):
+        out += allowed_levels({k: v for k, v in tx.items() if k != "tx"})
+        out += [(tx.get("basis") or {}).get("twii")]
     return [float(v) for v in out if v]
 
 

@@ -1,0 +1,13 @@
+{
+ "mode": "inspect",
+ "files": [
+  "reviews_b75/strip/intraday.py",
+  "reviews_b75/strip/futdata_B.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "error": "Error code: 400 - {'error': {'message': \"Failed to validate JSON. Please adjust your prompt. See 'failed_generation' for more details.\", 'type': 'invalid_request_error', 'code': 'json_validate_failed', 'failed_generation': ''}}"
+  }
+ ]
+}

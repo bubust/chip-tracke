@@ -1,0 +1,27 @@
+{
+ "mode": "inspect",
+ "files": [
+  "reviews_b75/strip/keylevel.py",
+  "reviews_b75/strip/composite.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\n  \"verdict\": \"REVISE\",\n  \"summary\": \"Logical error in `state_of` polarity handling and potential division‑by‑zero in `build` calculations.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"medium\",\n      \"path\": \"composite.py\",\n      \"issue\": \"The expression `pol = res.get('polarity') or 1 if res.get('pass') else NATURAL.get(key, 1)` relies on Python's operator precedence, which parses as `res.get('polarity') or (1 if res.get('pass') else NATURAL.get(key, 1))`. If `res['polarity']` is present but falsy (e.g., 0), the code will ignore it and fall back to the conditional, yielding an incorrect polarity.\",\n      \"evidence\": \"When `res = {'polarity': 0, 'pass': True}` the intended polarity should be 0, but the current code evaluates to `1` because `0 or (1 if True else ...)` results in `1`.\",\n      \"suggestion\": \"Rewrite the assignment to make the precedence explicit, e.g.:\\n```python\\npol = res.get('polarity')\\nif pol is None:\\n    pol = 1 if res.get('pass') else NATURAL.get(key, 1)\\n```\"\n    }]}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "Logical error in `state_of` polarity handling and potential division‑by‑zero in `build` calculations.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "medium",
+      "path": "composite.py",
+      "issue": "The expression `pol = res.get('polarity') or 1 if res.get('pass') else NATURAL.get(key, 1)` relies on Python's operator precedence, which parses as `res.get('polarity') or (1 if res.get('pass') else NATURAL.get(key, 1))`. If `res['polarity']` is present but falsy (e.g., 0), the code will ignore it and fall back to the conditional, yielding an incorrect polarity.",
+      "evidence": "When `res = {'polarity': 0, 'pass': True}` the intended polarity should be 0, but the current code evaluates to `1` because `0 or (1 if True else ...)` results in `1`.",
+      "suggestion": "Rewrite the assignment to make the precedence explicit, e.g.:\n```python\npol = res.get('polarity')\nif pol is None:\n    pol = 1 if res.get('pass') else NATURAL.get(key, 1)\n```"
+     }
+    ]
+   }
+  }
+ ]
+}

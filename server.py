@@ -798,9 +798,12 @@ async def lifespan(app: FastAPI):
             except Exception as _wve:
                 import logging as _lg4
                 _lg4.getLogger(__name__).warning(f"[wave] {kind}: {_wve}")
-        for _wk, _wh, _wm in (("premarket", 8, 20), ("close", 13, 45), ("chips", 16, 30), ("margin", 21, 40)):
+        for _wk, _wh, _wm in (("premarket", 8, 20), ("close", 13, 45), ("intraday_close", 13, 50), ("chips", 16, 30), ("margin", 21, 40)):
             _pos_watch.add_job(lambda _k=_wk: _wave_job(_k), "cron", day_of_week="mon-fri", hour=_wh, minute=_wm,
                                id=f"wave_{_wk}", replace_existing=True, max_instances=1, coalesce=True)
+        # B75：台指期夜盤 05:00 收 → 05:10 存夜盤分 K（週二～六）
+        _pos_watch.add_job(lambda: _wave_job("night_close"), "cron", day_of_week="tue-sat", hour=5, minute=10,
+                           id="wave_night_close", replace_existing=True, max_instances=1, coalesce=True)
         _pos_watch.start()
         global _POS_SCHED
         _POS_SCHED = _pos_watch

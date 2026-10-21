@@ -1,0 +1,21 @@
+{
+ "mode": "inspect",
+ "files": [
+  "wave/futdata.py",
+  "wave/composite.py",
+  "tests/test_b75_futures.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3-flash-preview",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"The implementation correctly integrates all requested fixes and adheres to PLAN-B75. Robust handling of edge cases (NaN volume, missing session data) is verified, and look-ahead bias is properly prevented in Z-score and rolling calculations. Tests provide explicit coverage for the recently applied fixes.\",\n  \"findings\": [],\n  \"coverage\": \"High. Tests cover contract roll-over logic, TAIFEX tick parsing, multi-session aggregation (including the 13:30/13:45 auction bar merging), look-ahead prevention in features, and the retail ratio calculation logic. Fixes for NaN volume and missing night highs/lows are specifically unit-tested.\",\n  \"limitations\": \"Backfill relies on external sources (Yahoo/FinMind/TAIFEX/CNYES); while retry logic exists, downtime in those APIs would delay historical data population.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "The implementation correctly integrates all requested fixes and adheres to PLAN-B75. Robust handling of edge cases (NaN volume, missing session data) is verified, and look-ahead bias is properly prevented in Z-score and rolling calculations. Tests provide explicit coverage for the recently applied fixes.",
+    "findings": [],
+    "coverage": "High. Tests cover contract roll-over logic, TAIFEX tick parsing, multi-session aggregation (including the 13:30/13:45 auction bar merging), look-ahead prevention in features, and the retail ratio calculation logic. Fixes for NaN volume and missing night highs/lows are specifically unit-tested.",
+    "limitations": "Backfill relies on external sources (Yahoo/FinMind/TAIFEX/CNYES); while retry logic exists, downtime in those APIs would delay historical data population."
+   }
+  }
+ ]
+}

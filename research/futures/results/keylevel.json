@@ -1,0 +1,268 @@
+{
+ "modes": {
+  "short": {
+   "data": "加權日 K 2005～",
+   "cands": {
+    "K1": {
+     "n": 5332,
+     "dist_atr_med": 4.3624,
+     "dist_atr_p90": 10.6207,
+     "dist_pct_med": 0.0543,
+     "dist_pct_p90": 0.1179,
+     "hit_rate": 0.1694,
+     "n_break": 532,
+     "ft_rate": 0.6447,
+     "placebo_rate": 0.6509,
+     "diff": -0.0062,
+     "ci": [
+      -0.0534,
+      0.0446
+     ],
+     "p": 0.851,
+     "practical": false,
+     "q": 0.986,
+     "sig": false
+    },
+    "K2": {
+     "n": 5332,
+     "dist_atr_med": 4.3161,
+     "dist_atr_p90": 10.2007,
+     "dist_pct_med": 0.0525,
+     "dist_pct_p90": 0.1138,
+     "hit_rate": 0.1652,
+     "n_break": 545,
+     "ft_rate": 0.6771,
+     "placebo_rate": 0.6768,
+     "diff": 0.0002,
+     "ci": [
+      -0.057,
+      0.0545
+     ],
+     "p": 0.983,
+     "practical": false,
+     "q": 0.986,
+     "sig": false
+    },
+    "K3": {
+     "n": 5332,
+     "dist_atr_med": 3.0704,
+     "dist_atr_p90": 5.8505,
+     "dist_pct_med": 0.0376,
+     "dist_pct_p90": 0.0775,
+     "hit_rate": 0.2613,
+     "n_break": 957,
+     "ft_rate": 0.6938,
+     "placebo_rate": 0.702,
+     "diff": -0.0081,
+     "ci": [
+      -0.0419,
+      0.0248
+     ],
+     "p": 0.641,
+     "practical": false,
+     "q": 0.9615,
+     "sig": false
+    }
+   },
+   "rule": "K3",
+   "how": "closest_to_band",
+   "sig": false
+  },
+  "swing": {
+   "data": "加權日 K 2005～",
+   "cands": {
+    "K1": {
+     "n": 5332,
+     "dist_atr_med": 8.68,
+     "dist_atr_p90": 19.0368,
+     "dist_pct_med": 0.1063,
+     "dist_pct_p90": 0.206,
+     "hit_rate": 0.1722,
+     "n_break": 721,
+     "ft_rate": 0.7698,
+     "placebo_rate": 0.697,
+     "diff": 0.0728,
+     "ci": [
+      -0.0008,
+      0.143
+     ],
+     "p": 0.051,
+     "practical": false,
+     "q": 0.459,
+     "sig": false
+    },
+    "K2": {
+     "n": 5331,
+     "dist_atr_med": 8.4028,
+     "dist_atr_p90": 20.2838,
+     "dist_pct_med": 0.1041,
+     "dist_pct_p90": 0.2143,
+     "hit_rate": 0.1656,
+     "n_break": 641,
+     "ft_rate": 0.6911,
+     "placebo_rate": 0.6467,
+     "diff": 0.0444,
+     "ci": [
+      -0.0444,
+      0.1396
+     ],
+     "p": 0.329,
+     "practical": false,
+     "q": 0.954,
+     "sig": false
+    },
+    "K3": {
+     "n": 5331,
+     "dist_atr_med": 2.8597,
+     "dist_atr_p90": 5.9865,
+     "dist_pct_med": 0.035,
+     "dist_pct_p90": 0.0863,
+     "hit_rate": 0.5136,
+     "n_break": 2271,
+     "ft_rate": 0.6645,
+     "placebo_rate": 0.6536,
+     "diff": 0.0109,
+     "ci": [
+      -0.0243,
+      0.043
+     ],
+     "p": 0.53,
+     "practical": true,
+     "q": 0.954,
+     "sig": false
+    }
+   },
+   "rule": "K3",
+   "how": "practical",
+   "sig": false
+  },
+  "ultra": {
+   "data": "加權 60 分 K（Yahoo 2 年）",
+   "cands": {
+    "K1": {
+     "n": 3564,
+     "dist_atr_med": 3.5137,
+     "dist_atr_p90": 9.9854,
+     "dist_pct_med": 0.0198,
+     "dist_pct_p90": 0.0535,
+     "hit_rate": 0.287,
+     "n_break": 733,
+     "ft_rate": 0.7149,
+     "placebo_rate": 0.7316,
+     "diff": -0.0167,
+     "ci": [
+      -0.0594,
+      0.0226
+     ],
+     "p": 0.43,
+     "practical": false,
+     "q": 0.954,
+     "sig": false
+    },
+    "K2": {
+     "n": 3564,
+     "dist_atr_med": 3.4786,
+     "dist_atr_p90": 9.28,
+     "dist_pct_med": 0.0196,
+     "dist_pct_p90": 0.0501,
+     "hit_rate": 0.2758,
+     "n_break": 709,
+     "ft_rate": 0.7193,
+     "placebo_rate": 0.7196,
+     "diff": -0.0003,
+     "ci": [
+      -0.0471,
+      0.0494
+     ],
+     "p": 0.986,
+     "practical": false,
+     "q": 0.986,
+     "sig": false
+    },
+    "K3": {
+     "n": 3564,
+     "dist_atr_med": 2.8103,
+     "dist_atr_p90": 6.1657,
+     "dist_pct_med": 0.0156,
+     "dist_pct_p90": 0.0402,
+     "hit_rate": 0.3361,
+     "n_break": 843,
+     "ft_rate": 0.7556,
+     "placebo_rate": 0.7435,
+     "diff": 0.0122,
+     "ci": [
+      -0.0238,
+      0.0497
+     ],
+     "p": 0.496,
+     "practical": false,
+     "q": 0.954,
+     "sig": false
+    }
+   },
+   "rule": "K3",
+   "how": "closest_to_band",
+   "sig": false
+  },
+  "ultra_tx": {
+   "data": "台指期 60 分 K（期交所 30 天，只報告；bootstrap 用日分組）",
+   "cands": {
+    "K1": {
+     "n": 471,
+     "dist_atr_med": 3.1487,
+     "dist_atr_p90": 7.4827,
+     "dist_pct_med": 0.0132,
+     "dist_pct_p90": 0.0259,
+     "hit_rate": 0.2378,
+     "n_break": 66,
+     "ft_rate": 0.803,
+     "placebo_rate": 0.7568,
+     "diff": 0.0463,
+     "ci": [
+      -0.0672,
+      0.1715
+     ],
+     "p": 0.381,
+     "practical": false
+    },
+    "K2": {
+     "n": 471,
+     "dist_atr_med": 2.822,
+     "dist_atr_p90": 6.8945,
+     "dist_pct_med": 0.0116,
+     "dist_pct_p90": 0.0226,
+     "hit_rate": 0.3439,
+     "n_break": 110,
+     "ft_rate": 0.7727,
+     "placebo_rate": 0.7263,
+     "diff": 0.0465,
+     "ci": [
+      -0.0662,
+      0.1653
+     ],
+     "p": 0.412,
+     "practical": true
+    },
+    "K3": {
+     "n": 471,
+     "dist_atr_med": 2.449,
+     "dist_atr_p90": 5.2608,
+     "dist_pct_med": 0.0094,
+     "dist_pct_p90": 0.0195,
+     "hit_rate": 0.3949,
+     "n_break": 131,
+     "ft_rate": 0.7939,
+     "placebo_rate": 0.7548,
+     "diff": 0.0391,
+     "ci": [
+      -0.0445,
+      0.1359
+     ],
+     "p": 0.36,
+     "practical": true
+    }
+   }
+  }
+ },
+ "intra_m": 2.0
+}

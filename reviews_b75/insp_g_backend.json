@@ -1,0 +1,51 @@
+{
+ "mode": "inspect",
+ "files": [
+  "PLAN-B75.md",
+  "wave/futdata.py",
+  "wave/keylevel.py",
+  "wave/composite.py",
+  "wave/intraday.py",
+  "wave/service.py",
+  "wave/router.py",
+  "reviews_b75/diff_small.patch"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3-flash-preview",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"The implementation of the B75 update is technically sound and strictly follows the approved PLAN. The complex logic for Taifex night sessions (belonging to the next trading day) and continuous contract reference prices (for night session return calculations) is correctly handled. Memory efficiency for the 512MB environment is maintained through streaming ZIP parsing. Turning points (K3) and the futures composite analysis properly incorporate backtest results while avoiding look-ahead bias.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"low\",\n      \"path\": \"futdata.py\",\n      \"issue\": \"Database write on GET request\",\n      \"evidence\": \"service.py: compute calls FD.live_bars, which internally calls save_bars5 to persist newly completed 5-min bars into the database during an API snapshot request.\",\n      \"suggestion\": \"While approved in the plan for real-time consistency, ensure that high-frequency concurrent requests do not cause DB contention. The existing 120s snapshot cache and the threading lock in save_bars5 mitigate this.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"path\": \"futdata.py\",\n      \"issue\": \"Potential division by zero or NaN in aggregation if data is sparse\",\n      \"evidence\": \"In agg_bars, volume defaults to 0 if None, but prices (o, h, l) are derived from the first 5-min bar found in the bucket.\",\n      \"suggestion\": \"The logic is mostly safe because it filters for math.isfinite(c), but explicitly verifying that at least one valid bar exists before creating the aggregate entry would be more robust.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"low\",\n      \"path\": \"service.py\",\n      \"issue\": \"Potential stale data during TWII/TX synchronization\",\n      \"evidence\": \"In compute(sym='TX'), the basis calculation uses D.live_taiex(). If the TAIEX source is failing but TX is working, it falls back to the previous day's close.\",\n      \"suggestion\": \"Add a flag or log warning when the basis is calculated against non-live TAIEX data during market hours so the AI Round Table can contextualize the 'basis' reading.\"\n    }\n  ],\n  \"coverage\": \"High. Reviewed futdata.py (Data), keylevel.py (Turning Points), composite.py (研判), intraday.py (Short-term), and service/router.py (API). Verified Taifex ZIP streaming, session logic, and composite scoring.\",\n  \"limitations\": \"Review limited to backend Python files; Frontend LWC (wave.js) and index.html are excluded per instructions.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "The implementation of the B75 update is technically sound and strictly follows the approved PLAN. The complex logic for Taifex night sessions (belonging to the next trading day) and continuous contract reference prices (for night session return calculations) is correctly handled. Memory efficiency for the 512MB environment is maintained through streaming ZIP parsing. Turning points (K3) and the futures composite analysis properly incorporate backtest results while avoiding look-ahead bias.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "low",
+      "path": "futdata.py",
+      "issue": "Database write on GET request",
+      "evidence": "service.py: compute calls FD.live_bars, which internally calls save_bars5 to persist newly completed 5-min bars into the database during an API snapshot request.",
+      "suggestion": "While approved in the plan for real-time consistency, ensure that high-frequency concurrent requests do not cause DB contention. The existing 120s snapshot cache and the threading lock in save_bars5 mitigate this."
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "path": "futdata.py",
+      "issue": "Potential division by zero or NaN in aggregation if data is sparse",
+      "evidence": "In agg_bars, volume defaults to 0 if None, but prices (o, h, l) are derived from the first 5-min bar found in the bucket.",
+      "suggestion": "The logic is mostly safe because it filters for math.isfinite(c), but explicitly verifying that at least one valid bar exists before creating the aggregate entry would be more robust."
+     },
+     {
+      "id": "F3",
+      "severity": "low",
+      "path": "service.py",
+      "issue": "Potential stale data during TWII/TX synchronization",
+      "evidence": "In compute(sym='TX'), the basis calculation uses D.live_taiex(). If the TAIEX source is failing but TX is working, it falls back to the previous day's close.",
+      "suggestion": "Add a flag or log warning when the basis is calculated against non-live TAIEX data during market hours so the AI Round Table can contextualize the 'basis' reading."
+     }
+    ],
+    "coverage": "High. Reviewed futdata.py (Data), keylevel.py (Turning Points), composite.py (研判), intraday.py (Short-term), and service/router.py (API). Verified Taifex ZIP streaming, session logic, and composite scoring.",
+    "limitations": "Review limited to backend Python files; Frontend LWC (wave.js) and index.html are excluded per instructions."
+   }
+  }
+ ]
+}

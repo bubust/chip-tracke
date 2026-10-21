@@ -164,6 +164,20 @@
   .wv-adv summary { font-size: .92rem !important; font-weight: 600 !important; color: var(--muted); }
   .wv-adv .wv-seg button { padding: 6px 12px; font-size: .88rem; }
   #wv-msg { display: none; padding: 14px; color: var(--muted); }
+  /* B75：過熱恐慌縮小一列、商品切換、綜合研判、融資 */
+  .oh-mini { margin: -4px 0 14px; gap: 10px; }
+  .oh-mini .oh-card { padding: 8px 14px; border-radius: 12px; background: var(--card); border-color: var(--border); }
+  .oh-mini .oh-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 5px; }
+  .oh-mini .label { font-size: .9rem; color: var(--muted); margin: 0; }
+  .oh-mini .value { font-size: 1.15rem; margin: 0; font-weight: 800; }
+  .oh-mini .oh-m { font-size: .8rem; color: var(--muted); margin-left: auto; }
+  .oh-mini .bar-wrap { height: 6px; margin: 0; }
+  .wv-sym button { font-weight: 700; }
+  .wv-tile .m b { color: var(--text); }
+  .wv-compline { margin-top: 12px; font-size: .98rem; padding: 10px 12px; border-radius: 10px; background: rgba(148,163,184,.07); line-height: 1.7; }
+  .wv-st { display: inline-block; padding: 0 8px; border-radius: 6px; font-weight: 700; font-size: .88rem; }
+  .wv-spark { display: block; width: 100%; height: 70px; margin: 8px 0 2px; }
+  .wv-ok { color: #fca5a5; } .wv-ref { color: var(--muted); }
   .status-row { display: grid; grid-template-columns: minmax(200px, .8fr) 2fr; gap: 12px; margin-bottom: 16px; }
   .status-row .regime-box, .status-row .suggest-box { margin-bottom: 0 !important; }
   details.history-table > summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
@@ -176,6 +190,8 @@
     .wv-card { padding: 12px 14px; }
     .wv-tile .v { font-size: 1.4rem; }
     .wv-tbl .wv-hide-m { display: none; }
+    .oh-mini .oh-m { display: none; }
+    .wv-top .wv-sym { order: 0; }
   }
 </style>
 </head>
@@ -192,19 +208,32 @@
 <section class="wv" id="wv-root">
   <div class="wv-top">
     <div class="wv-title">🌊 大盤解析</div>
+    <span class="wv-seg wv-sym"><button data-wv-sym="TWII">加權指數</button><button data-wv-sym="TX" title="台指期近月連續，日 K 含夜盤（15:00～05:00）">台指期</button></span>
     <div id="wv-price">—</div>
     <div id="wv-asof"></div>
-    <span class="wv-seg wv-mode"><button data-wv-mode="short">短線（1～2 週）</button><button data-wv-mode="swing">波段（1～3 個月）</button></span>
+    <span class="wv-seg wv-mode"><button data-wv-mode="ultra" title="用 60 分 K 算">超短線（1～3 天）</button><button data-wv-mode="short">短線（1～2 週）</button><button data-wv-mode="swing">波段（1～3 個月）</button></span>
   </div>
   <div id="wv-msg"></div>
   <div class="wv-card" id="wv-sum"><div class="wv-dim">載入中…</div></div>
+  <!-- 過熱／恐慌（10-21 用戶：往上移、可以縮小）：收盤後證交所 MI_5MINS 算的，id 不變 -->
+  <div class="oh-grid oh-mini">
+    <div class="oh-card" id="card-overheating" title="過熱指數＝成交量 ÷ 委買量（收盤後算）。>50% 買盤被大量消化、追漲風險高；<30% 委買多但觀望">
+      <div class="oh-row"><span class="label">🔥 過熱指數</span><span class="value" id="oh-val">—</span><span class="oh-m">&gt;50% 追漲風險高｜&lt;30% 觀望</span></div>
+      <div class="bar-wrap"><div class="bar" id="oh-bar" style="width:0%"></div></div>
+    </div>
+    <div class="oh-card" id="card-panic" title="恐慌指數＝成交量 ÷ 委賣量（收盤後算）。>75% 賣單幾乎全成交、恐慌殺盤；<50% 賣壓還沒爆發">
+      <div class="oh-row"><span class="label">😱 恐慌指數</span><span class="value" id="pa-val">—</span><span class="oh-m">&gt;75% 恐慌殺盤｜&lt;50% 賣壓未爆發</span></div>
+      <div class="bar-wrap"><div class="bar" id="pa-bar" style="width:0%"></div></div>
+    </div>
+  </div>
   <div class="wv-grid">
     <div class="wv-card">
       <div class="wv-charttools">
-        <span class="wv-seg"><button data-wv-iv="1d">日 K</button><button data-wv-iv="1wk">週 K</button></span>
+        <span class="wv-seg"><button data-wv-iv="30m">30 分</button><button data-wv-iv="60m">60 分</button><button data-wv-iv="1d">日 K</button><button data-wv-iv="1wk">週 K</button></span>
         <label title="最近一段漲跌的 0.382／0.5／0.618 等回檔位置"><input type="checkbox" data-wv-show="fib">費波那契</label>
         <label title="波浪劇本算出來這一段可能走到的位置"><input type="checkbox" data-wv-show="tg">劇本目標</label>
-        <label title="過去 26 年，之後 5／20 天八成情況的範圍"><input type="checkbox" data-wv-show="cone">歷史範圍</label>
+        <label title="波浪規則上整個劇本作廢的價位（通常很遠）"><input type="checkbox" data-wv-show="inv">劇本失效</label>
+        <label title="過去 26 年，之後 5／20 天八成情況的範圍（只有日 K）"><input type="checkbox" data-wv-show="cone">歷史範圍</label>
         <button class="btn" id="wv-alt" title="圖上改標替代劇本的浪別">看替代劇本</button>
       </div>
       <div id="wv-chart"></div>
@@ -214,7 +243,9 @@
   </div>
   <div class="wv-card" id="wv-levels" style="margin-top:14px"></div>
   <div class="wv-card" id="wv-ai"><div class="wv-h3">🤖 AI 圓桌</div><div class="wv-dim">載入中…</div></div>
+  <details class="wv-card" id="wv-comp"></details>
   <div class="wv-more">
+    <details class="wv-card" id="wv-margin"></details>
     <details class="wv-card" id="wv-chips"></details>
     <details class="wv-card" id="wv-global"></details>
     <details class="wv-card" id="wv-fc"></details>
@@ -223,10 +254,10 @@
   <details class="wv-card" id="wv-research"></details>
   <details class="wv-card wv-adv"><summary>⚙️ 進階：自己選波浪級數、重抓資料</summary>
     <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px">
-      <span class="wv-seg"><button data-wv-deg="auto">跟著短線／波段</button><button data-wv-deg="small">小級</button><button data-wv-deg="mid">中級</button><button data-wv-deg="big">大級</button></span>
+      <span class="wv-seg"><button data-wv-deg="auto">跟著模式</button><button data-wv-deg="small">小級</button><button data-wv-deg="mid">中級</button><button data-wv-deg="big">大級</button></span>
       <button class="btn" id="wv-refresh" title="重抓國外指數、籌碼並重算">🔄 重抓資料</button>
     </div>
-    <div class="wv-what">級數＝看多大的波段。<b>小級</b>每段約 2 週（短線）、<b>中級</b>約 2 個月（波段）、<b>大級</b>約半年以上（長期背景）。預設：選「短線」看小級、選「波段」看中級。</div>
+    <div class="wv-what">級數＝看多大的波段。<b>小級</b>每段約 2 週（短線）、<b>中級</b>約 2 個月（波段）、<b>大級</b>約半年以上（長期背景）。預設：選「超短線」看 60 分 K、「短線」看小級、「波段」看中級。</div>
   </details>
 </section>
 
@@ -285,23 +316,7 @@
   </div>
 </div>
 
-<!-- 過熱/恐慌指數 -->
-<div class="oh-grid">
-  <div class="oh-card" id="card-overheating">
-    <div class="label">過熱指數</div>
-    <div class="value" id="oh-val">—</div>
-    <div class="bar-wrap"><div class="bar" id="oh-bar" style="width:0%"></div></div>
-    <div class="threshold">過熱閾值 50% | 公式：成交量 ÷ 委買量</div>
-    <div class="desc">&gt;50% 買盤被大量消化，追漲風險高<br>&lt;30% 委買多但觀望，市場謹慎</div>
-  </div>
-  <div class="oh-card" id="card-panic">
-    <div class="label">恐慌指數</div>
-    <div class="value" id="pa-val">—</div>
-    <div class="bar-wrap"><div class="bar" id="pa-bar" style="width:0%"></div></div>
-    <div class="threshold">恐慌閾值 75% | 公式：成交量 ÷ 委賣量</div>
-    <div class="desc">&gt;75% 賣單幾乎全成交，市場恐慌殺盤<br>&lt;50% 委賣多但未成交，賣壓尚未爆發</div>
-  </div>
-</div>
+<!-- 過熱/恐慌指數：B75 移到大盤解析摘要卡下面 -->
 
 <!-- 歷史走勢圖 Sprint 3 -->
 <h2>60 日走勢圖</h2>

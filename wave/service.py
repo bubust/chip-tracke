@@ -1,7 +1,8 @@
 """B74 大盤解析快照（PLAN-B74 §4、§7）：引擎＋支撐壓力＋籌碼＋國際＋預判＋既有研究訊號 → 一份 JSON。
 - 轉折只用收完的日 K；盤中即時價只當現價（算距離、判斷在支撐還是壓力那邊），並檢查「可能轉折」
 - 研究結果讀 wave/stats.json（research/wave/run.py 產生）；沒通過的一律標 △
-- 預測區間＝全部歷史分布（R6：相似狀態沒有比較準 → 只當參考）"""
+- 預測區間＝全部歷史分布（R6：相似狀態沒有比較準 → 只當參考）
+B75：sym＝TWII（加權）／TX（台指期近月、全盤含夜盤）分開算、分開快取；超短線（60 分 K）、轉折點、期貨＋籌碼綜合研判、融資增減"""
 from __future__ import annotations
 
 import json
@@ -15,13 +16,16 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from . import data as D, engine as E, features as F, forecast as FC, levels as LV
+from . import composite as CP, data as D, engine as E, features as F, forecast as FC, futdata as FD, \
+    intraday as I, keylevel as KL, levels as LV
 
 log = logging.getLogger(__name__)
 STATS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stats.json")
 INTRADAY_TTL = 120
-_cache: dict = {"key": None, "t": 0.0, "data": None}
-_lock = threading.Lock()
+SYMS = ("TWII", "TX")
+SYM_NAME = {"TWII": "加權指數", "TX": "台指期（近月，含夜盤）"}
+_cache: dict = {s: {"t": 0.0, "data": None, "session": None} for s in SYMS}
+_locks = {s: threading.Lock() for s in SYMS}
 _stats = {"mtime": None, "data": {}}
 DISCLAIMER = "劇本＝規則數浪＋歷史條件推估，不是投資建議"
 CHIP_FACTORS = {   # 欄位 → (名稱, 高的意思, 低的意思)
@@ -318,10 +322,30 @@ def _research(st: dict) -> dict:
                 "籌碼（外資現貨、期貨、融資）：對之後 5／20 天加權沒有預測力 △",
                 "國際：只有「前一晚費半 → 加權隔天」有效（樣本外 R² 約 0.2）✅",
                 "過去相似狀態：比直接看全部歷史還略差 → 預測區間改用全部歷史 △",
-            ]}
+            ] + _research_b75(st)}
 
 
-_base: dict = {"key": None, "data": None}
+def _research_b75(st: dict) -> list:
+    fu = (st.get("futures") or {}).get("factors") or {}
+    kl = (st.get("keylevel") or {}).get("modes") or {}
+    out = []
+    nx = (fu.get("night_ret") or {})
+    if nx.get("open"):
+        o, r = nx["open"], nx.get("next") or {}
+        out.append(f"台指期夜盤 → 加權當天：開盤跳空樣本外 R² {o.get('oos_r2')}、全天 {r.get('oos_r2')}（2022 起 {o.get('years_same')} 年同方向）"
+                   f"{'✅' if o.get('pass') else '△'}，比前一晚費半更準")
+    bad = [CP.FACTORS[k][0] for k in ("fut_chg1", "opt_chg1", "retail_chg1", "f_net", "basis_z", "basis_d5", "opt_z", "retail", "margin_chg5")
+           if k in fu and not any((v or {}).get("pass") for v in fu[k].values())]
+    if bad:
+        out.append("期貨籌碼（" + "、".join(bad) + "）：對隔天（扣掉夜盤之後）、1～2 週、1～3 個月都沒有預測力 △")
+    if kl:
+        out.append("轉折點：三個模式都用「最近的反向小轉折」（波浪失效點太遠）；跌破後會不會繼續走，回測跟隨便畫線差不多 △，當停損參考")
+    return out
+
+
+_base: dict = {s: {"key": None, "data": None} for s in SYMS}
+KEY_LOOK = {"short": 60, "swing": 120}
+MODE_DEG = {"short": "small", "swing": "mid"}
 
 
 def wave_states(h, l, c, deg: str = "mid", start: int = 260) -> list:
@@ -336,18 +360,31 @@ def wave_states(h, l, c, deg: str = "mid", start: int = 260) -> list:
     return out
 
 
-def base() -> dict:
-    """只跟「收完的資料」有關的部分；加權、籌碼、國外指數最新日期或研究檔沒變就不重算（盤中只重算現價相關）"""
+def _daily(sym: str) -> pd.DataFrame:
+    if sym == "TX":
+        fb = FD.full_bars(FD.load_fut_daily())
+        return fb[["date", "o", "h", "l", "c", "v"]] if not fb.empty else fb
+    return D.load_idx("TWII")
+
+
+def base(sym: str = "TWII") -> dict:
+    """只跟「收完的資料」有關的部分；最新日期、籌碼、國外指數或研究檔沒變就不重算（盤中只重算現價相關）"""
     st = stats()
-    tw = D.load_idx("TWII")
+    I.set_params(st)
+    tw = _daily(sym)
     if tw.empty or len(tw) < 300:
-        return {"ok": False, "error": "加權歷史資料還在下載（第一次約 1～3 分鐘），請稍後重新整理"}
+        return {"ok": False, "error": ("台指期" if sym == "TX" else "加權") + "歷史資料還在下載（第一次約 1～3 分鐘），請稍後重新整理"}
+    twii = tw if sym == "TWII" else D.load_idx("TWII")
     frames = {s: D.load_idx(s) for s in GLOBAL_SYMS}
     chips = D.load_chips()
-    key = (str(tw.date.iloc[-1]), len(tw), float(tw.c.iloc[-1]), None if chips.empty else str(chips.date.iloc[-1]),
+    fchips = FD.load_fut_chips()
+    fd = FD.load_fut_daily()
+    key = (sym, str(tw.date.iloc[-1]), len(tw), float(tw.c.iloc[-1]), None if chips.empty else str(chips.date.iloc[-1]),
+           None if fchips.empty else str(fchips.date.iloc[-1]), None if fd.empty else (str(fd.date.iloc[-1]), len(fd)),
+           None if twii.empty else str(twii.date.iloc[-1]),
            tuple(None if frames[s].empty else str(frames[s].date.iloc[-1]) for s in GLOBAL_SYMS), _stats["mtime"])
-    if _base["key"] == key and _base["data"] is not None:
-        return _base["data"]
+    if _base[sym]["key"] == key and _base[sym]["data"] is not None:
+        return _base[sym]["data"]
     dates = tw.date.values.astype(str)
     o, h, l, c = (tw[k].values.astype(float) for k in ("o", "h", "l", "c"))
     t = len(c) - 1
@@ -364,20 +401,171 @@ def base() -> dict:
                       "primary": _with_dates(a["primary"], dates), "alternate": _with_dates(a["alternate"], dates),
                       "fib": None if not f else {**f, "from": {**f["from"], "date": str(dates[f["from"]["i"]])},
                                                  "to": {**f["to"], "date": str(dates[f["to"]["i"]])}}}
-    b = {"ok": True, "st": st, "tw": tw, "dates": dates, "o": o, "h": h, "l": l, "c": c, "an": an, "feat": feat,
+    comp = CP.build(twii, fd if not fd.empty else None, chips if not chips.empty else None,
+                    fchips if not fchips.empty else None, frames.get("SOX"))
+    b = {"ok": True, "sym": sym, "st": st, "tw": tw, "dates": dates, "o": o, "h": h, "l": l, "c": c, "an": an, "feat": feat,
          "atr": float(E.atr(h, l, c)[-1]), "trend": trend, "waves": waves, "weekly": weekly(tw),
-         "chips": _chips(feat, st), "global": _global(tw, st, frames), "context": _context(tw), "research": _research(st)}
-    _base.update(key=key, data=b)
+         "chips": _chips(feat, st), "global": _global(tw, st, frames), "context": _context(twii), "research": _research(st),
+         "comp": comp, "chips_df": chips, "fchips": fchips, "fd": fd,
+         "twii_last": None if twii.empty else {"date": str(twii.date.iloc[-1]), "c": float(twii.c.iloc[-1])}}
+    _base[sym].update(key=key, data=b)
     return b
 
 
-def compute(live: Optional[dict] = None) -> dict:
-    b = base()
+# ── 轉折點 ───────────────────────────────────────────────────────────────────
+def _key_rule(st: dict, mode: str) -> tuple:
+    m = ((st.get("keylevel") or {}).get("modes") or {}).get(mode) or {}
+    return m.get("rule") or "K3", bool(m.get("sig"))
+
+
+def _key_out(cands: dict, mode: str, price: float, atr_v: float, st: dict) -> Optional[dict]:
+    rule, sig = _key_rule(st, mode)
+    k = KL.pick(cands, rule, price, atr_v)
+    if not k:
+        return None
+    k["sig"] = sig
+    k["broken"] = bool((k["side"] == "below" and price < k["price"]) or (k["side"] == "above" and price > k["price"]))
+    return k
+
+
+# ── 夜盤 → 開盤參考 ──────────────────────────────────────────────────────────
+def _night_info(b: dict, now=None) -> Optional[dict]:
+    """台指期夜盤報酬：夜盤進行中或 05:05～08:45 → 鉅亨即時（價／參考價）；其他時間 → fut_daily 最新一筆夜盤（同月份基準）"""
+    now = now or D.tw_now()
+    hm = (now.hour, now.minute)
+    night_live = FD.in_session("TX", now) and not ((8, 45) <= hm <= (13, 50))
+    pre_open = now.weekday() < 5 and (5, 5) < hm < (8, 45)
+    if night_live or pre_open:
+        try:
+            q = FD.fetch_cnyes_quote("TX")
+            if q and q.get("ref"):
+                return {"ret": q["price"] / q["ref"] - 1, "price": q["price"], "ref": q["ref"], "live": night_live,
+                        "src": "鉅亨即時", "time": FD.tw_dt(q["ts"]).strftime("%H:%M") if q.get("ts") else ""}
+        except Exception as e:     # noqa: BLE001
+            log.info(f"[wave] 夜盤即時：{e}")
+    fd = b.get("fd")
+    if fd is None or fd.empty:
+        return None
+    n = fd[(fd.sess == "night") & fd.ref_close.notna()]
+    if n.empty:
+        return None
+    r = n.iloc[-1]
+    return {"ret": float(r.c / r.ref_close - 1), "price": float(r.c), "ref": float(r.ref_close), "live": False,
+            "src": "期交所（FinMind）", "date": str(r.date), "h": float(r.h), "l": float(r.l)}
+
+
+def _open_ref(b: dict, st: dict, night: Optional[dict]) -> Optional[dict]:
+    fu = ((st.get("futures") or {}).get("factors") or {}).get("night_ret") or {}
+    go, gr = fu.get("open") or {}, fu.get("next") or {}
+    if not night or not go.get("pass") or go.get("beta") is None:
+        return None
+    x = night["ret"]
+    return {"night_ret": _f(x * 100, 2), "gap": _f((go.get("alpha", 0) + go["beta"] * x) * 100, 2),
+            "gap_sd": _f((go.get("resid_sd") or 0) * 100, 2),
+            "r1": _f((gr.get("alpha", 0) + gr.get("beta", 0) * x) * 100, 2) if gr.get("beta") is not None else None,
+            "r1_sd": _f((gr.get("resid_sd") or 0) * 100, 2), "oos_r2": go.get("oos_r2"), "live": night.get("live"),
+            "src": night.get("src"), "date": night.get("date"), "time": night.get("time"), "price": _f(night.get("price"), 0)}
+
+
+# ── 綜合研判 ─────────────────────────────────────────────────────────────────
+def _latest(comp: pd.DataFrame, col: str):
+    if comp is None or col not in comp:
+        return None, None
+    s = comp[["date", col]].dropna()
+    return (None, None) if s.empty else (float(s[col].iloc[-1]), str(s["date"].iloc[-1]))
+
+
+def _composite(b: dict, st: dict, night: Optional[dict]) -> dict:
+    fu = ((st.get("futures") or {}).get("factors") or {})
+    comp = b["comp"]
+    rows, by_h = [], {h: [] for h in CP.HORIZONS}
+    for key, (name, kind, meaning, unit) in CP.FACTORS.items():
+        res = fu.get(key) or {}
+        so = (b.get("global") or {}).get("sox_overnight") or {}
+        if key == "night_ret" and night:
+            val, d = night["ret"], night.get("date") or "即時"
+        elif key == "sox_ret1" and so.get("sox_ret") is not None:
+            val, d = so["sox_ret"] / 100, so.get("date")     # 最新那一晚的費半（跟「國際」區塊同一個），不是表格最後一列對齊的
+        else:
+            val, d = _latest(comp, key)
+        hz = ["next"] if kind in ("night", "a") else ["w2", "m3"]
+        cells = {}
+        for h in hz:
+            r = res.get(h) or {}
+            stt = CP.state_of(key, val, r) if r else None
+            cells[h] = {"state": stt, "pass": bool(r.get("pass")), "q": r.get("q"),
+                        "eff": r.get("oos_r2") if r.get("kind") == "reg" else r.get("oos_diff")}
+            by_h[h].append((key, stt, bool(r.get("pass"))))
+        rows.append({"key": key, "name": name, "meaning": meaning, "unit": unit, "value": _f(val, 6), "date": d, "cells": cells})
+    dirs = {h: CP.direction(v) for h, v in by_h.items()}
+    return {"rows": rows, "dir": dirs, "horizons": CP.HORIZONS,
+            "research": {k: (st.get("futures") or {}).get(k) for k in ("is", "oos", "generated", "n_tests")}}
+
+
+def _fut_chips_out(fc: pd.DataFrame) -> dict:
+    if fc is None or fc.empty or "retail_ratio" not in fc:
+        return {"ok": False}
+    r = fc.dropna(subset=["retail_ratio"]).tail(6)
+    if r.empty:
+        return {"ok": False}
+    last = r.iloc[-1]
+    return {"ok": True, "date": str(last.date), "retail_ratio": _f(last.retail_ratio, 4), "mtx_oi": _f(last.mtx_oi, 0),
+            "retail_chg1": _f(last.retail_ratio - r.iloc[-2].retail_ratio, 4) if len(r) > 1 else None,
+            "opt_f_bull": _f(last.opt_f_bull, 0), "opt_chg1": _f(last.opt_f_bull - r.iloc[-2].opt_f_bull, 0) if len(r) > 1 else None}
+
+
+def _session_label(sym: str, now) -> str:
+    if not FD.in_session(sym, now):
+        return "休市"
+    if sym == "TWII":
+        return "盤中"
+    return "日盤" if (8, 45) <= (now.hour, now.minute) <= (13, 50) else "夜盤"
+
+
+def _intraday(sym: str, b: dict, price: float, lv_c, live_rows: list, st: dict) -> dict:
+    b60 = I.bars(sym, 60, live_rows)
+    b30 = I.bars(sym, 30, live_rows)
+    # 「昨天」＝最後一根收完的日 K（盤中＝昨天；收盤後＝今天，給下一盤用）
+    daily = {"prev_h": float(b["h"][-1]), "prev_l": float(b["l"][-1]), "prev_c": float(b["c"][-1]),
+             "ma20": float(np.mean(lv_c[-20:])) if len(lv_c) >= 20 else None}
+    if sym == "TX":
+        nb = [x for x in b60 if (FD.session_of("TX", x["time"]) or ("",))[0] == "night"]
+        if nb:
+            s0 = FD.session_of("TX", nb[-1]["time"])[1]
+            cur = [x for x in nb if FD.session_of("TX", x["time"])[1] == s0]
+            daily["night_h"] = max(x["high"] for x in cur)
+            daily["night_l"] = min(x["low"] for x in cur)
+    trend = 0 if daily["ma20"] is None else (1 if price > daily["ma20"] else -1)
+    a = I.analyze(sym, b60, b30, price, daily, trend)
+    out = {"tf60": b60[-I.SHOW[60]:], "tf30": b30[-I.SHOW[30]:], "ok": a.get("ok"), "note": a.get("note")}
+    if not a.get("ok"):
+        return out
+    an, times = a["an"], a["times"]
+    f = an.get("fib")
+    out["wave"] = {"label": an["label"], "pivots": I.pts(an["pivots"][-20:], times),
+                   "tentative": I.pts([an["tentative"]], times)[0] if an.get("tentative") else None,
+                   "primary": I.with_times(an.get("primary"), times), "alternate": I.with_times(an.get("alternate"), times),
+                   "fib": None if not f else {**f, "from": {**f["from"], "time": int(times[f["from"]["i"]])},
+                                              "to": {**f["to"], "time": int(times[f["to"]["i"]])}},
+                   "time_based": True, "maybe_pivot": None}
+    if a.get("tf30"):
+        t3 = a["tf30"]
+        out["wave"]["tf30"] = {"pivots": I.pts(t3["pivots"][-30:], t3["times"]),
+                               "tentative": I.pts([t3["tentative"]], t3["times"])[0] if t3.get("tentative") else None}
+    out["levels"] = a["levels"]
+    out["key"] = _key_out(a["cands"], "ultra", price, a["atr"], st)
+    out["atr"] = _f(a["atr"], 0)
+    return out
+
+
+def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[list] = None) -> dict:
+    b = base(sym)
     if not b.get("ok"):
         return b
     st, dates, o, h, l, c, an = b["st"], b["dates"], b["o"], b["h"], b["l"], b["c"], b["an"]
     t = len(c) - 1
     last_date = str(dates[-1])
+    now = D.tw_now()
     use_live = bool(live and live.get("date") and live["date"] > last_date and live.get("c"))
     price = float(live["c"]) if use_live else float(c[-1])
     prev = float(c[-1]) if use_live else float(c[-2])
@@ -403,75 +591,155 @@ def compute(live: Optional[dict] = None) -> dict:
     for n in (20, 60, 240):
         s = pd.Series(lv_c).rolling(n).mean().values
         mas[str(n)] = [{"time": bar["time"], "value": _f(s[off + k])} for k, bar in enumerate(bars) if np.isfinite(s[off + k])]
-    now = D.tw_now()
+    # 轉折點（日 K：短線＝小級、波段＝中級；轉折只用收完的 K 棒，現價用即時）
+    key = {}
+    for mode, deg in MODE_DEG.items():
+        cands = KL.candidates(an[deg], h, l, c, t, b["atr"], price=price, k=3, look=KEY_LOOK[mode])
+        key[mode] = _key_out(cands, mode, price, b["atr"], st)
+    # 超短線（60 分 K）
+    try:
+        intra = _intraday(sym, b, price, lv_c, live_rows or [], st)
+    except Exception as e:     # noqa: BLE001
+        log.exception(f"[wave] 分 K 失敗 {sym}：{e}")
+        intra = {"ok": False, "note": f"分 K 計算失敗：{e}", "tf60": [], "tf30": []}
+    if intra.get("ok"):
+        waves["intra"] = intra["wave"]
+        lv["ultra"] = intra["levels"]
+        key["ultra"] = intra["key"]
+    else:
+        lv["ultra"] = {"support": [], "resistance": [], "note": [intra.get("note") or "60 分 K 資料不足"]}
+        key["ultra"] = None
     stale_reason = None
-    if not use_live and D.is_tw_session(now) and live is None:
-        stale_reason = "盤中即時加權抓不到，顯示最近收盤"
-    if now.weekday() < 5 and (now.hour, now.minute) >= (14, 30) and last_date < now.strftime("%Y-%m-%d"):
+    if not use_live and FD.in_session(sym, now) and live is None:
+        stale_reason = ("盤中即時加權抓不到" if sym == "TWII" else "台指期即時抓不到") + "，顯示最近收盤"
+    if sym == "TWII" and now.weekday() < 5 and (now.hour, now.minute) >= (14, 30) and last_date < now.strftime("%Y-%m-%d"):
         stale_reason = f"今天收盤資料還沒進來（最新 {last_date}）"
     problems = [s for s in D.status() if (s.get("fails") or 0) >= 2]
+    night = _night_info(b, now)
     snap = {
-        "ok": True, "generated": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "ok": True, "sym": sym, "name": SYM_NAME[sym], "generated": now.strftime("%Y-%m-%d %H:%M:%S"),
         "asof": {"date": last_date, "live": {"time": live.get("time"), "date": live["date"]} if use_live else None,
-                 "stale": stale_reason is not None, "stale_reason": stale_reason},
+                 "stale": stale_reason is not None, "stale_reason": stale_reason, "session": _session_label(sym, now)},
         "price": _f(price), "prev_close": _f(prev), "chg": _f(price - prev), "chg_pct": _pct(price, prev),
         "atr": _f(b["atr"], 0), "trend240": b["trend"],
-        "chart": {"bars": bars, "weekly": b["weekly"], "ma": mas},
-        "waves": waves, "levels": lv, "forecast": fc,
+        "chart": {"bars": bars, "weekly": b["weekly"], "ma": mas, "i60": intra.get("tf60") or [], "i30": intra.get("tf30") or []},
+        "intra": {"ok": bool(intra.get("ok")), "note": intra.get("note"), "atr": intra.get("atr"), "m": E.INTRA["m"]},
+        "waves": waves, "levels": lv, "key": key, "forecast": fc,
         "chips": b["chips"], "global": b["global"], "context": b["context"], "research": b["research"],
+        "fut_chips": _fut_chips_out(b["fchips"]), "margin": CP.margin_block(b["chips_df"], now.strftime("%Y-%m-%d")),
+        "night": None if not night else {k: (_f(v * 100, 2) if k == "ret" else v) for k, v in night.items()},
+        "open_ref": _open_ref(b, st, night) if sym == "TWII" else None,
+        "composite": _composite(b, st, night),
         "problems": [{"src": p["src"], "fails": p["fails"], "last_ok": p["last_ok"]} for p in problems],
         "disclaimer": DISCLAIMER,
     }
+    if sym == "TX":
+        tw_px, tw_when = None, None
+        if D.is_tw_session(now):
+            lt = D.live_taiex()
+            if lt and lt.get("c"):
+                tw_px, tw_when = float(lt["c"]), f"加權盤中 {lt.get('time', '')}"
+        if tw_px is None and b.get("twii_last"):
+            tw_px, tw_when = b["twii_last"]["c"], f"加權 {b['twii_last']['date'][5:]} 收盤"
+        if tw_px:
+            snap["basis"] = {"pts": _f(price - tw_px, 0), "pct": _pct(price, tw_px), "twii": _f(tw_px), "when": tw_when,
+                             "label": "正價差" if price > tw_px else "逆價差"}
     snap["scenario"] = _scenario(an, lv, price, fc)
+    kind = ("live" if use_live else "close") if sym == "TWII" else f"TX:{'live' if use_live else 'close'}"
     try:
         with D.db() as conn:
             conn.execute("INSERT INTO wave_snapshot(day,kind,created_at,json) VALUES(?,?,?,?) "
                          "ON CONFLICT(day,kind) DO UPDATE SET created_at=excluded.created_at, json=excluded.json",
-                         (live["date"] if use_live else last_date, "live" if use_live else "close", snap["generated"],
-                          json.dumps(snap, ensure_ascii=False)))
+                         (live["date"] if use_live else last_date, kind, snap["generated"], json.dumps(snap, ensure_ascii=False)))
     except Exception as e:     # noqa: BLE001
         log.warning(f"[wave] 存快照失敗：{e}")
     return snap
 
 
-def last_good() -> Optional[dict]:
+def last_good(sym: str = "TWII") -> Optional[dict]:
+    kinds = ("close", "live") if sym == "TWII" else ("TX:close", "TX:live")
     try:
         with D.db() as conn:
-            r = conn.execute("SELECT json FROM wave_snapshot WHERE kind IN ('close','live') "
-                             "ORDER BY day DESC, created_at DESC LIMIT 1").fetchone()
+            r = conn.execute("SELECT json FROM wave_snapshot WHERE kind IN (?,?) ORDER BY day DESC, created_at DESC LIMIT 1",
+                             kinds).fetchone()
         return json.loads(r["json"]) if r else None
     except Exception:     # noqa: BLE001
         return None
 
 
-def snapshot(force: bool = False) -> dict:
-    """盤中：超過 2 分鐘用即時價重算；盤後：資料日期沒變就用快取。算失敗 → 上一次成功的快照（標過期）"""
-    session = D.is_tw_session()
-    with _lock:
+def _live_day(sym: str) -> Optional[dict]:
+    if sym == "TWII":
+        return D.live_taiex()
+    x = FD.live_tx_day()
+    if not x:
+        return None
+    return {"date": x["date"], "o": x["o"], "h": x["h"], "l": x["l"], "c": x["c"], "time": D.tw_now().strftime("%H:%M:%S")}
+
+
+def snapshot(force: bool = False, sym: str = "TWII") -> dict:
+    """盤中（依商品：加權 09:00～13:35、台指期日盤＋夜盤）超過 2 分鐘用即時價重算；盤後資料日期沒變就用快取。
+    算失敗 → 上一次成功的快照（標過期）"""
+    if sym not in SYMS:
+        raise ValueError(sym)
+    session = FD.in_session(sym)
+    cc = _cache[sym]
+    with _locks[sym]:
         now = time.time()
-        if not force and _cache["data"] is not None:
-            if session and now - _cache["t"] < INTRADAY_TTL:
-                return _cache["data"]
-            if not session and _cache.get("session") is False and now - _cache["t"] < 600:
-                return _cache["data"]
+        if not force and cc["data"] is not None:
+            if session and now - cc["t"] < INTRADAY_TTL:
+                return cc["data"]
+            if not session and cc.get("session") is False and now - cc["t"] < 600:
+                return cc["data"]
         try:
-            live = D.live_taiex() if session else None
-            snap = compute(live)
+            live = _live_day(sym) if session else None
+            rows = FD.live_bars(sym) if session else []
+            snap = compute(sym, live, rows)
         except Exception as e:     # noqa: BLE001
-            log.exception(f"[wave] 計算失敗：{e}")
-            snap = last_good() or {"ok": False, "error": f"計算失敗：{e}"}
+            log.exception(f"[wave] 計算失敗 {sym}：{e}")
+            snap = last_good(sym) or {"ok": False, "error": f"計算失敗：{e}"}
             if snap.get("ok"):
                 snap = {**snap, "asof": {**(snap.get("asof") or {}), "stale": True, "stale_reason": "這次計算失敗，顯示上一次成功的結果"}}
         if snap.get("ok"):
-            _cache.update(t=now, data=snap, session=session)
+            cc.update(t=now, data=snap, session=session)
         return snap
 
 
+def fill_twii_today() -> int:
+    """加權今天 5 分 K 不完整（< 54 根）→ Yahoo 補（PLAN §3.4，審查 R3 G-F1）"""
+    now = D.tw_now()
+    if now.weekday() >= 5 or (now.hour, now.minute) < (13, 35):
+        return 0
+    s = FD.day_start("TWII", now.strftime("%Y-%m-%d"))
+    if FD.count_bars5("TWII", s, s + 270 * 60) >= FD.DAY_MIN_BARS["TWII"]:
+        return 0
+    return FD.backfill_twii_yahoo()
+
+
 def refresh_all(chips: bool = True) -> dict:
-    """排程／按鈕：重抓資料＋重算"""
+    """排程／按鈕：重抓資料＋重算（加權、台指期都算）"""
     D.init_db()
     D.ensure_history(background=False)
     D.update_indices()
+    FD.update_fut_daily()
+    FD.live_bars("TX")
+    FD.live_bars("TWII")
     if chips:
         D.update_chips()
+        FD.update_fut_chips()
+        FD.backfill_taifex(max_files=5)
+        fill_twii_today()
+    snapshot(force=True, sym="TX")
     return snapshot(force=True)
+
+
+def panel_snapshot() -> dict:
+    """AI 圓桌用：加權快照＋台指期快照（PLAN-B75 §8）"""
+    s = snapshot()
+    if not s.get("ok"):
+        return s
+    try:
+        tx = snapshot(sym="TX")
+    except Exception as e:     # noqa: BLE001
+        log.warning(f"[wave] 圓桌台指期快照失敗：{e}")
+        tx = None
+    return {**s, "tx": tx if tx and tx.get("ok") else None}

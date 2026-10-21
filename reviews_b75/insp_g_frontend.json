@@ -1,0 +1,46 @@
+{
+ "mode": "inspect",
+ "files": [
+  "PLAN-B75.md",
+  "regime-frontend/wave.js",
+  "regime-frontend/index.html"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3-flash-preview",
+   "raw": "{\n  \"verdict\": \"APPROVED\",\n  \"summary\": \"The implementation of B75 is solid, following the approved PLAN precisely. Security requirements (XSS prevention) are met using a robust `esc` function on all dynamic string outputs. Technical requirements for LightweightCharts v4 (handling axis type switching between Daily and Intraday) are correctly addressed by recreating the chart instance. Timezone handling (Asia/Taipei) is consistent across session detection and display logic. Mobile layout and null handling are well-implemented.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"low\",\n      \"path\": \"regime-frontend/wave.js\",\n      \"issue\": \"LightweightCharts Data Type Separation\",\n      \"evidence\": \"PLAN requires recreation of the chart when switching between daily (business-day strings) and intraday (epoch) data.\",\n      \"suggestion\": \"The code already implements this in `makeChart` and checks `chartKind !== kind` in `drawChart`. This is the correct approach for LWC v4 to avoid errors.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"low\",\n      \"path\": \"regime-frontend/wave.js\",\n      \"issue\": \"Taiwan Market Session Logic\",\n      \"evidence\": \"PLAN requires session detection for Taiwan (including Night Session for TX).\",\n      \"suggestion\": \"The `isSession` function correctly calculates minutes-from-midnight in TPE timezone and handles the crossover for Tuesday-Saturday early morning (TX night session end). No changes needed.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"low\",\n      \"path\": \"regime-frontend/wave.js\",\n      \"issue\": \"Race condition during fetch\",\n      \"evidence\": \"Switching symbols quickly could lead to older fetches overwriting newer state.\",\n      \"suggestion\": \"The code uses a `loadSeq` counter in the `load` function to discard stale responses, which effectively prevents this race condition.\"\n    }\n  ],\n  \"coverage\": \"Reviewed complete frontend files for B75 including UI layout, charting logic, state management, and AI roundtable integration.\",\n  \"limitations\": \"Review is limited to the frontend code provided; backend API implementation of the /api/wave/snapshot endpoint is assumed to match the described shape and satisfy the data requirements.\"\n}",
+   "parsed": {
+    "verdict": "APPROVED",
+    "summary": "The implementation of B75 is solid, following the approved PLAN precisely. Security requirements (XSS prevention) are met using a robust `esc` function on all dynamic string outputs. Technical requirements for LightweightCharts v4 (handling axis type switching between Daily and Intraday) are correctly addressed by recreating the chart instance. Timezone handling (Asia/Taipei) is consistent across session detection and display logic. Mobile layout and null handling are well-implemented.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "low",
+      "path": "regime-frontend/wave.js",
+      "issue": "LightweightCharts Data Type Separation",
+      "evidence": "PLAN requires recreation of the chart when switching between daily (business-day strings) and intraday (epoch) data.",
+      "suggestion": "The code already implements this in `makeChart` and checks `chartKind !== kind` in `drawChart`. This is the correct approach for LWC v4 to avoid errors."
+     },
+     {
+      "id": "F2",
+      "severity": "low",
+      "path": "regime-frontend/wave.js",
+      "issue": "Taiwan Market Session Logic",
+      "evidence": "PLAN requires session detection for Taiwan (including Night Session for TX).",
+      "suggestion": "The `isSession` function correctly calculates minutes-from-midnight in TPE timezone and handles the crossover for Tuesday-Saturday early morning (TX night session end). No changes needed."
+     },
+     {
+      "id": "F3",
+      "severity": "low",
+      "path": "regime-frontend/wave.js",
+      "issue": "Race condition during fetch",
+      "evidence": "Switching symbols quickly could lead to older fetches overwriting newer state.",
+      "suggestion": "The code uses a `loadSeq` counter in the `load` function to discard stale responses, which effectively prevents this race condition."
+     }
+    ],
+    "coverage": "Reviewed complete frontend files for B75 including UI layout, charting logic, state management, and AI roundtable integration.",
+    "limitations": "Review is limited to the frontend code provided; backend API implementation of the /api/wave/snapshot endpoint is assumed to match the described shape and satisfy the data requirements."
+   }
+  }
+ ]
+}

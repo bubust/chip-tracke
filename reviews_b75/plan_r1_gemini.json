@@ -1,0 +1,72 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B75.md",
+  "wave/service.py",
+  "wave/levels.py",
+  "wave/engine.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-flash-latest",
+   "raw": "{\n  \"verdict\": \"REVISE\",\n  \"summary\": \"The plan is thorough and well-aligned with user requirements, but suffers from several material quantitative and architectural defects: (1) contract-roll jump distortion contaminating the night-return regression in F1, (2) look-ahead bias in evaluating chip forward returns from Day T's close when data is published hours later, (3) cache collision in service.py which currently stores global singletons without a symbol key, (4) session-timing logic that will treat TX night sessions as off-hours, and (5) ambiguity in beta selection between gap and r1 targets for the opening estimate.\",\n  \"findings\": [\n    {\n      \"id\": \"F1\",\n      \"severity\": \"high\",\n      \"section\": \"6.1 研究 R-F (F1 夜盤報酬定義與結算日換月)\",\n      \"issue\": \"On monthly contract settlement day (3rd Wednesday), the day session trades the expiring front month (TX_front), while the night session starting at 15:00 trades the new front month (TX_next). Calculating night session return as Close_night(T) / Close_day(T-1) - 1 without adjusting for the 50-300 point contract spread will inject artificial jumps into F1 twelve times a year, severely distorting the OLS regression, beta, and out-of-sample R².\",\n      \"suggestion\": \"Enforce same-contract return calculation across rolls: calculate F1 on roll days as TX_next_night_close / TX_next_day_close - 1 (using the next month's day session close as the denominator), or drop settlement-day transition nights from the regression sample.\"\n    },\n    {\n      \"id\": \"F2\",\n      \"severity\": \"high\",\n      \"section\": \"6.1 研究 R-F (籌碼指標 fwd5/fwd20 評估起點的看前偏誤)\",\n      \"issue\": \"Chip features for day T are published between 15:00 and 21:40 (margin balance around 21:30). Measuring fwd5 and fwd20 from Close(T) (13:30) introduces look-ahead bias because an investor cannot execute at 13:30 based on data released hours later. The return from Close(T) to Open(T+1) is contaminated by overnight moves occurring before or during chip dissemination.\",\n      \"suggestion\": \"For chip features published post-market on day T (F2, F4, F5, F7), compute forward returns starting from Open(T+1) or Close(T+1). Alternatively, strictly lag all chip metrics by one trading day when modeling Close-to-Close returns.\"\n    },\n    {\n      \"id\": \"F3\",\n      \"severity\": \"high\",\n      \"section\": \"5. 台指期版本 & service.py 快取機制\",\n      \"issue\": \"In existing service.py, _cache and _base are single global dictionaries without a symbol key. Adding sym=TX alongside sym=TWII without partitioning the cache will cause race conditions and cache thrashing where TX overwrites TWII (and vice versa) for concurrent client queries.\",\n      \"suggestion\": \"Refactor _cache and _base in service.py into dictionaries keyed by symbol (e.g., _cache[sym] and _base[sym]), ensuring complete state isolation between TWII and TX snapshots.\"\n    },\n    {\n      \"id\": \"F4\",\n      \"severity\": \"medium\",\n      \"section\": \"3.4 排程 & 5. 台指期版本 (Session 判斷與即時輪詢快取)\",\n      \"issue\": \"Existing service.py relies on D.is_tw_session(), which only returns True between 09:00 and 13:30. During the TX pre-market (08:45-09:00) and night session (15:00-05:00), is_tw_session() returns False, causing snapshot() to enter the 600-second off-session cache and suppress live futures polling.\",\n      \"suggestion\": \"Parameterize is_tw_session(sym='TWII') so that when sym='TX', it recognizes both the day session (08:45-13:45) and night session (15:00-05:00) as active, applying the 120s TTL and invoking live futures quotes.\"\n    },\n    {\n      \"id\": \"F5\",\n      \"severity\": \"medium\",\n      \"section\": \"6.1 & 6.2 網站呈現 (開盤參考與隔天方向的迴歸標的混淆)\",\n      \"issue\": \"Section 6.1 specifies estimating F1 against both r1(T) (Close-to-Close) and gap(T) (Open-to-PrevClose). Section 6.2 specifies using F1 beta for '今天開盤參考', but does not clarify which beta is saved. Using the r1 beta for opening reference will overestimate opening jump by conflating it with full-day intraday drift.\",\n      \"suggestion\": \"Explicitly designate that the beta for gap(T) is stored and used for '今天開盤參考' (estimated open), while the beta for r1(T) is strictly reserved for the next-day direction indicator.\"\n    },\n    {\n      \"id\": \"F6\",\n      \"severity\": \"medium\",\n      \"section\": \"3.4 & 3.5 期交所逐筆檔回補與 512MB 記憶體防護\",\n      \"issue\": \"If chip_data/wave.db is placed on an ephemeral container path, every deployment or VM restart will trigger background downloading and decompression of 30 days of TAIFEX tick zip files (>1.4 GB uncompressed text). This poses CPU starvation and memory spike risks on a 512MB instance.\",\n      \"suggestion\": \"Ensure chip_data/wave.db is mounted on a persistent volume. Implement a single-pass streaming parser using a compact in-memory dict {(month, bar_5m): [o, h, l, c, v]} to aggregate bars without multiple passes or large memory allocations, and skip dates that already exist in bars5.\"\n    },\n    {\n      \"id\": \"F7\",\n      \"severity\": \"low\",\n      \"section\": \"3.3 資料表 (opt_f_bull 欄位資料源)\",\n      \"issue\": \"The plan defines opt_f_bull as Foreign (Buy Call - Sell Call) - (Buy Put - Sell Put) amount, but does not clarify whether it extracts daily transaction amounts (成交金額) or open interest amounts (未平倉契約金額). A 60-day z-score requires open interest amounts, as transaction amounts represent high-variance daily flow.\",\n      \"suggestion\": \"Explicitly specify in §3.3 that opt_f_bull uses TAIFEX/FinMind open interest amount (未平倉金額) rather than daily trading transaction amount (當日成交金額).\"\n    }\n  ],\n  \"coverage\": \"Reviewed all 13 sections of PLAN-B75 against existing service.py, levels.py, and engine.py, focusing on look-ahead bias, futures contract rolling, trading session boundaries, statistical gating criteria, cache architecture, and Fly.io 512MB operational constraints.\",\n  \"limitations\": \"Live API schemas for cnyes (鉅亨) charting endpoints could not be tested for live session rollover behavior; verification relies on published TAIFEX calendar specs.\"\n}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "The plan is thorough and well-aligned with user requirements, but suffers from several material quantitative and architectural defects: (1) contract-roll jump distortion contaminating the night-return regression in F1, (2) look-ahead bias in evaluating chip forward returns from Day T's close when data is published hours later, (3) cache collision in service.py which currently stores global singletons without a symbol key, (4) session-timing logic that will treat TX night sessions as off-hours, and (5) ambiguity in beta selection between gap and r1 targets for the opening estimate.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "section": "6.1 研究 R-F (F1 夜盤報酬定義與結算日換月)",
+      "issue": "On monthly contract settlement day (3rd Wednesday), the day session trades the expiring front month (TX_front), while the night session starting at 15:00 trades the new front month (TX_next). Calculating night session return as Close_night(T) / Close_day(T-1) - 1 without adjusting for the 50-300 point contract spread will inject artificial jumps into F1 twelve times a year, severely distorting the OLS regression, beta, and out-of-sample R².",
+      "suggestion": "Enforce same-contract return calculation across rolls: calculate F1 on roll days as TX_next_night_close / TX_next_day_close - 1 (using the next month's day session close as the denominator), or drop settlement-day transition nights from the regression sample."
+     },
+     {
+      "id": "F2",
+      "severity": "high",
+      "section": "6.1 研究 R-F (籌碼指標 fwd5/fwd20 評估起點的看前偏誤)",
+      "issue": "Chip features for day T are published between 15:00 and 21:40 (margin balance around 21:30). Measuring fwd5 and fwd20 from Close(T) (13:30) introduces look-ahead bias because an investor cannot execute at 13:30 based on data released hours later. The return from Close(T) to Open(T+1) is contaminated by overnight moves occurring before or during chip dissemination.",
+      "suggestion": "For chip features published post-market on day T (F2, F4, F5, F7), compute forward returns starting from Open(T+1) or Close(T+1). Alternatively, strictly lag all chip metrics by one trading day when modeling Close-to-Close returns."
+     },
+     {
+      "id": "F3",
+      "severity": "high",
+      "section": "5. 台指期版本 & service.py 快取機制",
+      "issue": "In existing service.py, _cache and _base are single global dictionaries without a symbol key. Adding sym=TX alongside sym=TWII without partitioning the cache will cause race conditions and cache thrashing where TX overwrites TWII (and vice versa) for concurrent client queries.",
+      "suggestion": "Refactor _cache and _base in service.py into dictionaries keyed by symbol (e.g., _cache[sym] and _base[sym]), ensuring complete state isolation between TWII and TX snapshots."
+     },
+     {
+      "id": "F4",
+      "severity": "medium",
+      "section": "3.4 排程 & 5. 台指期版本 (Session 判斷與即時輪詢快取)",
+      "issue": "Existing service.py relies on D.is_tw_session(), which only returns True between 09:00 and 13:30. During the TX pre-market (08:45-09:00) and night session (15:00-05:00), is_tw_session() returns False, causing snapshot() to enter the 600-second off-session cache and suppress live futures polling.",
+      "suggestion": "Parameterize is_tw_session(sym='TWII') so that when sym='TX', it recognizes both the day session (08:45-13:45) and night session (15:00-05:00) as active, applying the 120s TTL and invoking live futures quotes."
+     },
+     {
+      "id": "F5",
+      "severity": "medium",
+      "section": "6.1 & 6.2 網站呈現 (開盤參考與隔天方向的迴歸標的混淆)",
+      "issue": "Section 6.1 specifies estimating F1 against both r1(T) (Close-to-Close) and gap(T) (Open-to-PrevClose). Section 6.2 specifies using F1 beta for '今天開盤參考', but does not clarify which beta is saved. Using the r1 beta for opening reference will overestimate opening jump by conflating it with full-day intraday drift.",
+      "suggestion": "Explicitly designate that the beta for gap(T) is stored and used for '今天開盤參考' (estimated open), while the beta for r1(T) is strictly reserved for the next-day direction indicator."
+     },
+     {
+      "id": "F6",
+      "severity": "medium",
+      "section": "3.4 & 3.5 期交所逐筆檔回補與 512MB 記憶體防護",
+      "issue": "If chip_data/wave.db is placed on an ephemeral container path, every deployment or VM restart will trigger background downloading and decompression of 30 days of TAIFEX tick zip files (>1.4 GB uncompressed text). This poses CPU starvation and memory spike risks on a 512MB instance.",
+      "suggestion": "Ensure chip_data/wave.db is mounted on a persistent volume. Implement a single-pass streaming parser using a compact in-memory dict {(month, bar_5m): [o, h, l, c, v]} to aggregate bars without multiple passes or large memory allocations, and skip dates that already exist in bars5."
+     },
+     {
+      "id": "F7",
+      "severity": "low",
+      "section": "3.3 資料表 (opt_f_bull 欄位資料源)",
+      "issue": "The plan defines opt_f_bull as Foreign (Buy Call - Sell Call) - (Buy Put - Sell Put) amount, but does not clarify whether it extracts daily transaction amounts (成交金額) or open interest amounts (未平倉契約金額). A 60-day z-score requires open interest amounts, as transaction amounts represent high-variance daily flow.",
+      "suggestion": "Explicitly specify in §3.3 that opt_f_bull uses TAIFEX/FinMind open interest amount (未平倉金額) rather than daily trading transaction amount (當日成交金額)."
+     }
+    ],
+    "coverage": "Reviewed all 13 sections of PLAN-B75 against existing service.py, levels.py, and engine.py, focusing on look-ahead bias, futures contract rolling, trading session boundaries, statistical gating criteria, cache architecture, and Fly.io 512MB operational constraints.",
+    "limitations": "Live API schemas for cnyes (鉅亨) charting endpoints could not be tested for live session rollover behavior; verification relies on published TAIFEX calendar specs."
+   }
+  }
+ ]
+}

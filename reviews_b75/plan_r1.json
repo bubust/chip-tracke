@@ -1,0 +1,89 @@
+{
+ "mode": "plan",
+ "files": [
+  "PLAN-B75.md",
+  "wave/service.py",
+  "wave/levels.py",
+  "wave/engine.py"
+ ],
+ "reviews": [
+  {
+   "provider": "Gemini gemini-3.6-flash",
+   "error": "503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}"
+  },
+  {
+   "provider": "Groq openai/gpt-oss-120b",
+   "raw": "{\"verdict\":\"REVISE\",\"summary\":\"The upgrade introduces valuable features but contains several material concerns that must be addressed before production. Key issues include potential look‑ahead bias in the night‑session handling, statistical‑testing rigor for the pre‑registered selection criteria, continuous‑contract roll logic, timezone consistency, resource safeguards, error‑handling robustness, UI clarity for non‑technical users, and missing automated test coverage. Resolve these points and provide concrete mitigation strategies to obtain approval.\",\"findings\":[{\"id\":\"F1\",\"severity\":\"high\",\"section\":\"3.2\",\"issue\":\"Night‑session timing (15:00 T‑1 → 05:00 T) is treated as part of trading day T, but K‑level calculations (especially K3 which waits for i+3 closes) may use data that is not available until after the decision point, creating look‑ahead bias.\",\"suggestion\":\"Compute K‑levels only after the relevant 5‑minute bar has closed; for intraday alerts use a provisional estimate that is replaced by the confirmed value after the i+3 bar. Document the exact cut‑off time and ensure no future price is used in real‑time signals.\"},{\"id\":\"F2\",\"severity\":\"medium\",\"section\":\"2.3\",\"issue\":\"Selection of the ‘best’ key level is based on the highest continuation‑rate minus a placebo set, but multiple thresholds (ATR ranges, percentile windows) are explored without explicit correction for multiple testing, risking data‑snooping.\",\"suggestion\":\"Apply a pre‑registered multiple‑testing correction (e.g., Bonferroni or Benjamini‑Hochberg) across all candidate configurations, and keep the final rule‑set frozen before out‑of‑sample evaluation. Report the adjusted p‑values in the research documentation.\"},{\"id\":\"F3\",\"severity\":\"medium\",\"section\":\"3.2\",\"issue\":\"Continuous‑contract aggregation selects the month with the largest combined day + night volume each session. This can cause abrupt roll‑overs and price gaps that may distort ZigZag thresholds.\",\"suggestion\":\"Implement a deterministic roll rule (e.g., roll when the front‑month volume falls below 30 % of the next month) and apply a price‑adjustment factor to smooth the transition. Record the roll dates in the database for audit.\"},{\"id\":\"F4\",\"severity\":\"medium\",\"section\":\"3.4/3.5\",\"issue\":\"Mixed time representations (epoch seconds, Taiwan local time, cp950 encoding) risk inconsistent timestamps, especially when aggregating 5‑minute bars from different sources.\",\"suggestion\":\"Standardise all timestamps to UTC internally, convert to Taiwan time only for UI display. Validate that the epoch‑second field in `bars5` matches the start of the 5‑minute interval after conversion. Add unit tests for timezone conversion.\"},{\"id\":\"F5\",\"severity\":\"low\",\"section\":\"3.5\",\"issue\":\"Streaming TAIFEX zip files without loading the whole file is correct, but there is no explicit guard against exceeding the 512 MB VM limit if many large files are processed concurrently.\",\"suggestion\":\"Add a memory‑usage monitor that aborts the import if the process exceeds ~400 MB and logs a clear error. Consider processing files sequentially with a configurable concurrency limit.\"},{\"id\":\"F6\",\"severity\":\"medium\",\"section\":\"3.4\",\"issue\":\"Scheduled jobs (premarket, intraday_close, night_close, chips) lack defined retry or fallback mechanisms; a temporary API outage could leave the database stale.\"},{\"suggestion\":\"Wrap each job in a retry wrapper with exponential back‑off (max 3 attempts). On permanent failure, write a status flag and send an alert (e.g., Telegram) so operators can intervene. Also store the last successful run timestamp for each pipeline.\"},{\"id\":\"F7\",\"severity\":\"low\",\"section\":\"2.4/6.2\",\"issue\":\"Terminology such as “轉弱點” / “轉強點” may be opaque to non‑expert users, and the UI does not specify how confidence (e.g., statistical significance) is communicated.\"},{\"suggestion\":\"Add hover‑tooltips explaining each term and colour coding. Show the 95 % CI or a simple “significant / not significant” badge next to the continuation‑rate text.\"},{\"id\":\"F8\",\"severity\":\"medium\",\"section\":\"Overall\",\"issue\":\"The plan does not describe automated test coverage for the new data pipelines, statistical modules, or UI components.\"},{\"suggestion\":\"Create unit tests for: (a) zip‑stream parsing and aggregation logic, (b) K‑level calculation with simulated data, (c) statistical bootstrap routine, (d) end‑to‑end integration test that mocks external APIs. Aim for ≥80 % coverage of new code.\"}],\"coverage\":\"The review covers the provided excerpt (sections 2, 3.2‑3.5, and 6) and evaluates the core functional, statistical, and operational aspects introduced in the plan.\",\"limitations\":\"Assessment is limited to the excerpt; any omitted sections (e.g., detailed UI mock‑ups, deployment scripts, or security considerations) were not evaluated. The verdict assumes the existing B74 codebase remains unchanged and functional.\"}",
+   "parsed": {
+    "verdict": "REVISE",
+    "summary": "The upgrade introduces valuable features but contains several material concerns that must be addressed before production. Key issues include potential look‑ahead bias in the night‑session handling, statistical‑testing rigor for the pre‑registered selection criteria, continuous‑contract roll logic, timezone consistency, resource safeguards, error‑handling robustness, UI clarity for non‑technical users, and missing automated test coverage. Resolve these points and provide concrete mitigation strategies to obtain approval.",
+    "findings": [
+     {
+      "id": "F1",
+      "severity": "high",
+      "section": "3.2",
+      "issue": "Night‑session timing (15:00 T‑1 → 05:00 T) is treated as part of trading day T, but K‑level calculations (especially K3 which waits for i+3 closes) may use data that is not available until after the decision point, creating look‑ahead bias.",
+      "suggestion": "Compute K‑levels only after the relevant 5‑minute bar has closed; for intraday alerts use a provisional estimate that is replaced by the confirmed value after the i+3 bar. Document the exact cut‑off time and ensure no future price is used in real‑time signals."
+     },
+     {
+      "id": "F2",
+      "severity": "medium",
+      "section": "2.3",
+      "issue": "Selection of the ‘best’ key level is based on the highest continuation‑rate minus a placebo set, but multiple thresholds (ATR ranges, percentile windows) are explored without explicit correction for multiple testing, risking data‑snooping.",
+      "suggestion": "Apply a pre‑registered multiple‑testing correction (e.g., Bonferroni or Benjamini‑Hochberg) across all candidate configurations, and keep the final rule‑set frozen before out‑of‑sample evaluation. Report the adjusted p‑values in the research documentation."
+     },
+     {
+      "id": "F3",
+      "severity": "medium",
+      "section": "3.2",
+      "issue": "Continuous‑contract aggregation selects the month with the largest combined day + night volume each session. This can cause abrupt roll‑overs and price gaps that may distort ZigZag thresholds.",
+      "suggestion": "Implement a deterministic roll rule (e.g., roll when the front‑month volume falls below 30 % of the next month) and apply a price‑adjustment factor to smooth the transition. Record the roll dates in the database for audit."
+     },
+     {
+      "id": "F4",
+      "severity": "medium",
+      "section": "3.4/3.5",
+      "issue": "Mixed time representations (epoch seconds, Taiwan local time, cp950 encoding) risk inconsistent timestamps, especially when aggregating 5‑minute bars from different sources.",
+      "suggestion": "Standardise all timestamps to UTC internally, convert to Taiwan time only for UI display. Validate that the epoch‑second field in `bars5` matches the start of the 5‑minute interval after conversion. Add unit tests for timezone conversion."
+     },
+     {
+      "id": "F5",
+      "severity": "low",
+      "section": "3.5",
+      "issue": "Streaming TAIFEX zip files without loading the whole file is correct, but there is no explicit guard against exceeding the 512 MB VM limit if many large files are processed concurrently.",
+      "suggestion": "Add a memory‑usage monitor that aborts the import if the process exceeds ~400 MB and logs a clear error. Consider processing files sequentially with a configurable concurrency limit."
+     },
+     {
+      "id": "F6",
+      "severity": "medium",
+      "section": "3.4",
+      "issue": "Scheduled jobs (premarket, intraday_close, night_close, chips) lack defined retry or fallback mechanisms; a temporary API outage could leave the database stale."
+     },
+     {
+      "suggestion": "Wrap each job in a retry wrapper with exponential back‑off (max 3 attempts). On permanent failure, write a status flag and send an alert (e.g., Telegram) so operators can intervene. Also store the last successful run timestamp for each pipeline."
+     },
+     {
+      "id": "F7",
+      "severity": "low",
+      "section": "2.4/6.2",
+      "issue": "Terminology such as “轉弱點” / “轉強點” may be opaque to non‑expert users, and the UI does not specify how confidence (e.g., statistical significance) is communicated."
+     },
+     {
+      "suggestion": "Add hover‑tooltips explaining each term and colour coding. Show the 95 % CI or a simple “significant / not significant” badge next to the continuation‑rate text."
+     },
+     {
+      "id": "F8",
+      "severity": "medium",
+      "section": "Overall",
+      "issue": "The plan does not describe automated test coverage for the new data pipelines, statistical modules, or UI components."
+     },
+     {
+      "suggestion": "Create unit tests for: (a) zip‑stream parsing and aggregation logic, (b) K‑level calculation with simulated data, (c) statistical bootstrap routine, (d) end‑to‑end integration test that mocks external APIs. Aim for ≥80 % coverage of new code."
+     }
+    ],
+    "coverage": "The review covers the provided excerpt (sections 2, 3.2‑3.5, and 6) and evaluates the core functional, statistical, and operational aspects introduced in the plan.",
+    "limitations": "Assessment is limited to the excerpt; any omitted sections (e.g., detailed UI mock‑ups, deployment scripts, or security considerations) were not evaluated. The verdict assumes the existing B74 codebase remains unchanged and functional."
+   }
+  }
+ ]
+}
