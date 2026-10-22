@@ -317,7 +317,8 @@
       <div class="wv-tiles">
         ${tileHtml(top.stop_same === 'up' ? '⬆ 上方關鍵（也是停損）' : '⬆ 上方關鍵', top.up, 'var(--up)')}
         ${tileHtml(top.stop_same === 'down' ? '⬇ 下方關鍵（也是停損）' : '⬇ 下方關鍵', top.down, 'var(--down)')}
-        ${tileHtml(top.stop_same === 'down' ? '⬇⬇ 跌破後再看' : top.stop_same === 'up' ? '⬆⬆ 站上後再看' : '🛑 停損（轉折點）', top.stop,
+        ${tileHtml(top.stop_pos === 'before' ? (top.stop_same === 'down' ? '⬇ 途中先遇到' : '⬆ 途中先遇到')
+                   : top.stop_same === 'down' ? '⬇⬇ 跌破後再看' : top.stop_same === 'up' ? '⬆⬆ 站上後再看' : '🛑 停損（轉折點）', top.stop,
                    top.stop_same === 'down' ? 'var(--down)' : top.stop_same === 'up' ? 'var(--up)' : 'var(--warn)')}
       </div>
       <div class="wv-lines">${lines.map(([k, v]) => `<span class="k">${k}</span><span>${v}</span>`).join('')}</div>`;

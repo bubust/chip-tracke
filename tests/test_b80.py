@@ -319,6 +319,19 @@ def test_levelmap_stop_kept_when_nothing_beyond():
     assert top["stop"] and top["stop"]["price"] == 47900 and "stop_same" not in top
 
 
+def test_levelmap_stop_farthest_uses_nearer():
+    # 正式站 10-22 台指期日 K：轉折點是上方最遠的價位、後面沒東西 → 第三格放途中先遇到的，不能兩格同價
+    lv = {"support": [{"price": 47900, "dist_pct": -0.2, "sources": [{"label": "前低"}]}],
+          "resistance": [{"price": 48296, "dist_pct": 0.62, "sources": [{"label": "前高"}]},
+                         {"price": 48500, "dist_pct": 1.04, "sources": [{"label": "整數"}]}]}
+    ctx = _ctx(levels=lv, zones=[], nest={"ok": False},
+               key={"kind": "轉強點", "price": 49100, "side": "above", "dist_pct": 2.3})
+    top = LM.build(ctx)["top3"]
+    assert top["up"]["price"] == 49100
+    assert top["stop_same"] == "up" and top["stop_pos"] == "before"
+    assert top["stop"]["price"] == 48296 and top["stop"]["price"] != top["up"]["price"]
+
+
 def test_rule_act_dedup_same_version():
     parts = [{"kind": "rule", "ver": "版本一", "path": "3-3", "verb": "跌破"}, {"kind": "rule", "ver": "版本一", "path": "3-3", "verb": "跌破"}]
     s = LM._rule_act(parts, [("版本一", "3-3"), ("版本二", "B-c")])

@@ -218,8 +218,11 @@ def build(ctx: dict) -> dict:
         if key_it is not None and it is key_it:
             k = xs.index(it)
             nxt = next((x for x in xs[k + 1:] if x["struct"]), xs[k + 1] if k + 1 < len(xs) else None)
-            if nxt is not None:                       # 後面沒有價位 → 停損那格照舊顯示轉折點（審查 Gemini F1）
+            if nxt is not None:
                 top.update(stop=_slim(nxt), stop_same=side)
+            elif k > 0:                               # 轉折點是那邊最遠的 → 第三格改放途中先遇到的價位（不再兩格同價）
+                top.update(stop=_slim(xs[0]), stop_same=side, stop_pos="before")
+            # 那邊只有轉折點一個價位 → 停損那格照舊顯示轉折點（審查 Gemini F1）
             break
     up_all = sorted([it for it in items if it["side"] == "up"], key=lambda it: it["price"])
     dn_all = sorted([it for it in items if it["side"] == "down"], key=lambda it: -it["price"])
