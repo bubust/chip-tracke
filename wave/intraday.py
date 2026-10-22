@@ -71,7 +71,8 @@ def analyze_tf(tf: int, bs: list, price: Optional[float], daily: dict, trend: in
     px = float(price) if price else float(c[-1])
     lv = LV.build_ultra(h, l, c, t, an, atr_v, px, label=lab, daily=daily, win=p["win"], k3_look=p["k3_look"], tfn=p["tfn"])
     cands = KL.candidates(an, h, l, c, t, atr_v, price=px, k=3, look=p["k3_look"])
-    return {"ok": True, "an": an, "times": times, "atr": atr_v, "theta": float(th[-1]), "levels": lv, "cands": cands}
+    return {"ok": True, "an": an, "times": times, "atr": atr_v, "theta": float(th[-1]), "levels": lv, "cands": cands,
+            "hlc": (h, l, c), "piv": piv}           # B79 多層浪名的「浪名演變」要用（只在伺服器端，不進快照）
 
 
 def analyze(sym: str, b60: list, b30: list, price: Optional[float], daily: dict, trend: int = 0) -> dict:

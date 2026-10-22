@@ -131,6 +131,23 @@
   .wv-steps { display: flex; gap: 4px; margin: 8px 0 2px; flex-wrap: wrap; }
   .wv-steps span { font-size: .8rem; padding: 2px 8px; border-radius: 6px; background: rgba(148,163,184,.1); color: var(--muted); }
   .wv-steps span.on { background: var(--accent-soft); color: #c7d7ff; font-weight: 800; }
+  /* B79 多層浪名 */
+  .wv-nest-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  .wv-nest-c { border-left: 4px solid var(--accent); padding: 8px 12px; background: rgba(91,140,255,.06); border-radius: 0 10px 10px 0; min-width: 0; }
+  .wv-nest-c.alt { border-left-color: var(--warn); background: rgba(251,146,60,.05); }
+  .wv-nest-path { font-size: 1.7rem; font-weight: 800; letter-spacing: .5px; font-variant-numeric: tabular-nums; line-height: 1.3; }
+  .wv-nest-path small { font-size: .9rem; font-weight: 600; color: var(--muted); margin-left: 8px; letter-spacing: 0; }
+  .wv-nest-c .p { font-size: .92rem; margin-top: 4px; line-height: 1.55; }
+  .wv-nest-c .x { font-size: .9rem; color: var(--warn); margin-top: 4px; line-height: 1.55; }
+  .wv-gates { margin-top: 12px; }
+  .wv-gate { display: grid; grid-template-columns: 4.6em minmax(0, 1fr); gap: 4px 10px; padding: 7px 0; border-top: 1px solid rgba(35,45,66,.6); font-size: .95rem; line-height: 1.55; }
+  .wv-gate .k { font-weight: 800; color: #fdba74; white-space: nowrap; }
+  .wv-gate.ok .k { color: #86efac; }
+  .wv-ev { display: inline-block; font-size: .82rem; padding: 2px 8px; border-radius: 6px; margin: 2px 4px 2px 0; background: rgba(148,163,184,.12); color: var(--muted); }
+  .wv-ev.on { background: rgba(34,197,94,.14); color: #86efac; }
+  .wv-plan { margin: 8px 0 0 0; padding-left: 1.2em; font-size: .93rem; line-height: 1.65; }
+  .wv-tbl tr.wv-chg td { background: rgba(251,146,60,.08); }
+  @media (max-width: 760px) { .wv-nest-row { grid-template-columns: 1fr; } .wv-nest-path { font-size: 1.45rem; } }
   /* 表格 */
   .wv-tbl { width: 100%; border-collapse: collapse; font-size: .95rem; }
   .wv-tbl th { text-align: left; font-weight: 600; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: .86rem; }
@@ -275,6 +292,7 @@
         <label title="波浪劇本算出來這一段可能走到的位置"><input type="checkbox" data-wv-show="tg">劇本目標</label>
         <label title="波浪規則上整個劇本作廢的價位（通常很遠）"><input type="checkbox" data-wv-show="inv">劇本失效</label>
         <label title="過去 26 年，之後 5／20 天八成情況的範圍（只有日 K）"><input type="checkbox" data-wv-show="cone">歷史範圍</label>
+        <label title="30／60 分 K：圖上改標多層浪名（3-1、4-a 這種）、畫下降趨勢線和關卡"><input type="checkbox" data-wv-show="nest">多層浪名</label>
         <button class="btn" id="wv-alt" title="圖上改標替代劇本的浪別">看替代劇本</button>
       </div>
       <div id="wv-chart"></div>
@@ -282,7 +300,8 @@
     </div>
     <div class="wv-card" id="wv-scen"></div>
   </div>
-  <div class="wv-card" id="wv-levels" style="margin-top:14px"></div>
+  <div class="wv-card" id="wv-nest" style="margin-top:14px"></div>
+  <div class="wv-card" id="wv-levels"></div>
   <div class="wv-card" id="wv-ai"><div class="wv-h3">🤖 AI 圓桌</div><div class="wv-dim">載入中…</div></div>
   <details class="wv-card" id="wv-comp"></details>
   <div class="wv-more">
@@ -971,6 +990,6 @@ window.addEventListener('resize', () => {
   api('/api/regime/history?days=60').then(h => { if (h) drawHistoryChart(h); }).catch(()=>{});
 });
 </script>
-<script src="/regime/static/wave.js?v=20261022b78"></script>
+<script src="/regime/static/wave.js?v=20261022b79b"></script>
 </body>
 </html>

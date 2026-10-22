@@ -16,7 +16,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from . import advice as AD, composite as CP, data as D, engine as E, features as F, forecast as FC, futdata as FD, \
+from . import advice as AD, composite as CP, data as D, engine as E, features as F, forecast as FC, futdata as FD, nest as NE, \
     intraday as I, keylevel as KL, levels as LV
 from .plain import plain
 
@@ -552,6 +552,7 @@ def _intraday(sym: str, b: dict, price: float, lv_c, live_rows: list, st: dict) 
     trend = 0 if daily["ma20"] is None else (1 if price > daily["ma20"] else -1)
     a = I.analyze(sym, b60, b30, price, daily, trend)
     out = {"tf60": b60[-I.SHOW[60]:], "tf30": b30[-I.SHOW[30]:], "ok": a.get("ok"), "note": a.get("note")}
+    out["nest"] = {"60m": _nest(a, 60, price, b), "30m": _nest(a.get("m30") or {}, 30, price, b)}
     if a.get("ok"):
         out["wave"] = I.wave_out(a)
         out["levels"] = a["levels"]
@@ -563,6 +564,50 @@ def _intraday(sym: str, b: dict, price: float, lv_c, live_rows: list, st: dict) 
         out["m30"].update(wave=I.wave_out(m30), levels=m30["levels"], key=_key_out(m30["cands"], "m30", price, m30["atr"], st),
                           atr=_f(m30["atr"], 0))
     return out
+
+
+def _nest(a: dict, tf: int, price: float, b: dict) -> dict:
+    """B79 多層浪名（學 @fanny55520）：分 K 轉折從「日 K 這一浪的起點」開始拆成 C-1-4-b 式浪名＋關卡＋操作紀律"""
+    if not a.get("ok"):
+        return {"ok": False, "note": a.get("note")}
+    times = a["times"]
+    tdate = lambda i: FD.tw_dt(times[i]).date()                       # noqa: E731
+    tlabel = lambda i: FD.tw_dt(times[i]).strftime("%m/%d %H:%M")     # noqa: E731
+    try:
+        out = NE.build(a["an"], times, price, I.TF[tf]["tfn"], daily_cnt=(b["an"].get("small") or {}).get("primary"),
+                       daily_dates=b["dates"], tdate=tdate, tlabel=tlabel)
+    except Exception as e:     # noqa: BLE001
+        log.exception(f"[wave] 多層浪名失敗 {tf}：{e}")
+        return {"ok": False, "note": f"多層浪名計算失敗：{e}"}
+    if out.get("ok") and a.get("piv") is not None:
+        try:
+            out["timeline"] = _nest_timeline(a, tf, b, tdate, tlabel)
+        except Exception as e:     # noqa: BLE001
+            log.warning(f"[wave] 浪名演變失敗 {tf}：{e}")
+    return out
+
+
+def _nest_timeline(a: dict, tf: int, b: dict, tdate, tlabel, n_days: int = 10) -> list:
+    """B79 浪名演變：最近 n_days 天，每天最後一根分 K 當時（只用那時候以前的資料）系統怎麼數（她：注意貼文上下文的時間）"""
+    import bisect
+    times = a["times"]
+    h, l, c = a["hlc"]
+    days = [tdate(k) for k in range(len(times))]
+    ends = [k for k in range(len(times)) if k == len(times) - 1 or days[k + 1] != days[k]][-n_days:]
+    small = b["an"].get("small") or {}
+    dpiv = small.get("pivots") or []
+    ddates = [str(x)[:10] for x in b["dates"]]
+    cache: dict = {}
+
+    def daily_at(i):
+        k = bisect.bisect_right(ddates, days[i].isoformat()) - 1      # 那天（含）以前最後一根日 K
+        if k < 0:
+            return None
+        if k not in cache:
+            conf, tent = E.state_at(dpiv, b["h"], b["l"], k)
+            cache[k] = E.primary_alternate(E.count_waves(conf + ([tent] if tent else []), trend=_trend(b["c"], k)))[0]
+        return cache[k]
+    return NE.timeline(a["piv"], h, l, c, times, ends, I.TF[tf]["tfn"], daily_at, b["dates"], tdate, tlabel)
 
 
 # ── B76 多週期一覽 ─────────────────────────────────────────────────────────
@@ -662,6 +707,7 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
         "price": _f(price), "prev_close": _f(prev), "chg": _f(price - prev), "chg_pct": _pct(price, prev),
         "atr": _f(b["atr"], 0), "trend240": b["trend"],
         "chart": {"bars": bars, "weekly": b["weekly"], "ma": mas, "i60": intra.get("tf60") or [], "i30": intra.get("tf30") or []},
+        "nest": intra.get("nest") or {},
         "v": 76,
         "intra": {"ok": bool(intra.get("ok")), "note": intra.get("note"), "atr": intra.get("atr"), "m": E.INTRA["m"],
                   "m30": {"ok": bool(m30.get("ok")), "note": m30.get("note"), "atr": m30.get("atr"), "m": E.INTRA30["m"]}},
@@ -686,6 +732,9 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
             snap["basis"] = {"pts": _f(price - tw_px, 0), "pct": _pct(price, tw_px), "twii": _f(tw_px), "when": tw_when,
                              "label": "正價差" if price > tw_px else "逆價差"}
     snap["scenario"] = _scenario(an, lv, price, fc)
+    # B79 她的「日線定位」寫法（母尺、防守區、鐵律底線、威脅版本）
+    snap["positioning"] = {tf: NE.positioning(waves.get(dg, {}).get("primary"), waves.get(dg, {}).get("alternate"), price, nm)
+                           for tf, dg, nm in (("1d", "small", "日 K"), ("1wk", "mid", "週 K"))}
     snap["ladder"] = _ladder(waves, key, lv)
     snap["ladder_text"] = AD.ladder_summary(snap["ladder"])
     snap["advice"] = AD.build(snap)
