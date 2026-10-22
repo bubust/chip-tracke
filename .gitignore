@@ -43,3 +43,6 @@ chip_data/best_near.json
 research/wave/data/
 research/wave/results/events.csv.gz
 research/futures/data/
+
+# B80 研究原始資料（公開資料，可重抓）
+research/b80/data/

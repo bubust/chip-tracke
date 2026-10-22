@@ -117,9 +117,9 @@ def test_service_ladder_dir_from_key_or_tentative():
              "intra": {}, "small": {"tentative": {"t": "L"}}, "mid": {}}
     key = {"m30": None, "ultra": {"dir": -1, "kind": "轉強點", "price": 1, "side": "above", "dist_pct": 1}, "short": None, "swing": None}
     rows = S._ladder(waves, key, {})
-    assert [r["tf"] for r in rows] == ["30m", "60m", "1d", "1wk"]
-    assert [r["dir"] for r in rows] == [1, -1, -1, 0]
-    assert rows[0]["title"] == "上漲波・第 3 段上漲中" and rows[3]["title"] == "資料不足"
+    assert [r["tf"] for r in rows] == ["15m", "30m", "60m", "1d", "1wk"]      # B80 多了 15 分
+    assert [r["dir"] for r in rows] == [0, 1, -1, -1, 0]
+    assert rows[1]["title"] == "上漲波・第 3 段上漲中" and rows[4]["title"] == "資料不足" and rows[0]["title"] == "資料不足"
 
 
 def test_margin_last10_newest_first():

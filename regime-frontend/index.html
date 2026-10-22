@@ -4,7 +4,7 @@
 <script src="/auth-shim.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>總經面板・大盤解析</title>
+<title>大盤解析・總經面板</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 16px; }
@@ -85,17 +85,23 @@
 </style>
 <link rel="stylesheet" href="/theme.css?v=20261008">
 <style>
-  /* 🌊 大盤解析（PLAN-B74；10-20 用戶：字太小、太亂 → 先看結論、細節收起來） */
-  body { max-width: 1540px; margin: 0 auto; }   /* 整頁置中（大螢幕不會拉成一條一條） */
+  /* 🌊 大盤解析（PLAN-B80：結論卡＋頁內分頁；每樣資訊只放一個地方） */
+  body { max-width: 1540px; margin: 0 auto; }
   .wv { margin: 0 0 26px; font-size: 15px; line-height: 1.6; }
-  .wv-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin-bottom: 12px; }
+  .wv-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin-bottom: 10px; }
   .wv-title { font-size: 1.3rem; font-weight: 800; }
   #wv-price { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
   #wv-asof { font-size: .9rem; color: var(--muted); }
   .wv-seg { display: inline-flex; border: 1px solid var(--border2); border-radius: 10px; overflow: hidden; }
   .wv-seg button { background: transparent; border: 0; color: var(--muted); padding: 8px 16px; font-size: .95rem; cursor: pointer; }
   .wv-seg button.on { background: var(--accent-soft); color: #c7d7ff; font-weight: 700; }
-  .wv-mode { margin-left: auto; }
+  .wv-sym button { font-weight: 700; }
+  /* 週期列＝多週期一覽 */
+  .wv-tfbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 12px; }
+  .wv-mode button { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.25; padding: 6px 14px; min-width: 78px; }
+  .wv-mode button small { font-size: .74rem; font-weight: 400; color: var(--muted); }
+  .wv-mode button .ar { font-weight: 800; margin-left: 4px; }
+  .wv-ladtext { font-size: .98rem; font-weight: 700; }
   .wv-card { background: linear-gradient(180deg, rgba(255,255,255,.015), transparent 40%), var(--card); border: 1px solid var(--border);
              border-radius: 14px; box-shadow: var(--shadow); padding: 16px 20px; min-width: 0; margin-bottom: 14px; }
   .wv-h3 { font-size: 1.1rem; font-weight: 800; margin-bottom: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
@@ -104,57 +110,90 @@
   .wv-dim { color: var(--muted); font-weight: 400; font-size: .88em; }
   .wv-note { font-size: .88rem; color: #fdba74; background: rgba(251,146,60,.08); border: 1px solid rgba(251,146,60,.25); border-radius: 9px; padding: 6px 10px; margin-top: 8px; }
   .wv-badge { font-size: .8rem; padding: 2px 8px; border-radius: 6px; margin-left: 6px; background: rgba(251,146,60,.14); color: #fdba74; border: 1px solid rgba(251,146,60,.35); }
-  /* 一眼看懂 */
-  .wv-head { font-size: 1.25rem; font-weight: 800; line-height: 1.5; }
-  .wv-head small { display: block; font-size: .92rem; font-weight: 400; color: var(--muted); margin-top: 4px; }
-  .wv-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
-  .wv-tile { background: var(--card2); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+  .wv-ok { color: #fca5a5; } .wv-ref { color: var(--muted); }
+  #wv-msg { display: none; padding: 14px; color: var(--muted); }
+  /* ① 結論卡 */
+  .wv-sum { border-color: rgba(91,140,255,.35); }
+  .wv-head { font-size: 1.35rem; font-weight: 800; line-height: 1.45; }
+  .wv-head .path { font-size: 1.6rem; letter-spacing: .5px; font-variant-numeric: tabular-nums; }
+  .wv-sub { font-size: .92rem; color: var(--muted); margin-top: 4px; line-height: 1.6; }
+  .wv-sub b { color: var(--text); font-weight: 700; }
+  .wv-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+  .wv-tile { background: var(--card2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; }
   .wv-tile .k { font-size: .88rem; color: var(--muted); }
-  .wv-tile .v { font-size: 1.75rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.25; margin: 2px 0; }
-  .wv-tile .v small { font-size: .85rem; font-weight: 600; margin-left: 6px; }
-  .wv-tile .m { font-size: .86rem; color: var(--muted); line-height: 1.5; }
-  .wv-ailine { margin-top: 12px; font-size: .98rem; padding: 10px 12px; border-radius: 10px; background: rgba(91,140,255,.07); }
-  /* 圖＋劇本 */
+  .wv-tile .v { font-size: 1.7rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.25; margin: 2px 0; }
+  .wv-tile .v small { font-size: .85rem; font-weight: 600; margin-left: 6px; color: var(--muted); }
+  .wv-tile .m { font-size: .88rem; line-height: 1.5; }
+  .wv-tile .m .vh { display: block; color: var(--muted); font-size: .82rem; }
+  .wv-lines { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; margin-top: 12px; font-size: .97rem; line-height: 1.6; }
+  .wv-lines .k { white-space: nowrap; font-weight: 700; }
+  .wv-lines a { color: inherit; cursor: pointer; text-decoration: underline dotted; }
+  .wv-st { display: inline-block; padding: 0 8px; border-radius: 6px; font-weight: 700; font-size: .88rem; }
+  .wv-rg { color: #fde68a; font-weight: 800; }
+  /* 分頁 */
+  .wv-tabs { display: flex; gap: 6px; margin: 4px 0 14px; overflow-x: auto; -webkit-overflow-scrolling: touch; border-bottom: 1px solid var(--border); }
+  .wv-tabs button { flex: 0 0 auto; background: transparent; border: 0; border-bottom: 3px solid transparent; color: var(--muted);
+                    padding: 9px 16px; font-size: 1rem; font-weight: 700; cursor: pointer; }
+  .wv-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+  .wv-pane[hidden] { display: none !important; }
+  /* 圖表分頁 */
   .wv-grid { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(320px, 1fr); gap: 14px; }
-  .wv-grid > .wv-card { margin-bottom: 0; }
+  .wv-grid > .wv-card { margin-bottom: 14px; }
   .wv-charttools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 8px; }
   .wv-charttools label { font-size: .9rem; color: var(--muted); display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
   #wv-alt { padding: 6px 12px; font-size: .88rem; }
   #wv-alt.on { background: rgba(251,146,60,.16); color: #fdba74; border-color: rgba(251,146,60,.5); }
-  #wv-chart { height: 500px; width: 100%; }
+  #wv-chart { height: 540px; width: 100%; }
   #wv-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .84rem; margin-top: 8px; color: var(--muted); }
-  .wv-count { border-left: 4px solid var(--accent); padding: 8px 12px; margin-bottom: 10px; background: rgba(91,140,255,.06); border-radius: 0 10px 10px 0; }
-  .wv-count .t { font-size: 1.08rem; font-weight: 800; line-height: 1.5; }
-  .wv-count .p { font-size: .92rem; margin-top: 4px; }
-  .wv-count .x { font-size: .92rem; color: var(--warn); margin-top: 4px; }
-  details.wv-alt-box > summary { cursor: pointer; color: var(--muted); font-size: .92rem; margin: 6px 0; }
-  .wv-steps { display: flex; gap: 4px; margin: 8px 0 2px; flex-wrap: wrap; }
-  .wv-steps span { font-size: .8rem; padding: 2px 8px; border-radius: 6px; background: rgba(148,163,184,.1); color: var(--muted); }
-  .wv-steps span.on { background: var(--accent-soft); color: #c7d7ff; font-weight: 800; }
-  /* B79 多層浪名 */
-  .wv-nest-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
-  .wv-nest-c { border-left: 4px solid var(--accent); padding: 8px 12px; background: rgba(91,140,255,.06); border-radius: 0 10px 10px 0; min-width: 0; }
-  .wv-nest-c.alt { border-left-color: var(--warn); background: rgba(251,146,60,.05); }
-  .wv-nest-path { font-size: 1.7rem; font-weight: 800; letter-spacing: .5px; font-variant-numeric: tabular-nums; line-height: 1.3; }
-  .wv-nest-path small { font-size: .9rem; font-weight: 600; color: var(--muted); margin-left: 8px; letter-spacing: 0; }
-  .wv-nest-c .p { font-size: .92rem; margin-top: 4px; line-height: 1.55; }
-  .wv-nest-c .x { font-size: .9rem; color: var(--warn); margin-top: 4px; line-height: 1.55; }
-  .wv-gates { margin-top: 12px; }
-  .wv-gate { display: grid; grid-template-columns: 4.6em minmax(0, 1fr); gap: 4px 10px; padding: 7px 0; border-top: 1px solid rgba(35,45,66,.6); font-size: .95rem; line-height: 1.55; }
-  .wv-gate .k { font-weight: 800; color: #fdba74; white-space: nowrap; }
-  .wv-gate.ok .k { color: #86efac; }
+  /* 價位梯 */
+  .wv-tbl { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  .wv-tbl th { text-align: left; font-weight: 600; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: .86rem; }
+  .wv-tbl td { padding: 7px 8px; border-bottom: 1px solid rgba(35,45,66,.6); vertical-align: top; }
+  .wv-tbl td.n { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .wv-tbl .wv-now td { background: rgba(91,140,255,.10); color: #c7d7ff; font-weight: 800; text-align: center; }
+  .wv-tbl tr.wv-chg td { background: rgba(251,146,60,.08); }
+  .wv-lm .p { font-weight: 800; font-size: 1.05rem; }
+  .wv-lm .nm { font-weight: 700; }
+  .wv-lm .act { font-size: .9rem; line-height: 1.5; }
+  .wv-lm .src { font-size: .8rem; color: var(--muted); line-height: 1.4; margin-top: 2px; }
+  .wv-lm .vh { font-size: .8rem; color: var(--muted); }
+  .wv-why { font-size: .86rem; color: var(--muted); }
+  /* 量能卡 */
+  .wv-vgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; }
+  .wv-vbox { border-left: 4px solid var(--accent); padding: 6px 12px; background: rgba(91,140,255,.05); border-radius: 0 10px 10px 0; }
+  .wv-vbox.warn { border-left-color: var(--warn); background: rgba(251,146,60,.05); }
+  .wv-vbox .t { font-weight: 800; margin-bottom: 4px; }
+  .wv-chk { list-style: none; margin: 4px 0 0; padding: 0; font-size: .93rem; }
+  .wv-chk li { padding: 2px 0; }
+  .wv-chk li .mk { display: inline-block; width: 1.6em; }
+  /* 劇本分頁 */
+  .wv-pos { font-size: .93rem; line-height: 1.65; }
+  .wv-trees { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin-top: 10px; }
+  .wv-tree-box { border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; min-width: 0; }
+  .wv-tree-box.alt { border-color: rgba(251,146,60,.4); }
+  .wv-tree-box .hd { font-weight: 800; font-size: 1.05rem; }
+  .wv-tree-box .hd .path { font-size: 1.4rem; font-variant-numeric: tabular-nums; margin: 0 6px; }
+  ul.wv-tree, ul.wv-tree ul { list-style: none; margin: 0; padding-left: 1.1em; }
+  ul.wv-tree { padding-left: .2em; margin-top: 6px; font-size: .92rem; font-variant-numeric: tabular-nums; }
+  ul.wv-tree li { position: relative; padding: 2px 0 2px .9em; border-left: 1px solid rgba(148,163,184,.35); }
+  ul.wv-tree li:last-child { border-left-color: transparent; }
+  ul.wv-tree li::before { content: ''; position: absolute; left: -1px; top: 0; width: .8em; height: .95em; border-left: 1px solid rgba(148,163,184,.35); border-bottom: 1px solid rgba(148,163,184,.35); }
+  ul.wv-tree .lb { display: inline-block; min-width: 2.6em; font-weight: 800; color: #c7d7ff; }
+  ul.wv-tree .kd { color: var(--muted); font-size: .84rem; }
+  ul.wv-tree li.now > .row { background: rgba(251,191,36,.10); border-radius: 6px; }
+  ul.wv-tree li.now > .row .lb { color: #fbbf24; }
+  .wv-dec { list-style: none; padding: 0; margin: 6px 0 0; }
+  .wv-dec li { padding: 7px 10px; border-radius: 10px; margin-bottom: 6px; border: 1px solid var(--border); font-size: .95rem; line-height: 1.55; }
+  .wv-dec li.up { background: rgba(240,72,72,.06); border-color: rgba(240,72,72,.28); }
+  .wv-dec li.down { background: rgba(34,197,94,.06); border-color: rgba(34,197,94,.28); }
+  .wv-dec b.if { white-space: nowrap; }
+  .wv-roads { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
+  .wv-road { border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; font-size: .93rem; }
+  .wv-road.up { border-color: rgba(240,72,72,.3); } .wv-road.down { border-color: rgba(34,197,94,.3); } .wv-road.cur { box-shadow: 0 0 0 2px rgba(91,140,255,.35) inset; }
+  .wv-road .t { font-weight: 800; margin-bottom: 4px; }
   .wv-ev { display: inline-block; font-size: .82rem; padding: 2px 8px; border-radius: 6px; margin: 2px 4px 2px 0; background: rgba(148,163,184,.12); color: var(--muted); }
   .wv-ev.on { background: rgba(34,197,94,.14); color: #86efac; }
   .wv-plan { margin: 8px 0 0 0; padding-left: 1.2em; font-size: .93rem; line-height: 1.65; }
-  .wv-tbl tr.wv-chg td { background: rgba(251,146,60,.08); }
-  @media (max-width: 760px) { .wv-nest-row { grid-template-columns: 1fr; } .wv-nest-path { font-size: 1.45rem; } }
-  /* 表格 */
-  .wv-tbl { width: 100%; border-collapse: collapse; font-size: .95rem; }
-  .wv-tbl th { text-align: left; font-weight: 600; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: .86rem; }
-  .wv-tbl td { padding: 8px; border-bottom: 1px solid rgba(35,45,66,.6); vertical-align: top; }
-  .wv-tbl td.n { white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .wv-tbl .wv-now td { background: rgba(91,140,255,.08); color: #c7d7ff; font-weight: 700; text-align: center; }
-  .wv-why { font-size: .86rem; color: var(--muted); }
   /* 收起來的區塊 */
   .wv-more { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; align-items: start; }
   details.wv-card > summary { cursor: pointer; font-size: 1.02rem; font-weight: 700; line-height: 1.6; list-style: none; }
@@ -166,8 +205,6 @@
   .wv-kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: .95rem; }
   .wv-kv .k { color: var(--muted); }
   .wv-tag { font-size: .78rem; padding: 1px 7px; border-radius: 6px; margin-left: 6px; white-space: nowrap; }
-  .wv-tag.ok { background: rgba(240,72,72,.12); color: #fca5a5; }
-  .wv-tag.ref { background: rgba(148,163,184,.12); color: var(--muted); }
   /* AI 圓桌 */
   .wv-ai-sum { font-size: 1.05rem; line-height: 1.6; margin: 8px 0; }
   .wv-stance { display: inline-block; padding: 1px 10px; border-radius: 7px; font-weight: 800; margin-right: 8px; }
@@ -180,225 +217,219 @@
   #wv-ai .btn { padding: 6px 12px; font-size: .88rem; }
   .wv-adv summary { font-size: .92rem !important; font-weight: 600 !important; color: var(--muted); }
   .wv-adv .wv-seg button { padding: 6px 12px; font-size: .88rem; }
-  #wv-msg { display: none; padding: 14px; color: var(--muted); }
-  /* B75：過熱恐慌縮小一列、商品切換、綜合研判、融資 */
-  .oh-mini { margin: -4px 0 14px; gap: 10px; }
-  .oh-mini .oh-card { padding: 8px 14px; border-radius: 12px; background: var(--card); border-color: var(--border); }
+  /* 過熱恐慌（籌碼分頁） */
+  .oh-mini { margin: 0; gap: 10px; }
+  .oh-mini .oh-card { padding: 8px 14px; border-radius: 12px; background: var(--card2); border-color: var(--border); }
   .oh-mini .oh-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 5px; }
   .oh-mini .label { font-size: .9rem; color: var(--muted); margin: 0; }
   .oh-mini .value { font-size: 1.15rem; margin: 0; font-weight: 800; }
   .oh-mini .oh-m { font-size: .8rem; color: var(--muted); margin-left: auto; }
   .oh-mini .bar-wrap { height: 6px; margin: 0; }
-  .wv-sym button { font-weight: 700; }
-  .wv-tile .m b { color: var(--text); }
-  .wv-compline { margin-top: 12px; font-size: .98rem; padding: 10px 12px; border-radius: 10px; background: rgba(148,163,184,.07); line-height: 1.7; }
-  .wv-st { display: inline-block; padding: 0 8px; border-radius: 6px; font-weight: 700; font-size: .88rem; }
   .wv-spark { display: block; width: 100%; height: 70px; margin: 8px 0 2px; }
-  .wv-ok { color: #fca5a5; } .wv-ref { color: var(--muted); }
-  /* B76：週期按鈕、操作建議、多週期一覽、融資 10 天 */
-  .wv-mode button { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.25; padding: 6px 14px; }
-  .wv-mode button small { font-size: .74rem; font-weight: 400; color: var(--muted); }
-  .wv-advgrid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr); gap: 14px; align-items: start; }
-  .wv-advgrid > .wv-card { margin-bottom: 14px; }
-  .wv-adv-top { display: grid; grid-template-columns: minmax(150px, .5fr) 2fr; gap: 12px; }
-  .wv-adv-top .regime-box, .wv-adv-top .suggest-box { margin: 0 !important; background: var(--card2); border-color: var(--border); }
-  .wv-adv-top .regime-label { font-size: 1.15rem; padding: 6px; }
-  .wv-adv-top .label { text-align: center; font-size: .8rem; color: var(--muted); }
-  .wv-adv-head { font-size: 1.15rem; font-weight: 800; margin: 12px 0 6px; }
-  .wv-adv-head .rg { color: #fde68a; }
-  .wv-adv-lines { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: .95rem; line-height: 1.6; }
-  .wv-adv-lines .k { color: var(--muted); white-space: nowrap; font-weight: 700; }
-  .wv-conds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
-  .wv-cond { border-radius: 10px; padding: 8px 12px; font-size: .92rem; line-height: 1.5; border: 1px solid var(--border); }
-  .wv-cond.up { background: rgba(240,72,72,.07); border-color: rgba(240,72,72,.3); }
-  .wv-cond.down { background: rgba(34,197,94,.07); border-color: rgba(34,197,94,.3); }
-  .wv-cond b { font-size: 1.05rem; }
-  .wv-ladder-tbl tr.on td { background: rgba(91,140,255,.10); }
-  .wv-ladder-tbl tr { cursor: pointer; }
-  .wv-ladder-tbl tr:hover td { background: rgba(148,163,184,.08); }
-  .wv-dir { display: inline-block; min-width: 4.6em; font-weight: 800; }
   .wv-m10 td, .wv-m10 th { padding: 4px 8px !important; }
+  /* 總經分頁 */
   .status-row { display: grid; grid-template-columns: minmax(200px, .8fr) 2fr; gap: 12px; margin-bottom: 16px; }
   .status-row .regime-box, .status-row .suggest-box { margin-bottom: 0 !important; }
   details.history-table > summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
-  @media (max-width: 1150px) { .wv-grid { grid-template-columns: 1fr; } .wv-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 1150px) { .wv-grid { grid-template-columns: 1fr; } }
   @media (max-width: 760px) {
     .wv { font-size: 14px; }
-    .wv-more, .wv-ai-grid, .status-row { grid-template-columns: 1fr; }
-    .wv-mode { margin-left: 0; }
-    #wv-chart { height: 340px; }
-    .wv-card { padding: 12px 14px; }
-    .wv-tile .v { font-size: 1.4rem; }
+    .wv-more, .wv-ai-grid, .status-row, .wv-trees, .wv-roads, .wv-vgrid { grid-template-columns: 1fr; }
+    .wv-tiles { grid-template-columns: 1fr; gap: 6px; }
+    .wv-tile { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 10px; align-items: center; padding: 7px 10px; }
+    .wv-tile .k { grid-column: 1 / -1; font-size: .8rem; }
+    .wv-tile .v { font-size: 1.2rem; margin: 0; }
+    .wv-tile .v small { display: block; margin: 0; font-size: .75rem; }
+    .wv-tile .m { font-size: .84rem; }
+    .wv-lines { font-size: .9rem; gap: 4px 8px; }
+    #wv-chart { height: 380px; }
+    .wv-card { padding: 12px 12px; }
     .wv-tbl .wv-hide-m { display: none; }
     .oh-mini .oh-m { display: none; }
-    .wv-advgrid, .wv-adv-top, .wv-conds { grid-template-columns: 1fr; }
-    .wv-mode button { padding: 5px 8px; }
-    .wv-top .wv-sym { order: 0; }
+    .wv-mode { max-width: 100%; overflow-x: auto; }
+    .wv-mode button { padding: 5px 8px; min-width: 62px; }
+    .wv-head { font-size: 1.15rem; } .wv-head .path { font-size: 1.35rem; }
+    .wv-tabs button { padding: 8px 11px; font-size: .95rem; }
   }
 </style>
 </head>
 <body>
 
-<div class="header">
-  <h1>📊 總經面板</h1>
-  <span class="date" id="regime-date">—</span>
-  <button class="btn" onclick="refresh()">🔄 更新總經資料</button>
-</div>
-<div id="status-bar">資料載入中...</div>
-
-<!-- 🌊 大盤解析（PLAN-B74）：wave.js -->
+<!-- 🌊 大盤解析（PLAN-B80：結論卡＋頁內分頁；10-22 用戶：版面太亂、重複資訊太多）：wave.js -->
 <section class="wv" id="wv-root">
   <div class="wv-top">
     <div class="wv-title">🌊 大盤解析</div>
     <span class="wv-seg wv-sym"><button data-wv-sym="TWII">加權指數</button><button data-wv-sym="TX" title="台指期近月連續，日 K 含夜盤（15:00～05:00）">台指期</button></span>
     <div id="wv-price">—</div>
     <div id="wv-asof"></div>
-    <span class="wv-seg wv-mode"><button data-wv-tf="30m">30 分<small>當沖～隔天</small></button><button data-wv-tf="60m">60 分<small>1～3 天</small></button><button data-wv-tf="1d">日 K<small>1～2 週</small></button><button data-wv-tf="1wk">週 K<small>1～3 個月</small></button></span>
+  </div>
+  <!-- 週期按鈕＝多週期一覽（每個按鈕直接顯示方向） -->
+  <div class="wv-tfbar">
+    <span class="wv-seg wv-mode" id="wv-tfbar">
+      <button data-wv-tf="15m">15 分<small>當沖</small></button><button data-wv-tf="30m">30 分<small>當沖～隔天</small></button><button data-wv-tf="60m">60 分<small>1～3 天</small></button><button data-wv-tf="1d">日 K<small>1～2 週</small></button><button data-wv-tf="1wk">週 K<small>1～3 個月</small></button>
+    </span>
+    <span id="wv-ladtext" class="wv-ladtext"></span>
   </div>
   <div id="wv-msg"></div>
-  <div class="wv-card" id="wv-sum"><div class="wv-dim">載入中…</div></div>
-  <!-- 過熱／恐慌（10-21 用戶：往上移、可以縮小）：收盤後證交所 MI_5MINS 算的，id 不變 -->
-  <div class="oh-grid oh-mini">
-    <div class="oh-card" id="card-overheating" title="過熱指數＝成交量 ÷ 委買量（收盤後算）。>50% 買盤被大量消化、追漲風險高；<30% 委買多但觀望">
-      <div class="oh-row"><span class="label">🔥 過熱指數</span><span class="value" id="oh-val">—</span><span class="oh-m">&gt;50% 追漲風險高｜&lt;30% 觀望</span></div>
-      <div class="bar-wrap"><div class="bar" id="oh-bar" style="width:0%"></div></div>
+  <!-- ① 結論卡 -->
+  <div class="wv-card wv-sum" id="wv-sum"><div class="wv-dim">載入中…</div></div>
+  <!-- 分頁 -->
+  <nav class="wv-tabs" id="wv-tabs" role="tablist">
+    <button data-wv-tab="chart" role="tab">📈 圖表</button><button data-wv-tab="plan" role="tab">🧭 劇本</button><button data-wv-tab="chips" role="tab">🏦 籌碼</button><button data-wv-tab="ai" role="tab">🤖 AI</button><button data-wv-tab="macro" role="tab">📊 總經</button>
+  </nav>
+
+  <!-- 📈 圖表：K 線＋量、價位梯、量能與力道 -->
+  <div class="wv-pane" data-pane="chart">
+    <div class="wv-grid">
+      <div class="wv-card">
+        <div class="wv-charttools">
+          <label title="最近一段漲跌的 0.382／0.5／0.618 等回檔位置"><input type="checkbox" data-wv-show="fib">費波那契</label>
+          <label title="波浪劇本算出來這一段可能走到的位置"><input type="checkbox" data-wv-show="tg">劇本目標</label>
+          <label title="波浪規則上整個劇本作廢的價位（通常很遠）"><input type="checkbox" data-wv-show="inv">劇本失效</label>
+          <label title="過去 26 年，之後 5／20 天八成情況的範圍（只有日 K）"><input type="checkbox" data-wv-show="cone">歷史範圍</label>
+          <label title="15／30／60 分 K：圖上改標多層浪名（3-1、4-a 這種）、畫趨勢線和關卡"><input type="checkbox" data-wv-show="nest">多層浪名</label>
+          <button class="btn" id="wv-alt" title="圖上改標替代劇本（備選數法）的浪別">看備選</button>
+        </div>
+        <div id="wv-chart"></div>
+        <div id="wv-legend"></div>
+      </div>
+      <div class="wv-card" id="wv-lmap"></div>
     </div>
-    <div class="oh-card" id="card-panic" title="恐慌指數＝成交量 ÷ 委賣量（收盤後算）。>75% 賣單幾乎全成交、恐慌殺盤；<50% 賣壓還沒爆發">
-      <div class="oh-row"><span class="label">😱 恐慌指數</span><span class="value" id="pa-val">—</span><span class="oh-m">&gt;75% 恐慌殺盤｜&lt;50% 賣壓未爆發</span></div>
-      <div class="bar-wrap"><div class="bar" id="pa-bar" style="width:0%"></div></div>
+    <div class="wv-card" id="wv-vol"></div>
+    <div class="wv-more">
+      <details class="wv-card" id="wv-research"></details>
+      <details class="wv-card" id="wv-fc"></details>
     </div>
   </div>
-  <!-- B76：💡 操作建議（總經狀態＋條件式細部解讀）＋🧭 之前研究的訊號，再來是 📶 多週期一覽 -->
-  <div class="wv-advgrid">
-    <div class="wv-card wv-adv-card">
-      <div class="wv-adv-top">
-        <div class="regime-box"><div class="label">市場狀態（總經）</div><div class="regime-label" id="regime-label-top">載入中…</div></div>
-        <div class="suggest-box">
-          <div class="suggest-title">💡 操作建議</div>
-          <div class="suggest-action" id="suggest-action">—</div>
-          <div class="suggest-desc" id="suggest-desc">—</div>
-          <div class="suggest-tags" id="suggest-tags"></div>
+
+  <!-- 🧭 劇本：母級定位、版本樹、如果…就…、三條路 -->
+  <div class="wv-pane" data-pane="plan" hidden>
+    <div class="wv-card" id="wv-plan"></div>
+    <details class="wv-card" id="wv-tl"></details>
+    <details class="wv-card" id="wv-rules"></details>
+  </div>
+
+  <!-- 🏦 籌碼：期貨＋籌碼綜合、融資、法人與期貨、國際、過熱恐慌 -->
+  <div class="wv-pane" data-pane="chips" hidden>
+    <details class="wv-card" id="wv-comp" open></details>
+    <div class="wv-more">
+      <details class="wv-card" id="wv-margin" open></details>
+      <details class="wv-card" id="wv-chips" open></details>
+      <details class="wv-card" id="wv-global"></details>
+      <div class="wv-card">
+        <div class="wv-h3">🔥 過熱／😱 恐慌 <span class="wv-dim">收盤後證交所 MI_5MINS 算的</span></div>
+        <div class="oh-grid oh-mini">
+          <div class="oh-card" id="card-overheating" title="過熱指數＝成交量 ÷ 委買量（收盤後算）。>50% 買盤被大量消化、追漲風險高；<30% 委買多但觀望">
+            <div class="oh-row"><span class="label">🔥 過熱指數</span><span class="value" id="oh-val">—</span><span class="oh-m">&gt;50% 追漲風險高｜&lt;30% 觀望</span></div>
+            <div class="bar-wrap"><div class="bar" id="oh-bar" style="width:0%"></div></div>
+          </div>
+          <div class="oh-card" id="card-panic" title="恐慌指數＝成交量 ÷ 委賣量（收盤後算）。>75% 賣單幾乎全成交、恐慌殺盤；<50% 賣壓還沒爆發">
+            <div class="oh-row"><span class="label">😱 恐慌指數</span><span class="value" id="pa-val">—</span><span class="oh-m">&gt;75% 恐慌殺盤｜&lt;50% 賣壓未爆發</span></div>
+            <div class="bar-wrap"><div class="bar" id="pa-bar" style="width:0%"></div></div>
+          </div>
         </div>
       </div>
-      <div id="wv-advice"><div class="wv-dim">細部解讀載入中…</div></div>
+    </div>
+    <details class="wv-card wv-help"><summary>ⓘ 籌碼怎麼看</summary>
+      <div class="wv-what">紅＝買超／偏多、綠＝賣超／偏空。「偏多／偏空」是現在的數值落在歷史的哪一段。
+        回測（加權 26 年＋台指期 2017 年起）：<b>只有台指期夜盤、前一晚費半對「隔天」有效 ✅</b>；外資現貨／期貨／選擇權、散戶小台、融資對 1～4 週都沒有預測力 △，只當描述。</div>
+    </details>
+  </div>
+
+  <!-- 🤖 AI -->
+  <div class="wv-pane" data-pane="ai" hidden>
+    <div class="wv-card" id="wv-ai"><div class="wv-h3">🤖 AI 圓桌</div><div class="wv-dim">載入中…</div></div>
+  </div>
+
+  <!-- 📊 總經：原本總經面板全部搬進來（id 不變） -->
+  <div class="wv-pane" data-pane="macro" hidden>
+    <div class="header">
+      <h1>📊 總經面板</h1>
+      <span class="date" id="regime-date">—</span>
+      <button class="btn" onclick="refresh()">🔄 更新總經資料</button>
+    </div>
+    <div id="status-bar">資料載入中...</div>
+    <div class="status-row">
+      <div class="regime-box"><div class="label" style="text-align:center;font-size:.8rem;color:var(--muted)">市場狀態（總經）</div><div class="regime-label" id="regime-label-top">載入中…</div></div>
+      <div class="suggest-box">
+        <div class="suggest-title">💡 總經的操作建議</div>
+        <div class="suggest-action" id="suggest-action">—</div>
+        <div class="suggest-desc" id="suggest-desc">—</div>
+        <div class="suggest-tags" id="suggest-tags"></div>
+      </div>
+    </div>
+    <!-- 三大核心分數 -->
+    <div class="grid3">
+      <div class="score-card" id="card-dir">
+        <div class="label">方向分數</div>
+        <div class="value" id="dir-val">—</div>
+        <div class="sub">市場方向（-100~+100）</div>
+        <div class="desc">七大因子加權合成。正值偏多、負值偏空。<br>持續 &lt; −30 時避免主動做多</div>
+      </div>
+      <div class="score-card" id="card-risk">
+        <div class="label">風險分數</div>
+        <div class="value" id="risk-val">—</div>
+        <div class="sub">市場脆弱度（0~100）</div>
+        <div class="desc">分數越高越危險（VIX、融資、匯率加權）。<br>&lt;50 穩健｜50~70 留意停損｜&gt;70 偏高、&gt;85 極端風險</div>
+      </div>
+      <div class="score-card" id="card-ex">
+        <div class="label">竭盡分數</div>
+        <div class="value" id="ex-val">—</div>
+        <div class="sub" id="ex-status" style="font-size:.78rem;font-weight:600;margin-top:2px">—</div>
+        <div class="desc" style="margin-top:6px">
+          <b>0 = 正常</b>，無極端訊號（多數時候如此）<br>
+          接近 <b style="color:#3fb950">−100</b> → 跌深賣壓耗盡，可能反彈<br>
+          接近 <b style="color:#f85149">+100</b> → 買盤過熱，可能見頂<br>
+          <span style="color:#484f58;font-size:.72rem">觸發門檻：淨廣度 &lt;−50 或 &gt;+50 才會出現非零值</span>
+        </div>
+      </div>
+    </div>
+    <!-- 廣度進度條 -->
+    <div style="background:#161b22;border:1px solid #21262d;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
+        <span style="font-size:.8rem;color:#8b949e">淨廣度＝（上漲−下跌家數）÷ 上市股票家數（−100～+100）</span>
+        <span id="breadth-pct" style="font-size:1rem;font-weight:700;color:#e6edf3">—</span>
+      </div>
+      <div style="background:#0d1117;border-radius:4px;height:10px;overflow:hidden">
+        <div id="breadth-bar" style="height:100%;border-radius:4px;transition:width .5s;width:0%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:.7rem;color:#484f58;margin-top:4px">
+        <span>-100（空頭）</span><span>0（中性）</span><span>+100（多頭）</span>
+      </div>
+    </div>
+    <h2>60 日走勢圖</h2>
+    <div class="chart-box">
+      <div class="chart-legend">
+        <span><i style="background:#5b8cff"></i> 方向</span>
+        <span><i style="background:#fb923c"></i> 風險</span>
+        <span><i style="background:#d29922"></i> 竭盡</span>
+      </div>
+      <canvas id="history-chart"></canvas>
+    </div>
+    <details class="history-table" style="margin-bottom:20px">
+      <summary>📅 近 30 天市場狀態記錄（點開）</summary>
+      <div id="history-table" style="margin-top:10px">
+        <div style="color:#8b949e;font-size:.82rem;text-align:center;padding:12px">載入中...</div>
+      </div>
+    </details>
+    <h2>七大因子</h2>
+    <div class="factors-grid" id="factors-grid">
+      <div class="factor-row"><div class="name">載入中...</div></div>
+    </div>
+    <h2>即時市場數據</h2>
+    <div class="series-list" id="series-list">
+      <div class="series-row"><span>載入中...</span></div>
     </div>
     <details class="wv-card" id="wv-ctx" open></details>
-  </div>
-  <div class="wv-card" id="wv-ladder"></div>
-  <div class="wv-grid">
-    <div class="wv-card">
-      <div class="wv-charttools">
-        <label title="最近一段漲跌的 0.382／0.5／0.618 等回檔位置"><input type="checkbox" data-wv-show="fib">費波那契</label>
-        <label title="波浪劇本算出來這一段可能走到的位置"><input type="checkbox" data-wv-show="tg">劇本目標</label>
-        <label title="波浪規則上整個劇本作廢的價位（通常很遠）"><input type="checkbox" data-wv-show="inv">劇本失效</label>
-        <label title="過去 26 年，之後 5／20 天八成情況的範圍（只有日 K）"><input type="checkbox" data-wv-show="cone">歷史範圍</label>
-        <label title="30／60 分 K：圖上改標多層浪名（3-1、4-a 這種）、畫下降趨勢線和關卡"><input type="checkbox" data-wv-show="nest">多層浪名</label>
-        <button class="btn" id="wv-alt" title="圖上改標替代劇本的浪別">看替代劇本</button>
+    <details class="wv-card wv-adv"><summary>⚙️ 進階：自己選波浪級數、重抓大盤資料</summary>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px">
+        <span class="wv-seg"><button data-wv-deg="auto">跟著週期</button><button data-wv-deg="small">小級</button><button data-wv-deg="mid">中級</button><button data-wv-deg="big">大級</button></span>
+        <button class="btn" id="wv-refresh" title="重抓國外指數、籌碼並重算">🔄 重抓資料</button>
       </div>
-      <div id="wv-chart"></div>
-      <div id="wv-legend"></div>
-    </div>
-    <div class="wv-card" id="wv-scen"></div>
+      <div class="wv-what">級數＝看多大的波段。<b>小級</b>每段約 2 週（短線）、<b>中級</b>約 2 個月（波段）、<b>大級</b>約半年以上（長期背景）。預設：15／30／60 分看各自分 K 的級數，日 K 看小級、週 K 看中級；這裡只影響日 K／週 K。</div>
+    </details>
   </div>
-  <div class="wv-card" id="wv-nest" style="margin-top:14px"></div>
-  <div class="wv-card" id="wv-levels"></div>
-  <div class="wv-card" id="wv-ai"><div class="wv-h3">🤖 AI 圓桌</div><div class="wv-dim">載入中…</div></div>
-  <details class="wv-card" id="wv-comp"></details>
-  <div class="wv-more">
-    <details class="wv-card" id="wv-margin" open></details>
-    <details class="wv-card" id="wv-chips"></details>
-    <details class="wv-card" id="wv-global"></details>
-    <details class="wv-card" id="wv-fc"></details>
-  </div>
-  <details class="wv-card" id="wv-research"></details>
-  <details class="wv-card wv-adv"><summary>⚙️ 進階：自己選波浪級數、重抓資料</summary>
-    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px">
-      <span class="wv-seg"><button data-wv-deg="auto">跟著週期</button><button data-wv-deg="small">小級</button><button data-wv-deg="mid">中級</button><button data-wv-deg="big">大級</button></span>
-      <button class="btn" id="wv-refresh" title="重抓國外指數、籌碼並重算">🔄 重抓資料</button>
-    </div>
-    <div class="wv-what">級數＝看多大的波段。<b>小級</b>每段約 2 週（短線）、<b>中級</b>約 2 個月（波段）、<b>大級</b>約半年以上（長期背景）。預設：30 分、60 分看各自分 K 的級數，日 K 看小級、週 K 看中級；這裡只影響日 K／週 K。</div>
-  </details>
 </section>
-
-<!-- 總經狀態＋操作建議：B76 移到大盤解析上面 -->
-
-<!-- 三大核心分數 -->
-<div class="grid3">
-  <div class="score-card" id="card-dir">
-    <div class="label">方向分數</div>
-    <div class="value" id="dir-val">—</div>
-    <div class="sub">市場方向（-100~+100）</div>
-    <div class="desc">七大因子加權合成。正值偏多、負值偏空。<br>持續 &lt; −30 時避免主動做多</div>
-  </div>
-  <div class="score-card" id="card-risk">
-    <div class="label">風險分數</div>
-    <div class="value" id="risk-val">—</div>
-    <div class="sub">市場脆弱度（0~100）</div>
-    <div class="desc">分數越高越危險（VIX、融資、匯率加權）。<br>&lt;50 穩健｜50~70 留意停損｜&gt;70 偏高、&gt;85 極端風險</div>
-  </div>
-  <div class="score-card" id="card-ex">
-    <div class="label">竭盡分數</div>
-    <div class="value" id="ex-val">—</div>
-    <div class="sub" id="ex-status" style="font-size:.78rem;font-weight:600;margin-top:2px">—</div>
-    <div class="desc" style="margin-top:6px">
-      <b>0 = 正常</b>，無極端訊號（多數時候如此）<br>
-      接近 <b style="color:#3fb950">−100</b> → 跌深賣壓耗盡，可能反彈<br>
-      接近 <b style="color:#f85149">+100</b> → 買盤過熱，可能見頂<br>
-      <span style="color:#484f58;font-size:.72rem">觸發門檻：淨廣度 &lt;−50 或 &gt;+50 才會出現非零值</span>
-    </div>
-  </div>
-</div>
-
-<!-- 廣度進度條 -->
-<div style="background:#161b22;border:1px solid #21262d;border-radius:10px;padding:14px 16px;margin-bottom:16px">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-    <span style="font-size:.8rem;color:#8b949e">淨廣度＝（上漲−下跌家數）÷ 上市股票家數（−100～+100）</span>
-    <span id="breadth-pct" style="font-size:1rem;font-weight:700;color:#e6edf3">—</span>
-  </div>
-  <div style="background:#0d1117;border-radius:4px;height:10px;overflow:hidden">
-    <div id="breadth-bar" style="height:100%;border-radius:4px;transition:width .5s;width:0%"></div>
-  </div>
-  <div style="display:flex;justify-content:space-between;font-size:.7rem;color:#484f58;margin-top:4px">
-    <span>-100（空頭廣度）</span><span>0（中性）</span><span>+100（多頭廣度）</span>
-  </div>
-</div>
-
-<!-- 過熱/恐慌指數：B75 移到大盤解析摘要卡下面 -->
-
-<!-- 歷史走勢圖 Sprint 3 -->
-<h2>60 日走勢圖</h2>
-<div class="chart-box">
-  <div class="chart-legend">
-    <span><i style="background:#5b8cff"></i> 方向</span>
-    <span><i style="background:#fb923c"></i> 風險</span>
-    <span><i style="background:#d29922"></i> 竭盡</span>
-  </div>
-  <canvas id="history-chart"></canvas>
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;font-size:.78rem;color:#8b949e;border-top:1px solid #21262d;padding-top:8px">
-    <div><b style="color:#5b8cff">方向</b><br>七大因子加權合成（-100~+100）<br>正值代表多頭傾向，負值代表空頭傾向。&lt;-30 時避免主動做多</div>
-    <div><b style="color:#fb923c">風險</b><br>市場脆弱度（0~100，VIX、融資、匯率）<br>數值越高越危險。&lt;50 穩健｜50~70 留意停損｜&gt;70 偏高、&gt;85 極端風險</div>
-    <div><b style="color:#d29922">竭盡</b><br>極端竭盡指標（-100~+100）<br>接近 -100 → 賣壓耗盡可能反彈；接近 +100 → 買盤過熱可能見頂</div>
-  </div>
-</div>
-
-<!-- Regime 標籤歷史 Sprint 3 -->
-<details class="history-table" style="margin-bottom:20px">
-  <summary>📅 近 30 天市場狀態記錄（點開）</summary>
-  <div id="history-table" style="margin-top:10px">
-    <div style="color:#8b949e;font-size:.82rem;text-align:center;padding:12px">載入中...</div>
-  </div>
-</details>
-
-<h2>七大因子</h2>
-<div class="factors-grid" id="factors-grid">
-  <div class="factor-row"><div class="name">載入中...</div></div>
-</div>
-
-<h2>即時市場數據</h2>
-<div class="series-list" id="series-list">
-  <div class="series-row"><span>載入中...</span></div>
-</div>
-
 <script>
 const SERIES_LABELS = {
   TAIEX: '台股加權', OTC: '上櫃指數', SP500: 'S&P 500',
@@ -934,10 +965,13 @@ async function loadSeries() {
 }
 
 // ── 歷史資料載入 Sprint 3 ─────────────────────────────────────────────
+let _lastHistory = null;
+window.__regimeRedraw = () => { if (_lastHistory) drawHistoryChart(_lastHistory); };
 async function loadHistory() {
   try {
     const history = await api('/api/regime/history?days=60');
     if (history && history.length > 0) {
+      _lastHistory = history;
       drawHistoryChart(history);
       renderHistoryTable(history);
     }
@@ -986,10 +1020,8 @@ function _regimeVisible() {
 }
 setInterval(() => { if (_regimeVisible() && Date.now() - _lastLoad >= 300000) { _lastLoad = Date.now(); load(); } }, 30000);
 // 視窗 resize 時重繪圖表
-window.addEventListener('resize', () => {
-  api('/api/regime/history?days=60').then(h => { if (h) drawHistoryChart(h); }).catch(()=>{});
-});
+window.addEventListener('resize', () => { window.__regimeRedraw(); });
 </script>
-<script src="/regime/static/wave.js?v=20261022b79b"></script>
+<script src="/regime/static/wave.js?v=20261022b80b"></script>
 </body>
 </html>

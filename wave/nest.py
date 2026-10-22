@@ -326,6 +326,27 @@ def _text(chain: list, top_kind: str) -> str:
     return " → ".join(parts) + " 進行中" if parts else ""
 
 
+def _pt(seq: list, k: int, times, tlabel) -> dict:
+    q = seq[k]
+    return {"p": round(float(q["p"]), 2), "t": tlabel(q["i"]), "time": int(times[q["i"]]) if times is not None else None}
+
+
+def tree_out(node: dict, seq: list, times, tlabel, prefix: Optional[list] = None, depth: int = 0) -> list:
+    """B80 版本樹（她 10/7 的畫法）：數法的節點 → [{lab, path, kind, split, from, to, now, subs}]（最多 MAX_DEPTH 層）"""
+    if not node or node.get("k") == "atom":
+        return []
+    prefix = prefix or []
+    labs = _sub_labels(node["k"], depth + 1)
+    out = []
+    for m, s in enumerate(node.get("subs") or []):
+        path = prefix + [labs[m]]
+        out.append({"lab": labs[m], "path": "-".join(path), "kind": KIND_NAME.get(s["k"], ""), "split": s["k"] != "atom",
+                    "dir": s["d"], "from": _pt(seq, s["i"], times, tlabel),
+                    "to": _pt(seq, s["j"] if s["j"] is not None else len(seq) - 1, times, tlabel),   # 進行中（j＝None）→ 目前的極值
+                    "now": bool(s.get("partial")), "subs": tree_out(s, seq, times, tlabel, path, depth + 1)})
+    return out
+
+
 def parse(pts: list, anchor: int = 0, parent_role: Optional[str] = None, top_k: int = 4) -> list:
     """pts：轉折點（確認＋最後一個進行中的極值）；anchor：起點索引。回傳數法清單（分數低＝好），每個含：
     path（如 ['A','4','c']）、path_str、top_kind、chain、labels（{pts 索引: 浪名}）、cost、tree"""
@@ -540,10 +561,20 @@ def _anchor(pts: list, daily_cnt: Optional[dict], daily_dates, tdate) -> tuple:
     return min(kmax, kmin), "window"
 
 
+def anchor_at(pts: list, t0: int, t1: int, typ: str, times) -> Optional[int]:
+    """B80 15 分 K：起點對到上一層（60 分）那段的起點——時間在 [t0, t1) 內、同方向的轉折取最極端的；之後超過 MAX_PIV 個轉折 → None"""
+    n = len(pts)
+    cand = [k for k in range(max(0, n - 1 - MAX_PIV), n - 2) if pts[k]["t"] == typ and t0 <= int(times[pts[k]["i"]]) < t1]
+    if not cand:
+        return None
+    return (max if typ == "H" else min)(cand, key=lambda q: pts[q]["p"])
+
+
 def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: Optional[dict] = None,
-          daily_dates=None, tdate=None, tlabel=None) -> dict:
+          daily_dates=None, tdate=None, tlabel=None, parent_seg: Optional[dict] = None) -> dict:
     """分 K 的 analyze 結果 → 多層浪名＋關卡＋操作紀律。
-    an：engine.analyze（pivots、tentative）；times：K 棒時間；tdate(i)→date、tlabel(i)→字串（分 K 第 i 根）"""
+    an：engine.analyze（pivots、tentative）；times：K 棒時間；tdate(i)→date、tlabel(i)→字串（分 K 第 i 根）
+    parent_seg（B80 15 分 K）：{time, t0, t1, typ, name}＝上一層（60 分）主要數法第一層進行中那段的起點，對得到就從那裡拆"""
     piv = list(an.get("pivots") or [])
     tent = an.get("tentative")
     pts = piv + ([tent] if tent else [])
@@ -551,10 +582,15 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
         return {"ok": False, "note": f"{tfn} K 轉折還不夠"}
     tdate = tdate or (lambda i: None)
     tlabel = tlabel or (lambda i: str(i))
-    anchor, how = _anchor(pts, daily_cnt, daily_dates, tdate)
+    anchor, how = None, None
+    if parent_seg:
+        anchor = anchor_at(pts, parent_seg["t0"], parent_seg["t1"], parent_seg["typ"], times)
+        how = "parent" if anchor is not None else None
+    if anchor is None:
+        anchor, how = _anchor(pts, daily_cnt, daily_dates, tdate)
     if anchor is None:
         return {"ok": False, "note": f"{tfn} K 找不到起點"}
-    role = daily_role(daily_cnt) if how == "daily" else None
+    role = daily_role(daily_cnt) if how == "daily" else (parent_seg.get("role") if how == "parent" and parent_seg else None)
     cands = parse(pts, anchor, parent_role=None, top_k=12)
     if role:
         cands = [c for c in cands if c["role"] == role] or cands
@@ -595,8 +631,18 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
                           "top": k in c["lab1"], "done": parts[0] != cur1})
         marks.append({"i": seq[-1]["i"], "time": int(times[seq[-1]["i"]]), "p": seq[-1]["p"], "t": seq[-1]["t"],
                       "text": (c["path"][-1] if c["path"] else "") + "?", "top": None})
+        tops = sorted(c["lab1"])                         # 第一層走完的那幾段終點（pts 索引）
+        k1 = tops[-1] if tops else anchor                 # 第一層進行中那段的起點
+        q1 = pts[k1]
+        lab0 = c["path"][0] if c["path"] else None
+        labs1 = _sub_labels(c["top_kind"], 1)
+        seg1 = {"time": int(times[q1["i"]]), "p": q1["p"], "t": q1["t"], "lab": lab0,
+                "role": ROLES[c["top_kind"]][labs1.index(lab0)] if lab0 in labs1 else None}   # 這段本身是推動（M）還是修正（C）
         return {"path": c["path_str"], "role": c["role"], "top_kind": c["top_kind"], "text": c["text"],
                 "cost": round(c["adj"], 4), "with_trend": _with_trend(c, d0), "marks": marks,
+                "tree": {"kind": KIND_NAME.get(c["top_kind"], ""), "from": _pt(seq, 0, times, tlabel),
+                         "to": _pt(seq, len(seq) - 1, times, tlabel), "subs": tree_out(c["tree"], seq, times, tlabel)},
+                "seg1": seg1,
                 "rules": [{**r, "price": round(r["price"], 2)} for r in _rule_levels(c, seq, d0)],
                 "targets": _targets(c, seq)}
     P, A, T3 = out_c(prim), out_c(alt), out_c(third)

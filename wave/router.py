@@ -4,9 +4,13 @@ from __future__ import annotations
 import logging
 import threading
 
-from fastapi import APIRouter, HTTPException
+import gzip
+import json
 
-from . import data as D, futdata as FD, panel as P, service as S
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import Response
+
+from . import data as D, futdata as FD, panel as P, service as S, voldata as VD
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -20,15 +24,22 @@ def startup():
         D.ensure_history(background=True)
         D.ensure_chips_history(background=True)
         FD.ensure_history(background=True)
+        VD.ensure(background=True)              # B80：加權盤中量（近 45 天）＋每日成交金額（2020 起），缺的才補
     except Exception as e:     # noqa: BLE001
         log.warning(f"[wave] 啟動初始化失敗：{e}")
 
 
 @router.get("/api/wave/snapshot")
-def api_snapshot(force: int = 0, sym: str = "TWII"):
+def api_snapshot(request: Request, force: int = 0, sym: str = "TWII"):
     if sym not in S.SYMS:
         raise HTTPException(status_code=400, detail="sym 只能是 TWII 或 TX")
-    return S.snapshot(force=bool(force), sym=sym)
+    snap = S.snapshot(force=bool(force), sym=sym)
+    # B80：快照約 300KB（多了 15 分 K、量、價位梯）→ 瀏覽器支援就壓縮（只壓這個端點，不動整個網站的串流回應）
+    body = json.dumps(snap, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
+    if "gzip" in (request.headers.get("accept-encoding") or "").lower() and len(body) > 2048:
+        return Response(gzip.compress(body, compresslevel=5), media_type="application/json",
+                        headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
+    return Response(body, media_type="application/json")
 
 
 @router.get("/api/wave/status")
@@ -39,7 +50,8 @@ def api_status():
         fd = c.execute("SELECT COUNT(*) n, MAX(date) mx FROM fut_daily").fetchone()
         fc = c.execute("SELECT COUNT(*) n, MAX(date) mx FROM fut_chips").fetchone()
     return {"sources": D.status(), "refresh": _refresh, "counts": {s: D.count_idx(s) for s in D.SYMS},
-            "bars5": b5, "fut_daily": {"n": fd["n"], "last": fd["mx"]}, "fut_chips": {"n": fc["n"], "last": fc["mx"]}}
+            "bars5": b5, "fut_daily": {"n": fd["n"], "last": fd["mx"]}, "fut_chips": {"n": fc["n"], "last": fc["mx"]},
+            "volume": VD.status()}
 
 
 def refresh_job(chips: bool = True):
@@ -116,6 +128,11 @@ def scheduled(kind: str):
                 FD.live_bars("TX")
                 FD.live_bars("TWII")
                 S.fill_twii_today()
+                try:                                     # B80：今天加權盤中量＋本月每日成交金額
+                    VD.backfill_twii_vol(days=3, max_days=2)
+                    VD.update_turnover(1)
+                except Exception as e:     # noqa: BLE001
+                    log.warning(f"[wave] 收盤存量失敗：{e}")
                 S.snapshot(force=True, sym="TX")
                 S.snapshot(force=True)
             return
@@ -126,6 +143,11 @@ def scheduled(kind: str):
         elif kind == "close":
             refresh_job(chips=False)
         elif kind == "chips":
+            try:                                         # B80：補缺的加權盤中量（每次 ≤5 天，還有缺下次接著補）
+                VD.backfill_twii_vol(max_days=5)
+                VD.update_turnover(1)
+            except Exception as e:     # noqa: BLE001
+                log.warning(f"[wave] 補量失敗：{e}")
             refresh_job(chips=True)
             if P.providers():
                 P.start(S.panel_snapshot, "auto")

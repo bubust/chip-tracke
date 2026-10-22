@@ -289,7 +289,7 @@ def test_snapshot_rejects_bad_sym_and_caches_per_sym(monkeypatch):
     from fastapi.testclient import TestClient
     from wave import router as WR, service as S
     calls = []
-    monkeypatch.setattr(S, "compute", lambda sym, live=None, rows=None: calls.append(sym) or {"ok": True, "sym": sym})
+    monkeypatch.setattr(S, "compute", lambda sym, live=None, rows=None, vol_live=None: calls.append(sym) or {"ok": True, "sym": sym})   # B80：多了 vol_live
     monkeypatch.setattr(S.FD, "in_session", lambda sym, now=None: False)
     for s in S.SYMS:
         S._cache[s].update(t=0.0, data=None, session=None)

@@ -3,7 +3,8 @@
 - 每天：Yahoo 近 25 天；加權最近 2 個月用證交所官方開高低收覆蓋；只存「收完」的 K 棒（市場還沒收盤的今天那根不存）
 - mkt_chips：FinMind 外資／投信／自營（億元）、外資台指期淨未平倉（口）、融資金額（億元）；
   FinMind 失敗 → 外資現貨用證交所 BFI82U、期貨用總經面板已抓的 FOREIGN_FUTURES_NET；融資沒有備援（照實標暫缺）
-- src_status：每個來源上次成功時間、連續失敗次數（連續 ≥2 次寫 log 警告）"""
+- src_status：每個來源上次成功時間、連續失敗次數（連續 ≥2 次寫 log 警告）
+- B80：vol5（加權 5 分 K 成交金額，證交所 MI_5MINS）、turnover（每日成交金額，FMTQIK）—— 抓取在 wave/voldata.py"""
 from __future__ import annotations
 
 import logging
@@ -45,6 +46,8 @@ CREATE TABLE IF NOT EXISTS fut_daily (date TEXT, sess TEXT, contract TEXT, o REA
 CREATE TABLE IF NOT EXISTS bars5 (sym TEXT, ts INTEGER, o REAL, h REAL, l REAL, c REAL, v REAL, src TEXT, PRIMARY KEY (sym, ts));
 CREATE TABLE IF NOT EXISTS fut_chips (date TEXT PRIMARY KEY, mtx_oi REAL, mtx_inst_long REAL, mtx_inst_short REAL,
     retail_ratio REAL, opt_f_bull REAL, src TEXT);
+CREATE TABLE IF NOT EXISTS vol5 (sym TEXT, ts INTEGER, v REAL, src TEXT, PRIMARY KEY (sym, ts));
+CREATE TABLE IF NOT EXISTS turnover (date TEXT PRIMARY KEY, amt REAL, shares REAL, src TEXT);
 """
 
 

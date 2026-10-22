@@ -30,12 +30,14 @@ DEGREES = {
 INTRA = {"m": 3.0, "floor": 0.005, "label": "60 分 K（超短線）"}
 # B76：30 分 K 自己的級數（下限 0.4%；m 由 research/futures/r30.py 校準，寫 stats.json intraday30）
 INTRA30 = {"m": 2.5, "floor": 0.004, "label": "30 分 K（當沖～隔天）"}
+# B80：15 分 K 自己的級數（下限 0.3%；m 由 research/b80/r15.py 校準平均每段 0.5 個交易日，寫 stats.json intraday15）
+INTRA15 = {"m": 2.0, "floor": 0.003, "label": "15 分 K（當沖）"}
 
 
 def deg_cfg(deg: str) -> dict:
     if deg in DEGREES:
         return DEGREES[deg]
-    return INTRA30 if deg == "intra30" else INTRA
+    return {"intra30": INTRA30, "intra15": INTRA15}.get(deg, INTRA)
 
 
 WAVE_SYM = {"1": "①", "2": "②", "3": "③", "4": "④", "5": "⑤", "A": "Ⓐ", "B": "Ⓑ", "C": "Ⓒ", "0": "◯",
