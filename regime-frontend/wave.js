@@ -36,7 +36,7 @@
   const DATA = {};
   let S = null, panelData = null;
   const st = { sym: lsGet('wv_sym', 'TWII'), tf: lsGet('wv_tf', OLD_MODE[lsGet('wv_mode', '')] || '1d'), degSel: lsGet('wv_deg2', 'auto'), alt: false,
-               show: { fib: false, tg: false, inv: false, cone: false } };
+               show: { fib: false, tg: false, inv: false, cone: false, nest: lsGet('wv_nest_show', '1') === '1' }, nestTf: lsGet('wv_nest_tf', '60m') };
   if (!TF[st.tf]) st.tf = '1d';
   if (!['TWII', 'TX'].includes(st.sym)) st.sym = 'TWII';
   const T_ = () => TF[st.tf];
@@ -45,7 +45,7 @@
   const modeName = () => `${T_().name}（${T_().hz}）`;
   const intraIv = () => T_().intra;
   const wv = d => (S.waves || {})[d] || {};
-  let chart = null, chartKind = null, candle = null, ma = {}, zz = null, cone = [], pls = [], panelPoll = null;
+  let chart = null, chartKind = null, candle = null, ma = {}, zz = null, cone = [], pls = [], panelPoll = null, tline = null;
 
   // ── 波浪 → 白話 ──
   // B78 複合修正 W-X-Y（-X-Z）、三角形、楔形（文字跟 wave/plain.py 同一套）
@@ -167,6 +167,7 @@
     renderHead();
     renderSummary();
     renderScenario();
+    renderNest();
     renderLevels();
     renderAdvice();
     renderLadder();
@@ -320,6 +321,62 @@
         推進力道變弱時會走成楔形（第 4 段跌進第 1 段的價格區）。
         程式用固定規則判斷現在走到哪一段，複雜的型態要比簡單的明顯貼近規則才會選。<b>很主觀</b>：26 年回測，各段之後的漲跌跟平常差不多，所以只當「劇本」參考。</div>
       <details class="wv-alt-box"><summary>其他級數怎麼看</summary><div class="p" style="font-size:.92rem">${others}</div></details>`;
+  }
+
+  // ── 🧩 多層浪名（B79：學 @fanny55520 的拆法）──
+  function nestFor(tf) {
+    const n = S.nest || {};
+    return n[tf === '30m' ? '30m' : tf === '60m' ? '60m' : st.nestTf] || null;
+  }
+
+  function nestBox(c, label, nz) {
+    if (!c) return '';
+    const side = r => r.side === 'below' ? '跌破' : '漲過';
+    const rules = (c.rules || []).map(r => `${side(r)} <b>${fmt(r.price)}</b>：${esc(r.why)}`).join('<br>');
+    const tgs = k => (c.targets || []).filter(t => (t.kind || 'end') === k).slice(0, 4).map(t => `<b>${fmt(t.price)}</b>（${esc(t.label)}）`).join('、');
+    const tg = tgs('end'), nx = tgs('next');
+    return `<div class="wv-nest-c${label === '備選' ? ' alt' : ''}">
+      <div class="wv-dim">${label}數法</div>
+      <div class="wv-nest-path">${esc(c.path || '—')}<small>${c.with_trend ? `${nz.dir < 0 ? '下跌' : '上漲'}大段還在走` : `大段走完、${nz.dir < 0 ? '反彈' : '回檔'}中`}</small></div>
+      <div class="p">${esc(c.text || '')}</div>
+      ${tg ? `<div class="p">這一段可能走到：${tg}</div>` : ''}
+      ${nx ? `<div class="p">下一段（照這個數法）：${nx}</div>` : ''}
+      ${rules ? `<div class="x">換數法的價位：<br>${rules}</div>` : ''}</div>`;
+  }
+
+  function renderNest() {
+    const el = $('wv-nest');
+    if (!el) return;
+    const tf = T_().intra ? st.tf : st.nestTf;
+    const nz = nestFor(tf);
+    const seg = `<span class="wv-seg" style="font-size:.85rem">${['60m', '30m'].map(k => `<button data-nest-tf="${k}" class="${tf === k ? 'on' : ''}" style="padding:4px 12px">${k === '60m' ? '60 分' : '30 分'}</button>`).join('')}</span>`;
+    const head = `<div class="wv-h3">🧩 多層浪名 <span class="wv-dim">學 @fanny55520 的拆法：一段再拆成 5 段或 3 段，寫成 C-1-4-b 這種浪名</span>${T_().intra ? '' : seg}</div>`;
+    if (!nz || !nz.ok) {
+      el.innerHTML = head + `<div class="wv-dim">${esc((nz && nz.note) || '分 K 資料還不夠，先看上面的劇本')}</div>`;
+      bindNestSeg(el);
+      return;
+    }
+    const dp = plain((S.waves || {}).small && S.waves.small.primary);
+    const ev = nz.evidence || {};
+    const gates = (nz.gates || []).map(g => `<div class="wv-gate${g.ok ? ' ok' : ''}"><span class="k">${g.ok ? '✅ ' : ''}${esc(g.k)}</span><span>${esc(g.t)}</span></div>`).join('');
+    el.innerHTML = head + `
+      <div style="font-size:.95rem;margin-bottom:8px">起點：<b>${esc(nz.anchor.label)} ${fmt(nz.anchor.p)}</b>
+        <span class="wv-dim">（${nz.anchor.how === 'daily' ? '日 K 這一浪的起點' : '這段時間最早的極值'}${dp ? `；日 K：${esc(dp.title)}` : ''}）</span>
+        → ${nz.dir < 0 ? '最低' : '最高'} <b>${fmt(nz.extreme.p)}</b> <span class="wv-dim">${esc(nz.extreme.label)}</span></div>
+      <div class="wv-nest-row">${nestBox(nz.primary, '主要', nz)}${nestBox(nz.alternate, '備選', nz)}</div>
+      <div style="margin-top:10px">盤面證據：<span class="wv-ev${ev.trend ? ' on' : ''}">${ev.trend ? '✅' : '⬜'} 越過${nz.dir < 0 ? '下降' : '上升'}趨勢線</span><span class="wv-ev${ev.f382 ? ' on' : ''}">${ev.f382 ? '✅' : '⬜'} ${nz.dir < 0 ? '站上' : '跌破'} 0.382</span>
+        <span class="wv-dim">（她：證據一致就讓原本的數法升權，衝突就打開替代結構。兩個都成立時「大段走完」的數法優先）</span></div>
+      <div class="wv-gates"><div class="wv-dim" style="margin-bottom:2px">轉浪關卡（她的寫法）</div>${gates}</div>
+      <div style="margin-top:12px;font-weight:700">她的操作紀律（整理成規則）</div>
+      <ul class="wv-plan">${(nz.plan || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+      <div class="wv-what">照她貼文的邏輯寫成固定規則：五段推動（2 不破起點、3 不最短、4 不碰第 1 段）、鋸齒 5-3-5、平台 3-3-5、楔形，每一段都可以再拆一層；
+        分數比的是「比例多貼近費波那契」＋「已經走出來的證據」。程式學的是她的<b>框架</b>，學不到她看盤時的判斷，所以兩個數法都列出來、用關卡決定換不換。
+        ${nz.daily_role ? `日 K 這一浪是${nz.daily_role === 'C' ? '修正' : '推動'}，所以第一層用${nz.daily_role === 'C' ? ' A-B-C' : ' 1-5'}。` : ''}圖上勾「多層浪名」會標出浪名、趨勢線和關卡。</div>`;
+    bindNestSeg(el);
+  }
+
+  function bindNestSeg(el) {
+    el.querySelectorAll('[data-nest-tf]').forEach(b => b.onclick = () => { st.nestTf = b.dataset.nestTf; lsSet('wv_nest_tf', st.nestTf); renderNest(); });
   }
 
   // ── 支撐壓力表 ──
@@ -630,6 +687,7 @@
     ma['60'] = chart.addLineSeries({ color: 'rgba(56,189,248,.8)', lineWidth: 1, ...noScale });
     zz = chart.addLineSeries({ color: 'rgba(147,170,255,.9)', lineWidth: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
     for (let k = 0; k < 3; k++) cone.push(chart.addLineSeries({ color: 'rgba(148,163,184,.55)', lineWidth: 1, lineStyle: k === 1 ? 0 : 2, ...noScale }));
+    tline = chart.addLineSeries({ color: 'rgba(251,191,36,.95)', lineWidth: 2, ...noScale });
     if (!el._ro && window.ResizeObserver) {
       el._ro = new ResizeObserver(() => chart && chart.applyOptions({ width: el.clientWidth, height: el.clientHeight || 500 }));
       el._ro.observe(el);
@@ -668,7 +726,21 @@
     pts.sort((a, b) => a.time < b.time ? -1 : 1);
     zz.setData(pts);
     const marks = [];
-    if (cnt) {
+    const nz = nestFor(st.tf);
+    const useNest = intra && st.show.nest && nz && nz.ok;
+    const nc = useNest ? (st.alt && nz.alternate ? nz.alternate : nz.primary) : null;
+    if (nc) {
+      for (const x of nc.marks || []) {
+        const t = barAt(bars, x.time);
+        if (t == null) continue;
+        // 第一層某段的終點黃色；已經走完的那一大段裡面的小段灰色；現在這段：數字淺藍、字母橘色
+        marks.push({ time: t, position: x.t === 'H' ? 'aboveBar' : 'belowBar',
+                     color: x.top ? '#fbbf24' : x.done ? '#64748b' : (/^[1-5]/.test(x.text) ? '#c7d7ff' : C.warn),
+                     shape: 'circle', size: 0.1, text: x.text });
+      }
+      const t0 = barAt(bars, nz.anchor.time);
+      if (t0 != null) marks.push({ time: t0, position: nz.dir < 0 ? 'aboveBar' : 'belowBar', color: '#fbbf24', shape: 'circle', size: 0.1, text: '起點' });
+    } else if (cnt) {
       const all = cnt.labels || [];
       all.forEach((x, j) => {
         if (x.label === '0') return;
@@ -695,6 +767,13 @@
     if (st.show.inv && cnt && num(cnt.invalid) != null) add(cnt.invalid, C.warn, '失效', 1, 1, false);
     if (st.show.fib && w.fib) (w.fib.levels || []).forEach(f => add(f.price, C.fib, `${f.ratio}`, 1, 1, false));
     if (st.show.tg && cnt) (cnt.targets || []).filter(t => t.kind === 'end').slice(0, 2).forEach(t => add(t.price, C.warn, '目標', 1, 1, false));
+    // B79 多層浪名：下降／上升趨勢線＋關卡
+    const tl = useNest && nz.trendline;
+    if (tl) {
+      const a = barAt(bars, tl.from.time), b = barAt(bars, tl.time_now);
+      tline.setData(a != null && b != null && a < b ? [{ time: a, value: tl.from.p }, { time: b, value: tl.now }] : []);
+    } else if (tline) tline.setData([]);
+    if (useNest) (nz.gates || []).filter(g => /關/.test(g.k)).forEach(g => add(g.price, '#fbbf24', g.k.replace('第', ''), 2, 1, false));
     // 歷史範圍錐形（只有日 K、勾選才畫）
     const fc = S.forecast || {};
     if (!intra && !weekly && st.show.cone && fc.h5 && fc.h20) {
@@ -711,7 +790,8 @@
     const src = S.chart[T_().chart];
     const partial = src && src.length && src[src.length - 1].partial;
     $('wv-legend').innerHTML = `${intra ? '' : '<span><b style="color:#facc15">━</b> 月線</span><span><b style="color:#38bdf8">━</b> 季線</span>'}
-      <span><b style="color:#93aaff">━</b> 波浪轉折（${DEG_NAME[deg()] || ''}；數字＝第幾段，${st.alt ? '替代' : '主要'}劇本）</span>
+      <span><b style="color:#93aaff">━</b> 波浪轉折（${DEG_NAME[deg()] || ''}；${useNest ? `多層浪名 ${esc(nc ? nc.path : '')}，${st.alt ? '備選' : '主要'}數法` : `數字＝第幾段，${st.alt ? '替代' : '主要'}劇本`}）</span>
+      ${useNest && nz.trendline ? '<span><b style="color:#fbbf24">━</b> 趨勢線、┅ 關卡</span>' : ''}
       <span><b style="color:${C.down}">┅</b> 支撐</span><span><b style="color:${C.up}">┅</b> 壓力</span><span><b style="color:${C.warn}">━</b> ${esc(k ? k.kind : '轉折點')}</span>
       ${intra && S.sym === 'TX' ? '<span>夜盤、日盤接在一起畫</span>' : ''}${partial ? '<span>最後一根還沒收完</span>' : ''}
       `;
@@ -807,7 +887,11 @@
     document.querySelectorAll('[data-wv-tf]').forEach(b => b.onclick = () => setTf(b.dataset.wvTf));
     document.querySelectorAll('[data-wv-deg]').forEach(b => b.onclick = () => { st.degSel = b.dataset.wvDeg; lsSet('wv_deg2', st.degSel); if (S) render(); });
     $('wv-alt').onclick = () => { st.alt = !st.alt; if (S) { renderHead(); drawChart(); } };
-    document.querySelectorAll('[data-wv-show]').forEach(cb => cb.onchange = () => { st.show[cb.dataset.wvShow] = cb.checked; if (S) drawChart(); });
+    document.querySelectorAll('[data-wv-show]').forEach(cb => cb.onchange = () => {
+      st.show[cb.dataset.wvShow] = cb.checked;
+      if (cb.dataset.wvShow === 'nest') lsSet('wv_nest_show', cb.checked ? '1' : '0');
+      if (S) drawChart();
+    });
     $('wv-refresh').onclick = async () => {
       $('wv-refresh').disabled = true;
       try { await fetch('/api/wave/refresh', { method: 'POST' }); } catch (e) { /* 照樣重新載入 */ }

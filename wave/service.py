@@ -16,7 +16,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from . import advice as AD, composite as CP, data as D, engine as E, features as F, forecast as FC, futdata as FD, \
+from . import advice as AD, composite as CP, data as D, engine as E, features as F, forecast as FC, futdata as FD, nest as NE, \
     intraday as I, keylevel as KL, levels as LV
 from .plain import plain
 
@@ -552,6 +552,7 @@ def _intraday(sym: str, b: dict, price: float, lv_c, live_rows: list, st: dict) 
     trend = 0 if daily["ma20"] is None else (1 if price > daily["ma20"] else -1)
     a = I.analyze(sym, b60, b30, price, daily, trend)
     out = {"tf60": b60[-I.SHOW[60]:], "tf30": b30[-I.SHOW[30]:], "ok": a.get("ok"), "note": a.get("note")}
+    out["nest"] = {"60m": _nest(a, 60, price, b), "30m": _nest(a.get("m30") or {}, 30, price, b)}
     if a.get("ok"):
         out["wave"] = I.wave_out(a)
         out["levels"] = a["levels"]
@@ -563,6 +564,20 @@ def _intraday(sym: str, b: dict, price: float, lv_c, live_rows: list, st: dict) 
         out["m30"].update(wave=I.wave_out(m30), levels=m30["levels"], key=_key_out(m30["cands"], "m30", price, m30["atr"], st),
                           atr=_f(m30["atr"], 0))
     return out
+
+
+def _nest(a: dict, tf: int, price: float, b: dict) -> dict:
+    """B79 多層浪名（學 @fanny55520）：分 K 轉折從「日 K 這一浪的起點」開始拆成 C-1-4-b 式浪名＋關卡＋操作紀律"""
+    if not a.get("ok"):
+        return {"ok": False, "note": a.get("note")}
+    try:
+        times = a["times"]
+        return NE.build(a["an"], times, price, I.TF[tf]["tfn"], daily_cnt=(b["an"].get("small") or {}).get("primary"),
+                        daily_dates=b["dates"], tdate=lambda i: FD.tw_dt(times[i]).date(),
+                        tlabel=lambda i: FD.tw_dt(times[i]).strftime("%m/%d %H:%M"))
+    except Exception as e:     # noqa: BLE001
+        log.exception(f"[wave] 多層浪名失敗 {tf}：{e}")
+        return {"ok": False, "note": f"多層浪名計算失敗：{e}"}
 
 
 # ── B76 多週期一覽 ─────────────────────────────────────────────────────────
@@ -662,6 +677,7 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
         "price": _f(price), "prev_close": _f(prev), "chg": _f(price - prev), "chg_pct": _pct(price, prev),
         "atr": _f(b["atr"], 0), "trend240": b["trend"],
         "chart": {"bars": bars, "weekly": b["weekly"], "ma": mas, "i60": intra.get("tf60") or [], "i30": intra.get("tf30") or []},
+        "nest": intra.get("nest") or {},
         "v": 76,
         "intra": {"ok": bool(intra.get("ok")), "note": intra.get("note"), "atr": intra.get("atr"), "m": E.INTRA["m"],
                   "m30": {"ok": bool(m30.get("ok")), "note": m30.get("note"), "atr": m30.get("atr"), "m": E.INTRA30["m"]}},
