@@ -570,14 +570,44 @@ def _nest(a: dict, tf: int, price: float, b: dict) -> dict:
     """B79 多層浪名（學 @fanny55520）：分 K 轉折從「日 K 這一浪的起點」開始拆成 C-1-4-b 式浪名＋關卡＋操作紀律"""
     if not a.get("ok"):
         return {"ok": False, "note": a.get("note")}
+    times = a["times"]
+    tdate = lambda i: FD.tw_dt(times[i]).date()                       # noqa: E731
+    tlabel = lambda i: FD.tw_dt(times[i]).strftime("%m/%d %H:%M")     # noqa: E731
     try:
-        times = a["times"]
-        return NE.build(a["an"], times, price, I.TF[tf]["tfn"], daily_cnt=(b["an"].get("small") or {}).get("primary"),
-                        daily_dates=b["dates"], tdate=lambda i: FD.tw_dt(times[i]).date(),
-                        tlabel=lambda i: FD.tw_dt(times[i]).strftime("%m/%d %H:%M"))
+        out = NE.build(a["an"], times, price, I.TF[tf]["tfn"], daily_cnt=(b["an"].get("small") or {}).get("primary"),
+                       daily_dates=b["dates"], tdate=tdate, tlabel=tlabel)
     except Exception as e:     # noqa: BLE001
         log.exception(f"[wave] 多層浪名失敗 {tf}：{e}")
         return {"ok": False, "note": f"多層浪名計算失敗：{e}"}
+    if out.get("ok") and a.get("piv") is not None:
+        try:
+            out["timeline"] = _nest_timeline(a, tf, b, tdate, tlabel)
+        except Exception as e:     # noqa: BLE001
+            log.warning(f"[wave] 浪名演變失敗 {tf}：{e}")
+    return out
+
+
+def _nest_timeline(a: dict, tf: int, b: dict, tdate, tlabel, n_days: int = 10) -> list:
+    """B79 浪名演變：最近 n_days 天，每天最後一根分 K 當時（只用那時候以前的資料）系統怎麼數（她：注意貼文上下文的時間）"""
+    import bisect
+    times = a["times"]
+    h, l, c = a["hlc"]
+    days = [tdate(k) for k in range(len(times))]
+    ends = [k for k in range(len(times)) if k == len(times) - 1 or days[k + 1] != days[k]][-n_days:]
+    small = b["an"].get("small") or {}
+    dpiv = small.get("pivots") or []
+    ddates = [str(x)[:10] for x in b["dates"]]
+    cache: dict = {}
+
+    def daily_at(i):
+        k = bisect.bisect_right(ddates, days[i].isoformat()) - 1      # 那天（含）以前最後一根日 K
+        if k < 0:
+            return None
+        if k not in cache:
+            conf, tent = E.state_at(dpiv, b["h"], b["l"], k)
+            cache[k] = E.primary_alternate(E.count_waves(conf + ([tent] if tent else []), trend=_trend(b["c"], k)))[0]
+        return cache[k]
+    return NE.timeline(a["piv"], h, l, c, times, ends, I.TF[tf]["tfn"], daily_at, b["dates"], tdate, tlabel)
 
 
 # ── B76 多週期一覽 ─────────────────────────────────────────────────────────
@@ -702,6 +732,9 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
             snap["basis"] = {"pts": _f(price - tw_px, 0), "pct": _pct(price, tw_px), "twii": _f(tw_px), "when": tw_when,
                              "label": "正價差" if price > tw_px else "逆價差"}
     snap["scenario"] = _scenario(an, lv, price, fc)
+    # B79 她的「日線定位」寫法（母尺、防守區、鐵律底線、威脅版本）
+    snap["positioning"] = {tf: NE.positioning(waves.get(dg, {}).get("primary"), waves.get(dg, {}).get("alternate"), price, nm)
+                           for tf, dg, nm in (("1d", "small", "日 K"), ("1wk", "mid", "週 K"))}
     snap["ladder"] = _ladder(waves, key, lv)
     snap["ladder_text"] = AD.ladder_summary(snap["ladder"])
     snap["advice"] = AD.build(snap)

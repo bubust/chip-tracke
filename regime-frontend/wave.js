@@ -358,19 +358,38 @@
     }
     const dp = plain((S.waves || {}).small && S.waves.small.primary);
     const ev = nz.evidence || {};
+    // 她的寫法：共同事實／真正分歧／市場裁決（兩個數法都同意的、不同意的、誰先被價格淘汰）
+    const P = nz.primary || {}, A = nz.alternate;
+    const kill = c => (c.rules || []).filter(r => !/這一小段的起點/.test(r.why)).slice(0, 1).map(r => `${r.side === 'below' ? '跌破' : '漲過'} <b>${fmt(r.price)}</b> → ${esc(c.path)} 作廢`).join('');
+    const verdict = A ? `<div class="wv-what" style="margin-top:10px"><b>共同事實</b>：${fmt(nz.anchor.p)} 起${nz.dir < 0 ? '下跌' : '上漲'}，現在這一小段${nz.cur_dir < 0 ? '往下' : '往上'}。
+        <b>真正分歧</b>：${esc(P.path)}（${P.with_trend ? '大段還沒走完' : '大段已走完'}）vs ${esc(A.path)}（${A.with_trend ? '大段還沒走完' : '大段已走完'}）。
+        <b>市場裁決</b>：${[kill(P), kill(A)].filter(Boolean).join('；') || '看下面關卡'}</div>` : '';
+    const tl = (nz.timeline || []).slice().reverse().map(r => `<tr class="${r.changed ? 'wv-chg' : ''}"><td class="n">${esc(r.label)}</td><td class="n">${fmt(r.price)}</td>
+        <td><b>${esc(r.primary || '—')}</b>${r.alternate ? ` <span class="wv-dim">／${esc(r.alternate)}</span>` : ''}</td>
+        <td class="wv-why">${r.changed ? '🔄 換數法：' + esc(r.why || '') : r.step ? '→ 照原本數法走到下一段' : ''}</td></tr>`).join('');
     const gates = (nz.gates || []).map(g => `<div class="wv-gate${g.ok ? ' ok' : ''}"><span class="k">${g.ok ? '✅ ' : ''}${esc(g.k)}</span><span>${esc(g.t)}</span></div>`).join('');
+    const pos = ['1wk', '1d'].map(k => (S.positioning || {})[k]).filter(Boolean).map(x =>
+      `<div style="margin-top:6px"><b>${esc(x.tf)}</b>：${x.lines.map(esc).join('<br>')}</div>`).join('');
     el.innerHTML = head + `
-      <div style="font-size:.95rem;margin-bottom:8px">起點：<b>${esc(nz.anchor.label)} ${fmt(nz.anchor.p)}</b>
+      ${pos ? `<details class="wv-alt-box" open><summary>🗺️ 日線定位（她的寫法：母尺、防守區、鐵律底線、威脅版本）</summary><div class="p" style="font-size:.93rem;line-height:1.65">${pos}</div></details>` : ''}
+      <div style="font-size:.95rem;margin:8px 0">分 K 起點：<b>${esc(nz.anchor.label)} ${fmt(nz.anchor.p)}</b>
         <span class="wv-dim">（${nz.anchor.how === 'daily' ? '日 K 這一浪的起點' : '這段時間最早的極值'}${dp ? `；日 K：${esc(dp.title)}` : ''}）</span>
         → ${nz.dir < 0 ? '最低' : '最高'} <b>${fmt(nz.extreme.p)}</b> <span class="wv-dim">${esc(nz.extreme.label)}</span></div>
       <div class="wv-nest-row">${nestBox(nz.primary, '主要', nz)}${nestBox(nz.alternate, '備選', nz)}</div>
+      ${nz.third ? `<details class="wv-alt-box"><summary>第三個候選：${esc(nz.third.path)}（分數很接近）</summary>${nestBox(nz.third, '候選', nz)}</details>` : ''}
+      ${verdict}
       <div style="margin-top:10px">盤面證據：<span class="wv-ev${ev.trend ? ' on' : ''}">${ev.trend ? '✅' : '⬜'} 越過${nz.dir < 0 ? '下降' : '上升'}趨勢線</span><span class="wv-ev${ev.f382 ? ' on' : ''}">${ev.f382 ? '✅' : '⬜'} ${nz.dir < 0 ? '站上' : '跌破'} 0.382</span>
         <span class="wv-dim">（她：證據一致就讓原本的數法升權，衝突就打開替代結構。兩個都成立時「大段走完」的數法優先）</span></div>
       <div class="wv-gates"><div class="wv-dim" style="margin-bottom:2px">轉浪關卡（她的寫法）</div>${gates}</div>
+      ${tl ? `<details class="wv-alt-box" open><summary>📅 浪名演變（每天收盤時，系統只用那時候的資料怎麼數）</summary>
+        <table class="wv-tbl" style="font-size:.9rem"><tr><th>時間</th><th>價格</th><th>主要／備選</th><th>變化</th></tr>${tl}</table>
+        <div class="wv-why" style="margin-top:4px">她的貼文也是這樣一篇一篇改：同一個數法走到下一段是正常的；🔄 才是換數法（新的轉折讓原本的數法違規、證據成立、或分數被超過）。</div></details>` : ''}
       <div style="margin-top:12px;font-weight:700">她的操作紀律（整理成規則）</div>
       <ul class="wv-plan">${(nz.plan || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul>
       <div class="wv-what">照她貼文的邏輯寫成固定規則：五段推動（2 不破起點、3 不最短、4 不碰第 1 段）、鋸齒 5-3-5、平台 3-3-5、楔形，每一段都可以再拆一層；
-        分數比的是「比例多貼近費波那契」＋「已經走出來的證據」。程式學的是她的<b>框架</b>，學不到她看盤時的判斷，所以兩個數法都列出來、用關卡決定換不換。
+        分數比的是「比例多貼近費波那契」＋「第 2、4 浪時間比例、交替（一急一橫）」＋「已經走出來的證據」。程式學的是她的<b>框架</b>，學不到她看盤時的判斷，所以候選都列出來、用關卡決定換不換。
+        <b>回測</b>（加權 60 分 K 近 3 年，逐根只用當時的資料）：站上 0.382 後先到 0.5 的比例 96%、隨機漫步理論 94%；碰到 0.5 後先回到極值 32%、隨機 30%
+        → 關卡跟隨機差不多 △，當作「劇本＋停損位置」，不是買賣訊號。
         ${nz.daily_role ? `日 K 這一浪是${nz.daily_role === 'C' ? '修正' : '推動'}，所以第一層用${nz.daily_role === 'C' ? ' A-B-C' : ' 1-5'}。` : ''}圖上勾「多層浪名」會標出浪名、趨勢線和關卡。</div>`;
     bindNestSeg(el);
   }

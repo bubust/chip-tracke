@@ -24,14 +24,19 @@ from . import engine as E
 
 MAX_DEPTH = 3            # 起點那一段（第 0 層）往下最多拆 3 層
 MAX_PIV = 18             # 起點之後最多用幾個轉折點（計算量）
+PARTIAL_K = 6            # 每個「從這點開始、還在進行中」最多留幾種拆法
+UNVERIFIED = 0.15        # 進行中、還沒有比例可驗證的節點（例：只走完 a）的成本（完整的先驗 0.35 會讓「剛開始的新結構」永遠輸）
+ALT_PEN = 0.15           # 交替原則：第 2、4 浪同樣急或同樣橫
+THIRD_GAP = 0.15         # 第三個候選跟主要分數差這麼多以內才列（她：候選結構可以不只一套）
 NODE_COST = 0.05         # 每多一個拆開的節點的成本（先用簡單的拆法）
 DIAG_COST = E.KIND_PRIOR["diagonal"]    # 楔形少見（沿用 B78 校準）
 ROLE_MISMATCH = 0.02     # 跟日 K 這一浪的性質（推動／修正）不一致時多加一點
-C_SHORT = E.C_SHORT
+RUN_FLAT_MIN = 0.618     # 平台 c 最少走 a 的 0.618 倍（c 沒回到 a 終點＝「穿底平台」／running flat，她的 A-1-(2) 就是這種）
 G = {
     "r2": E.GUIDE["r2"], "r3": E.GUIDE["r3"], "r4": E.GUIDE["r4"], "r5": E.GUIDE["r5"],
     "zb": E.GUIDE["rB_zig"], "zc": (0.618, 1.0, 1.618), "fb": (1.0, 1.236), "fc": (1.0, 1.272, 1.618),
     "dia": E.GUIDE["rDia"],
+    "t24": (0.618, 1.0, 1.618),    # 第 4 段時間 ÷ 第 2 段時間（她：時間要走足同級波段應有的長度）
 }
 # 進行中的修正段「已經」回檔超過這個比例 → 加懲罰（ln(實際/上限)），讓證據改變排序（她說的：證據衝突就打開替代結構）
 SOFT_MAX = {"imp2": 0.786, "imp4": 0.5, "zb": 0.786, "fb": 1.236, "dia": 0.81}
@@ -46,6 +51,23 @@ def _pen(r: float, guides) -> float:
 
 def _soft(r: float, cap: float) -> float:
     return max(0.0, math.log(r / cap)) if r > 0 and cap > 0 else 0.0
+
+
+def _form(nd: dict) -> str:
+    """修正段的樣子：一段或鋸齒＝急（sharp）、平台＝橫（sideways）"""
+    return "side" if nd["k"] == "flat" else "sharp"
+
+
+def _alternation(w2: dict, w4: dict) -> float:
+    """交替原則：第 2、4 浪通常一急一橫（她：第 2 浪簡單，第 4 浪原則上走 a-b-c）；一樣的加一點"""
+    return ALT_PEN if _form(w2) == _form(w4) else 0.0
+
+
+def _sig(nd: dict) -> tuple:
+    """進行中那一串的結構（種類、走完幾段）一路往下"""
+    if nd["k"] == "atom":
+        return ()
+    return (nd["k"], len(nd["subs"]) - 1) + _sig(nd["subs"][-1])
 
 
 def _odd_splits(total: int, parts: int):
@@ -63,6 +85,7 @@ class _Parser:
     def __init__(self, pts: list):
         self.p = [float(q["p"]) for q in pts]
         self.t = [q["t"] for q in pts]
+        self.ix = [int(q.get("i", k)) for k, q in enumerate(pts)]     # 第幾根 K 棒（算時間比例）
         self.n = len(pts)
         self.last = self.n - 1
         self.mc: dict = {}
@@ -83,8 +106,16 @@ class _Parser:
 
     @staticmethod
     def _node(kind, i, j, d, subs, pens, extra=0.0, partial=False) -> dict:
-        own = 0.0 if kind == "atom" else ((sum(pens.values()) + E.PRIOR_PEN) / (len(pens) + E.PRIOR_N) + NODE_COST
-                                          + (DIAG_COST if kind == "diag" else 0.0))
+        if kind == "atom":
+            own = 0.0
+        elif partial and not pens:                       # 剛開始、還沒有任何比例可以驗證（例：只走完 a）
+            own = UNVERIFIED + NODE_COST
+        else:
+            own = (sum(pens.values()) + E.PRIOR_PEN) / (len(pens) + E.PRIOR_N) + NODE_COST
+        if kind == "diag":
+            own += DIAG_COST
+        if kind in ("imp", "diag") and len(subs) >= 4 and not subs[3].get("partial"):
+            own += _alternation(subs[1], subs[3])
         return {"k": kind, "i": i, "j": j, "d": d, "subs": subs, "pens": {k: round(v, 3) for k, v in pens.items()},
                 "own": round(own + extra, 4), "cost": own + extra + sum(s["cost"] for s in subs), "partial": partial}
 
@@ -129,6 +160,11 @@ class _Parser:
                 extra += _soft((X[3] - seg_lo(4)) / L[3], SOFT_MAX["dia" if kind == "diag" else "imp4"])
             if k >= 5:
                 pens["r5"] = _pen(L[5] / L[1], G["r5"])
+            if kind == "imp" and k >= 4:                  # 第 4 段走完：時間跟第 2 段比（同級數的段落時間相近）
+                t2 = self.ix[b[2]] - self.ix[b[1]]
+                t4 = self.ix[b[4]] - self.ix[b[3]]
+                if t2 > 0 and t4 > 0:
+                    pens["t24"] = _pen(t4 / t2, G["t24"])
         else:                                             # zz／flat
             if nb >= 2:
                 rb_now = (X[1] - seg_lo(2)) / L[1]        # b（含進行中）最深回到哪
@@ -146,8 +182,8 @@ class _Parser:
             if k >= 3:
                 if kind == "zz" and not X[3] > X[1]:
                     return None                           # 鋸齒 c 要過 a 的終點
-                if kind == "flat" and X[3] < X[1] - C_SHORT * L[1]:
-                    return None                           # 平台 c 要到 a 終點附近
+                if kind == "flat" and L[3] < RUN_FLAT_MIN * L[1]:
+                    return None                           # 平台 c 太短（不到 a 的 0.618）
                 pens["rC"] = _pen(L[3] / L[1], G["zc"] if kind == "zz" else G["fc"])
         return pens, extra
 
@@ -190,21 +226,27 @@ class _Parser:
         return best
 
     # ── 從 i 開始、還在進行中（終點＝最後一個轉折）──
-    def partial(self, i: int, role: str, depth: int) -> Optional[dict]:
+    def partials(self, i: int, role: str, depth: int) -> list:
+        """從 i 開始、還在進行中的各種拆法（每種「進行中那一串的結構」留最好的一個，最多 PARTIAL_K 個）。
+        只留最好一個的話，內層比較省的拆法會把外層別的數法擠掉（例：她 10/20 的 A-4-b 被 A-5 擠掉）"""
         key = (i, role, depth)
         if key in self.mp:
             return self.mp[key]
-        best = None
+        out = []
         d = self.d(i)
         if self.last - i == 1:
-            best = self._node("atom", i, None, d, [], {}, partial=True)
+            out = [self._node("atom", i, None, d, [], {}, partial=True)]
         elif depth < MAX_DEPTH:
             for kind in KINDS_OF[role]:
-                for nd in self._partials(kind, i, d, depth, kmin=1):
-                    if best is None or nd["cost"] < best["cost"]:
-                        best = nd
-        self.mp[key] = best
-        return best
+                out += list(self._partials(kind, i, d, depth, kmin=1))
+            out.sort(key=lambda nd: nd["cost"])
+            out = out[:PARTIAL_K]
+        self.mp[key] = out
+        return out
+
+    def partial(self, i: int, role: str, depth: int) -> Optional[dict]:
+        ps = self.partials(i, role, depth)
+        return ps[0] if ps else None
 
     @staticmethod
     def _prefix_splits(k: int, cap: int):
@@ -222,7 +264,7 @@ class _Parser:
             return                                        # 推動段進行中：不能低於起點
         rest = self.last - i
         for k in range(kmin, len(roles)):
-            best = None
+            best: dict = {}                                 # 進行中那一串的結構 → 最好的節點
             for parts in self._prefix_splits(k, rest - 1):
                 # k 段走完的邊界；剩下的（≥1 段）給進行中那段
                 b = [i]
@@ -238,14 +280,12 @@ class _Parser:
                         break
                     subs.append(s)
                 else:
-                    ps = self.partial(b[k], roles[k], depth + 1)
-                    if ps is None:
-                        continue
-                    nd = self._node(kind, i, None, d, subs + [ps], r[0], r[1], partial=True)
-                    if best is None or nd["cost"] < best["cost"]:
-                        best = nd
-            if best is not None:
-                yield best
+                    for ps in self.partials(b[k], roles[k], depth + 1):
+                        nd = self._node(kind, i, None, d, subs + [ps], r[0], r[1], partial=True)
+                        sg = _sig(nd)
+                        if sg not in best or nd["cost"] < best[sg]["cost"]:
+                            best[sg] = nd
+            yield from best.values()
 
 
 # ── 浪名 ─────────────────────────────────────────────────────────────────────
@@ -535,6 +575,8 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
         c["adj"] = c["cost"] + (0.03 * (ev["trend"] + ev["f382"]) if _with_trend(c, d0) else 0.0)
     cands.sort(key=lambda c: (round(c["adj"], 4), 0 if _with_trend(c, d0) else 1))
     prim, alt = primary_alternate(cands)
+    third = next((c for c in cands if c is not prim and c is not alt and prim and c["path"][:2] != prim["path"][:2]
+                  and (not alt or c["path"][:2] != alt["path"][:2]) and c["adj"] - prim["adj"] <= THIRD_GAP), None)
 
     def out_c(c):
         if not c:
@@ -557,7 +599,7 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
                 "cost": round(c["adj"], 4), "with_trend": _with_trend(c, d0), "marks": marks,
                 "rules": [{**r, "price": round(r["price"], 2)} for r in _rule_levels(c, seq, d0)],
                 "targets": _targets(c, seq)}
-    P, A = out_c(prim), out_c(alt)
+    P, A, T3 = out_c(prim), out_c(alt), out_c(third)
     # 關卡（她的寫法）：反向（逆著起點那一大段）走時 → 前提趨勢線、第一關前一個反彈高點、第二關 0.382、第三關 0.5～0.618＋第 1 段低點區
     cur_dir = 1 if seq[-1]["p"] > seq[-2]["p"] else -1
     up_word, dn_word = ("反彈", "下跌") if d0 < 0 else ("回檔", "上漲")
@@ -621,4 +663,106 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
             "trendline": None if not tl else {"from": {**tl["from"], "time": int(times[tl["from"]["i"]])},
                                               "now": round(tl["now"], 2), "time_now": int(times[t_now]),
                                               "to": {**tl["to"], "time": int(times[tl["to"]["i"]])}},
-            "evidence": ev, "primary": P, "alternate": A, "gates": gates, "plan": plan}
+            "evidence": ev, "primary": P, "alternate": A, "third": T3, "gates": gates, "plan": plan}
+
+
+def timeline(piv: list, h, l, c, times: list, ends: list, tfn: str, daily_at, daily_dates, tdate, tlabel) -> list:
+    """浪名演變：每個 ends（K 棒索引，例如每天最後一根）當時「只用那時候以前的資料」重算一次主要／備選數法。
+    daily_at(i) → 那根 K 棒當時（前一個交易日收盤）的日 K 主要劇本。回傳由舊到新，標出換數法的那一天"""
+    out, prev = [], None
+    for t in ends:
+        conf, tent = E.state_at(piv, h, l, t)
+        try:
+            r = build({"pivots": conf, "tentative": tent}, list(times[:t + 1]), float(c[t]), tfn, daily_cnt=daily_at(t),
+                      daily_dates=daily_dates, tdate=tdate, tlabel=tlabel)
+        except Exception:  # noqa: BLE001
+            continue
+        if not r.get("ok"):
+            continue
+        p, a = r.get("primary") or {}, r.get("alternate") or {}
+        row = {"t": int(times[t]), "label": tlabel(t), "price": round(float(c[t]), 2), "anchor": r["anchor"]["p"],
+               "primary": p.get("path"), "ptext": p.get("text"), "alternate": a.get("path"),
+               "evidence": r.get("evidence"), "changed": False, "step": False}
+        if prev is not None and p.get("path") != prev:
+            if prev_r["anchor"]["p"] == r["anchor"]["p"] and _progress(prev or "", p.get("path") or ""):
+                row["step"] = True                          # 照原本的數法走到下一段（不是換數法）
+            else:
+                row["changed"] = True
+                row["why"] = _why_change(prev_r, r)
+        out.append(row)
+        prev, prev_r = p.get("path"), r
+    return out
+
+
+_SEQS = ("12345", "ABC", "abc")
+
+
+def _progress(old: str, new: str) -> bool:
+    """new 是不是 old 照同一個數法往下走：同一層的下一段（C-3→C-4）、或這一段開始拆小段（A-4→A-4-a）、或小段走完回到上一層的下一段（A-4-c→A-5）"""
+    o, n = old.split("-") if old else [], new.split("-") if new else []
+    if not o or not n:
+        return False
+    if n[:len(o)] == o:                                 # 往下拆一層
+        return True
+    for k in range(min(len(o), len(n)) - 1, -1, -1):
+        if o[:k] == n[:k] and len(n) == k + 1:
+            a, b = o[k], n[k]
+            return any(a in s_ and b in s_ and s_.index(b) == s_.index(a) + 1 for s_ in _SEQS)
+    return False
+
+
+def _why_change(old: dict, new: dict) -> str:
+    """換數法的原因（白話）：起點換了、證據成立、或新的轉折讓原本的數法違反規則"""
+    if old["anchor"]["p"] != new["anchor"]["p"]:
+        return f"起點換成 {new['anchor']['p']:,.0f}（日 K 這一浪換了）"
+    eo, en = old.get("evidence") or {}, new.get("evidence") or {}
+    got = [k for k in ("trend", "f382") if en.get(k) and not eo.get(k)]
+    if got:
+        return "盤面證據成立：" + "、".join({"trend": "越過趨勢線", "f382": "站上 0.382"}[k] for k in got)
+    for r in (old.get("primary") or {}).get("rules") or []:
+        px = new["primary"]["marks"][-1]["p"] if new.get("primary") and new["primary"].get("marks") else None
+        if px is not None and ((r["side"] == "below" and px < r["price"]) or (r["side"] == "above" and px > r["price"])):
+            return f"{'跌破' if r['side'] == 'below' else '漲過'} {r['price']:,.0f}：{r['why']}"
+    op, np_ = (old.get("primary") or {}), (new.get("primary") or {})
+    last = (np_.get("marks") or [{}])[-1].get("p")
+    s = f"原本 {op.get('path')}（{op.get('text', '')}）"
+    s += f"；{'價格走到 ' + format(last, ',.0f') + '、' if last else ''}多了新的轉折後改數成 {np_.get('path')}（規則都沒違反，但分數變成比較好）"
+    return s
+
+
+# ── 她的「日線定位」寫法：母尺、防守區、鐵律底線、威脅版本的確認順序 ─────────────────────────
+def positioning(prim: Optional[dict], alt: Optional[dict], price: float, tfn: str = "日 K") -> Optional[dict]:
+    """日 K／週 K 主要劇本：現在這一段跟前一段反向時（回檔或反彈），用前一段當母尺：
+    0.382、0.5（第一防守區）、0.618（第二極限防守區）、前一段起點（鐵律底線）；替代劇本＝威脅版本，列出它要成立得先過哪些價位"""
+    if not prim or len(prim.get("labels") or []) < 3:
+        return None
+    L = prim["labels"]
+    s0, s1, cur = L[-3], L[-2], L[-1]
+    pd_ = 1 if s1["p"] > s0["p"] else -1
+    if (cur["p"] - s1["p"]) * pd_ >= 0:
+        return None                                          # 現在這段跟前一段同方向：不是回檔／反彈
+    span = abs(s1["p"] - s0["p"])
+    lv = {r: s1["p"] - pd_ * r * span for r in (0.382, 0.5, 0.618)}
+    depth = abs(price - s1["p"]) / span if span else 0
+    word = "回檔" if pd_ > 0 else "反彈"
+    brk = "跌破" if pd_ > 0 else "漲過"
+    d = lambda x: str(x.get("date") or "")[5:]               # noqa: E731
+    lines = [
+        f"定位 A（主要）：{_fmt(s0['p'])}（{d(s0)}）→ {_fmt(s1['p'])}（{d(s1)}）這一段當母尺，現在 {_fmt(s1['p'])} → {_fmt(price)} 是它的{word}，"
+        f"已經{word} {depth:.0%}",
+        f"母尺 0.382＝{_fmt(lv[0.382])}；第一防守區 0.5＝{_fmt(lv[0.5])}；第二極限防守區 0.618＝{_fmt(lv[0.618])}；"
+        f"鐵律底線＝{_fmt(s0['p'])}（這一段的起點，{brk}就不是正常{word}）",
+    ]
+    ladder = [(lv[0.5], "0.5"), (lv[0.618], "0.618"), (s0["p"], "起點")]
+    if alt:
+        # 替代劇本也是「原方向還在走」（同方向的推動浪／楔形）→ 不是威脅，只列作廢價位；否則＝前一段可能已經結束的威脅版本
+        threat = not (alt.get("kind") in ("impulse", "diagonal") and alt.get("dir") == pd_)
+        need = "、".join(f"{_fmt(v)}（{k}）" for v, k in ladder if (v - price) * pd_ < 0)
+        s = f"定位 B（{'威脅' if threat else '另一種數法'}）：{alt.get('text')}"
+        if threat and need:
+            s += f"；要正式成立，得依序{brk} {need}"
+        if alt.get("invalid") is not None:
+            s += f"；{'跌破' if alt.get('invalid_side') == 'below' else '漲過'} {_fmt(alt['invalid'])} 這個版本就作廢"
+        lines.append(s)
+    return {"tf": tfn, "lines": lines, "ruler": [s0["p"], s1["p"]], "levels": {str(k): round(v, 2) for k, v in lv.items()},
+            "iron": s0["p"], "depth": round(depth, 4), "passed": [k for v, k in ladder if (v - price) * pd_ >= 0 and k != "起點"]}

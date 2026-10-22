@@ -380,11 +380,17 @@ def _nest_line(snap: dict) -> str:
     if a:
         s += f"；備選 {a.get('path')}（{a.get('text')}）"
     s += "；關卡：" + "；".join(f"{g['k']}{'✅' if g.get('ok') else ''} {g['t']}" for g in nz.get("gates") or [])
+    for x in (snap.get("positioning") or {}).values():
+        if x:
+            s += f"；{x['tf']}定位：" + "；".join(x["lines"])
     return s
 
 
 def _nest_prices(snap: dict) -> list:
     out = []
+    for x in (snap.get("positioning") or {}).values():
+        if x:
+            out += list(x["ruler"]) + [float(v) for v in x["levels"].values()] + [x["iron"]]
     for nz in ((snap.get("nest") or {}).values()):
         if not (nz or {}).get("ok"):
             continue
