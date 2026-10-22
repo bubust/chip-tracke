@@ -73,6 +73,9 @@ GUIDE.update({
 })
 X_MAX = 1.0                        # X 浪不能回到 W 起點以外（再過去就是新趨勢，不是複合修正）
 C_SHORT = 0.1                      # 複合修正裡完成的 a-b-c：c 最多比 a 的終點短 0.1 個 a
+YW_MAX = 1.618                     # 同一個複合修正的各組大小要相近：Y（含進行中）≤ 1.618 倍 W、Z ≤ 1.618 倍 Y
+LEG_MAX = 2.618                    # 擴散三角形／擴散楔形：每一段 ≤ 2.618 倍同方向的前一段（再大就不是同一個型態）
+SUB_PRIOR = {"expanding": 0.0}     # 擴散型（三角形、楔形）比收斂型少見 → 可再多加分數；校準見 KIND_PRIOR
 FLAT_MIN, FLAT_MAX = 0.9, 1.38   # B ÷ A：≥0.9 平台型；>1.38 淘汰
 
 
@@ -274,6 +277,8 @@ def _combo(x: list) -> Optional[dict]:
         pens["rX"] = _pen(lenX / lenW, GUIDE["rX"])
     if not _abc_ok(x, 4, k, pens, "rB_Y"):
         return None
+    if k >= 5 and max(x[5:min(k, 7) + 1]) - x[4] > YW_MAX * lenW:
+        return None                                             # Y（含進行中）比 W 大太多：不像同一組修正
     if k >= 8:                                                  # Y 完成、第二個 X 開始
         lenY = x[7] - x[4]
         if lenY <= 0:
@@ -286,6 +291,8 @@ def _combo(x: list) -> Optional[dict]:
             pens["rX2"] = _pen(lenX2 / lenY, GUIDE["rX"])
         if not _abc_ok(x, 8, k, pens, "rB_Z"):
             return None
+        if k >= 9 and max(x[9:k + 1]) - x[8] > YW_MAX * lenY:
+            return None
     return {"pens": pens, "corr_kind": "wxyxz" if k >= 8 else "wxy"}
 
 
@@ -297,10 +304,10 @@ def _triangle(x: list) -> Optional[dict]:
     L = [None] + [abs(x[j] - x[j - 1]) for j in range(1, k + 1)]
     if L[1] <= 0 or L[2] <= 0 or L[3] <= 0:
         return None
-    if L[2] / L[1] > FLAT_MAX:
-        return None                                             # B 不能比 A 長太多（跟平台型 B 同一條）
     pens: dict = {}
     if L[3] < L[1]:                                             # 收斂
+        if L[2] / L[1] > FLAT_MAX:
+            return None                                         # B 不能比 A 長太多（跟平台型 B 同一條）
         if L[4] >= L[2] or (k >= 5 and L[5] >= L[3]):
             return None
         pens["rC"] = _pen(L[3] / L[1], GUIDE["rTri"])
@@ -308,7 +315,8 @@ def _triangle(x: list) -> Optional[dict]:
             pens["rD"] = _pen(L[4] / L[2], GUIDE["rTri"])
         sub = "contracting"
     else:                                                       # 擴散
-        if k >= 5 and L[4] <= L[2]:
+        if (L[2] > LEG_MAX * L[1] or (k >= 5 and L[4] <= L[2])
+                or any(L[j] > LEG_MAX * L[j - 2] for j in range(3, k + 1))):
             return None
         pens["rC"] = _pen(L[3] / L[1], GUIDE["rTriX"])
         if k >= 5:
@@ -335,7 +343,7 @@ def _diagonal(x: list) -> Optional[dict]:
             return None
         sub = "contracting"
     else:                                                       # 擴散楔形：3>1、4>2（5>3 要走完才知道）
-        if k >= 5 and L[4] <= L[2]:
+        if (k >= 5 and L[4] <= L[2]) or any(L[j] > LEG_MAX * L[j - 2] for j in range(3, k + 1)):
             return None
         sub = "expanding"
     if k >= 5:
@@ -526,7 +534,8 @@ def count_waves(pts: list, trend: int = 0, max_back: int = 11) -> list:
             if res is None:
                 continue
             pens = res["pens"]
-            score = (sum(pens.values()) + PRIOR_PEN) / (len(pens) + PRIOR_N) + KIND_PRIOR.get(kind, 0.0)
+            score = ((sum(pens.values()) + PRIOR_PEN) / (len(pens) + PRIOR_N) + KIND_PRIOR.get(kind, 0.0)
+                     + SUB_PRIOR.get(res.get("corr_kind") or "", 0.0))
             main_dir = d if kind in ("impulse", "diagonal") else -d     # 修正類：之前那段方向跟第一段相反
             if trend and main_dir == trend:
                 score -= TREND_BONUS
