@@ -48,9 +48,52 @@
   let chart = null, chartKind = null, candle = null, ma = {}, zz = null, cone = [], pls = [], panelPoll = null;
 
   // ── 波浪 → 白話 ──
+  // B78 複合修正 W-X-Y（-X-Z）、三角形、楔形（文字跟 wave/plain.py 同一套）
+  const COMBO_LB = ['Wa', 'Wb', 'W', 'X', 'Ya', 'Yb', 'Y', 'X2', 'Za', 'Zb', 'Z'];
+  const COMBO_DISP = ['a', 'b', 'W', 'X', 'a', 'b', 'Y', 'X', 'a', 'b', 'Z'];
+  function plainComplex(c, cur, up) {
+    if (c.kind === 'combo') {
+      const [dn, rb] = up ? ['反彈', '回落'] : ['下跌', '反彈'];
+      const head = up ? '複合反彈' : '複合修正';
+      const three = up ? '「彈－回－彈」' : '「跌－彈－跌」';
+      const end = up ? '可能再往下' : '修正可能結束、重新開始上漲';
+      const T = {
+        X: [`${head}中的${rb}（X 浪）`, `第一組${three}（W）走完了，這段是中間的連接；照規則後面還有第二組（Y）`],
+        Ya: [`${head}・第二組的第一段${dn}（Y 的 a）`, '修正拉長成兩組三段（W-X-Y），這是第二組的開始'],
+        Yb: [`${head}・第二組中的${rb}（Y 的 b）`, `${rb}走完，照規則還有最後一段${dn}（Y 的 c）`],
+        Y: [`${head}的最後一段${dn}（Y 的 c）`, `這段走完，兩組修正（W-X-Y）${end}；也可能再接一個 X 變成三組`],
+        X2: [`${head}中的第二次${rb}（第二個 X）`, '已經走了兩組三段（W、Y），這段連接到第三組（Z）；三組是上限'],
+        Za: [`${head}・第三組的第一段${dn}（Z 的 a）`, '修正拉長成三組三段（W-X-Y-X-Z），這是最後一組的開始'],
+        Zb: [`${head}・第三組中的${rb}（Z 的 b）`, `${rb}走完，照規則還有最後一段${dn}（Z 的 c）`],
+        Z: [`${head}的最後一段${dn}（Z 的 c）`, `三組是修正的上限，這段走完${end}`] };
+      const idx = COMBO_LB.indexOf(cur);
+      if (!T[cur] || idx < 0) return null;
+      return { title: T[cur][0], meaning: T[cur][1], steps: COMBO_DISP.slice(0, idx >= 7 ? 11 : 7), idx };
+    }
+    if (c.kind === 'triangle') {
+      const shape = c.corr_kind === 'expanding' ? '擴散' : '收斂';
+      const way = up ? '往下' : '往上';
+      const swing = c.corr_kind === 'expanding' ? '上下震盪越來越大' : '上下震盪越來越小';
+      const T = {
+        D: [`${shape}三角形整理・第 4 段（D）`, `盤整走五段（A-B-C-D-E）${swing}，後面還有 E；走完通常${way}突破（順著原本的方向）`],
+        E: [`${shape}三角形整理・最後一段（E）`, `E 走完通常${way}突破，幅度大約是三角形最寬那段（A）`] };
+      if (!T[cur]) return null;
+      return { title: T[cur][0], meaning: T[cur][1], steps: ['A', 'B', 'C', 'D', 'E'], cur };
+    }
+    const T = {
+      '4': [up ? '上升楔形・第 4 段回檔' : '下跌楔形・第 4 段反彈',
+            up ? '越漲越弱的五段（第 4 段可以跌進第 1 段的價格區），後面還有第 5 段上漲；照教科書，楔形走完常快速跌回起點附近'
+               : '越跌越弱的五段（第 4 段可以彈進第 1 段的價格區），後面還有第 5 段下跌；照教科書，楔形走完常快速彈回起點附近'],
+      '5': [up ? '上升楔形・最後一段（第 5 段）上漲' : '下跌楔形・最後一段（第 5 段）下跌',
+            up ? '楔形的最後一段；照教科書，走完常快速跌回楔形起點附近' : '楔形的最後一段；照教科書，走完常快速彈回楔形起點附近'] };
+    if (!T[cur]) return null;
+    return { title: T[cur][0], meaning: T[cur][1], steps: ['1', '2', '3', '4', '5'], cur };
+  }
+
   function plain(c) {
     if (!c) return null;
     const cur = c.current, up = c.dir > 0;
+    if (['combo', 'triangle', 'diagonal'].includes(c.kind)) return plainComplex(c, cur, up);
     if (c.kind === 'impulse' && '12345'.includes(cur)) {
       const steps = ['1', '2', '3', '4', '5'];
       if ('135'.includes(cur)) {
@@ -252,7 +295,7 @@
     const ends = (c.targets || []).filter(t => t.kind === 'end').slice(0, 2);
     return `<div class="wv-count"${label === '替代劇本' ? ' style="border-left-color:var(--warn);background:rgba(251,146,60,.05)"' : ''}>
       <div class="wv-dim">${label}</div><div class="t">${esc(p.title)}</div>
-      <div class="wv-steps">${p.steps.map(s => `<span class="${s === p.cur ? 'on' : ''}">${s}</span>`).join('')}</div>
+      <div class="wv-steps">${p.steps.map((s, i) => `<span class="${(p.idx != null ? i === p.idx : s === p.cur) ? 'on' : ''}">${s}</span>`).join('')}</div>
       <div class="p">${esc(p.meaning)}</div>
       ${ends.length ? `<div class="p">這段可能走到：${ends.map(t => `<b>${fmt(t.price)}</b>`).join('、')}</div>` : ''}
       ${invText(c) ? `<div class="x">${esc(invText(c))}</div>` : ''}</div>`;
@@ -273,7 +316,9 @@
       ${mp.length ? `<div class="wv-note">📍 ${mp.map(esc).join('<br>📍 ')}</div>` : ''}
       ${d === 'intra30' ? '<div class="wv-note">30 分 K 的級數只有 60 天資料校準，只當參考</div>' : ''}
       <div class="wv-what"><b>波浪理論是什麼：</b>上漲常走 5 段（1、3、5 往上，2、4 回檔），之後修正走 3 段（A 跌、B 彈、C 跌）。
-        程式用固定規則判斷現在走到哪一段。<b>很主觀</b>：26 年回測，各段之後的漲跌跟平常差不多，所以只當「劇本」參考。</div>
+        修正也可能拉長成兩、三組三段（a-b-c－X－a-b-c＝W-X-Y，最多再接 X-Z），或走 A-B-C-D-E 五段的三角形盤整；
+        推進力道變弱時會走成楔形（第 4 段跌進第 1 段的價格區）。
+        程式用固定規則判斷現在走到哪一段，複雜的型態要比簡單的明顯貼近規則才會選。<b>很主觀</b>：26 年回測，各段之後的漲跌跟平常差不多，所以只當「劇本」參考。</div>
       <details class="wv-alt-box"><summary>其他級數怎麼看</summary><div class="p" style="font-size:.92rem">${others}</div></details>`;
   }
 
@@ -631,8 +676,9 @@
         if (t == null) return;
         const prev = all[j - 1];
         const high = prev ? x.p > prev.p : true;
-        marks.push({ time: t, position: high ? 'aboveBar' : 'belowBar', color: 'ABC'.includes(x.label) ? C.warn : '#c7d7ff',
-                     shape: 'circle', size: 0.1, text: x.label + (x.tentative ? '?' : '') });
+        // 推動浪／楔形的 1-5 淺藍；修正類（A-E、W-X-Y-Z、小寫 a b）橘色
+        marks.push({ time: t, position: high ? 'aboveBar' : 'belowBar', color: /^[1-5]$/.test(x.label) ? '#c7d7ff' : C.warn,
+                     shape: 'circle', size: 0.1, text: (x.disp || x.label) + (x.tentative ? '?' : '') });
       });
     }
     marks.sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0);

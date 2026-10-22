@@ -60,10 +60,15 @@ TREND_BONUS = 0.03
 # ── B78：補齊艾略特的其他結構 ──
 # 複合修正（雙重三浪 W-X-Y＝a-b-c－x－a-b-c、三重三浪 W-X-Y-X-Z）、三角形（收斂／擴散 A-B-C-D-E）、楔形（傾斜三角形）
 # 這三種在前 3 段時跟一般 A-B-C／推動浪分不出來 → 只在第 4 段開始後才列為候選（ENABLE_COMPLEX 可整個關掉，研究對照用）
-# KIND_PRIOR：「先用簡單的解釋」（艾略特的通則：複雜結構比較少見）→ 複雜結構的分數多加一點；
-# 數值只依「各結構當主要劇本的天數比例」校準（research/wave/b78_calibrate.py，不看之後漲跌）
+# KIND_PRIOR／SUB_PRIOR：「先用簡單的解釋」（複雜結構很有彈性，隨機走勢也常湊得出來）→ 複雜結構的分數多加一點，
+# 要明顯更貼近規則才當主要劇本；貼得更好但沒贏 → primary_alternate 放進替代劇本。
+# 校準（research/wave/b78_calibrate.py，只用「加權指數報酬打亂後」沒有結構的資料，不看之後漲跌，選法事先定好）：
+#   擴散型加分＝最小的值使擴散型 ≤ 收斂型；複雜度加分＝最小的值使複雜結構當主要劇本 ≤ 15%（三個級數都成立）
+#   → 0.08／0.09；真實加權 2001–2026：小級 9.2%、中級 8.5%、大級 24.5% 的天數主要劇本是複雜結構（打亂後 10.4／10.7／9.7%）
 ENABLE_COMPLEX = True
-KIND_PRIOR = {"impulse": 0.0, "correction": 0.0, "combo": 0.12, "triangle": 0.12, "diagonal": 0.12}
+KIND_PRIOR = {"impulse": 0.0, "correction": 0.0, "combo": 0.08, "triangle": 0.08, "diagonal": 0.08}
+SUB_PRIOR = {"expanding": 0.09}    # 擴散型（三角形、楔形）比收斂型少見 → 再多加
+COMPLEX_KINDS = ("combo", "triangle", "diagonal")
 GUIDE.update({
     "rX": (0.5, 0.618),            # X 浪回 W 的比例
     "rYW": (0.618, 1.0, 1.618),    # Y ÷ W（Z ÷ Y 同）
@@ -75,8 +80,6 @@ X_MAX = 1.0                        # X 浪不能回到 W 起點以外（再過�
 C_SHORT = 0.1                      # 複合修正裡完成的 a-b-c：c 最多比 a 的終點短 0.1 個 a
 YW_MAX = 1.618                     # 同一個複合修正的各組大小要相近：Y（含進行中）≤ 1.618 倍 W、Z ≤ 1.618 倍 Y
 LEG_MAX = 2.618                    # 擴散三角形／擴散楔形：每一段 ≤ 2.618 倍同方向的前一段（再大就不是同一個型態）
-SUB_PRIOR = {"expanding": 0.0}
-COMPLEX_KINDS = ("combo", "triangle", "diagonal")     # 擴散型（三角形、楔形）比收斂型少見 → 可再多加分數；校準見 KIND_PRIOR
 FLAT_MIN, FLAT_MAX = 0.9, 1.38   # B ÷ A：≥0.9 平台型；>1.38 淘汰
 
 
