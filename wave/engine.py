@@ -3,7 +3,8 @@
 
 - 轉折點：θ = max(下限, m × ATR%)，ATR% = 近 60 天「ATR14 ÷ 收盤」的中位數（只用當天以前）
 - 只有收完的日 K 能確認轉折：第 t 天收盤後用第 t 天的高低價判斷；確認的那天記在 ci
-- 數浪：列舉最近最多 9 個轉折＋進行中的極值當起點，套推動浪 1-5（＋A-B-C）或單純 A-B-C 修正；
+- 數浪：列舉最近最多 11 個轉折＋進行中的極值當起點，套推動浪 1-5（＋A-B-C）、單純 A-B-C 修正，
+  B78 加：複合修正 W-X-Y／W-X-Y-X-Z（a-b-c－x－a-b-c…）、三角形 A-B-C-D-E、楔形（傾斜三角形）；
   硬規則淘汰、費波那契貼近度給分（分數越低越好）；上漲與下跌用 x = 方向 × 價格 對稱處理
 """
 from __future__ import annotations
@@ -37,7 +38,12 @@ def deg_cfg(deg: str) -> dict:
     return INTRA30 if deg == "intra30" else INTRA
 
 
-WAVE_SYM = {"1": "①", "2": "②", "3": "③", "4": "④", "5": "⑤", "A": "Ⓐ", "B": "Ⓑ", "C": "Ⓒ", "0": "◯"}
+WAVE_SYM = {"1": "①", "2": "②", "3": "③", "4": "④", "5": "⑤", "A": "Ⓐ", "B": "Ⓑ", "C": "Ⓒ", "0": "◯",
+            # B78 複合修正 W-X-Y（-X-Z）的小段、三角形 D、E
+            "Wa": "ⓐ", "Wb": "ⓑ", "W": "Ⓦ", "X": "Ⓧ", "Ya": "ⓐ", "Yb": "ⓑ", "Y": "Ⓨ", "X2": "Ⓧ", "Za": "ⓐ", "Zb": "ⓑ", "Z": "Ⓩ",
+            "D": "Ⓓ", "E": "Ⓔ"}
+# 圖上顯示的字（Wa＝W 裡的 a 段，畫成小寫 a）
+WAVE_DISP = {"Wa": "a", "Wb": "b", "Ya": "a", "Yb": "b", "Za": "a", "Zb": "b", "X2": "X"}
 
 # 軟指引（實際比例跟最近的指引比較，懲罰＝|ln(實際/指引)|）
 GUIDE = {
@@ -50,6 +56,23 @@ GUIDE = {
 }
 PRIOR_PEN, PRIOR_N = 0.35, 1.0   # 分數＝(懲罰和＋PRIOR_PEN)÷(項數＋PRIOR_N)：沒驗證到的數法不會贏過驗證過且貼近的
 TREND_BONUS = 0.03
+
+# ── B78：補齊艾略特的其他結構 ──
+# 複合修正（雙重三浪 W-X-Y＝a-b-c－x－a-b-c、三重三浪 W-X-Y-X-Z）、三角形（收斂／擴散 A-B-C-D-E）、楔形（傾斜三角形）
+# 這三種在前 3 段時跟一般 A-B-C／推動浪分不出來 → 只在第 4 段開始後才列為候選（ENABLE_COMPLEX 可整個關掉，研究對照用）
+# KIND_PRIOR：「先用簡單的解釋」（艾略特的通則：複雜結構比較少見）→ 複雜結構的分數多加一點；
+# 數值只依「各結構當主要劇本的天數比例」校準（research/wave/b78_calibrate.py，不看之後漲跌）
+ENABLE_COMPLEX = True
+KIND_PRIOR = {"impulse": 0.0, "correction": 0.0, "combo": 0.12, "triangle": 0.12, "diagonal": 0.12}
+GUIDE.update({
+    "rX": (0.5, 0.618),            # X 浪回 W 的比例
+    "rYW": (0.618, 1.0, 1.618),    # Y ÷ W（Z ÷ Y 同）
+    "rTri": (0.618, 0.786),        # 收斂三角形：C÷A、D÷B、E÷C
+    "rTriX": (1.272, 1.618),       # 擴散三角形
+    "rDia": (0.66, 0.81),          # 楔形第 2、4 浪回檔（比推動浪深）
+})
+X_MAX = 1.0                        # X 浪不能回到 W 起點以外（再過去就是新趨勢，不是複合修正）
+C_SHORT = 0.1                      # 複合修正裡完成的 a-b-c：c 最多比 a 的終點短 0.1 個 a
 FLAT_MIN, FLAT_MAX = 0.9, 1.38   # B ÷ A：≥0.9 平台型；>1.38 淘汰
 
 
@@ -215,8 +238,116 @@ def _correction(x: list) -> Optional[dict]:
     return {"pens": pens, **info}
 
 
+def _abc_ok(x: list, i0: int, k: int, pens: dict, key: str) -> bool:
+    """x[i0]→a→b→c 這組修正（a 往上）：b ≤ 1.38a；b 完成（c 已開始）才給 b 的分數；
+    c 走完（下一段已開始）時 c 要到 a 的終點附近（鋸齒、平台的 c 幾乎都會過 a 的終點；差太多就不是完整的一組 a-b-c）"""
+    if k < i0 + 2:
+        return True
+    a = x[i0 + 1] - x[i0]
+    if a <= 0:
+        return False
+    rB = (x[i0 + 1] - x[i0 + 2]) / a
+    if rB <= 0 or rB > FLAT_MAX:
+        return False
+    if k >= i0 + 3:
+        pens[key] = _pen(rB, GUIDE["rB_flat"] if rB >= FLAT_MIN else GUIDE["rB_zig"])
+    if k >= i0 + 4 and x[i0 + 3] < x[i0 + 1] - C_SHORT * a:
+        return False
+    return True
+
+
+def _combo(x: list) -> Optional[dict]:
+    """x 空間：複合修正 W-X-Y（-X-Z），每一組都是 a-b-c（第一段往上）。點：0 Wa Wb W X Ya Yb Y X2 Za Zb Z"""
+    k = len(x) - 1
+    if k < 4:
+        return None                                             # 還沒出現 X：跟單純 A-B-C 一樣，不重複列
+    pens: dict = {}
+    if not _abc_ok(x, 0, k, pens, "rB_W"):
+        return None
+    lenW = x[3] - x[0]
+    if lenW <= 0:
+        return None                                             # W 整組沒有前進
+    lenX = x[3] - x[4]
+    if lenX <= 0 or lenX / lenW > X_MAX:
+        return None                                             # X 回到 W 起點以外
+    if k >= 5:
+        pens["rX"] = _pen(lenX / lenW, GUIDE["rX"])
+    if not _abc_ok(x, 4, k, pens, "rB_Y"):
+        return None
+    if k >= 8:                                                  # Y 完成、第二個 X 開始
+        lenY = x[7] - x[4]
+        if lenY <= 0:
+            return None
+        pens["rYW"] = _pen(lenY / lenW, GUIDE["rYW"])
+        lenX2 = x[7] - x[8]
+        if lenX2 <= 0 or lenX2 / lenY > X_MAX:
+            return None
+        if k >= 9:
+            pens["rX2"] = _pen(lenX2 / lenY, GUIDE["rX"])
+        if not _abc_ok(x, 8, k, pens, "rB_Z"):
+            return None
+    return {"pens": pens, "corr_kind": "wxyxz" if k >= 8 else "wxy"}
+
+
+def _triangle(x: list) -> Optional[dict]:
+    """x 空間：三角形 A-B-C-D-E（A 往上）。收斂：C<A、D<B、E<C；擴散：C>A、D>B、E>C。只在 D 開始後列為候選"""
+    k = len(x) - 1
+    if k < 4:
+        return None
+    L = [None] + [abs(x[j] - x[j - 1]) for j in range(1, k + 1)]
+    if L[1] <= 0 or L[2] <= 0 or L[3] <= 0:
+        return None
+    if L[2] / L[1] > FLAT_MAX:
+        return None                                             # B 不能比 A 長太多（跟平台型 B 同一條）
+    pens: dict = {}
+    if L[3] < L[1]:                                             # 收斂
+        if L[4] >= L[2] or (k >= 5 and L[5] >= L[3]):
+            return None
+        pens["rC"] = _pen(L[3] / L[1], GUIDE["rTri"])
+        if k >= 5:
+            pens["rD"] = _pen(L[4] / L[2], GUIDE["rTri"])
+        sub = "contracting"
+    else:                                                       # 擴散
+        if k >= 5 and L[4] <= L[2]:
+            return None
+        pens["rC"] = _pen(L[3] / L[1], GUIDE["rTriX"])
+        if k >= 5:
+            pens["rD"] = _pen(L[4] / L[2], GUIDE["rTriX"])
+        sub = "expanding"
+    return {"pens": pens, "corr_kind": sub}
+
+
+def _diagonal(x: list) -> Optional[dict]:
+    """x 空間：楔形（傾斜三角形）1-5：第 4 浪跟第 1 浪重疊（推動浪不行、楔形可以）。只在第 4 浪開始後列為候選"""
+    k = len(x) - 1
+    if k < 4:
+        return None
+    L = [None] + [abs(x[j] - x[j - 1]) for j in range(1, k + 1)]
+    if L[1] <= 0 or L[2] <= 0 or L[3] <= 0:
+        return None
+    if not (x[2] > x[0] and x[3] > x[1]):
+        return None                                             # 第 2 浪不能跌破起點、第 3 浪要過第 1 浪終點
+    if not (x[4] < x[1] and x[4] > x[2]):
+        return None                                             # 第 4 浪要進入第 1 浪區（才是楔形）、但不能過第 2 浪終點
+    pens: dict = {"r2": _pen(L[2] / L[1], GUIDE["rDia"])}
+    if L[3] < L[1]:                                             # 收斂楔形：3<1、4<2、5<3
+        if L[4] >= L[2] or (k >= 5 and L[5] >= L[3]):
+            return None
+        sub = "contracting"
+    else:                                                       # 擴散楔形：3>1、4>2（5>3 要走完才知道）
+        if k >= 5 and L[4] <= L[2]:
+            return None
+        sub = "expanding"
+    if k >= 5:
+        pens["r4"] = _pen(L[4] / L[3], GUIDE["rDia"])
+    return {"pens": pens, "corr_kind": sub}
+
+
 _IMP_LABELS = ["0", "1", "2", "3", "4", "5", "A", "B", "C"]
 _COR_LABELS = ["0", "A", "B", "C"]
+_COMBO_LABELS = ["0", "Wa", "Wb", "W", "X", "Ya", "Yb", "Y", "X2", "Za", "Zb", "Z"]
+_TRI_LABELS = ["0", "A", "B", "C", "D", "E"]
+_DIA_LABELS = ["0", "1", "2", "3", "4", "5"]
 
 
 def _invalid_and_targets(kind: str, x: list, cur: str, corr_kind: Optional[str]):
@@ -272,6 +403,67 @@ def _invalid_and_targets(kind: str, x: list, cur: str, corr_kind: Optional[str])
             for r in (1.0, 1.618):
                 T.append((f"C 浪 {r:g} 倍 A 浪", x[7] - r * lenA, "end"))
             return x[7], "above", T
+    elif kind == "combo":
+        lenW = x[3] - x[0]
+        if cur == "X":
+            for r in (0.5, 0.618, 0.786):
+                T.append((f"X 浪回 W 的 {r:g}", x[3] - r * lenW, "end"))
+            return x[0], "below", T
+        if cur in ("Ya", "Yb", "Y"):
+            for r in (1.0, 1.618):
+                T.append((f"Y 浪 {r:g} 倍 W 浪", x[4] + r * lenW, "end" if cur == "Y" else "next"))
+            if cur == "Ya":
+                return x[0], "below", T
+            if cur == "Yb":
+                la = x[5] - x[4]
+                for r in (0.5, 0.618):
+                    T.insert(0, (f"Y 裡的 b 回 {r:g}", x[5] - r * la, "end"))
+                return x[5] - FLAT_MAX * la, "below", T
+            return x[6], "below", T
+        lenY = x[7] - x[4]
+        if cur == "X2":
+            for r in (0.5, 0.618, 0.786):
+                T.append((f"第二個 X 回 Y 的 {r:g}", x[7] - r * lenY, "end"))
+            return x[4], "below", T
+        if cur in ("Za", "Zb", "Z"):
+            for r in (1.0, 1.618):
+                T.append((f"Z 浪 {r:g} 倍 Y 浪", x[8] + r * lenY, "end" if cur == "Z" else "next"))
+            if cur == "Za":
+                return x[4], "below", T
+            if cur == "Zb":
+                la = x[9] - x[8]
+                return x[9] - FLAT_MAX * la, "below", T
+            return x[10], "below", T
+    elif kind == "triangle":
+        L1, L2, L3 = x[1] - x[0], x[1] - x[2], x[3] - x[2]
+        con = corr_kind == "contracting"
+        if cur == "D":
+            for r in ((0.618, 0.786) if con else (1.272, 1.618)):
+                T.append((f"D 段 {r:g} 倍 B 段", x[3] - r * L2, "end"))
+            return (x[2], "below", T) if con else (x[3], "above", T)
+        if cur == "E":
+            L4 = x[3] - x[4]
+            for r in ((0.618, 0.786) if con else (1.272,)):
+                T.append((f"E 段 {r:g} 倍 C 段", x[4] + r * L3, "end"))
+            T.append(("三角形走完往原方向突破（≈ 最寬的 A 段）", x[4] + (0.618 if con else 1.272) * L3 - L1, "next"))
+            return (min(x[3], x[4] + L3), "above", T) if con else (x[4], "below", T)
+    elif kind == "diagonal":
+        L1, L3 = x[1] - x[0], x[3] - x[2]
+        con = corr_kind == "contracting"
+        if cur == "4":
+            for r in (0.66, 0.81):
+                v = x[3] - r * L3
+                if v > x[2]:
+                    T.append((f"楔形第 4 浪回 {r:g}", v, "end"))
+            return x[2], "below", T
+        if cur == "5":
+            if con:
+                T.append(("楔形第 5 浪 0.618 倍第 3 浪", x[4] + 0.618 * L3, "end"))
+                T.append(("第 5 浪上限（要比第 3 浪短）", x[4] + L3, "end"))
+            else:
+                T.append(("擴散楔形第 5 浪 ≥ 第 3 浪", x[4] + L3, "end"))
+            T.append(("楔形走完常急速回到起點", x[0], "next"))
+            return x[4], "below", T
     else:
         if cur == "A":
             return x[0], "below", T
@@ -296,13 +488,23 @@ def _describe(kind: str, d: int, cur: str, corr_kind: Optional[str]) -> str:
         ck = {"flat": "平台型", "zigzag": "鋸齒型"}.get(corr_kind or "", "")
         role = {"A": "下跌" if up else "反彈", "B": "反彈" if up else "回落", "C": "下跌" if up else "反彈"}[cur]
         return f"{'上升' if up else '下跌'}五波結束後的 {ck}A-B-C 修正・{cur} 浪（{role}）進行中"
+    if kind == "combo":
+        pos = {"X": "X 浪（連接兩組修正）", "Ya": "Y 的 a 段", "Yb": "Y 的 b 段", "Y": "Y 的 c 段",
+               "X2": "第二個 X 浪", "Za": "Z 的 a 段", "Zb": "Z 的 b 段", "Z": "Z 的 c 段"}.get(cur, cur)
+        name = "W-X-Y-X-Z 三重三" if corr_kind == "wxyxz" else "W-X-Y 雙重三"
+        return f"{'漲多後' if not up else '跌深後'}的複合修正（{name}）・{pos}進行中"
+    if kind == "triangle":
+        return (f"{'收斂' if corr_kind == 'contracting' else '擴散'}三角形整理・{cur} 段進行中"
+                f"（{'漲多後' if not up else '跌深後'}的修正，走完通常順原方向突破）")
+    if kind == "diagonal":
+        return f"{'上升' if up else '下跌'}楔形（{'收斂' if corr_kind == 'contracting' else '擴散'}傾斜三角形）・第 {cur} 浪進行中"
     # 單純修正：d>0 表示 A 往上（空頭裡的反彈修正）；d<0 表示 A 往下（漲多後的修正）
     ck = {"flat": "平台型", "zigzag": "鋸齒型"}.get(corr_kind or "", "")
     role = {"A": "下跌" if not up else "反彈", "B": "反彈" if not up else "回落", "C": "下跌" if not up else "反彈"}[cur]
     return f"{'漲多後' if not up else '跌深後'}的 {ck}A-B-C 修正・{cur} 浪（{role}）進行中"
 
 
-def count_waves(pts: list, trend: int = 0, max_back: int = 9) -> list:
+def count_waves(pts: list, trend: int = 0, max_back: int = 11) -> list:
     """pts：確認轉折＋最後一個進行中的極值（價格交錯 H/L）。回傳所有合格數法，依分數排序（低＝好）。
     trend：+1／−1＝大趨勢（例如收盤 vs 年線）；推動方向或「修正前那段」方向跟它一致的加一點分"""
     n = len(pts)
@@ -314,15 +516,18 @@ def count_waves(pts: list, trend: int = 0, max_back: int = 9) -> list:
         m = len(seq) - 1
         d = 1 if seq[0]["t"] == "L" else -1
         x = [d * q["p"] for q in seq]
-        for kind, labels, fn in (("impulse", _IMP_LABELS, _impulse), ("correction", _COR_LABELS, _correction)):
+        kinds = [("impulse", _IMP_LABELS, _impulse), ("correction", _COR_LABELS, _correction)]
+        if ENABLE_COMPLEX:
+            kinds += [("combo", _COMBO_LABELS, _combo), ("triangle", _TRI_LABELS, _triangle), ("diagonal", _DIA_LABELS, _diagonal)]
+        for kind, labels, fn in kinds:
             if m > len(labels) - 1:
                 continue
             res = fn(x)
             if res is None:
                 continue
             pens = res["pens"]
-            score = (sum(pens.values()) + PRIOR_PEN) / (len(pens) + PRIOR_N)
-            main_dir = d if kind == "impulse" else -d          # 單純修正：之前那段方向跟 A 相反
+            score = (sum(pens.values()) + PRIOR_PEN) / (len(pens) + PRIOR_N) + KIND_PRIOR.get(kind, 0.0)
+            main_dir = d if kind in ("impulse", "diagonal") else -d     # 修正類：之前那段方向跟第一段相反
             if trend and main_dir == trend:
                 score -= TREND_BONUS
             cur = labels[m]
@@ -333,6 +538,7 @@ def count_waves(pts: list, trend: int = 0, max_back: int = 9) -> list:
                 "kind": kind, "dir": d, "start": s, "current": cur, "score": round(score, 4),
                 "pens": {k2: round(v, 3) for k2, v in pens.items()}, "corr_kind": res.get("corr_kind"),
                 "labels": [{"i": q["i"], "p": q["p"], "label": labels[j], "sym": WAVE_SYM[labels[j]],
+                            "disp": WAVE_DISP.get(labels[j], labels[j]),
                             "tentative": q.get("ci") is None} for j, q in enumerate(seq)],
                 "invalid": None if inv_x is None else round(d * inv_x, 2), "invalid_side": side,
                 "targets": [{"label": a, "price": round(d * v, 2), "kind": b} for a, v, b in tg],
