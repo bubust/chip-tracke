@@ -1,4 +1,4 @@
-"""B78 暫時檢查（第 2 輪）：真實加權指數上，新結構各當主要劇本的比例 vs KIND_PRIOR／SUB_PRIOR（擴散型）；
+"""B78 暫時檢查（第 3 輪）：真實加權指數上，新結構各當主要劇本的比例 vs KIND_PRIOR／SUB_PRIOR（擴散型）；
 同一份報酬打亂後（隨機漫步、沒有結構）的比例當基準；防偷看驗證；跟舊引擎的一致率；大、中級的複雜結構段落列表。"""
 import os, sys, subprocess, time
 import numpy as np
@@ -65,12 +65,24 @@ t0 = time.time()
 real = {deg: collect(h, l, c, deg) for deg in ("small", "mid", "big")}
 null = {deg: np.vstack([collect(*shuffled(s), deg) for s in (1, 2, 3, 4, 5)]) for deg in ("small", "mid", "big")}
 print(f"collect {time.time() - t0:.0f}s")
-for p in (0.06, 0.09, 0.12, 0.15):
-    for e in (0.0, 0.03, 0.06):
+PS, ES = (0.06, 0.08, 0.10, 0.12, 0.15), (0.0, 0.03, 0.06, 0.09, 0.12, 0.15)
+for p in PS:
+    for e in ES:
         for name, D in (("REAL", real), ("NULL", null)):
             print(f"p={p:.2f} e={e:.2f} {name} " + " | ".join(
                 f"{deg}: " + " ".join(f"{k} {s:.3f}" for k, s in zip(KS, shares(D[deg], p, e))) + f" cx {sum(shares(D[deg], p, e)[2:]):.3f}"
                 for deg in D))
+# 事先定好的選法（只看「打亂後沒有結構的資料」，不看之後漲跌）：
+#   e＝最小的值使擴散型 ≤ 收斂型（三角形、楔形各自，三個級數都成立；p 先用 0.10）
+#   p＝最小的值使複雜結構合計 ≤ 15%（三個級數都成立）
+def ok_e(e, p=0.10):
+    return all(shares(null[d], p, e)[4] <= shares(null[d], p, e)[3] + 1e-9 and shares(null[d], p, e)[6] <= shares(null[d], p, e)[5] + 1e-9 for d in null)
+e_pick = next((e for e in ES if ok_e(e)), ES[-1])
+p_pick = next((p for p in PS if all(sum(shares(null[d], p, e_pick)[2:]) <= 0.15 for d in null)), PS[-1])
+print("PICK p", p_pick, "e", e_pick, "e 條件成立", ok_e(e_pick), "p 條件成立", all(sum(shares(null[d], p_pick, e_pick)[2:]) <= 0.15 for d in null))
+E.KIND_PRIOR = {**P0, "combo": p_pick, "triangle": p_pick, "diagonal": p_pick}
+E.SUB_PRIOR = {"expanding": e_pick}
+P0, S0 = dict(E.KIND_PRIOR), dict(E.SUB_PRIOR)
 
 print("KIND_PRIOR", E.KIND_PRIOR, "SUB_PRIOR", E.SUB_PRIOR)
 for deg in ("small", "mid", "big"):

@@ -75,7 +75,8 @@ X_MAX = 1.0                        # X 浪不能回到 W 起點以外（再過�
 C_SHORT = 0.1                      # 複合修正裡完成的 a-b-c：c 最多比 a 的終點短 0.1 個 a
 YW_MAX = 1.618                     # 同一個複合修正的各組大小要相近：Y（含進行中）≤ 1.618 倍 W、Z ≤ 1.618 倍 Y
 LEG_MAX = 2.618                    # 擴散三角形／擴散楔形：每一段 ≤ 2.618 倍同方向的前一段（再大就不是同一個型態）
-SUB_PRIOR = {"expanding": 0.0}     # 擴散型（三角形、楔形）比收斂型少見 → 可再多加分數；校準見 KIND_PRIOR
+SUB_PRIOR = {"expanding": 0.0}
+COMPLEX_KINDS = ("combo", "triangle", "diagonal")     # 擴散型（三角形、楔形）比收斂型少見 → 可再多加分數；校準見 KIND_PRIOR
 FLAT_MIN, FLAT_MAX = 0.9, 1.38   # B ÷ A：≥0.9 平台型；>1.38 淘汰
 
 
@@ -259,10 +260,15 @@ def _abc_ok(x: list, i0: int, k: int, pens: dict, key: str) -> bool:
     return True
 
 
-def _combo(x: list) -> Optional[dict]:
+def _beyond_prior(x: list, pre: Optional[float]) -> bool:
+    """修正類（複合修正、三角形）整段不能超過它所修正那段的起點（超過＝回檔 100% 以上，已經是新趨勢）"""
+    return pre is not None and max(x[1:]) > pre
+
+
+def _combo(x: list, pre: Optional[float] = None) -> Optional[dict]:
     """x 空間：複合修正 W-X-Y（-X-Z），每一組都是 a-b-c（第一段往上）。點：0 Wa Wb W X Ya Yb Y X2 Za Zb Z"""
     k = len(x) - 1
-    if k < 4:
+    if k < 4 or _beyond_prior(x, pre):
         return None                                             # 還沒出現 X：跟單純 A-B-C 一樣，不重複列
     pens: dict = {}
     if not _abc_ok(x, 0, k, pens, "rB_W"):
@@ -296,10 +302,13 @@ def _combo(x: list) -> Optional[dict]:
     return {"pens": pens, "corr_kind": "wxyxz" if k >= 8 else "wxy"}
 
 
-def _triangle(x: list) -> Optional[dict]:
-    """x 空間：三角形 A-B-C-D-E（A 往上）。收斂：C<A、D<B、E<C；擴散：C>A、D>B、E>C。只在 D 開始後列為候選"""
+def _triangle(x: list, pre: Optional[float] = None) -> Optional[dict]:
+    """x 空間：三角形 A-B-C-D-E（A 往上）。只在 D 開始後列為候選。
+    收斂：C 不超過 A 的終點、D 不超過 B 的終點、E 不超過 C 的終點（上下兩條線收斂），而且一段比一段短；
+    擴散：C 超過 A 的終點、D（走完）超過 B 的終點，每段 ≤ 2.618 倍同方向的前一段。
+    （高點、低點一起墊高的收斂形狀是楔形，不是三角形）"""
     k = len(x) - 1
-    if k < 4:
+    if k < 4 or _beyond_prior(x, pre):
         return None
     L = [None] + [abs(x[j] - x[j - 1]) for j in range(1, k + 1)]
     if L[1] <= 0 or L[2] <= 0 or L[3] <= 0:
@@ -308,14 +317,14 @@ def _triangle(x: list) -> Optional[dict]:
     if L[3] < L[1]:                                             # 收斂
         if L[2] / L[1] > FLAT_MAX:
             return None                                         # B 不能比 A 長太多（跟平台型 B 同一條）
-        if L[4] >= L[2] or (k >= 5 and L[5] >= L[3]):
+        if x[3] > x[1] or x[4] < x[2] or L[4] >= L[2] or (k >= 5 and (L[5] >= L[3] or x[5] > x[3])):
             return None
         pens["rC"] = _pen(L[3] / L[1], GUIDE["rTri"])
         if k >= 5:
             pens["rD"] = _pen(L[4] / L[2], GUIDE["rTri"])
         sub = "contracting"
     else:                                                       # 擴散
-        if (L[2] > LEG_MAX * L[1] or (k >= 5 and L[4] <= L[2])
+        if (x[3] <= x[1] or L[2] > LEG_MAX * L[1] or (k >= 5 and x[4] >= x[2])
                 or any(L[j] > LEG_MAX * L[j - 2] for j in range(3, k + 1))):
             return None
         pens["rC"] = _pen(L[3] / L[1], GUIDE["rTriX"])
@@ -325,7 +334,7 @@ def _triangle(x: list) -> Optional[dict]:
     return {"pens": pens, "corr_kind": sub}
 
 
-def _diagonal(x: list) -> Optional[dict]:
+def _diagonal(x: list, pre: Optional[float] = None) -> Optional[dict]:
     """x 空間：楔形（傾斜三角形）1-5：第 4 浪跟第 1 浪重疊（推動浪不行、楔形可以）。只在第 4 浪開始後列為候選"""
     k = len(x) - 1
     if k < 4:
@@ -512,6 +521,18 @@ def _describe(kind: str, d: int, cur: str, corr_kind: Optional[str]) -> str:
     return f"{'漲多後' if not up else '跌深後'}的 {ck}A-B-C 修正・{cur} 浪（{role}）進行中"
 
 
+def _prior_start(pts: list, s: int, d: int) -> Optional[float]:
+    """x 空間：起點之前那一段的起點（往回找同方向一路更高的轉折＝那段趨勢的開頭）；前面沒有轉折 → None"""
+    j = s - 1
+    if j < 0:
+        return None
+    best = d * pts[j]["p"]
+    while j - 2 >= 0 and d * pts[j - 2]["p"] > best:
+        j -= 2
+        best = d * pts[j]["p"]
+    return best
+
+
 def count_waves(pts: list, trend: int = 0, max_back: int = 11) -> list:
     """pts：確認轉折＋最後一個進行中的極值（價格交錯 H/L）。回傳所有合格數法，依分數排序（低＝好）。
     trend：+1／−1＝大趨勢（例如收盤 vs 年線）；推動方向或「修正前那段」方向跟它一致的加一點分"""
@@ -527,24 +548,25 @@ def count_waves(pts: list, trend: int = 0, max_back: int = 11) -> list:
         kinds = [("impulse", _IMP_LABELS, _impulse), ("correction", _COR_LABELS, _correction)]
         if ENABLE_COMPLEX:
             kinds += [("combo", _COMBO_LABELS, _combo), ("triangle", _TRI_LABELS, _triangle), ("diagonal", _DIA_LABELS, _diagonal)]
+        pre = _prior_start(pts, s, d) if ENABLE_COMPLEX else None
         for kind, labels, fn in kinds:
             if m > len(labels) - 1:
                 continue
-            res = fn(x)
+            res = fn(x, pre) if kind in COMPLEX_KINDS else fn(x)
             if res is None:
                 continue
             pens = res["pens"]
-            score = ((sum(pens.values()) + PRIOR_PEN) / (len(pens) + PRIOR_N) + KIND_PRIOR.get(kind, 0.0)
-                     + SUB_PRIOR.get(res.get("corr_kind") or "", 0.0))
+            fit = (sum(pens.values()) + PRIOR_PEN) / (len(pens) + PRIOR_N)
             main_dir = d if kind in ("impulse", "diagonal") else -d     # 修正類：之前那段方向跟第一段相反
             if trend and main_dir == trend:
-                score -= TREND_BONUS
+                fit -= TREND_BONUS
+            score = fit + KIND_PRIOR.get(kind, 0.0) + SUB_PRIOR.get(res.get("corr_kind") or "", 0.0)
             cur = labels[m]
             inv_x, side, tg = _invalid_and_targets(kind, x, cur, res.get("corr_kind"))
             if d < 0:                                           # x 空間 → 價格
                 side = {"below": "above", "above": "below"}.get(side, side)
             out.append({
-                "kind": kind, "dir": d, "start": s, "current": cur, "score": round(score, 4),
+                "kind": kind, "dir": d, "start": s, "current": cur, "score": round(score, 4), "fit": round(fit, 4),
                 "pens": {k2: round(v, 3) for k2, v in pens.items()}, "corr_kind": res.get("corr_kind"),
                 "labels": [{"i": q["i"], "p": q["p"], "label": labels[j], "sym": WAVE_SYM[labels[j]],
                             "disp": WAVE_DISP.get(labels[j], labels[j]),
@@ -558,14 +580,22 @@ def count_waves(pts: list, trend: int = 0, max_back: int = 11) -> list:
 
 
 def primary_alternate(counts: list) -> tuple:
-    """主要劇本＝分數最好；替代劇本＝目前浪別或結構不同的下一個"""
+    """主要劇本＝分數最好；替代劇本＝目前浪別或結構不同的下一個。
+    B78：主要劇本是簡單結構、但有複雜結構「不算複雜度加分時」比主要劇本更貼近規則 → 替代劇本改放它
+    （複雜結構要明顯更好才當主要劇本，但貼得很好時一定看得到）"""
     if not counts:
         return None, None
     p = counts[0]
+    alt = None
     for c in counts[1:]:
         if (c["kind"], c["current"], c["dir"]) != (p["kind"], p["current"], p["dir"]):
-            return p, c
-    return p, None
+            alt = c
+            break
+    if p["kind"] not in COMPLEX_KINDS and (alt is None or alt["kind"] not in COMPLEX_KINDS):
+        cx = [c for c in counts if c["kind"] in COMPLEX_KINDS and c.get("fit", c["score"]) < p["score"]]
+        if cx:
+            alt = min(cx, key=lambda c: (c["fit"], -len(c["labels"])))
+    return p, alt
 
 
 # ── 費波那契 ─────────────────────────────────────────────────────────────────
