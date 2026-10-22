@@ -298,6 +298,9 @@ def facts_b75(snap: dict) -> list:
     iw = (snap.get("waves") or {}).get("intra") or {}
     if iw.get("primary"):
         L.append(f"【超短線 60 分 K 數浪（加權）】{iw['primary'].get('text')}")
+    nl = _nest_line(snap)
+    if nl:
+        L.append(f"【多層浪名（加權 60 分，照 @fanny55520 的拆法）】{nl}")
     lu = (snap.get("levels") or {}).get("ultra") or {}
     if lu.get("support") or lu.get("resistance"):
         L.append("【超短線支撐】" + ("；".join(_z(z) for z in lu.get("support") or []) or "無") +
@@ -315,6 +318,9 @@ def facts_b75(snap: dict) -> list:
                  + f"小級：{((txw.get('small') or {}).get('primary') or {}).get('text', '結構不清楚')}；"
                  + f"中級：{((txw.get('mid') or {}).get('primary') or {}).get('text', '結構不清楚')}；"
                  + f"60 分 K：{((txw.get('intra') or {}).get('primary') or {}).get('text', '—')}")
+        nl = _nest_line(tx)
+        if nl:
+            L.append(f"【多層浪名（台指期 60 分，照 @fanny55520 的拆法）】{nl}")
         tk = tx.get("key") or {}
         L.append("【轉折點（台指期）】" + "；".join(_key(tk.get(m), nm) for m, nm in (("ultra", "超短線"), ("short", "短線"), ("swing", "波段"))))
         for k, nm in (("ultra", "超短線"), ("short", "短線")):
@@ -364,6 +370,35 @@ def p_moderate(fx: str, r1: dict, r2: dict) -> str:
             '"swing":"波段劇本（≤100 字）","watch_levels":[{"price":數字,"why":"≤30 字"}],"confidence":"低|中|高"}')
 
 
+def _nest_line(snap: dict) -> str:
+    """B79 多層浪名一句話：主要／備選數法＋關卡"""
+    nz = ((snap.get("nest") or {}).get("60m")) or {}
+    if not nz.get("ok"):
+        return ""
+    p, a = nz.get("primary") or {}, nz.get("alternate") or {}
+    s = f"起點 {nz['anchor']['p']:,.0f}；主要 {p.get('path')}（{p.get('text')}）"
+    if a:
+        s += f"；備選 {a.get('path')}（{a.get('text')}）"
+    s += "；關卡：" + "；".join(f"{g['k']}{'✅' if g.get('ok') else ''} {g['t']}" for g in nz.get("gates") or [])
+    return s
+
+
+def _nest_prices(snap: dict) -> list:
+    out = []
+    for nz in ((snap.get("nest") or {}).values()):
+        if not (nz or {}).get("ok"):
+            continue
+        out += [nz["anchor"]["p"], nz["extreme"]["p"]] + [float(v) for v in (nz.get("fib") or {}).values()]
+        out += [g["price"] for g in nz.get("gates") or []]
+        if nz.get("trendline"):
+            out.append(nz["trendline"]["now"])
+        for c in (nz.get("primary"), nz.get("alternate")):
+            if c:
+                out += [r["price"] for r in c.get("rules") or []] + [t["price"] for t in c.get("targets") or []]
+                out += [m["p"] for m in c.get("marks") or []]
+    return out
+
+
 # ── 價位檢查 ─────────────────────────────────────────────────────────────────
 NUM_RE = re.compile(r"(?<![\d.])(\d{2},\d{3}|\d{5})(?:\.\d+)?(?![\d,])")
 
@@ -394,6 +429,7 @@ def allowed_levels(snap: dict) -> list:
             out += [k.get("price"), k.get("wave_invalid")]
     for z in [z for side in ("support", "resistance") for z in (((snap.get("levels") or {}).get("m30") or {}).get(side) or [])]:
         out += [z["price"], z["lo"], z["hi"]] + [s_["price"] for s_ in z["sources"]]
+    out += _nest_prices(snap)
     tx = snap.get("tx") or {}
     if tx.get("ok"):
         out += allowed_levels({k: v for k, v in tx.items() if k != "tx"})
