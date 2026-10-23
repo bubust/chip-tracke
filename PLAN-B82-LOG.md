@@ -58,3 +58,5 @@
 - 策略篩選結果表、尾盤追蹤兩張表手機改卡片（_mcLabel 把表頭放到每格 data-l 當小標）
 - Gemini：**APPROVED**（reviews_b82/insp4_gemini.json）；tests_ui/b82_all_ui.py 本機 ALL PASS
 - §8 第 3 輪：可轉債／收購併購／庫藏股表格手機卡片（mc-gen 通用樣式）；Gemini **APPROVED**（reviews_b82/insp5_gemini.json）；b82_all_ui 本機 ALL PASS
+- §8 第 4 輪：電腦版觀察清單（代號＋名稱固定在左、表頭可換行、🔬 只留圖示、來源限寬、<1700 藏最新日期、≤1499 加入日期併到加入後漲跌下面）；表格寬 2094→約 1480px（1440 螢幕只差一點、左兩欄固定）；Gemini **APPROVED**
+- 研究下載：背景工作 2 小時上限被停（證交所到 2025-02），依系統規定不重開背景；改前景每段 9 分鐘續抓

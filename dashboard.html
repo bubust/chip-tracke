@@ -1599,6 +1599,26 @@ async function loadHealth() {
     nav { gap: 2px !important; padding: 6px 12px !important; flex-wrap: nowrap !important; }
     nav button { padding: 7px 10px !important; font-size: .86rem !important; }
   }
+  /* 電腦版觀察清單（B82 D）：代號＋名稱固定在左、表頭可換行、🔬 只留圖示、來源限寬；<1700 寬藏「最新日期」（上方已有籌碼資料日期） */
+  @media (min-width: 701px) {
+    #watchlist-table th { white-space: normal; line-height: 1.25; vertical-align: bottom; }
+    #watchlist-table th { min-width: 4.6em; }
+    #watchlist-table th:nth-child(1) { min-width: 0; }
+    #watchlist-table th:nth-child(1), #watchlist-table td:nth-child(1) { position: sticky; left: 0; z-index: 2; background: var(--card); }
+    #watchlist-table th:nth-child(2), #watchlist-table td:nth-child(2) { position: sticky; left: 52px; z-index: 2; background: var(--card); box-shadow: 4px 0 6px -4px #000a; }
+    #watchlist-table td:nth-child(1) { min-width: 52px; }
+    #watchlist-table .dp-open-btn .t { display: none; }
+    #watchlist-table td:nth-child(5) { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #watchlist-table td:nth-child(18) .btn { padding: 4px 8px; }
+  }
+  @media (min-width: 701px) and (max-width: 1699px) {
+    #watchlist-table th:nth-child(17), #watchlist-table td:nth-child(17) { display: none; }
+  }
+  .add-dt { display: none; opacity: .6; }
+  @media (max-width: 1499px) {
+    .add-dt { display: block; }
+    #watchlist-table th:nth-child(3), #watchlist-table td:nth-child(3) { display: none; }   /* 加入日期改放在「加入後漲跌」下面 */
+  }
   @media (max-width: 700px) {
     header { flex-wrap: nowrap !important; padding: 6px 10px !important; gap: 8px !important; }
     header h1 { font-size: .95rem !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -3160,7 +3180,7 @@ function _sinceAddedHtml(s) {
   const dTxt = d.length === 8 ? `${d.slice(4, 6)}/${d.slice(6)}` : '';
   return {
     cls: pct > 0 ? 'pos' : pct < 0 ? 'neg' : '',
-    html: `<b>${pct > 0 ? '+' : ''}${pct.toFixed(1)}%</b>${late ? `<small style="display:block;opacity:.6">自 ${dTxt}</small>` : ''}`,
+    html: `<b>${pct > 0 ? '+' : ''}${pct.toFixed(1)}%</b>${late ? `<small style="display:block;opacity:.6">自 ${dTxt}</small>` : added.length === 8 ? `<small class="add-dt">${added.slice(4, 6)}/${added.slice(6)} 加入</small>` : ''}`,
     tip: `${dTxt} 收盤 ${base} → 現在 ${now}${late ? '（加入日早於股價資料，從最早有資料那天算）' : ''}`,
   };
 }
