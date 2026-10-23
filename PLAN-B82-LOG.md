@@ -51,3 +51,9 @@
 - Gemini gemini-3-flash-preview（PLAN＋diff -U25）：**APPROVED**（2 低：共用函式位置、nth-child 維護風險 → 有 UI 測試守著，不改）。reviews_b82/insp3_gemini.json
 - Groq：純樣式／前端，依記憶規則（前端交給 Gemini）不送
 - 驗證：pytest 500；tests_ui/b82_all_ui.py（14 分頁 × 1440／390）本機 ALL PASS；tests_ui/b82_ui.py ALL PASS
+
+## §8 第 2 輪（彈窗＋表格卡片）
+- 健檢彈窗（scratchpad modal.py）：K 線、🔬 深度分析、詳細資料在手機／電腦都沒有超出畫面；深度分析標題列按鈕太小（✕ 16×26）、K 線圖例箭頭 9.4px → 修
+- 研究候選說明改預設收起（手機原本佔滿整屏才看到股票）、批量回測按鈕縮小
+- 策略篩選結果表、尾盤追蹤兩張表手機改卡片（_mcLabel 把表頭放到每格 data-l 當小標）
+- Gemini：**APPROVED**（reviews_b82/insp4_gemini.json）；tests_ui/b82_all_ui.py 本機 ALL PASS

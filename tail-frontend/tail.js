@@ -79,7 +79,7 @@ function _tailTable(zone, rows) {
     return (typeof x === 'string' ? x.localeCompare(y) : x - y) * s.dir; });
   const head = _TAIL_COLS[zone].map(([lab, key]) => key
     ? `<th onclick="tailSortBy('${zone}','${key}')">${lab}${s.col === key ? (s.dir > 0 ? ' ▲' : ' ▼') : ''}</th>` : '<th></th>').join('');
-  return `<div class="tbl-wrap" style="overflow-x:auto"><table class="tail-tbl"><thead><tr>${head}</tr></thead>
+  return `<div class="tbl-wrap" style="overflow-x:auto"><table class="tail-tbl mc"><thead><tr>${head}</tr></thead>
     <tbody>${rows.map(r => _tailRow(zone, r)).join('')}</tbody></table></div>`;
 }
 
@@ -89,6 +89,7 @@ function tailRender() {
   const watch = rows.filter(r => r.zone !== 'stop'), stop = rows.filter(r => r.zone === 'stop');
   document.getElementById('tail-watch').innerHTML = _tailTable('watch', watch);
   document.getElementById('tail-stop-zone').innerHTML = _tailTable('stop', stop);
+  if (typeof _mcLabelAll === 'function') { _mcLabelAll(document.getElementById('tail-watch')); _mcLabelAll(document.getElementById('tail-stop-zone')); }   // 手機卡片的小標（B82 D）
   document.getElementById('tail-n-watch').textContent = watch.length;
   document.getElementById('tail-n-stop').textContent = stop.length;
   // 統計：全部（停損的用停損價算）

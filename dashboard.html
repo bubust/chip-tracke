@@ -966,7 +966,7 @@ details.guide[open]>summary::before{content:'▾ ';}
         <strong id="screen-result-title">篩選結果</strong>
         <span id="screen-result-count" style="font-size:.82rem;color:var(--muted);margin-left:8px"></span>
       </div>
-      <button class="btn" style="font-size:.8rem;padding:5px 12px" onclick="openStrategyBacktest()">🔬 批量回測此策略</button>
+      <button class="btn sm" style="font-size:.8rem;padding:5px 12px" onclick="openStrategyBacktest()">🔬 批量回測此策略</button>
     </div>
     <div id="strat-verdict" class="scr-verdict"></div>
     <div id="scan-warrant-note" style="display:none;font-size:.76rem;color:var(--muted);margin-bottom:6px"></div>
@@ -975,7 +975,7 @@ details.guide[open]>summary::before{content:'▾ ';}
     <div id="fbd-live" style="display:none;margin-bottom:12px"></div>
     <div id="strat-research" style="display:none;margin-bottom:12px"></div>
     <div class="tbl-wrap">
-      <table>
+      <table class="mc" id="screen-table">
         <thead id="screen-thead">
           <tr><th>#</th><th>代號</th><th>股名</th><th>股價</th><th>操作</th></tr>
         </thead>
@@ -1663,6 +1663,9 @@ async function loadHealth() {
     #mkt-tbody tr > td:nth-child(10) { grid-column: 1 / 3; }
     #mkt-tbody tr > td:nth-child(11) { grid-column: 3; text-align: right; }
     #mkt-tbody tr > td:nth-child(11) .btn { min-height: 34px; padding: 4px 8px; }
+    /* 🔬 深度分析標題列、K 線圖例的箭頭 */
+    #deep-panel .dp-icon-btn { min-width: 36px; min-height: 36px; }
+    #deep-panel .dp-sw-btn { min-height: 32px !important; min-width: 36px; }
     /* 小按鈕、分頁標籤、連動頁股票連結 */
     .btn.sm { min-height: 34px !important; }
     .scr-dtab { min-height: 32px; display: inline-flex !important; align-items: center; }
@@ -1677,6 +1680,32 @@ async function loadHealth() {
     .wl-add .ra-t { display: none; }
     #tab-treasury > .card:first-child .btn, #tab-mna > .card:first-child .btn, #tab-cb > .card:first-child .btn,
     #tab-market > .card:first-child .btn:not(#pill-buy):not(#pill-sell) { min-height: 36px !important; padding: 6px 12px !important; font-size: .82rem !important; }
+    /* 策略篩選結果：卡片（欄位依策略不同，小標從表頭來） */
+    #screen-table { min-width: 0 !important; width: 100%; }
+    #screen-table thead { display: none; }
+    #screen-table, #screen-tbody { display: block; }
+    #screen-tbody tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 8px; padding: 10px 6px; border-bottom: 1px solid var(--border); align-items: center; }
+    #screen-tbody tr > td { display: block; padding: 0 !important; border: none !important; white-space: normal !important; min-width: 0; }
+    #screen-tbody tr > td[colspan] { grid-column: 1 / -1; }
+    #screen-tbody tr > td:nth-child(1) { display: none; }
+    #screen-tbody tr > td:nth-child(2) { grid-column: 1; font-size: .95rem; }
+    #screen-tbody tr > td:nth-child(3) { grid-column: 2 / 4; }
+    #screen-tbody tr > td:nth-child(3) > span:first-child { max-width: 140px !important; }
+    #screen-tbody tr > td:nth-child(n+4)[data-l]::before { content: attr(data-l); display: block; color: var(--muted); font-size: .72rem; font-weight: 400; }
+    #screen-tbody tr > td:last-child { grid-column: 1 / -1; text-align: right; }
+    #screen-tbody tr > td:last-child::before { display: none !important; }
+    /* 尾盤追蹤：卡片 */
+    .tail-tbl { min-width: 0 !important; width: 100%; }
+    .tail-tbl thead { display: none; }
+    .tail-tbl, .tail-tbl tbody { display: block; }
+    .tail-tbl tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 8px; padding: 10px 6px; border-bottom: 1px solid var(--border); }
+    .tail-tbl td { display: block; padding: 0 !important; border: none !important; text-align: left !important; white-space: normal !important; min-width: 0; position: static !important; background: none !important; box-shadow: none !important; }
+    .tail-tbl td:first-child { grid-column: 1 / 3; font-size: .95rem; }
+    .tail-tbl td:nth-child(2) { grid-column: 3; text-align: right !important; font-size: 1rem; }
+    .tail-tbl td:nth-child(n+3)[data-l]::before { content: attr(data-l); display: block; color: var(--muted); font-size: .72rem; }
+    .tail-tbl td.l:not(:first-child) { grid-column: 1 / -1; }
+    .tail-tbl td.l:not(:first-child)::before { display: none !important; }
+    .tail-tbl td:last-child { grid-column: 1 / -1; text-align: right !important; }
     /* 庫藏股統計：3 欄小格 */
     #tb-summary { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 6px !important; }
     #tb-summary > div { padding: 6px 4px !important; }
@@ -1691,8 +1720,8 @@ async function loadHealth() {
     <span id="dp-change" style="font-size:.85rem;margin-left:4px"></span>
     <button class="btn sm ghost dp-sw-btn" onclick="dpShowChart()" title="換成這檔的 K 線圖" style="margin-left:8px;color:#58a6ff;border-color:#1f6feb">📈<span class="t"> <span class="dp-only">只看</span>K線</span></button>
     <button class="btn sm ghost dp-sw-btn dp-split-btn" onclick="dpSplitOn()" title="K 線跟分析並排同時看" style="color:#d29922;border-color:#9e6a03">◫<span class="t"> 同時看</span></button>
-    <button onclick="dpRefresh()" title="重新抓資料（清掉這檔的快取）" style="background:none;border:none;color:#8b949e;cursor:pointer;font-size:1rem;margin-left:4px">🔄</button>
-    <button onclick="closeDeepPanel()" style="background:none;border:none;color:#8b949e;cursor:pointer;font-size:1.2rem;margin-left:2px">✕</button>
+    <button class="dp-icon-btn" onclick="dpRefresh()" title="重新抓資料（清掉這檔的快取）" style="background:none;border:none;color:#8b949e;cursor:pointer;font-size:1rem;margin-left:4px">🔄</button>
+    <button class="dp-icon-btn" onclick="closeDeepPanel()" title="關閉" aria-label="關閉" style="background:none;border:none;color:#8b949e;cursor:pointer;font-size:1.2rem;margin-left:2px">✕</button>
   </div>
   <!-- 綜合評價＋操作階段（各 tab 都看得到） -->
   <div id="dp-top" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;padding:10px 16px;border-bottom:1px solid #30363d;flex-shrink:0">
@@ -6479,8 +6508,8 @@ async function _renderBestExplain() {
   const years = Object.entries(m.years || {}).map(([y, v]) => `<td>${y}<br><b>${_bp(v.win)}</b><br><span style="${_bcol(v.mean)}">${_bp2(v.mean)}</span><br><small class="muted">${v.n || 0} 筆</small></td>`).join('');
   const ps = m.port_slots || {}, pr = m.port_risk || {};
   const regimeTxt = (_bestSummary.config || {}).regime === 'none' ? '' : `<li>大盤濾網沒過（${_esc(d.regime || '')}的條件不成立）就不做，訊號也不會出現。</li>`;
-  el.innerHTML = `<div class="card" style="border-color:#f59e0b;background:linear-gradient(180deg,rgba(245,158,11,.08),transparent)">
-    <div style="font-size:1.05rem;font-weight:800;margin-bottom:8px">${passed ? '🏆 研究最佳：5 年回測選出來的做法' : '🔬 研究候選：最接近過關的做法（未全過）'}</div>
+  el.innerHTML = `<details class="card best-explain-d" style="border-color:#f59e0b;background:linear-gradient(180deg,rgba(245,158,11,.08),transparent)">
+    <summary style="cursor:pointer;font-size:1.05rem;font-weight:800;margin-bottom:8px">${passed ? '🏆 研究最佳：5 年回測選出來的做法' : '🔬 研究候選：最接近過關的做法（未全過）'}<span class="muted" style="font-size:.8rem;font-weight:400">　點開看怎麼買、停損、勝率（B82：預設收起）</span></summary>
     ${warn}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-bottom:12px">
       <div><div class="muted" style="font-size:.78rem">① 什麼時候買</div><div style="color:var(--up);font-weight:700">${_esc(d.signal || '')}</div><div style="font-size:.8rem">${_esc(d.regime || '')}。當天收盤出訊號 → <b>隔天開盤買</b>（開盤一價漲停買不到就放棄，不追）。</div></div>
@@ -6512,7 +6541,7 @@ async function _renderBestExplain() {
     ${diagHtml}
     ${await _bestRetestHtml()}
     <div class="muted" style="font-size:.72rem;margin-top:8px">股票池：4 碼普通股、收盤 ≥ 10 元、20 日均量 ≥ ${_esc(((_bestSummary.pool || {}).min_vol20) || 500)} 張。研究程式與完整報告：research/best/（PLAN-BEST）。觀察清單從這裡「+ 加入清單」或填成本的股票，會自動顯示「抱第幾天／明天開盤賣」；有填成本的出場那天會推 Telegram。</div>
-  </div>`;
+  </details>`;
 }
 
 // 🔬 研究候選快觸發名單（PLAN-B72 E1）：差一個條件／兩個條件都有但被股票池或資料保護擋掉
@@ -6769,7 +6798,16 @@ function renderScreenTable(strategy, data) {
       <td style="white-space:nowrap"><button class="btn sm ghost" onclick="addFromMarket('${row.stock_id}','${(STRATEGY_LABELS[strategy]||strategy).replace(/[（(][^）)]{10,}[）)]/g,'').trim()}')">+ 加入清單</button></td>
     </tr>`;
   }).join('');
+  _mcLabel('screen-table');
 }
+// PLAN-B82 D：手機卡片用——把表頭文字放到每一格的 data-l（CSS 在手機顯示成小標）
+function _mcLabel(tableId) {
+  const t = typeof tableId === 'string' ? document.getElementById(tableId) : tableId;
+  if (!t) return;
+  const hs = [...t.querySelectorAll('thead th')].map(th => th.textContent.replace(/[▲▼]/g, '').trim());
+  t.querySelectorAll('tbody tr').forEach(tr => [...tr.children].forEach((td, i) => { if (hs[i] && !td.hasAttribute('colspan')) td.dataset.l = hs[i]; }));
+}
+function _mcLabelAll(root) { (root || document).querySelectorAll('table.mc').forEach(_mcLabel); }
 
 
 // ═════════════════════════════ UTILS ═════════════════════════════
@@ -7708,7 +7746,7 @@ async function openChart(stockId, savedRange = null) {
       const px = (label, v) => `${label}${gap}<b style="color:${pc == null || v === pc ? '#d1d4dc' : v > pc ? '#ef5350' : '#26a69a'}">${_fmtN(v)}</b>`;
       // 均線：數值＋箭頭（比前一天的均線高 ↑紅、低 ↓綠，跟看盤軟體一樣）；月線斜率看觀察清單「月斜率」欄（K 線副圖 10-21 用戶要求拿掉）
       const ar = a => i > 0 && !isNaN(a[i]) && !isNaN(a[i - 1]) && a[i] !== a[i - 1]
-        ? `<span style="color:${a[i] > a[i - 1] ? '#ef5350' : '#26a69a'};font-size:.85em">${a[i] > a[i - 1] ? '↑' : '↓'}</span>` : '';
+        ? `<span style="color:${a[i] > a[i - 1] ? '#ef5350' : '#26a69a'};font-size:max(11px,.85em)">${a[i] > a[i - 1] ? '↑' : '↓'}</span>` : '';
       const ma = (label, a, color) => `<span style="white-space:nowrap;color:${color}">${label}${_mob ? ':' : ' '}${_fmtN(a[i])}${ar(a)}</span>`;
       const sp = `<span style="display:inline-block;width:${_mob ? '.45em' : '.8em'}"></span>`;
       cLeg.innerHTML =
@@ -8367,7 +8405,7 @@ async function saveAllStratParams() {
 <script src="/treasury/static/treasury.js?v=20261024b82"></script>
 <script src="/mna/static/mna.js?v=20261024b82"></script>
 <script src="/cb/static/cb.js?v=20261024b82"></script>
-<script src="/tail/static/tail.js?v=20261024b82"></script>
+<script src="/tail/static/tail.js?v=20261024b82b"></script>
 <script src="/notes/static/notes.js?v=20261023b81"></script>
 <script src="/discuss/static/discuss.js?v=20261007a"></script>
 </body>
