@@ -50,9 +50,10 @@ def load_daily(raw_dir, kind, cols, dates, sids):
 
 def shift_rows(a, lag):
     """a[t] ← a[t−lag]（前 lag 列 NaN）：訊號日 t 只看得到 lag 天前的資料"""
+    a = np.asarray(a, float)
     if lag <= 0:
         return a
-    b = np.full_like(a, np.nan)
+    b = np.full(a.shape, np.nan)
     b[lag:] = a[:-lag]
     return b
 

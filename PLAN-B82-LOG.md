@@ -25,3 +25,14 @@
   低／中建議（實作時處理，不改計畫）：背景檢查失敗不清 localStorage、不重複跳錯誤提示；R3 出場沿用 run825 的「開盤跳空跌破停損＝開盤價出場」優先；手機一句結論太長要省略
 - Groq 最終狀態：A、B 份核准；C 份最後一次（第 3 輪）REVISE 的點都已駁回／已涵蓋，依記憶（Groq 每輪重提已駁回點）不再送。**最終版 Groq 沒有逐份重新核准**，照實記錄
 - 研究資料下載中（research/b82/fetch_all.py 背景，2021-01～2026-10-22）
+
+## 程式檢查第 1 批（A＋B 網頁／後端，2026-10-24 00:4x）
+- Gemini gemini-3-flash-preview（PLAN＋dashboard.html／server.py diff -U60＋tests）：**APPROVED**（2 低：init 背景載排行保留、_scan_data_date 效率不需改）。reviews_b82/insp1_gemini.json
+- Groq gpt-oss-120b（server.py diff）：**APPROVED**。reviews_b82/insp1_groq.json
+- 自己檢查加修：掃描「籌碼型整理中」時切回頁面不重接進度追蹤（_ghFollowTimer）
+
+## 程式檢查第 2 批（研究程式 research/b82）
+- Gemini（完整 common／sim_entry／run_opt／merge／fetch_all＋測試＋舊引擎）：**APPROVED**（2 低：盤中進場日保守、_pick 用 9 不需改）。reviews_b82/insp2_gemini.json
+- Groq sim_entry（去註解）：REVISE 3 點**全部不成立**——收盤價不適用融資延後（MARGIN_LAG 只管融資）、E1 t 來自 sig[:-1] 所以 t+1 在範圍內／E4 先過濾 e<T、回檔掛單價 ≤ 收盤×0.99 在一價漲停日不可能成交
+- Groq common（第 1 次 json_validate_failed，重試）：REVISE 5 點，採納 1（shift_rows 一律轉浮點數）；「for … if … else [] 語法錯」實測可執行（pytest＋試跑），缺量＝不符合是設計、營收年增下限 −100% 不會被 −1e9 遮蔽、15／20 日不會超過月底 → 駁回
+- 試跑（10 個月真資料，IS 2021-10～2022-03、OOS 2022-04～08、bootstrap 200）：整條流程 51 秒、E0＝trades825 斷言通過、法人／融資 0 天缺漏
