@@ -356,3 +356,104 @@ def steps(up: list, dn: list, px: float, hlc=None) -> dict:
     if U and D:
         rng = {"t": f"{_f(D[0]['price'])}～{_f(U[0]['price'])} 之間來回", "ok": D[0]["price"] < px < U[0]["price"]}
     return {"up": path(U, True), "range": rng, "down": path(D, False)}
+
+
+# ── B81 試單地圖（PLAN-B81 §2）：網站跟回測（research/b81/run_setups.py）用同一個函式 ──────────────
+SETUP_ZONE = 0.15        # 進場區寬度（ATR）
+SETUP_STOP = 0.25        # 停損放在價位外 0.25 ATR（她的「多空線」）
+SETUP_MIN_RR = 1.0       # 賠率 < 1 → 標「賠率不夠，不建議」
+SETUP_NAME = {"L": "回測支撐試多", "S": "反彈壓力試空", "B": "站上回測追多"}
+
+
+def setup_levels(items: list, price: float) -> dict:
+    """價位梯 → 試單要用的價位：S＝下方最近的價位、R＝上方最近的價位、U／D＝上方／下方由近到遠
+    （計畫原本「結構價位優先」，實測會挑到很遠的轉折點（例 +7.9%）→ 改最近的，她的寫法也是「彈到壓力」「回測支撐」；PLAN-B81-LOG 偏離 1）"""
+    U = sorted([it for it in items if it.get("side") == "up" and it["price"] > price], key=lambda it: it["price"])
+    D = sorted([it for it in items if it.get("side") == "down" and it["price"] < price], key=lambda it: -it["price"])
+    return {"U": U, "D": D, "S": D[0] if D else None, "R": U[0] if U else None}
+
+
+def _rr(entry: float, stop: float, t1: float) -> Optional[float]:
+    risk = abs(entry - stop)
+    return round(abs(t1 - entry) / risk, 2) if risk > 0 else None
+
+
+def _trend(side: int, leg_dir: int) -> Optional[str]:
+    if leg_dir not in (1, -1):
+        return None
+    return "順勢" if side == leg_dir else "逆勢"
+
+
+def setups(items: list, price: float, atr: Optional[float], leg_dir: int, sym: str = "TWII", res: Optional[dict] = None) -> dict:
+    """三種試單：L 回測支撐試多（第一根壓下來不破）、S 反彈壓力試空（加權寫減碼區）、B 站上回測追多。
+    每筆 {id, side, title, level, zone, cond, stop, t1, t2, rr, trend, warn, res}；main＝主要那筆（順勢、賠率夠、離現價近）"""
+    import math
+    if not atr or not math.isfinite(atr) or atr <= 0 or not items or not price or not math.isfinite(price) or price <= 0:
+        return {"ok": False, "note": "資料不夠，這個週期先不給試單", "list": [], "main": None}
+    lv = setup_levels(items, price)
+    U, D, S, R = lv["U"], lv["D"], lv["S"], lv["R"]
+    z, sd = SETUP_ZONE * atr, SETUP_STOP * atr
+    out = []
+    if S is not None and U:
+        s = S["price"]
+        entry = s + z / 2
+        t1 = U[0]["price"]
+        t2 = U[1]["price"] if len(U) > 1 else None
+        out.append({"id": "L", "side": 1, "level": s, "lv_name": S.get("name") or "", "zone": [s, s + z], "entry": entry,
+                    "cond": f"回到 {s:,.0f}～{s + z:,.0f}，第一根壓下來收盤不破 {s:,.0f} 再上車",
+                    "stop": s - sd, "t1": t1, "t2": t2})
+    if R is not None and D:
+        r = R["price"]
+        entry = r - z / 2
+        t1 = D[0]["price"]
+        t2 = D[1]["price"] if len(D) > 1 else None
+        out.append({"id": "S", "side": -1, "level": r, "lv_name": R.get("name") or "", "zone": [r - z, r], "entry": entry,
+                    "cond": f"彈到 {r - z:,.0f}～{r:,.0f}，碰到後收盤收在 {r:,.0f} 下面",
+                    "stop": r + sd, "t1": t1, "t2": t2})
+    if len(U) >= 2:
+        r1 = U[0]["price"]
+        entry = r1 + z / 2
+        out.append({"id": "B", "side": 1, "level": r1, "lv_name": U[0].get("name") or "", "zone": [r1, r1 + z], "entry": entry,
+                    "cond": f"收盤站上 {r1:,.0f}，之後回測 {r1:,.0f} 不破再追",
+                    "stop": r1 - sd, "t1": U[1]["price"], "t2": U[2]["price"] if len(U) > 2 else None})
+    for x in out:
+        x["rr"] = _rr(x["entry"], x["stop"], x["t1"])
+        x["trend"] = _trend(x["side"], leg_dir)
+        x["title"] = SETUP_NAME[x["id"]]
+        x["warn"] = None
+        if x["id"] == "S" and sym == "TWII":
+            x["title"] = "減碼區"
+            x["warn"] = "加權不能放空；要試空用台指期"
+        x["in_zone"] = bool(x["zone"][0] <= price <= x["zone"][1])
+        if x["id"] == "S" and sym == "TWII":
+            pass                                              # 減碼不是交易：不加賠率、逆勢的提醒
+        elif x["rr"] is None or x["rr"] < SETUP_MIN_RR:
+            x["warn"] = ((x["warn"] + "；") if x["warn"] else "") + "賠率不夠，不建議"
+        elif x["trend"] == "逆勢":
+            x["warn"] = ((x["warn"] + "；") if x["warn"] else "") + "逆勢：小量、快進快出、到 T1 就走"
+        x["res"] = ((res or {}).get(x["id"]) or {}).get(x["trend"] or "")     # 回測結果：同一種試單、同順逆勢
+        if x["res"] and x["res"].get("worse"):
+            x["warn"] = ((x["warn"] + "；") if x["warn"] else "") + "回測比隨機差，這個週期不建議"
+        for k in ("level", "entry", "stop", "t1", "t2"):
+            if x.get(k) is not None:
+                x[k] = round(float(x[k]), 2)
+        x["zone"] = [round(float(v), 2) for v in x["zone"]]
+        x["dist_pct"] = round((x["level"] / price - 1) * 100, 2) if price else None
+    # 主要那筆：賠率夠、回測沒有比隨機差（B81：日 K 壓力試空 4 個時期都比隨機差）
+    ok_rr = [x for x in out if x["rr"] is not None and x["rr"] >= SETUP_MIN_RR and not (x["res"] or {}).get("worse")]
+    pool = [x for x in ok_rr if x["trend"] == "順勢"] or ok_rr
+    main = min(pool, key=lambda x: abs(x["level"] - price))["id"] if pool else None
+    note = None if out else "附近沒有可以試單的價位"
+    if out and main is None:
+        note = "附近的試單賠率都不夠（目標太近或停損太遠），先觀望"
+    near = {"up": None if not U else {"price": round(U[0]["price"], 2), "name": U[0].get("name") or "", "dist_pct": round((U[0]["price"] / price - 1) * 100, 2)},
+            "down": None if not D else {"price": round(D[0]["price"], 2), "name": D[0].get("name") or "", "dist_pct": round((D[0]["price"] / price - 1) * 100, 2)}}
+    return {"ok": True, "note": note, "list": out, "main": main, "near": near, "atr": round(float(atr), 2)}
+
+
+def same_ruler(pa: Optional[dict], pb: Optional[dict], tol: float = 0.001) -> bool:
+    """B81：兩個週期的母尺是不是同一段（兩端價位都差 < 0.1%）→ 週 K 不再重複放母尺那組（PLAN-B81 §7.2）"""
+    ra, rb = (pa or {}).get("ruler"), (pb or {}).get("ruler")
+    if not ra or not rb or len(ra) < 2 or len(rb) < 2:
+        return False
+    return all(abs(float(x) - float(y)) <= tol * abs(float(y)) for x, y in zip(ra[:2], rb[:2]))

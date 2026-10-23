@@ -979,7 +979,7 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
         "chart": {"bars": bars, "weekly": weekly_bars, "ma": mas, "i60": intra.get("tf60") or [], "i30": intra.get("tf30") or [],
                   "i15": intra.get("tf15") or []},
         "nest": intra.get("nest") or {},
-        "v": 80,
+        "v": 81,
         "intra": {"ok": bool(intra.get("ok")), "note": intra.get("note"), "atr": intra.get("atr"), "m": E.INTRA["m"],
                   "m30": {"ok": bool(m30.get("ok")), "note": m30.get("note"), "atr": m30.get("atr"), "m": E.INTRA30["m"]},
                   "m15": {"ok": bool(m15.get("ok")), "note": m15.get("note"), "atr": m15.get("atr"), "m": E.INTRA15["m"]}},
@@ -1012,6 +1012,11 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
     vres = _vol_research(st)
     snap["research"] = {**(snap.get("research") or {}), "volume": vres}
     lm = {}
+    snap["ladder"] = _ladder(waves, key, lv)
+    ldir = {r["tf"]: r.get("dir") or 0 for r in snap["ladder"]}
+    # B81：週 K 的母尺跟日 K 同一段 → 週 K 不再重複放母尺那組（PLAN-B81 §7.2）
+    same_pos = LM.same_ruler(snap["positioning"].get("1wk"), snap["positioning"].get("1d"))
+    sres = st.get("setups") or {}
     for tf, (wk, lk) in TF_KEYS.items():
         try:
             intra_tf = tf in ("15m", "30m", "60m")
@@ -1022,17 +1027,42 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
             a_tf = ((intra.get("_tf") or {}).get(tf) or {}) if intra_tf else None
             hlc = (a_tf.get("hlc") if a_tf and a_tf.get("ok") else None) if intra_tf else (h, l, c)
             w = waves.get(wk) or {}
+            pos = None if intra_tf or (tf == "1wk" and same_pos) else snap["positioning"].get(tf)
             lm[tf] = LM.build({"price": price, "win": TF_WIN[tf], "levels": lv.get(lk) or {}, "key": key.get(lk),
                                "nest": nz, "wave": {"primary": w.get("primary"), "alternate": w.get("alternate")},
-                               "positioning": None if intra_tf else snap["positioning"].get(tf), "zones": vx.get("zones") or [],
+                               "positioning": pos, "zones": vx.get("zones") or [],
                                "leg_dir": ld, "vol_ok": bool((vres.get("V1") or {}).get("pass_d2" if intra_tf else "pass_d1")), "hlc": hlc})
+            if tf == "1wk" and same_pos:
+                lm[tf]["mother_note"] = "母尺跟日 K 同一段（防守區、鐵律底線看日 K）"
+            # B81 試單地圖：ATR＝該週期（週 K 用日 K 的 ATR，跟回測一樣）；順逆勢看週期按鈕的方向
+            atr_tf = (a_tf.get("atr") if a_tf and a_tf.get("ok") else None) if intra_tf else b["atr"]
+            tfc = "intra" if intra_tf else tf
+            res = {sid: {tr: {**r, "tfc": tfc} for tr, r in (x or {}).items()} for sid, x in (sres.get(tfc) or {}).items()
+                   if sid in ("L", "S", "B")}
+            su = LM.setups(lm[tf].get("items") or [], price, atr_tf, ldir.get(tf, 0), sym, res)
+            lm[tf]["setups"] = su
+            if not isinstance(lm[tf].get("top3"), dict):          # 審查 Groq F1：停損格一定寫回快照
+                lm[tf]["top3"] = {}
+            top = lm[tf]["top3"]
+            mid = su.get("main")
+            lst = su.get("list") or []
+            mx = next((x for x in lst if x["id"] == mid), None)
+            if mx is not None and sym == "TWII" and mx["id"] == "S":    # 加權的減碼區不是交易 → 停損格改用多單那筆
+                mx = next((x for x in lst if x["id"] != "S" and x["rr"] is not None and x["rr"] >= LM.SETUP_MIN_RR), None)
+            if top.get("stop") is None and mx is not None:    # 停損格不空白：用主要試單的停損（她的多空線）
+                top["stop"] = {"price": mx["stop"], "dist_pct": round((mx["stop"] / price - 1) * 100, 2) if price else None,
+                               "name": "多空線", "act": f"{mx['title']}的停損（{'跌破' if mx['side'] == 1 else '漲過'}就出場）"}
+                top["stop_src"] = "setup"
         except Exception as e:     # noqa: BLE001
             log.exception(f"[wave] 價位梯失敗 {sym} {tf}：{e}")
             lm[tf] = {"ok": False, "note": f"價位梯計算失敗：{e}"}
     snap["levelmap"] = lm
-    snap["ladder"] = _ladder(waves, key, lv)
     snap["ladder_text"] = AD.ladder_summary(snap["ladder"])
     snap["advice"] = AD.build(snap)
+    abt = st.get("advice_bt") or {}
+    if snap["advice"].get("ok") and abt.get("text") and isinstance(snap["advice"].get("range"), dict):   # B81 R-A：方向一致調持股的回測結果照實標
+        snap["advice"]["range"]["why"] = list(snap["advice"]["range"].get("why") or []) + [abt["text"]]
+        snap["advice"]["range"]["bt"] = "✅" if abt.get("pass_S0") else "△"
     kind = ("live" if use_live else "close") if sym == "TWII" else f"TX:{'live' if use_live else 'close'}"
     try:
         with D.db() as conn:

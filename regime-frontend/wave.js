@@ -1,6 +1,8 @@
 // 🌊 大盤解析（PLAN-B74；B75：加權／台指期切換、分 K、轉折點、期貨＋籌碼；B76：每個週期自己的解析；B79：多層浪名）
 // B80（10-22 用戶：「版面好混亂，又很多重複的資訊」）：結論卡＋頁內分頁（圖表／劇本／籌碼／AI／總經），每樣資訊只放一個地方；
 //   15 分 K；成交量（K 線下方量柱、相對量、最後一推、修正成熟度、帶量突破、成交密集區）；價位梯、如果…就…、三條路、版本樹
+// B81（10-22 用戶：「讓我清楚知道現在的價位進去，支撐壓力在哪邊可以試單，拆解她的進出場」）：🎯 試單地圖（結論卡一行＋劇本分頁拆解）、
+//   停損格不空白、兩種數法方向不同時明講、量能那行白話、手機三格橫排
 // 顏色：漲／壓力＝紅 var(--up)、跌／支撐＝綠 var(--down)、轉折點＝橘、費波那契＝紫
 (function () {
   'use strict';
@@ -225,16 +227,17 @@
   const FIBS = r => r == null ? '' : `接近 ${r}`;
 
   function pushText(lg) {
-    const up = lg.dir === 1, sg = lg.signals || {};
-    const v = { last: '<b style="color:var(--warn)">像最後一推</b>', ok: '<b>像續推</b>', mixed: '<b>力道轉弱中</b>' }[lg.verdict] || '';
-    return `這段${up ? '上漲' : '下跌'}已過前${up ? '高' : '低'}：最後一推訊號 ${num(lg.n) ?? 0}/4 → ${v}`;
+    const up = lg.dir === 1;
+    const v = { last: '<b style="color:var(--warn)">像最後一推</b>', ok: '<b>還在續推</b>', mixed: '<b>力道轉弱中</b>' }[lg.verdict] || '';
+    return `這段${up ? '漲' : '跌'}過前${up ? '高' : '低'}了，最後一推的跡象 ${num(lg.n) ?? 0}/4 → ${v}`;
   }
 
   function corrText(lg) {
     const sp = num(lg.space), tm = num(lg.time);
-    const m = lg.mature ? '<b>空間、時間都到了</b>（具備修正結束的條件）' : lg.shallow ? '<b>空間不足</b>' : '空間或時間還沒到';
-    const vs = { shrink: '量縮修正（健康）', swell: lg.dir === -1 ? '帶量下跌（賣壓重）' : '帶量反彈', flat: '量能持平' }[lg.vol_state] || '';
-    return `修正前一段 ${sp == null ? '—' : (sp * 100).toFixed(0) + '%'}（${FIBS(lg.fib)}）、時間 ${tm == null ? '—' : tm.toFixed(1)} 倍 → ${m}${vs ? '；' + vs : ''}`;
+    const m = lg.mature ? '<b>回得夠深也夠久</b>（可能快走完）' : lg.shallow ? '<b>回得還不夠深</b>' : '<b>還沒走完</b>';
+    const vs = { shrink: '量縮（健康）', swell: lg.dir === -1 ? '帶量下跌（賣壓重）' : '帶量反彈', flat: '量沒有明顯變化' }[lg.vol_state] || '';
+    const w = lg.dir === -1 ? '回檔' : '反彈';
+    return `${w}了前一段的 ${sp == null ? '—' : (sp * 100).toFixed(0) + '%'}、時間只有前一段的 ${tm == null ? '—' : tm.toFixed(1)} 倍 → ${m}${vs ? '；' + vs : ''}`;
   }
 
   function volLine(tf) {
@@ -246,17 +249,90 @@
     const pa = vx.partial, la = vx.last;
     if (pa && num(pa.est) != null) out.push(`今天到目前 ${fmtV(pa.v)}，預估全天 ${fmtV(pa.est)}${num(pa.rv) != null ? `＝平常的 <b>${pa.rv.toFixed(1)} 倍</b>（${esc(pa.label)}）` : ''}`);
     else if (pa && num(pa.rv) != null) out.push(`進行中這根 <b>${pa.rv.toFixed(1)} 倍</b>（${esc(pa.label)}）`);
-    else if (la && num(la.rv) != null) out.push(`最後一根（${esc(la.t)}）<b>${la.rv.toFixed(1)} 倍</b>（${esc(la.label)}）`);
+    else if (la && num(la.rv) != null) out.push(`最後一根（${esc(la.t)}）是平常的 <b>${la.rv.toFixed(1)} 倍</b>（${esc(la.label)}）`);
     const lg = vx.leg;
-    if (lg && lg.mode === 'push') out.push(pushText(lg) + ' ' + resTag('V2'));
-    else if (lg && lg.mode === 'corr') out.push(corrText(lg) + ' ' + resTag('V3'));
-    return out.join('；') || '<span class="wv-dim">量能沒有特別訊號</span>';
+    let k = null;
+    if (lg && lg.mode === 'push') { out.push(pushText(lg)); k = 'V2'; }
+    else if (lg && lg.mode === 'corr') { out.push(corrText(lg)); k = 'V3'; }
+    if (!out.length) return '<span class="wv-dim">量能沒有特別訊號</span>';
+    // 回測標籤整行只出現一次（B81）
+    return out.join('｜') + (k ? (vpass(k) ? ` ${resTag(k)}` : ' <span class="wv-dim">（量的規則回測 △，參考）</span>') : '');
   }
 
   function tileHtml(lab, it, color) {
     if (!it) return `<div class="wv-tile"><div class="k">${lab}</div><div class="v">—</div><div class="m wv-dim">附近沒有系統價位</div></div>`;
-    return `<div class="wv-tile"><div class="k">${lab}</div><div class="v" style="color:${color}">${fmt(it.price)}<small>${pctS(it.dist_pct, 1)}</small></div>
+    return `<div class="wv-tile" title="點一下看完整說明"><div class="k">${lab}</div><div class="v" style="color:${color}">${fmt(it.price)}<small>${pctS(it.dist_pct, 1)}</small></div>
       <div class="m"><b>${esc(it.name || '')}</b>　${esc(it.act || '')}${it.vol ? `<span class="vh">${esc(it.vol)}</span>` : ''}</div></div>`;
+  }
+
+  // ── B81 🎯 試單地圖 ──
+  const setupsOf = tf => { const lm = lmOf(tf); return lm && lm.setups && lm.setups.ok && Array.isArray(lm.setups.list) ? lm.setups : null; };   // 審查 Groq F1
+  const isShortTW = x => x.id === 'S' && S.sym === 'TWII';
+  function setupShort(x) {
+    const nm = isShortTW(x) ? '減碼' : x.id === 'L' ? '試多' : x.id === 'S' ? '試空' : '追多';
+    const col = isShortTW(x) ? 'var(--warn)' : x.side > 0 ? 'var(--up)' : 'var(--down)';
+    const where = (x.in_zone ? '<b>現在就在這區</b>，' : '') +
+      (x.id === 'L' ? `回到 ${fmt(x.zone[0])}～${fmt(x.zone[1])} 不破` : x.id === 'S' ? `彈到 ${fmt(x.zone[0])}～${fmt(x.zone[1])} 壓回` : `站上 ${fmt(x.level)} 回測不破`);
+    const tail = isShortTW(x) ? '' : `，停損 ${fmt(x.stop)} → 目標 ${fmt(x.t1)}`;
+    const tr = x.trend === '逆勢' ? ' <span class="wv-dim">（逆勢）</span>' : '';
+    const bad = (x.rr == null || x.rr < 1) && !isShortTW(x) ? ' <span class="wv-dim">（賠率不夠）</span>' : '';
+    return `<b style="color:${col}">${nm}</b> ${where}${tail}${tr}${bad}`;
+  }
+  function setupLine(tf) {
+    const su = setupsOf(tf);
+    const lm = lmOf(tf);
+    if (!su) return lm && lm.setups ? `<span class="wv-dim">${esc(lm.setups.note || '這個週期先不給試單')}</span>` : '';
+    const pick = ['L', 'S'].map(id => su.list.find(x => x.id === id)).filter(Boolean);
+    if (!pick.length) return `<span class="wv-dim">${esc(su.note || '附近沒有可以試單的價位')}</span>`;
+    return pick.map(setupShort).join('｜') + ' <a data-goto-tab="plan">看拆解 →</a>';
+  }
+  function setupCard(x, su) {
+    const col = isShortTW(x) ? 'var(--warn)' : x.side > 0 ? 'var(--up)' : 'var(--down)';
+    const r = x.res;
+    const src = !r ? '' : r.tfc === 'intra' ? '60 分 K 3 年資料' : r.tfc === '1wk' ? '週 K 價位、2001 年起' : '日 K 2001 年起';
+    const resTxt = r ? `回測（${src}、${esc(x.trend || '')}）：先到目標 ${rateS(r.win)}，隨機 ${rateS(r.rw)}（${esc(r.n)} 筆）→ ${r.pass ? '✅' : '△'}` +
+      (r.worse ? ' <b style="color:var(--warn)">比隨機差，這個週期不建議這樣做</b>' : r.pass ? '' : '，當紀律參考：停損明確、賠率夠才做') : '回測：這個組合沒有足夠資料';
+    const body = isShortTW(x)
+      ? `<div>彈到這裡：<b>減碼</b>（${esc(x.cond)}）</div><div>站回 ${fmt(x.stop)} 以上 → 這個壓力被突破，減掉的買回</div>`
+      : `<div>進場：${esc(x.cond)}</div>
+         <div>停損（多空線）<b>${fmt(x.stop)}</b>　目標 T1 <b>${fmt(x.t1)}</b>${x.t2 != null ? `、T2 ${fmt(x.t2)}` : ''}　賠率 1：${x.rr == null ? '—' : Number(x.rr).toFixed(1)}</div>`;
+    return `<div class="wv-setup${su.main === x.id ? ' main' : ''}">
+      <div class="t"><b style="color:${col}">${isShortTW(x) ? '⚠ 減碼區' : esc(x.title)}</b> <span class="wv-dim">${fmt(x.level)}（${pctS(x.dist_pct, 1)}）${x.lv_name ? '・' + esc(x.lv_name) : ''}</span>
+        ${x.trend ? `<span class="wv-tag ${x.trend === '順勢' ? 'ok' : 'ng'}">${esc(x.trend)}</span>` : ''}${su.main === x.id ? '<span class="wv-tag main">主要</span>' : ''}</div>
+      ${x.in_zone ? '<div><b>現在就在這區</b>：照下面的條件等收盤確認</div>' : ''}
+      ${body}
+      ${x.warn ? `<div class="wv-warn">⚠ ${esc(x.warn)}</div>` : ''}
+      <div class="wv-why">${resTxt}</div></div>`;
+  }
+  function exitSteps(su) {
+    const x = su.list.find(y => y.id === su.main && !isShortTW(y)) || su.list.find(y => !isShortTW(y) && y.rr != null && y.rr >= 1) || su.list.find(y => !isShortTW(y));
+    if (!x) return '';
+    const up = x.side > 0;
+    const brk = up ? '跌破' : '漲過';
+    const steps = [
+      `進場後${brk} <b>${fmt(x.stop)}</b>（多空線）→ 出場，不凹單`,
+      `到 T1 <b>${fmt(x.t1)}</b> → 先走一口、留一口`,
+      `留的那口：防守拉到成本（約 ${fmt(x.entry)}），${up ? '跌回' : '漲回'}成本就走`,
+      x.t2 != null ? `到 T2 <b>${fmt(x.t2)}</b> → 開始處理獲利；15 分收穩前${up ? '高' : '低'}才看更${up ? '上' : '下'}面` : 'T1 之後沒有下一個價位 → 留的那口用多空線慢慢拉',
+      `目標之間的過渡${up ? '壓力' : '支撐'}不追；壓回「失速」、出現加速${up ? '往下' : '往上'} → 立刻改判（看下面的如果…就…）`,
+    ];
+    if (x.trend === '逆勢') steps.push('這筆是逆勢：小量、快進快出；反彈（逃命波）到 0.5～0.618 就分批出，不要過度歡樂');
+    return `<div class="wv-exit"><div class="t">🚪 出場（她的寫法，代入「${esc(x.title)}」這筆）</div><ol>${steps.map(t => `<li>${t}</li>`).join('')}</ol></div>`;
+  }
+  function setupBlock(tf) {
+    const su = setupsOf(tf), lm = lmOf(tf);
+    if (!lm || !lm.setups) return '';
+    if (!su) return `<div class="wv-h3">🎯 現在怎麼試單</div><div class="wv-dim">${esc(lm.setups.note || '這個週期先不給試單')}</div>`;
+    const nu = (su.near || {}).up, nd = (su.near || {}).down;
+    const near = `現價 <b>${fmt(S.price)}</b>：上面最近 ${nu ? `<b style="color:var(--up)">${fmt(nu.price)}</b>（${esc(nu.name)}，${pctS(nu.dist_pct, 1)}）` : '沒有價位'}、
+      下面最近 ${nd ? `<b style="color:var(--down)">${fmt(nd.price)}</b>（${esc(nd.name)}，${pctS(nd.dist_pct, 1)}）` : '沒有價位'}`;
+    return `<div class="wv-h3">🎯 現在怎麼試單 <span class="wv-dim">她的進出場拆解；${esc(T_().name)}</span></div>
+      <div class="wv-near">${near}</div>
+      ${su.note ? `<div class="wv-note">${esc(su.note)}</div>` : ''}
+      <div class="wv-setups">${su.list.map(x => setupCard(x, su)).join('')}</div>
+      <div class="wv-in"><b>進場三種（她）</b>：① 回測支撐，第一根壓下來不破前低再上車　② 彈到壓力壓回 → ${S.sym === 'TWII' ? '減碼（台指期才試空）' : '試空'}　③ 站上壓力、回測不破再追（三條路的「轉強依序」）</div>
+      ${exitSteps(su)}
+      <div class="wv-dim" style="margin-top:6px">系統照她的規則找出來的位置，不是她的實際下單；波浪標記皆為候選，部位照關卡分批。</div>`;
   }
 
   function renderSummary() {
@@ -277,6 +353,10 @@
       const a = plain(w.alternate);
       if (a) sub.push(`備選：${esc(a.title)}`);
     }
+    // B81：分 K 的多層浪名（她的寫法）跟週期按鈕的單層數浪方向不同 → 明講，以價位梯裁決
+    const lrow = ((Array.isArray(S.ladder) ? S.ladder : []).find(r => r && r.tf === tf)) || {};
+    if (nz && nz.ok && (nz.cur_dir === 1 || nz.cur_dir === -1) && (lrow.dir === 1 || lrow.dir === -1) && nz.cur_dir !== lrow.dir)
+      sub.push(`<span class="wv-warn">⚠ 兩種數法方向不同：多層浪名這一小段${nz.cur_dir > 0 ? '往上' : '往下'}、單層數浪「${esc(lrow.title || '')}」${lrow.dir > 0 ? '往上' : '往下'}；以價位梯的價位裁決</span>`);
     const parents = T.intra ? [['日 K', 'small'], ['週 K', 'mid']] : st.tf === '1d' ? [['週 K', 'mid']] : [['大級', 'big']];
     sub.push('母級：' + parents.map(([nm, k]) => { const q = plain(wv(k).primary); return `${nm} <b>${q ? esc(q.title) : '結構不清楚'}</b>`; }).join('；'));
     const inote = st.tf === '15m' ? ((S.intra || {}).m15 || {}) : st.tf === '30m' ? ((S.intra || {}).m30 || {}) : st.tf === '60m' ? (S.intra || {}) : { ok: true };
@@ -293,36 +373,42 @@
     const a = S.advice || {};
     const rg = a.range || {};
     const lines = [];
+    const sl = setupLine(tf);
+    if (sl) lines.push(['🎯 試單', sl]);
     const vl = volLine(tf);
     if (vl) lines.push(['🔋 量能', vl]);
     if (a.ok) {
       const regime = ((S.context || {}).regime || {}).label;
       lines.push(['💡 操作', `<span class="wv-rg" title="${esc((rg.why || []).join('；'))}">建議持股 ${esc(rg.lo)}～${esc(rg.hi)}%</span>：${esc(String(a.headline || '').replace(/^建議持股[^：]*：/, ''))}` +
-        (regime ? ` <span class="wv-dim">（總經：${esc(String(regime).replace(/^\S+\s/, ''))}）</span>` : '')]);
+        (regime ? ` <span class="wv-dim">（總經：${esc(String(regime).replace(/^\S+\s/, ''))}${rg.bt ? `；方向調持股 回測 ${esc(rg.bt)}` : ''}）</span>` : '')]);
       const today = (a.lines || []).find(x => x.k === '今天' || x.k === '明天');
       if (today) lines.push([`🌙 ${esc(today.k)}`, esc(today.t)]);
       const risks = (a.risks || []).slice(0, 2);
-      if (risks.length) lines.push(['⚠ 風險', esc(risks.join('；'))]);
+      if (risks.length) lines.push(['⚠ 風險', esc(risks.join('；')), 'mh']);      // 手機先收起來（籌碼分頁有完整的）
     }
     const pr = panelData && panelData.result, mo = pr && pr.moderator;
     if (mo && mo.summary) {
       const sc = /多/.test(mo.stance || '') ? 'var(--up)' : /空/.test(mo.stance || '') ? 'var(--down)' : 'var(--muted)';
       const sm = String(mo.summary);
-      lines.push(['🤖 AI', `<b style="color:${sc}">${esc(mo.stance || '')}</b>・${esc(sm.length > 70 ? sm.slice(0, 70) + '…' : sm)} <a data-goto-tab="ai">看討論 →</a>`]);
+      lines.push(['🤖 AI', `<b style="color:${sc}">${esc(mo.stance || '')}</b>・${esc(sm.length > 70 ? sm.slice(0, 70) + '…' : sm)} <a data-goto-tab="ai">看討論 →</a>`, 'mh']);
     }
     $('wv-sum').innerHTML = `
       <div class="wv-head">${head}</div>
       <div class="wv-sub">${sub.join('<br>')}</div>
       ${intraNote}
-      <div class="wv-tiles">
+      <div class="wv-tiles${top.stop ? '' : ' two'}">
         ${tileHtml(top.stop_same === 'up' ? '⬆ 上方關鍵（也是停損）' : '⬆ 上方關鍵', top.up, 'var(--up)')}
         ${tileHtml(top.stop_same === 'down' ? '⬇ 下方關鍵（也是停損）' : '⬇ 下方關鍵', top.down, 'var(--down)')}
-        ${tileHtml(top.stop_pos === 'before' ? (top.stop_same === 'down' ? '⬇ 途中先遇到' : '⬆ 途中先遇到')
+        ${top.stop ? tileHtml(top.stop_src === 'setup' ? '🛑 多空線（試單停損）' : top.stop_pos === 'before' ? (top.stop_same === 'down' ? '⬇ 途中先遇到' : '⬆ 途中先遇到')
                    : top.stop_same === 'down' ? '⬇⬇ 跌破後再看' : top.stop_same === 'up' ? '⬆⬆ 站上後再看' : '🛑 停損（轉折點）', top.stop,
-                   top.stop_same === 'down' ? 'var(--down)' : top.stop_same === 'up' ? 'var(--up)' : 'var(--warn)')}
+                   top.stop_same === 'down' ? 'var(--down)' : top.stop_same === 'up' ? 'var(--up)' : 'var(--warn)') : ''}
       </div>
-      <div class="wv-lines">${lines.map(([k, v]) => `<span class="k">${k}</span><span>${v}</span>`).join('')}</div>`;
+      <div class="wv-lines">${lines.map(([k, v, c]) => `<span class="k${c ? ' ' + c : ''}">${k}</span><span${c ? ` class="${c}"` : ''}>${v}</span>`).join('')}</div>
+      ${lines.some(x => x[2]) ? '<button type="button" class="wv-more-btn">更多（風險、AI）▾</button>' : ''}`;
     $('wv-sum').querySelectorAll('[data-goto-tab]').forEach(x => x.onclick = () => setTab(x.dataset.gotoTab));
+    $('wv-sum').querySelectorAll('.wv-tile').forEach(x => x.onclick = () => x.classList.toggle('open'));   // 手機：點開看完整說明
+    const mb = $('wv-sum').querySelector('.wv-more-btn');
+    if (mb) mb.onclick = () => { const on = $('wv-sum').classList.toggle('more'); mb.textContent = on ? '收起 ▴' : '更多（風險、AI）▾'; };
   }
 
   // ── 📈 價位梯 ──
@@ -499,7 +585,9 @@
       return `<div class="wv-road ${cls}${arr[0].ok ? ' cur' : ''}"><div class="t">${title}</div>${arr.map(s => `<div>${s.ok ? '✅' : '⬜'} ${esc(s.t)}${s.note ? ` <span class="wv-dim">（${esc(s.note)}）</span>` : ''}</div>`).join('')}</div>`;
     };
     const rg = stp.range;
-    el.innerHTML = `<div class="wv-h3">🧭 劇本 <span class="wv-dim">${S.sym === 'TX' ? '台指期・' : ''}${esc(T.name)}；學 @fanny55520：先定母級、再列版本、用價位裁決</span></div>
+    el.innerHTML = `${setupBlock(tf)}
+      <div class="wv-h3" style="margin-top:16px">🧭 劇本 <span class="wv-dim">${S.sym === 'TX' ? '台指期・' : ''}${esc(T.name)}；學 @fanny55520：先定母級、再列版本、用價位裁決</span></div>
+      ${lm.mother_note ? `<div class="wv-dim" style="margin-bottom:6px">ℹ️ ${esc(lm.mother_note)}</div>` : ''}
       ${pos ? `<div class="wv-pos"><div class="wv-dim" style="margin-bottom:2px">🗺️ 母級定位（她的日線定位：母尺、防守區、鐵律、威脅版本）</div>${pos}</div>` : ''}
       <div class="wv-trees">${trees || '<div class="wv-dim">這個週期還沒有劇本</div>'}</div>
       ${extra}

@@ -251,6 +251,38 @@
     .wv-head { font-size: 1.15rem; } .wv-head .path { font-size: 1.35rem; }
     .wv-tabs button { padding: 8px 11px; font-size: .95rem; }
   }
+  /* B81 🎯 試單地圖 */
+  .wv-warn { color: #fdba74; }
+  .wv-near { font-size: .95rem; margin-bottom: 8px; line-height: 1.6; }
+  .wv-setups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .wv-setup { background: var(--card2); border: 1px solid var(--border); border-radius: 11px; padding: 9px 12px; font-size: .92rem; line-height: 1.6; }
+  .wv-setup.main { border-color: #5b8cff; }
+  .wv-setup .t { margin-bottom: 3px; }
+  .wv-tag.ok { background: rgba(240,72,72,.12); } .wv-tag.ng { background: rgba(148,163,184,.18); } .wv-tag.main { background: rgba(91,140,255,.2); }
+  .wv-in { font-size: .9rem; margin-top: 10px; line-height: 1.6; }
+  .wv-exit { margin-top: 8px; font-size: .92rem; } .wv-exit .t { font-weight: 700; } .wv-exit ol { margin: 4px 0 0 22px; line-height: 1.65; }
+  .wv-tiles.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  @media (max-width: 760px) { .wv-setups { grid-template-columns: 1fr; } }
+  .wv-more-btn { display: none; }
+  /* B81 手機：三格一排、說明最多 2 行（點一下看全文） */
+  @media (max-width: 480px) {
+    .wv-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+    .wv-tiles.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .wv-tile { display: block; padding: 6px 7px; cursor: pointer; }
+    .wv-tile .k { font-size: .72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wv-tile .v { font-size: 1.05rem; margin: 1px 0; }
+    .wv-tile .v small { display: block; margin: 0; font-size: .7rem; }
+    .wv-tile .m { font-size: .74rem; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .wv-tile .m .vh { display: none; }
+    .wv-tile.open .m { display: block; -webkit-line-clamp: unset; }
+    .wv-tile.open .m .vh { display: block; }
+    .wv-sub { font-size: .82rem; line-height: 1.5; }
+    .wv-lines { font-size: .86rem; line-height: 1.5; gap: 3px 6px; }
+    .wv-head { font-size: 1.05rem; } .wv-head .path { font-size: 1.2rem; }
+    .wv-lines .mh { display: none; }
+    .wv-sum.more .wv-lines .mh { display: revert; }
+    .wv-more-btn { display: inline-block; margin-top: 6px; background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 3px 10px; font-size: .8rem; }
+  }
 </style>
 </head>
 <body>
@@ -1022,6 +1054,6 @@ setInterval(() => { if (_regimeVisible() && Date.now() - _lastLoad >= 300000) { 
 // 視窗 resize 時重繪圖表
 window.addEventListener('resize', () => { window.__regimeRedraw(); });
 </script>
-<script src="/regime/static/wave.js?v=20261022b80c"></script>
+<script src="/regime/static/wave.js?v=20261023b81"></script>
 </body>
 </html>
