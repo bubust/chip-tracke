@@ -1608,7 +1608,9 @@ async function loadHealth() {
     #watchlist-table th:nth-child(2), #watchlist-table td:nth-child(2) { position: sticky; left: 52px; z-index: 2; background: var(--card); box-shadow: 4px 0 6px -4px #000a; }
     #watchlist-table td:nth-child(1) { min-width: 52px; }
     #watchlist-table .dp-open-btn .t { display: none; }
-    #watchlist-table td:nth-child(5) { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #watchlist-table td:nth-child(5) { width: 112px; white-space: normal; }
+    #watchlist-table td:nth-child(5) .note-view > span:first-child { display: inline-block; max-width: 104px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+    #watchlist-table td:nth-child(2) { white-space: normal; min-width: 96px; max-width: 150px; }
     #watchlist-table td:nth-child(18) .btn { padding: 4px 8px; }
   }
   @media (min-width: 701px) and (max-width: 1699px) {

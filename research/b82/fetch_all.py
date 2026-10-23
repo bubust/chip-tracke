@@ -21,7 +21,7 @@ H = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 START = datetime.date(*map(int, (sys.argv[1] if len(sys.argv) > 1 else '2021-01-01').split('-')))
 END = datetime.date(*map(int, (sys.argv[2] if len(sys.argv) > 2 else datetime.date.today().isoformat()).split('-')))
 INST_FROM = datetime.date(2021, 8, 2)
-GAP = {'tw': 2.2, 'tp': 1.3}
+GAP = {'tw': 1.6, 'tp': 1.3}
 LOCK = threading.Lock()
 
 
