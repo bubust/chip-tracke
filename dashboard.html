@@ -83,7 +83,7 @@
   /* 查詢記錄 */
   .hist-chip { display:inline-flex; align-items:center; gap:4px; background:var(--card); border:1px solid var(--border); border-radius:20px; padding:4px 10px; font-size:.82rem; cursor:pointer; transition:.15s; }
   .hist-chip:hover { border-color:var(--accent); color:var(--accent); }
-  .hist-rm { font-size:.7rem; color:var(--muted); margin-left:2px; }
+  .hist-rm { font-size:.72rem; color:var(--muted); margin-left:2px; }
   .hist-rm:hover { color:var(--red); }
 
   /* table */
@@ -100,7 +100,7 @@
   /* metrics */
   .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 10px; margin-bottom: 14px; }
   .metric { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 13px 15px; }
-  .metric .lbl { font-size: .71rem; color: var(--muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .3px; }
+  .metric .lbl { font-size: .72rem; color: var(--muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .3px; }
   .metric .val { font-size: 1.4rem; font-weight: 700; }
   .metric .val.md { font-size: 1rem; }
 
@@ -198,7 +198,7 @@
   .idx-item:last-of-type { border-right:none; }
   #idx-te { border-right:none; }
   .idx-sep { width:1px; background:var(--border); align-self:stretch; margin:0 6px; }
-  .idx-name { font-size:.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; white-space:nowrap; }
+  .idx-name { font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; white-space:nowrap; }
   .idx-price { font-size:1.05rem; font-weight:700; font-variant-numeric:tabular-nums; line-height:1.3; }
   .idx-chg { font-size:.76rem; font-weight:500; }
 
@@ -219,7 +219,7 @@
     main { padding: 8px 6px; }
     .card { padding: 12px 10px; border-radius: 8px; }
     table { font-size: .8rem; }
-    th { padding: 6px 7px; font-size: .7rem; }
+    th { padding: 6px 7px; font-size: .72rem; }
     td { padding: 7px 7px; }
     /* 觀察清單：代號、名稱固定在左邊，其餘左右滑 */
     #watchlist-table th:nth-child(1), #watchlist-table td:nth-child(1) { position: sticky; left: 0; z-index: 2; background: var(--card); }
@@ -268,7 +268,7 @@ details.guide[open]>summary::before{content:'▾ ';}
 .notes-stats b{color:var(--text)}
 .notes-bar{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px;scrollbar-width:none}
 .notes-bar::-webkit-scrollbar{display:none}
-.note-tag{display:inline-block;font-size:.68rem;padding:0 6px;border-radius:9px;border:1px solid;font-weight:400;white-space:nowrap}
+.note-tag{display:inline-block;font-size:.72rem;padding:0 6px;border-radius:9px;border:1px solid;font-weight:400;white-space:nowrap}
 .note-stop{margin-top:6px;padding:4px 8px;border-radius:6px;background:#22c55e10;color:#86efac;font-size:.78rem}
 .note-go{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .notes-list{display:flex;flex-direction:column;margin-top:10px;border:1px solid #30363d;border-radius:8px;overflow:hidden}
@@ -288,7 +288,7 @@ details.guide[open]>summary::before{content:'▾ ';}
   .dc-imgs:empty { display: none; }
   .dc-thumb { position: relative; }
   .dc-thumb img { height: 80px; border-radius: 6px; border: 1px solid var(--border); display: block; }
-  .dc-thumb button { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; border: none; background: var(--red); color: #fff; cursor: pointer; font-size: .7rem; line-height: 20px; padding: 0; }
+  .dc-thumb button { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; border: none; background: var(--red); color: #fff; cursor: pointer; font-size: .72rem; line-height: 20px; padding: 0; }
   .dc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
   .dc-subtabs { display: flex; gap: 4px; margin: 14px 0 10px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
   .dc-subtabs button { background: none; border: none; color: var(--muted); padding: 8px 12px; cursor: pointer; font-size: .84rem; border-bottom: 2px solid transparent; white-space: nowrap; }
@@ -302,10 +302,10 @@ details.guide[open]>summary::before{content:'▾ ';}
   .dc-table th, .dc-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; vertical-align: top; }
   .dc-table th { color: var(--muted); font-weight: 600; font-size: .74rem; }
   .dc-chip { display: inline-block; background: var(--card2); border: 1px solid var(--border); border-radius: 12px; padding: 1px 8px; font-size: .74rem; margin: 1px 0; }
-  .dc-tag { display: inline-block; border-radius: 4px; padding: 0 5px; font-size: .7rem; font-weight: 700; margin-right: 3px; }
+  .dc-tag { display: inline-block; border-radius: 4px; padding: 0 5px; font-size: .72rem; font-weight: 700; margin-right: 3px; }
   .dc-lead { background: #7c2d12; color: #fed7aa; }
   .dc-follow { background: #1e3a5f; color: #bfdbfe; }
-  .dc-conf { font-size: .7rem; font-weight: 700; }
+  .dc-conf { font-size: .72rem; font-weight: 700; }
   .dc-fix { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; align-items: center; }
   .dc-lf { background: var(--card2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; display: flex; flex-direction: column; gap: 4px; }
   .dc-seg { display: flex; gap: 10px; margin-bottom: 8px; }
@@ -457,7 +457,7 @@ details.guide[open]>summary::before{content:'▾ ';}
   .mkt-ctrl { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; font-size:.84rem; }
   .mkt-ctrl select { padding:4px 8px; }
   .mkt-seg .btn { border-radius:0; } .mkt-seg .btn:first-child { border-radius:8px 0 0 8px; } .mkt-seg .btn:last-child { border-radius:0 8px 8px 0; }
-  .mkt-stk { font-size:.68rem; display:block; line-height:1.2; }
+  .mkt-stk { font-size:.72rem; display:block; line-height:1.2; }
   .lk-top { padding-bottom:12px; }
   .lk-title { font-size:1.15rem; font-weight:800; }
   .lk-intro { font-size:.84rem; color:var(--muted); margin:4px 0 10px; line-height:1.6; }
@@ -465,7 +465,7 @@ details.guide[open]>summary::before{content:'▾ ';}
   .lk-segbtn { padding:7px 14px; border-radius:999px; border:1px solid var(--border); background:#1a1f2b; color:var(--fg); font-size:.86rem; cursor:pointer; }
   .lk-segbtn.active { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:700; }
   .lk-howto { font-size:.8rem; color:var(--muted); line-height:1.7; background:#151a24; border:1px solid var(--border); border-radius:8px; padding:8px 12px; margin-bottom:10px; }
-  .lk-tag { display:inline-block; font-size:.7rem; padding:0 7px; border-radius:999px; white-space:nowrap; border:1px solid; }
+  .lk-tag { display:inline-block; font-size:.72rem; padding:0 7px; border-radius:999px; white-space:nowrap; border:1px solid; }
   .lk-tag.same { color:#60a5fa; border-color:rgba(96,165,250,.45); background:rgba(96,165,250,.1); }
   .lk-tag.cross { color:#f59e0b; border-color:rgba(245,158,11,.45); background:rgba(245,158,11,.1); }
   .lk-list { display:flex; flex-direction:column; gap:10px; }
@@ -493,7 +493,7 @@ details.guide[open]>summary::before{content:'▾ ';}
   .lk-sub-h { display:flex; align-items:center; gap:8px; font-weight:700; margin-bottom:6px; }
   .lk-count { font-size:.72rem; color:var(--muted); font-weight:600; background:#232736; border-radius:999px; padding:0 8px; }
   /* ⚠出貨日徽章、📋 講義訊號卡（B66） */
-  .dist-badge { margin-left:4px; font-size:.68rem; color:#f59e0b; border:1px solid #f59e0b66; background:#f59e0b18; border-radius:3px; padding:0 4px; white-space:nowrap; cursor:help; }
+  .dist-badge { margin-left:4px; font-size:.72rem; color:#f59e0b; border:1px solid #f59e0b66; background:#f59e0b18; border-radius:3px; padding:0 4px; white-space:nowrap; cursor:help; }
   .cs-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:10px; margin-top:8px; }
   /* PLAN-B82 策略篩選頁：狀態列＋4 小格＋展開區、按鈕收緊、一句結論、回測細節分頁 */
   #tab-screen > .card { margin-bottom:10px; }
@@ -606,7 +606,7 @@ details.guide[open]>summary::before{content:'▾ ';}
 .rf-list{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .rf-item{display:flex;align-items:center;gap:6px;padding:7px 9px;background:#0d1117;border-radius:7px;font-size:.8rem;min-width:0}
 .rf-item .rf-l{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rf-item .rf-s{font-size:.7rem;color:#8b949e;white-space:nowrap}
+.rf-item .rf-s{font-size:.72rem;color:#8b949e;white-space:nowrap}
 .rf-done{margin-top:12px;font-weight:600;text-align:center;line-height:1.6;font-size:.9rem}
 .rf-foot{display:flex;align-items:center;gap:10px;margin-top:12px}
 .rf-hint{flex:1;font-size:.72rem;color:#8b949e;line-height:1.5}
@@ -632,7 +632,7 @@ details.guide[open]>summary::before{content:'▾ ';}
   <span class="sub">台股籌碼追蹤</span>
   <div class="pill-status" id="status-pill" onclick="loadPill()">載入中...</div>
   <span id="live-clock" style="margin-left:auto;font-size:.82rem;color:#8b949e;font-variant-numeric:tabular-nums;white-space:nowrap"></span>
-  <button id="btn-global-refresh" onclick="globalRefreshAll()" style="margin-left:8px;padding:6px 14px;background:#238636;border:1px solid #2ea043;border-radius:6px;color:#fff;cursor:pointer;font-size:.82rem;white-space:nowrap">🔄 全系統更新</button>
+  <button id="btn-global-refresh" onclick="globalRefreshAll()" style="margin-left:8px;padding:6px 14px;background:#238636;border:1px solid #2ea043;border-radius:6px;color:#fff;cursor:pointer;font-size:.82rem;white-space:nowrap">🔄<span class="gr-t"> 全系統更新</span></button>
 
 </header>
 <!-- 全系統更新進度 Modal（放在 header 外面：header 有 backdrop-filter，放裡面會被當成定位範圍，彈窗被夾在標題列、還被分頁列蓋住）-->
@@ -678,7 +678,7 @@ details.guide[open]>summary::before{content:'▾ ';}
 <div id="tab-watchlist" class="tab active">
 
   <!-- 新增 bar -->
-  <div class="card">
+  <div class="card wl-add">
     <div class="section-title">新增股票</div>
     <div class="row">
       <div class="fld" style="position:relative">
@@ -691,7 +691,7 @@ details.guide[open]>summary::before{content:'▾ ';}
              background:var(--card);border:1px solid var(--border);border-radius:6px;
              min-width:220px;box-shadow:0 4px 12px rgba(0,0,0,.4);max-height:240px;overflow-y:auto"></div>
       </div>
-      <div class="fld">
+      <div class="fld fld-name">
         <label>名稱 <span id="name-hint" style="color:var(--muted);font-weight:400"></span></label>
         <input type="text" id="add-name" placeholder="選擇後自動填入" style="width:130px"
                onkeydown="if(event.key==='Enter') addToWatchlist()" />
@@ -707,7 +707,7 @@ details.guide[open]>summary::before{content:'▾ ';}
           <option value="90">90 天</option>
         </select>
       </div>
-      <button class="btn green" onclick="refreshAll()" id="btn-refresh-all" style="margin-top:18px">🔄 全部更新</button>
+      <button class="btn green" onclick="refreshAll()" id="btn-refresh-all" style="margin-top:18px" title="更新清單裡全部股票的籌碼與價位">🔄<span class="ra-t"> 全部更新</span></button>
     </div>
   </div>
 
@@ -740,7 +740,7 @@ details.guide[open]>summary::before{content:'▾ ';}
         <span class="idx-price muted">—</span>
         <span class="idx-chg muted">—</span>
       </div>
-      <span style="margin-left:auto;padding:0 10px;font-size:.7rem;color:var(--muted);align-self:center" id="idx-ts"></span>
+      <span style="margin-left:auto;padding:0 10px;font-size:.72rem;color:var(--muted);align-self:center" id="idx-ts"></span>
     </div>
   </div>
 
@@ -854,7 +854,7 @@ details.guide[open]>summary::before{content:'▾ ';}
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
       <div>
         <div class="section-title" style="margin:0">🏦 法人買賣超排行（上市＋上櫃）</div>
-        <div class="muted" style="font-size:.8rem;margin-top:2px;line-height:1.6">外資、投信、自營商三大法人當天買賣超；<b>三大合計</b>＝三者相加；<b>連買／連賣</b>＝外資、投信各自連續幾天同方向；<b>占量</b>＝三大合計 ÷ 當天成交量（大型股看張數、小型股看占量）。盤後約 16:00 公布。</div>
+        <details class="guide" style="margin:4px 0"><summary>ℹ️ 欄位說明</summary><div class="guide-body muted" style="font-size:.8rem;line-height:1.6">外資、投信、自營商三大法人當天買賣超；<b>三大合計</b>＝三者相加；<b>連買／連賣</b>＝外資、投信各自連續幾天同方向；<b>占量</b>＝三大合計 ÷ 當天成交量（大型股看張數、小型股看占量）。盤後約 16:00 公布。</div></details>
         <div id="scan-meta" class="muted" style="font-size:.78rem;margin-top:2px">還沒載入</div>
       </div>
       <div style="display:flex;gap:8px">
@@ -1078,7 +1078,7 @@ details.guide[open]>summary::before{content:'▾ ';}
           <input type="file" accept=".csv,.txt" style="display:none" onchange="mnaImport(this)"></label>
       </span>
     </div>
-    <details id="mna-guide" class="guide" open>
+    <details id="mna-guide" class="guide">
       <summary>📖 使用說明（老王筆記＋上課筆記，有出入以上課筆記為主）</summary>
       <div class="guide-body">
         <b>這頁做什麼：</b>每天 18:50 自動從公開資訊觀測站重大訊息抓「公開收購／合併／股份轉換／收購股權」和「減資／現金增資」公告，
@@ -1162,14 +1162,14 @@ details.guide[open]>summary::before{content:'▾ ';}
     </div>
   </div>
   <div id="lk-view-movers" class="card lk-view">
-    <div class="lk-howto"><b>怎麼看</b>：左邊是今天<b>先大漲</b>的股票（漲 ≥ 5%、創 20 日新高、量 ≥ 2 倍）；右邊是平常<b>跟它一起動、今天還沒跟上</b>的股票（60 日相關 ≥ 0.5、今天漲不到它一半）。
-      <span class="lk-tag same">同產業</span>＝同一個產業；<span class="lk-tag cross">常一起動</span>＝不同產業但走勢很像（例如同集團、上下游）。</div>
+    <details class="guide lk-howto-d"><summary>ℹ️ 怎麼看</summary><div class="lk-howto"><b>怎麼看</b>：左邊是今天<b>先大漲</b>的股票（漲 ≥ 5%、創 20 日新高、量 ≥ 2 倍）；右邊是平常<b>跟它一起動、今天還沒跟上</b>的股票（60 日相關 ≥ 0.5、今天漲不到它一半）。
+      <span class="lk-tag same">同產業</span>＝同一個產業；<span class="lk-tag cross">常一起動</span>＝不同產業但走勢很像（例如同集團、上下游）。</div></details>
     <div id="link-research-follow" style="font-size:.82rem;margin-bottom:8px"></div>
     <div id="link-movers"><div class="muted">載入中…</div></div>
   </div>
   <div id="lk-view-disp" class="card lk-view" style="display:none">
-    <div class="lk-howto"><b>怎麼看</b>：處置股＝漲太兇被交易所限制（分盤撮合、預收款券）。講義「雙刀」＝處置前放空處置股、買進高相關又比較便宜的配對股；出關後反過來。
-      <span id="link-disp-date" class="muted"></span></div>
+    <details class="guide lk-howto-d"><summary>ℹ️ 怎麼看</summary><div class="lk-howto"><b>怎麼看</b>：處置股＝漲太兇被交易所限制（分盤撮合、預收款券）。講義「雙刀」＝處置前放空處置股、買進高相關又比較便宜的配對股；出關後反過來。</div></details>
+    <div id="link-disp-date" class="muted" style="font-size:.8rem;margin-bottom:6px"></div>
     <div id="link-research-disp" style="font-size:.82rem;margin-bottom:8px"></div>
     <div id="link-disposal"><div class="muted">載入中…</div></div>
   </div>
@@ -1178,7 +1178,7 @@ details.guide[open]>summary::before{content:'▾ ';}
       <input id="link-q" type="text" inputmode="numeric" placeholder="輸入股票代號，例 6505" onkeydown="if(event.key==='Enter')linkQuery()">
       <button class="btn" onclick="linkQuery()">查連動股</button>
     </div>
-    <div class="lk-howto" style="margin-top:8px">列出全市場跟它 60 天走勢最像的前 10 檔＋同產業前 5 檔。<b>相關</b>越接近 1 越同步；<b>價差偏離</b>正＝這檔相對對方貴；<b>誰先動</b>＝誰的漲跌常常早一天出現。</div>
+    <details class="guide lk-howto-d" style="margin-top:8px"><summary>ℹ️ 怎麼看</summary><div class="lk-howto">列出全市場跟它 60 天走勢最像的前 10 檔＋同產業前 5 檔。<b>相關</b>越接近 1 越同步；<b>價差偏離</b>正＝這檔相對對方貴；<b>誰先動</b>＝誰的漲跌常常早一天出現。</div></details>
     <div id="link-query-out" style="margin-top:10px"></div>
   </div>
 </div>
@@ -1236,7 +1236,7 @@ details.guide[open]>summary::before{content:'▾ ';}
         <button class="btn sm" onclick="cbRefresh()">🔄 更新資料</button>
       </span>
     </div>
-    <details id="cb-guide" class="guide" open>
+    <details id="cb-guide" class="guide">
       <summary>📖 使用說明（老王筆記＋上課筆記，有出入以上課筆記為主）</summary>
       <div class="guide-body">
         <b>這頁做什麼：</b>每個交易日 19:05 自動抓櫃買中心的可轉債（發行資料＋每日行情）、轉換價格調整公告、發行公司的融券餘額和月營收，
@@ -1511,11 +1511,11 @@ async function loadHealth() {
   #deep-panel .dp-up { color:#f85149 } #deep-panel .dp-dn { color:#3fb950 } #deep-panel .dp-mu { color:#8b949e }
   #deep-panel .dp-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:8px }
   #deep-panel .dp-cell { background:#21262d;border-radius:8px;padding:9px 6px;text-align:center }
-  #deep-panel .dp-cell .l { font-size:.68rem;color:#8b949e;margin-bottom:3px }
+  #deep-panel .dp-cell .l { font-size:.72rem;color:#8b949e;margin-bottom:3px }
   #deep-panel .dp-cell .v { font-size:1.02rem;font-weight:700;color:#e6edf3 }
-  #deep-panel .dp-cell .s { font-size:.66rem;color:#8b949e;margin-top:2px }
+  #deep-panel .dp-cell .s { font-size:.72rem;color:#8b949e;margin-top:2px }
   #deep-panel .dp-ladder .dp-row.now { background:#1f2a3a;border-radius:6px;padding:6px 8px;border-bottom:none;margin:2px 0 }
-  #deep-panel .dp-tag { display:inline-block;font-size:.66rem;padding:1px 6px;border-radius:9px;border:1px solid #30363d;color:#8b949e;margin-left:6px;font-weight:400 }
+  #deep-panel .dp-tag { display:inline-block;font-size:.72rem;padding:1px 6px;border-radius:9px;border:1px solid #30363d;color:#8b949e;margin-left:6px;font-weight:400 }
   #deep-panel table.dp-t { width:100%;border-collapse:collapse;font-size:.78rem }
   #deep-panel table.dp-t th { color:#8b949e;font-weight:500;text-align:right;padding:4px 2px;border-bottom:1px solid #30363d }
   #deep-panel table.dp-t th:first-child, #deep-panel table.dp-t td:first-child { text-align:left }
@@ -1530,7 +1530,7 @@ async function loadHealth() {
   #deep-panel .dp-bar > div { height:100% }
   /* 小圖（B67）：一個數列一個 Y 軸；滑過看數字（SVG title） */
   #deep-panel .dp-svg { width:100%;height:auto;display:block;overflow:visible }
-  #deep-panel .dp-svg text { font-size:9px;fill:#8b949e }
+  #deep-panel .dp-svg text { font-size:11.5px;fill:#8b949e }
   #deep-panel .dp-svg .col:hover .m { opacity:.7 }
   #deep-panel .dp-svg .col:hover .hit { fill:#ffffff0d }
   #deep-panel .dp-cap { font-size:.72rem;color:#8b949e;margin:8px 0 2px;display:flex;justify-content:space-between;gap:8px }
@@ -1592,6 +1592,95 @@ async function loadHealth() {
   }
   .dp-open-btn { margin-left:6px;padding:1px 7px;font-size:.72rem;border-color:#a78bfa !important;color:#a78bfa !important;white-space:nowrap;vertical-align:middle }
   @media (max-width: 480px) { .dp-open-btn { min-height:0 !important;padding:2px 6px !important;font-size:.8rem !important } .dp-open-btn .t { display:none } }
+
+  /* ═══ PLAN-B82 D：全分頁版面（電腦分頁列一行、手機標題列一行、觀察清單／排行手機卡片、按鈕加大）═══ */
+  @media (min-width: 1280px) {
+    nav { gap: 2px !important; padding: 6px 12px !important; flex-wrap: nowrap !important; }
+    nav button { padding: 7px 10px !important; font-size: .86rem !important; }
+  }
+  @media (max-width: 700px) {
+    header { flex-wrap: nowrap !important; padding: 6px 10px !important; gap: 8px !important; }
+    header h1 { font-size: .95rem !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    header .sub, header .pill-status { display: none !important; }
+    #live-clock { font-size: .72rem !important; }
+    #btn-global-refresh { padding: 6px 9px !important; min-height: 34px; flex-shrink: 0; }
+    #btn-global-refresh .gr-t { display: none; }
+    /* 🔬 分析、表格裡的小按鈕：手指點得到 */
+    .dp-open-btn { min-height: 30px !important; min-width: 32px; padding: 3px 8px !important; }
+    #tb-chips button, #mna-chips button, #cb-chips button, #tab-notes button { min-height: 36px; }
+    #tab-tail td button { min-height: 32px; min-width: 32px; }
+    /* 觀察清單：新增股票縮成一行 */
+    .wl-add .section-title, .wl-add label, .wl-add .fld-name { display: none !important; }
+    .wl-add .row { gap: 6px !important; align-items: center; }
+    .wl-add .btn { margin-top: 0 !important; }
+    .wl-add .fld { margin: 0 !important; }
+    /* 觀察清單：同一張表排成卡片（id、即時更新都不動） */
+    #watchlist-table { min-width: 0 !important; width: 100%; }
+    #watchlist-table thead { display: none; }
+    #watchlist-table, #watchlist-table tbody { display: block; }
+    #watchlist-table tr.wl-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 8px; align-items: center;
+                                 padding: 10px 6px; border-bottom: 1px solid var(--border); }
+    #watchlist-table tr.wl-row > td { display: block !important; padding: 0 !important; border: none !important; position: static !important;
+                                      box-shadow: none !important; background: none !important; white-space: normal; min-width: 0; max-width: none !important; }
+    #watchlist-table tr.wl-row > td:nth-child(1) { grid-row: 1; grid-column: 1; font-size: .95rem; }
+    #watchlist-table tr.wl-row > td:nth-child(2) { grid-row: 1; grid-column: 2; font-weight: 700; }
+    #watchlist-table tr.wl-row > td:nth-child(7) { grid-row: 1; grid-column: 3; text-align: right; font-weight: 700; white-space: nowrap; }
+    #watchlist-table tr.wl-row > td:nth-child(8) { grid-row: 2; grid-column: 1 / -1; }
+    #watchlist-table tr.wl-row > td:nth-child(9) { grid-row: 3; grid-column: 1 / 3; }
+    #watchlist-table tr.wl-row > td:nth-child(4) { grid-row: 3; grid-column: 3; text-align: right; }
+    #watchlist-table tr.wl-row > td:nth-child(14) { grid-row: 4; grid-column: 1 / 3; }
+    #watchlist-table tr.wl-row > td:nth-child(15) { grid-row: 4; grid-column: 3; text-align: right; }
+    #watchlist-table tr.wl-row > td:nth-child(16) { grid-row: 5; grid-column: 1 / 3; }
+    #watchlist-table tr.wl-row > td:nth-child(10) { grid-row: 5; grid-column: 3; text-align: right; }
+    #watchlist-table tr.wl-row > td:nth-child(6) { grid-row: 6; grid-column: 1 / -1; }
+    #watchlist-table tr.wl-row > td:nth-child(18) { grid-row: 7; grid-column: 1 / -1; }
+    #watchlist-table tr.wl-row > td:nth-child(3), #watchlist-table tr.wl-row > td:nth-child(5),
+    #watchlist-table tr.wl-row > td:nth-child(11), #watchlist-table tr.wl-row > td:nth-child(12),
+    #watchlist-table tr.wl-row > td:nth-child(13), #watchlist-table tr.wl-row > td:nth-child(17) { display: none !important; }
+    #watchlist-table tr.wl-row > td:nth-child(4)::before { content: '加入後 '; color: var(--muted); font-size: .72rem; font-weight: 400; }
+    #watchlist-table tr.wl-row > td:nth-child(15)::before { content: '千張 '; color: var(--muted); font-size: .72rem; }
+    #watchlist-table tr.wl-row > td:nth-child(10)::before { content: '大戶今日 '; color: var(--muted); font-size: .72rem; }
+    #watchlist-table tr.wl-row > td:nth-child(6) input { font-size: 16px !important; }
+    #watchlist-table tr.wl-row > td:nth-child(18) .btn { min-height: 34px; }
+    /* 全市場排行：卡片 */
+    #tab-market table { min-width: 0 !important; width: 100%; }
+    #tab-market thead { display: none; }
+    #tab-market table, #mkt-tbody { display: block; }
+    #mkt-tbody tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 8px; padding: 10px 6px; border-bottom: 1px solid var(--border); }
+    #mkt-tbody tr > td { display: block; padding: 0 !important; border: none !important; white-space: normal !important; min-width: 0; }
+    #mkt-tbody tr > td[colspan] { grid-column: 1 / -1; }
+    #mkt-tbody tr > td:nth-child(1) { display: none; }
+    #mkt-tbody tr > td:nth-child(2) { grid-column: 1 / 3; font-size: .95rem; }
+    #mkt-tbody tr > td:nth-child(3) { grid-column: 3; text-align: right; }
+    #mkt-tbody tr > td:nth-child(4)::before { content: '三大合計'; }
+    #mkt-tbody tr > td:nth-child(5)::before { content: '外資'; }
+    #mkt-tbody tr > td:nth-child(6)::before { content: '投信'; }
+    #mkt-tbody tr > td:nth-child(7)::before { content: '自營商'; }
+    #mkt-tbody tr > td:nth-child(8)::before { content: '5 日合計'; }
+    #mkt-tbody tr > td:nth-child(9)::before { content: '占量'; }
+    #mkt-tbody tr > td:nth-child(n+4):nth-child(-n+9)::before { display: block; color: var(--muted); font-size: .72rem; font-weight: 400; }
+    #mkt-tbody tr > td:nth-child(10) { grid-column: 1 / 3; }
+    #mkt-tbody tr > td:nth-child(11) { grid-column: 3; text-align: right; }
+    #mkt-tbody tr > td:nth-child(11) .btn { min-height: 34px; padding: 4px 8px; }
+    /* 小按鈕、分頁標籤、連動頁股票連結 */
+    .btn.sm { min-height: 34px !important; }
+    .scr-dtab { min-height: 32px; display: inline-flex !important; align-items: center; }
+    #tab-link .lk-cand a, #tab-link .lk-leadname a, #tab-link .lk-vr a, #tab-link td a { display: inline-block; padding: 6px 0; }
+    #tab-link .lk-cmp { min-width: 34px; min-height: 34px; }
+    /* 觀察清單工具列、各頁標題列動作按鈕縮小 */
+    #price-refresh-status { min-width: 0 !important; }
+    .wl-add .row > div[style*="flex:1"] { display: none; }
+    .wl-add #add-sid { width: 112px !important; }
+    .wl-add #backfill-days { width: 74px !important; }
+    .wl-add .btn { padding: 6px 10px !important; font-size: .82rem !important; min-height: 38px !important; }
+    .wl-add .ra-t { display: none; }
+    #tab-treasury > .card:first-child .btn, #tab-mna > .card:first-child .btn, #tab-cb > .card:first-child .btn,
+    #tab-market > .card:first-child .btn:not(#pill-buy):not(#pill-sell) { min-height: 36px !important; padding: 6px 12px !important; font-size: .82rem !important; }
+    /* 庫藏股統計：3 欄小格 */
+    #tb-summary { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 6px !important; }
+    #tb-summary > div { padding: 6px 4px !important; }
+    #tb-summary > div > div:last-child { font-size: 1rem !important; }
+  }
 </style>
 <div id="deep-panel">
   <!-- 標題列 -->
@@ -1839,7 +1928,7 @@ function _dpRender(d) {
   document.getElementById('dp-stage').innerHTML =
     `<span style="font-weight:600;color:${stageColors[st.color] || '#8b949e'}">${_esc(st.label || '未知階段')}</span>` +
     (st.desc ? `<span style="color:#8b949e;font-size:.76rem;margin-left:8px">${_esc(st.desc)}</span>` : '') +
-    (tech.date ? `<span style="color:#484f58;font-size:.7rem;margin-left:8px">K 線 ${_esc(_dpDate(tech.date))}</span>` : '');
+    (tech.date ? `<span style="color:#484f58;font-size:.72rem;margin-left:8px">K 線 ${_esc(_dpDate(tech.date))}</span>` : '');
   _dpRenderScoreCard(d);
   renderDpBody(_dpTab, d);
 }
@@ -1946,7 +2035,7 @@ function _dpSum(d) {
   const ladder = pts.map(x => {
     const pc = x.kind === 'now' ? '' : `<span class="${_dpC(_dpPct(x.p, price))}" style="font-size:.74rem;margin-left:6px">${_dpS(_dpPct(x.p, price), 1)}%</span>`;
     return `<div class="dp-row ${x.kind === 'now' ? 'now' : ''}">
-      <span class="dp-k" style="color:${x.kind === 'now' ? '#e6edf3' : '#8b949e'}">${x.label}${x.note ? `<div style="font-size:.66rem;color:#6e7681;margin-top:1px;max-width:230px;line-height:1.35">${_esc(x.note)}</div>` : ''}</span>
+      <span class="dp-k" style="color:${x.kind === 'now' ? '#e6edf3' : '#8b949e'}">${x.label}${x.note ? `<div style="font-size:.72rem;color:#6e7681;margin-top:1px;max-width:230px;line-height:1.35">${_esc(x.note)}</div>` : ''}</span>
       <span class="dp-v">${_esc(+x.p.toFixed(2))}${pc}</span></div>`;
   }).join('') || '<div class="dp-note">沒有關鍵價位資料</div>';
   const bk = v.bucket || {}, bs = bk.stats;
@@ -2027,9 +2116,9 @@ function _dpTech(d) {
   const wk = pat.weekly || [], kws = pat.kbar_w_stat;
   const wkHtml = wk.length ? `<div class="dp-sec">週 K 型態（近 ${wk.length} 週）</div>
     <div class="dp-box">
-      <div style="font-size:.86rem;font-weight:600;margin-bottom:4px">「${wk.map(w => `<span class="${_dpKCls(w.type)}">${_esc(w.type)}</span>${w.partial ? '<span class="dp-mu" style="font-size:.7rem">（本週）</span>' : ''}`).join(' → ')}」</div>
+      <div style="font-size:.86rem;font-weight:600;margin-bottom:4px">「${wk.map(w => `<span class="${_dpKCls(w.type)}">${_esc(w.type)}</span>${w.partial ? '<span class="dp-mu" style="font-size:.72rem">（本週）</span>' : ''}`).join(' → ')}」</div>
       ${wk.slice().reverse().map(w => _dpRow(`${_esc(_dpDate(w.start).slice(5))}～${_esc(_dpDate(w.end).slice(5))} <span class="${_dpC(w.chg)}" style="font-size:.72rem">${_dpS(w.chg, 2)}%</span>`,
-        `<span class="${_dpKCls(w.type)}">${_esc(w.type)}</span>${w.partial ? ' <span class="dp-tag">本週到目前</span>' : ''}<div style="font-size:.7rem;color:#8b949e;font-weight:400">${_esc(w.meaning)}</div>`)).join('')}
+        `<span class="${_dpKCls(w.type)}">${_esc(w.type)}</span>${w.partial ? ' <span class="dp-tag">本週到目前</span>' : ''}<div style="font-size:.72rem;color:#8b949e;font-weight:400">${_esc(w.meaning)}</div>`)).join('')}
       ${kws ? `<div class="dp-note" style="margin-top:6px">回測：最後一根完整週（${_esc(kws.type)}，${_esc(kws.band_label)}）之後 20 個交易日平均比同期 <b class="${_dpC(kws.x20)}">${_dpS(kws.x20, 2)}%</b>（${_dpN(kws.n)} 筆）` +
         (kws.base_x20 != null ? `；同位置所有股票 ${_dpS(kws.base_x20, 2)}%` : '') + '</div>' : '<div class="dp-note" style="margin-top:6px">這種週 K 樣本太少，沒有回測數字</div>'}
       <div class="dp-note" style="margin-top:4px">週線跟日線不一樣：週大紅K 之後平均 +3.2%；高檔週墓碑線、週倒T 之後明顯比同位置差，是比較像樣的警訊。本週還沒走完的那根不套回測。</div>
@@ -2038,7 +2127,7 @@ function _dpTech(d) {
     <div class="dp-box">
       <div style="font-size:.86rem;font-weight:600;margin-bottom:4px">「${kb.map(k => `<span class="${_dpKCls(k.type)}">${_esc(k.type)}</span>`).join(' → ')}」</div>
       ${kb.slice().reverse().map(k => _dpRow(`${_esc(_dpDate(k.date).slice(5))} <span class="${_dpC(k.chg)}" style="font-size:.72rem">${_dpS(k.chg, 2)}%</span>`,
-        `<span class="${_dpKCls(k.type)}">${_esc(k.type)}</span><div style="font-size:.7rem;color:#8b949e;font-weight:400">${_esc(k.meaning)}</div>`)).join('')}
+        `<span class="${_dpKCls(k.type)}">${_esc(k.type)}</span><div style="font-size:.72rem;color:#8b949e;font-weight:400">${_esc(k.meaning)}</div>`)).join('')}
       ${ks ? `<div class="dp-note" style="margin-top:6px">回測：今天這種 K 線在${_esc(ks.band_label)}出現後，5 天平均比同期 <b class="${_dpC(ks.x5)}">${_dpS(ks.x5, 2)}%</b>、20 天 <b class="${_dpC(ks.x20)}">${_dpS(ks.x20, 2)}%</b>（${_dpN(ks.n)} 筆）` +
         (ks.base_x20 != null ? `；同位置所有股票 20 天 ${_dpS(ks.base_x20, 2)}%` : '') + '</div>' : ''}
       ${ks && ks.claim ? `<div class="dp-note" style="margin-top:4px;color:#d29922">⚠️ 宏爺把${ks.band === 'hi' ? '高檔' : '低檔'}的這種 K 線當「${_esc(ks.claim)}」訊號，回測剛好相反（之後平均${ks.band === 'hi' ? '還是續漲' : '還是續跌'}），不要單靠它${ks.band === 'hi' ? '賣' : '買'}。</div>` : ''}
@@ -2738,7 +2827,7 @@ function renderWatchlist(opts) {
         const sign = ndKpctChg > 0 ? '+' : '';
         return `<td class="${cls}" onclick="${onclick}" style="cursor:pointer" title="千張大戶%，點擊查看歷史">
           ${ndKpct.toFixed(1)}% <small>${arrow}${sign}${ndKpctChg != null ? ndKpctChg.toFixed(1) : '─'}%</small>
-          <span id="kpct-streak-${s.stock_id}" style="display:block;font-size:.68rem;line-height:1.2"></span>
+          <span id="kpct-streak-${s.stock_id}" style="display:block;font-size:.72rem;line-height:1.2"></span>
         </td>`;
       })();
       // 狀態欄（同樣顯示 stage）
@@ -2793,7 +2882,7 @@ function renderWatchlist(opts) {
       const sign = kpctChg > 0 ? '+' : '';
       return `<td class="${cls}" onclick="${onclick}" style="cursor:pointer" title="千張大戶%，點擊查看歷史">
         ${kpct.toFixed(1)}% <small>${arrow}${sign}${kpctChg != null ? kpctChg.toFixed(1) : '─'}%</small>
-        <span id="kpct-streak-${s.stock_id}" style="display:block;font-size:.68rem;line-height:1.2"></span>
+        <span id="kpct-streak-${s.stock_id}" style="display:block;font-size:.72rem;line-height:1.2"></span>
       </td>`;
     })();
     // 自動狀態燈號（系統判定，不可手動修改）
@@ -2864,16 +2953,16 @@ function _levelsCell(s) {
         const icon = lv.mode && lv.mode !== '一般' ? `<span style="color:#a78bfa"> ${lv.mode.startsWith('平地') ? '⚡' : '▭'}</span>` : '';
         const held = lv.entry && lv.entry.kind === 'cost';
         const al = lv.alerts || {};
-        const flag = al.stop_hit ? `<br><b style="color:#fff;background:#dc2626;border-radius:4px;padding:0 4px;font-size:.68rem" title="今天價格跌破昨天的停損線 ${_esc(al.stop_ref)}">已跌破停損</b>`
-          : al.breached_on ? `<br><b style="color:#fca5a5;border:1px solid #dc2626;border-radius:4px;padding:0 4px;font-size:.68rem" title="持有中：這天收盤跌破滾動停損，停損停在這裡（出場或更新成本）">${String(al.breached_on).slice(4, 6)}/${String(al.breached_on).slice(6)} 已跌破</b>`
-          : al.target_hit ? `<br><b style="color:#fff;background:#ea580c;border-radius:4px;padding:0 4px;font-size:.68rem" title="今天最高碰到昨天的目標價 ${_esc(al.target_ref)}">已到目標</b>` : '';
+        const flag = al.stop_hit ? `<br><b style="color:#fff;background:#dc2626;border-radius:4px;padding:0 4px;font-size:.72rem" title="今天價格跌破昨天的停損線 ${_esc(al.stop_ref)}">已跌破停損</b>`
+          : al.breached_on ? `<br><b style="color:#fca5a5;border:1px solid #dc2626;border-radius:4px;padding:0 4px;font-size:.72rem" title="持有中：這天收盤跌破滾動停損，停損停在這裡（出場或更新成本）">${String(al.breached_on).slice(4, 6)}/${String(al.breached_on).slice(6)} 已跌破</b>`
+          : al.target_hit ? `<br><b style="color:#fff;background:#ea580c;border-radius:4px;padding:0 4px;font-size:.72rem" title="今天最高碰到昨天的目標價 ${_esc(al.target_ref)}">已到目標</b>` : '';
         return `<span style="font-size:.74rem;line-height:1.45;display:inline-block;white-space:nowrap">
           ${held ? `<span title="持有中：成本 ${lv.entry.price}（${lv.entry.pnl_pct > 0 ? '+' : ''}${lv.entry.pnl_pct}%）">💼</span>` : ''}${lv.target != null ? `<span style="color:#ef4444;font-weight:700">標 ${lv.target}</span>` : '<span class="muted">標 —</span>'}${icon}
           <br>${p1 != null ? `<span style="color:#f59e0b">壓 ${p1}${p2 != null ? ' · ' + p2 : ''}</span>` : '<span class="muted">無前高</span>'}
-          <br><span style="color:#4ade80">撐 ${sup ?? '—'}</span> · <span style="color:#22c55e;font-weight:700">損 ${stop ? stop.price : '—'}</span>${lv.stop && lv.stop.basis === 'roll' ? `<span style="font-size:.66rem;color:#38bdf8" title="${_esc(lv.stop.label || '')}"> 滾動</span>`
-            : lv.stop && lv.stop.basis === 'trail' ? '<span style="font-size:.66rem;color:#a78bfa" title="強勢股離前低太遠：撐看 10 日線，停損＝20 日線 − 1 ATR，跟著月線上移"> 移動</span>'
-            : lv.stop && lv.stop.basis === 'risk' ? '<span class="muted" style="font-size:.66rem" title="前低太遠、又不是強勢：附近沒有可靠支撐，停損用現價 − 3.5 ATR"> 風險上限</span>'
-            : lv.stop && lv.stop.basis === 'entry10' ? `<span style="font-size:.66rem;color:#f472b6" title="停損不低於${held ? '成本' : '加入價'} ${lv.entry.price} 的 −10%"> ${held ? '成本' : '加入'}−10%</span>` : ''}${flag}</span>`;
+          <br><span style="color:#4ade80">撐 ${sup ?? '—'}</span> · <span style="color:#22c55e;font-weight:700">損 ${stop ? stop.price : '—'}</span>${lv.stop && lv.stop.basis === 'roll' ? `<span style="font-size:.72rem;color:#38bdf8" title="${_esc(lv.stop.label || '')}"> 滾動</span>`
+            : lv.stop && lv.stop.basis === 'trail' ? '<span style="font-size:.72rem;color:#a78bfa" title="強勢股離前低太遠：撐看 10 日線，停損＝20 日線 − 1 ATR，跟著月線上移"> 移動</span>'
+            : lv.stop && lv.stop.basis === 'risk' ? '<span class="muted" style="font-size:.72rem" title="前低太遠、又不是強勢：附近沒有可靠支撐，停損用現價 − 3.5 ATR"> 風險上限</span>'
+            : lv.stop && lv.stop.basis === 'entry10' ? `<span style="font-size:.72rem;color:#f472b6" title="停損不低於${held ? '成本' : '加入價'} ${lv.entry.price} 的 −10%"> ${held ? '成本' : '加入'}−10%</span>` : ''}${flag}</span>`;
       })();
   return `<td id="levels-${s.stock_id}" onclick="event.stopPropagation();showLevels('${_jsq(s.stock_id)}')" style="cursor:pointer" title="點開看關鍵價位">${inner}</td>`;
 }
@@ -3154,7 +3243,7 @@ function _bbCell(sid, bb) {
   const zone = bb > 10 ? '超上軌' : bb >= 9 ? '貼上軌' : bb > 5 ? '近上軌' : bb > -5 ? '中軌附近' : bb > -9 ? '近下軌' : bb >= -10 ? '貼下軌' : '破下軌';
   const numColor = bb > 5 ? '#f85149' : bb > 0 ? '#ff9800' : bb > -5 ? '#8b949e' : '#58a6ff';
   return `<td id="bb-${sid}" title="布林軌道位置（20 日、2 倍標準差；上軌=+10 中軌=0 下軌=-10，超過 ±10＝在軌道外）｜${zone}" style="white-space:nowrap;line-height:1.25">
-    <span style="color:${numColor};font-weight:700;font-size:.85rem">${bb > 0 ? '+' : ''}${bb}</span><br><span style="font-size:.66rem;color:var(--muted)">${zone}</span>
+    <span style="color:${numColor};font-weight:700;font-size:.85rem">${bb > 0 ? '+' : ''}${bb}</span><br><span style="font-size:.72rem;color:var(--muted)">${zone}</span>
   </td>`;
 }
 // 月斜率欄（B71）：月線近 30 天走勢線＋今天斜率＋強弱分級＋連升／連降天數；ms＝後端 mslope_info（舊資料只有數字也能顯示）
@@ -3166,7 +3255,7 @@ function _msCell(sid, ms) {
   return `<td id="ms-${sid}" style="white-space:nowrap;line-height:1.2" title="${_esc(tip)}">
     ${_msSpark(o.ma20, t.color)}
     <span style="color:${t.color};font-weight:800;font-size:.85rem;margin-left:4px">${o.slope > 0 ? '+' : ''}${o.slope}%</span>
-    <br><span style="font-size:.68rem;color:${t.color};font-weight:700">${t.name}</span>${o.streak ? `<span style="font-size:.66rem;color:var(--muted);margin-left:4px">${_msStreakTxt(o.streak)}</span>` : ''}</td>`;
+    <br><span style="font-size:.72rem;color:${t.color};font-weight:700">${t.name}</span>${o.streak ? `<span style="font-size:.72rem;color:var(--muted);margin-left:4px">${_msStreakTxt(o.streak)}</span>` : ''}</td>`;
 }
 function _renderMsCell(sid, ms) {
   const td = document.getElementById(`ms-${sid}`);
@@ -3630,7 +3719,7 @@ function _btReasonChips(reasons) {
 }
 
 function _btMetric(label, val, color = 'var(--text)', hint = '') {
-  return `<div title="${hint}"><div style="font-size:.7rem;color:var(--muted)">${label}</div><div style="font-size:1.15rem;font-weight:700;color:${color}">${val}</div></div>`;
+  return `<div title="${hint}"><div style="font-size:.72rem;color:var(--muted)">${label}</div><div style="font-size:1.15rem;font-weight:700;color:${color}">${val}</div></div>`;
 }
 
 
@@ -3666,7 +3755,7 @@ async function runIdxBacktest(key) {
           '天數到期':'#8b949e','持至末端':'#484f58',
         };
         const c = map[r] || '#484f58';
-        return `<span style="font-size:.68rem;padding:1px 6px;border-radius:10px;background:${c}22;color:${c};border:1px solid ${c}44">${r||'持至末端'}</span>`;
+        return `<span style="font-size:.72rem;padding:1px 6px;border-radius:10px;background:${c}22;color:${c};border:1px solid ${c}44">${r||'持至末端'}</span>`;
       };
       const showSl = sl > 0, showTp = tp > 0, showTld = tld > 0;
       const extraTh = (showSl ? `<th style="color:var(--muted);padding:4px">停損價</th>` : '') + (showTp ? `<th style="color:var(--muted);padding:4px">停利價</th>` : '') + (showTld ? `<th style="color:var(--muted);padding:4px">追蹤低點</th>` : '');
@@ -4151,7 +4240,7 @@ async function refreshAll() {
     toast(e.message, true);
   } finally {
     btn.disabled = false;
-    btn.textContent = '🔄 全部更新';
+    btn.innerHTML = '🔄<span class="ra-t"> 全部更新</span>';
   }
 }
 
@@ -4710,7 +4799,7 @@ function renderMarket() {
     const ratio = r.vol_ratio_pct != null ? `<span class="${r.vol_ratio_pct >= 0 ? 'pos' : 'neg'}">${r.vol_ratio_pct > 0 ? '+' : ''}${r.vol_ratio_pct}%</span>` : '<span class="muted">—</span>';
     return `<tr>
       <td class="muted">${i + 1}</td>
-      <td style="white-space:nowrap"><b class="link" onclick="openMktChart('${sid}')" style="cursor:pointer;color:var(--accent)">${sid}</b> ${nm}${r.is_etf ? ' <span class="muted" style="font-size:.7rem">ETF</span>' : ''}${_dpBtn(r.stock_id, r.name)}</td>
+      <td style="white-space:nowrap"><b class="link" onclick="openMktChart('${sid}')" style="cursor:pointer;color:var(--accent)">${sid}</b> ${nm}${r.is_etf ? ' <span class="muted" style="font-size:.72rem">ETF</span>' : ''}${_dpBtn(r.stock_id, r.name)}</td>
       <td style="white-space:nowrap">${px}</td>
       <td style="font-weight:700">${num(r.total_lots)}</td>
       <td>${num(r.foreign_lots)}${stk(r.foreign_streak)}</td>
@@ -5024,7 +5113,7 @@ function renderParamFields(containerId, current, defaults, labels, prefix, step)
     return `<div class="fld" style="background:var(--card2);padding:10px 12px;border-radius:8px;border:1px solid ${changed ? 'var(--accent)' : 'var(--border)'}">
       <label style="font-size:.75rem;color:${changed ? 'var(--accent)' : 'var(--muted)'}">
         ${labels[k] || k}
-        ${changed ? '<span style="font-size:.7rem;opacity:.7">（已調整）</span>' : ''}
+        ${changed ? '<span style="font-size:.72rem;opacity:.7">（已調整）</span>' : ''}
       </label>
       <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
         <input type="number" id="${prefix}${k}" value="${v}" step="${step}"
@@ -5747,7 +5836,7 @@ function _renderBatch(r) {
     `${r.strategy} · ${r.universe}，成功 ${r.computed} 支、有交易 ${r.stocks_with_trades} 支 · ${r.computed_at}`;
   if (!agg.count) { body.innerHTML = `<div style="color:var(--muted);text-align:center;padding:30px">${r.summary}</div>`; return; }
   const box = (lbl, val, color = 'var(--text)', hint = '') => `<div title="${hint}" style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;text-align:center">
-      <div style="font-size:.7rem;color:var(--muted)">${lbl}</div><div style="font-size:1.2rem;font-weight:700;color:${color}">${val}</div></div>`;
+      <div style="font-size:.72rem;color:var(--muted)">${lbl}</div><div style="font-size:1.2rem;font-weight:700;color:${color}">${val}</div></div>`;
   body.innerHTML = `
     <div style="font-size:1rem;font-weight:700;margin-bottom:10px;line-height:1.5">${r.summary}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:10px">
@@ -6507,7 +6596,7 @@ async function _loadBestWatch() {
     const el = document.getElementById(`best-${sid}`);
     if (!el || !p.text) return;   // 文字由 best_routes.status_text 產生（🔬 明天開盤買／抱第幾天／🔔 明天開盤賣）
     const col = p.status === 'exit_today' ? '#f59e0b' : p.status === 'signal' ? 'var(--up)' : p.status === 'holding' ? 'var(--accent)' : 'var(--muted)';
-    el.innerHTML = `<span style="display:inline-block;margin-top:3px;font-size:.7rem;color:${col};white-space:normal" title="${_esc(p.stop_note || '')}">${_esc(p.text)}</span>`;
+    el.innerHTML = `<span style="display:inline-block;margin-top:3px;font-size:.72rem;color:${col};white-space:normal" title="${_esc(p.stop_note || '')}">${_esc(p.text)}</span>`;
   });
 }
 
@@ -6660,12 +6749,12 @@ function renderScreenTable(strategy, data) {
     return `<tr>
       <td class="muted">${i + 1}</td>
       <td><b class="link" onclick="openScreenChart('${row.stock_id}')" style="cursor:pointer;color:var(--accent)">${row.stock_id}</b></td>
-      <td style="white-space:nowrap;cursor:pointer" onclick="openScreenChart('${row.stock_id}')"><span style="display:inline-block;max-width:100px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle">${row.name || '—'}</span>${typeof tbBadge === 'function' ? tbBadge(row.stock_id) : ''}${distBadge(row.stock_id)}${row.vol_ratio != null && row.vol_ratio >= 2 ? `<span style="margin-left:4px;font-size:.68rem;background:#3fb95022;color:#3fb950;border:1px solid #3fb95055;border-radius:3px;padding:0 4px">量×${row.vol_ratio}</span>` : ''}${_dpBtn(row.stock_id, row.name)}</td>
+      <td style="white-space:nowrap;cursor:pointer" onclick="openScreenChart('${row.stock_id}')"><span style="display:inline-block;max-width:100px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle">${row.name || '—'}</span>${typeof tbBadge === 'function' ? tbBadge(row.stock_id) : ''}${distBadge(row.stock_id)}${row.vol_ratio != null && row.vol_ratio >= 2 ? `<span style="margin-left:4px;font-size:.72rem;background:#3fb95022;color:#3fb950;border:1px solid #3fb95055;border-radius:3px;padding:0 4px">量×${row.vol_ratio}</span>` : ''}${_dpBtn(row.stock_id, row.name)}</td>
       <td>${(() => {
         if (row.close == null) return '—';
         const d = row.last_date || '';
         const dateSub = d.length === 8
-          ? `<br><span style="font-size:.7rem;color:var(--muted)">${d.slice(4,6)}/${d.slice(6,8)}</span>`
+          ? `<br><span style="font-size:.72rem;color:var(--muted)">${d.slice(4,6)}/${d.slice(6,8)}</span>`
           : '';
         return row.close + dateSub;
       })()}</td>
@@ -6675,7 +6764,7 @@ function renderScreenTable(strategy, data) {
       <td class="muted">${(() => { if (!row.volume) return '—'; const lots = Math.round(row.volume); return lots >= 10000 ? (lots/10000).toFixed(1)+'萬' : lots.toLocaleString('zh-TW'); })()}</td>
       <td class="muted hide-mobile">${(() => { if (!row.close || !row.volume) return '—'; const amt = row.close * row.volume * 1000; if (amt >= 1e8) return (amt/1e8).toFixed(2)+'億'; if (amt >= 1e4) return Math.round(amt/1e4)+'萬'; return '—'; })()}</td>
       <td class="${(row.bb_score??0)>0?'pos':(row.bb_score??0)<0?'neg':'muted'} hide-mobile" title="上軌=+10 中軌=0 下軌=-10">${row.bb_score!=null ? ((row.bb_score>0?'+':'')+row.bb_score) : '—'}</td>
-      <td class="hide-mobile" style="max-width:160px">${(_otherStratMap[row.stock_id]||[]).map(k=>`<span style="display:inline-block;font-size:.68rem;background:rgba(79,142,247,.13);color:var(--accent);border:1px solid rgba(79,142,247,.3);border-radius:3px;padding:1px 5px;margin:1px;white-space:nowrap" title="${STRATEGY_LABELS[k]||k}">${STRATEGY_SHORT[k]||k}</span>`).join('') || '<span class="muted" style="font-size:.72rem">—</span>'}</td>
+      <td class="hide-mobile" style="max-width:160px">${(_otherStratMap[row.stock_id]||[]).map(k=>`<span style="display:inline-block;font-size:.72rem;background:rgba(79,142,247,.13);color:var(--accent);border:1px solid rgba(79,142,247,.3);border-radius:3px;padding:1px 5px;margin:1px;white-space:nowrap" title="${STRATEGY_LABELS[k]||k}">${STRATEGY_SHORT[k]||k}</span>`).join('') || '<span class="muted" style="font-size:.72rem">—</span>'}</td>
       <td style="white-space:nowrap"><button class="btn sm ghost" onclick="addFromMarket('${row.stock_id}','${(STRATEGY_LABELS[strategy]||strategy).replace(/[（(][^）)]{10,}[）)]/g,'').trim()}')">+ 加入清單</button></td>
     </tr>`;
   }).join('');
@@ -8197,7 +8286,7 @@ async function saveAllStratParams() {
     <div id="chart-tools" style="display:flex;align-items:center;padding:5px 16px;border-bottom:1px solid #2a2e39;flex-shrink:0;gap:6px;background:#0f1523">
       <button id="chart-legend-btn" class="btn sm ghost" onclick="toggleChartLegend()" title="顯示／收起圖例說明" style="padding:2px 8px;font-size:.72rem">ℹ️ 圖例</button>
       <span id="chart-overlay-bar" style="display:flex;gap:3px;align-items:center;flex-wrap:nowrap">
-        <span style="font-size:.68rem;color:#6b7280;margin-right:2px">均線:</span>
+        <span style="font-size:.72rem;color:#6b7280;margin-right:2px">均線:</span>
         <button id="overlay-btn-ma5"  class="btn sm ghost chart-overlay-btn active" onclick="toggleChartOverlay('ma5')"  style="padding:2px 7px;font-size:.72rem;color:#4caf50;border-color:#4caf50">MA5</button>
         <button id="overlay-btn-ma10" class="btn sm ghost chart-overlay-btn active" onclick="toggleChartOverlay('ma10')" style="padding:2px 7px;font-size:.72rem;color:#ffeb3b;border-color:#ffeb3b">MA10</button>
         <button id="overlay-btn-ma20" class="btn sm ghost chart-overlay-btn active" onclick="toggleChartOverlay('ma20')" style="padding:2px 7px;font-size:.72rem;color:#e91e63;border-color:#e91e63">MA20</button>
@@ -8214,7 +8303,7 @@ async function saveAllStratParams() {
       </span>
       <span style="width:1px;height:16px;background:#2a2e39;margin:0 4px"></span>
       <span style="display:flex;gap:3px;align-items:center">
-        <span style="font-size:.68rem;color:#6b7280;margin-right:2px">假跌破:</span>
+        <span style="font-size:.72rem;color:#6b7280;margin-right:2px">假跌破:</span>
         <button id="fbd-ma-btn-ma5"  class="btn sm ghost chart-overlay-btn" onclick="setFakeBdMA('ma5')"  style="padding:2px 7px;font-size:.72rem;color:#4caf50;border-color:#4caf50" title="以 MA5 判斷假跌破/假突破">MA5</button>
         <button id="fbd-ma-btn-ma10" class="btn sm ghost chart-overlay-btn active" onclick="setFakeBdMA('ma10')" style="padding:2px 7px;font-size:.72rem;color:#ffeb3b;border-color:#ffeb3b" title="以 MA10 判斷假跌破/假突破">MA10</button>
         <button id="fbd-ma-btn-ma20" class="btn sm ghost chart-overlay-btn" onclick="setFakeBdMA('ma20')" style="padding:2px 7px;font-size:.72rem;color:#e91e63;border-color:#e91e63" title="以 MA20 判斷假跌破/假突破">MA20</button>
@@ -8274,10 +8363,10 @@ async function saveAllStratParams() {
   </div>
 </div>
 
-<script src="/treasury/static/treasury.js?v=20261005f"></script>
-<script src="/mna/static/mna.js?v=20261005f"></script>
-<script src="/cb/static/cb.js?v=20261005f"></script>
-<script src="/tail/static/tail.js?v=20261020a"></script>
+<script src="/treasury/static/treasury.js?v=20261024b82"></script>
+<script src="/mna/static/mna.js?v=20261024b82"></script>
+<script src="/cb/static/cb.js?v=20261024b82"></script>
+<script src="/tail/static/tail.js?v=20261024b82"></script>
 <script src="/notes/static/notes.js?v=20261023b81"></script>
 <script src="/discuss/static/discuss.js?v=20261007a"></script>
 </body>

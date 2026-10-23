@@ -46,3 +46,8 @@
 - 健檢：scratchpad audit.py（正式站 14 分頁 × 1440／390 截圖＋量測）：0 個整頁橫捲；小字 10.2～10.9px、手機小按鈕、說明預設展開、寬表格
 - Gemini：**APPROVED**（低：隱藏欄用 display:none、電腦版不受 media query 影響、收合狀態避免閃爍）
 - Groq：REVISE 3 點 → F1（CSS 卡片會壞即時更新）駁回：grep 確認沒有程式用欄位位置（.cells[]、nth-child）更新，全部用 id；F2（44px）部分採納：篩選鈕 36px、表格內小鈕 32px（44px 會讓卡片太高）；F3（分頁列放不下）已涵蓋：nav 本來就 overflow-x:auto，測試量高度
+
+## 程式檢查第 3 批（§8 全分頁版面）
+- Gemini gemini-3-flash-preview（PLAN＋diff -U25）：**APPROVED**（2 低：共用函式位置、nth-child 維護風險 → 有 UI 測試守著，不改）。reviews_b82/insp3_gemini.json
+- Groq：純樣式／前端，依記憶規則（前端交給 Gemini）不送
+- 驗證：pytest 500；tests_ui/b82_all_ui.py（14 分頁 × 1440／390）本機 ALL PASS；tests_ui/b82_ui.py ALL PASS

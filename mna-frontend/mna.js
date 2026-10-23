@@ -34,7 +34,7 @@ function _guideRemember(id) {
   const el = document.getElementById(id);
   if (!el || el._bound) return;
   el._bound = true;
-  try { if (localStorage.getItem('guide_' + id) === '0') el.open = false; } catch (e) {}
+  try { const v = localStorage.getItem('guide_' + id); if (v === '0') el.open = false; else if (v === '1') el.open = true; } catch (e) {}   // 預設收起（B82 D2），使用者打開過就記住
   el.addEventListener('toggle', () => { try { localStorage.setItem('guide_' + id, el.open ? '1' : '0'); } catch (e) {} });
 }
 
@@ -95,19 +95,19 @@ function mnaRender() {
       return `<tr style="border-top:1px solid #21262d;cursor:pointer" onclick="mnaDetail(${r.id})">
         ${td(wlRowBtn(r.target_id, `mnaAddWl(${r.id})`), 'padding:5px 4px;text-align:center')}
         ${td(`<b style="color:var(--accent)">${_mnaE(r.target_id)}</b> ${_mnaE(r.target_name || '')}${r.target_company && r.target_id === r.announcer_id
-            ? `<br><span style="font-size:.7rem;color:var(--muted)">收購 ${_mnaE(r.target_company.replace('股份有限公司', ''))}（未上市櫃）</span>` : ''}`)}
+            ? `<br><span style="font-size:.72rem;color:var(--muted)">收購 ${_mnaE(r.target_company.replace('股份有限公司', ''))}（未上市櫃）</span>` : ''}`)}
         ${td(_mnaE(r.acquirer || '—'), 'max-width:160px;overflow:hidden;text-overflow:ellipsis')}
-        ${td(_mnaE(r.deal_type || '—') + (_isCap(r) && r.deal_kind && r.deal_kind !== r.deal_type ? `<br><span style="font-size:.68rem;color:var(--muted)">${_mnaE(r.deal_kind)}</span>` : ''))}
+        ${td(_mnaE(r.deal_type || '—') + (_isCap(r) && r.deal_kind && r.deal_kind !== r.deal_type ? `<br><span style="font-size:.72rem;color:var(--muted)">${_mnaE(r.deal_kind)}</span>` : ''))}
         ${td(`<span style="font-size:.72rem;padding:1px 7px;border-radius:10px;background:${c}22;color:${c};border:1px solid ${c}55">${_mnaE(r.status)}</span>`)}
         ${td(_mnaSig(r.signal))}
-        ${td(_mnaD(r.first_announce || r.announce_date) + ((r.related || []).length > 1 ? `<br><span style="font-size:.66rem;color:var(--muted)">${r.related.length} 則公告</span>` : ''))}
-        ${td(r.offer_value != null ? `<b title="${_mnaE(r.offer_value_note || '')}">${_mnaN(r.offer_value, 2)}</b>${r.offer_value_note ? '<br><span style="font-size:.66rem;color:var(--muted)">含換股</span>' : _isCap(r) ? '<br><span style="font-size:.66rem;color:var(--muted)">認購價</span>' : ''}` : _isCap(r) ? '—' : '<span class="muted">待補</span>', 'text-align:right')}
+        ${td(_mnaD(r.first_announce || r.announce_date) + ((r.related || []).length > 1 ? `<br><span style="font-size:.72rem;color:var(--muted)">${r.related.length} 則公告</span>` : ''))}
+        ${td(r.offer_value != null ? `<b title="${_mnaE(r.offer_value_note || '')}">${_mnaN(r.offer_value, 2)}</b>${r.offer_value_note ? '<br><span style="font-size:.72rem;color:var(--muted)">含換股</span>' : _isCap(r) ? '<br><span style="font-size:.72rem;color:var(--muted)">認購價</span>' : ''}` : _isCap(r) ? '—' : '<span class="muted">待補</span>', 'text-align:right')}
         ${td(r.price != null ? _mnaN(r.price, 2) : '—', 'text-align:right')}
         ${td(_mnaPct(r.premium_pre_pct), `text-align:right;font-weight:700;color:${r.premium_pre_pct == null ? 'var(--muted)' : r.premium_pre_pct >= 15 ? '#ef4444' : r.premium_pre_pct > 0 ? '#f59e0b' : '#22c55e'}`)}
         ${td(_mnaPct(r.premium_pct), `text-align:right;color:${r.premium_pct == null ? 'var(--muted)' : r.premium_pct > 0 ? '#ef4444' : '#22c55e'}`)}
         ${td(r.max_lots != null ? `${r.min_lots != null ? _mnaN(r.min_lots) + '～' : ''}${_mnaN(r.max_lots)}` : '—', 'text-align:right')}
         ${td(_isCap(r) ? (r.offer_pct ? `減資 ${r.offer_pct}%` : r.consideration ? `用途：${_mnaE(r.consideration)}` : '—') : _mnaE(r.scope || '—'))}
-        ${td(_isCap(r) && r.deal_type === '減資' ? (r.period_start ? `恢復買賣 ${_mnaD(r.period_start)}` : '—') : r.period_start ? `${_mnaD(r.period_start)}～${_mnaD(r.period_end)}${r.days_left != null ? `<br><span style="font-size:.7rem;color:#f59e0b">剩 ${r.days_left} 天</span>` : ''}` : '—')}
+        ${td(_isCap(r) && r.deal_type === '減資' ? (r.period_start ? `恢復買賣 ${_mnaD(r.period_start)}` : '—') : r.period_start ? `${_mnaD(r.period_start)}～${_mnaD(r.period_end)}${r.days_left != null ? `<br><span style="font-size:.72rem;color:#f59e0b">剩 ${r.days_left} 天</span>` : ''}` : '—')}
         ${td(_mnaPct(r.annualized_pct), 'text-align:right')}
         ${td(_mnaE(r.consideration || '—'))}
       </tr>`;
