@@ -43,7 +43,9 @@ def _conn():
 
 def _init(c):
     c.execute("CREATE TABLE IF NOT EXISTS course_daily (kind TEXT, date TEXT, data TEXT, at TEXT, PRIMARY KEY (kind, date))")
-    c.execute("CREATE TABLE IF NOT EXISTS revenue_month (ym TEXT, stock_id TEXT, yoy REAL, cum_yoy REAL, PRIMARY KEY (ym, stock_id))")
+    c.execute("CREATE TABLE IF NOT EXISTS revenue_month (ym TEXT, stock_id TEXT, yoy REAL, cum_yoy REAL, rev REAL, PRIMARY KEY (ym, stock_id))")
+    if "rev" not in {r[1] for r in c.execute("PRAGMA table_info(revenue_month)")}:      # PLAN-B82：加當月營收（千元），算「創 12 個月新高」
+        c.execute("ALTER TABLE revenue_month ADD COLUMN rev REAL")
     c.execute("CREATE TABLE IF NOT EXISTS course_meta (k TEXT PRIMARY KEY, v TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS overheat_daily (date TEXT PRIMARY KEY, ratio REAL)")
 
@@ -318,18 +320,15 @@ _ROW = re.compile(r"<td align=center>(\d{4})</td><td align=left>[^<]*</td>"
                   r"<td nowrap>([^<]*)</td><td nowrap>([^<]*)</td>", re.I)
 
 
-def refresh_revenue(day: str | None = None) -> int:
-    """公開資訊觀測站月營收彙總表（上市／上櫃 × 國內／國外）：最近 2 個月份，寫進 revenue_month"""
+def _fetch_revenue_months(months: list) -> int:
+    """月營收彙總表（上市／上櫃 × 國內／國外）→ revenue_month（年增、累計年增、當月營收）"""
     import httpx
-    day = day or datetime.now().strftime("%Y%m%d")
-    y, m = int(day[:4]), int(day[4:6])
-    months = []
-    for back in (1, 2):
-        mm, yy = m - back, y
-        while mm <= 0:
-            mm += 12
-            yy -= 1
-        months.append((yy, mm))
+
+    def num(x):
+        try:
+            return float(str(x).replace(",", "").strip())
+        except ValueError:
+            return None
     n = 0
     c = _conn()
     _init(c)
@@ -342,19 +341,51 @@ def refresh_revenue(day: str | None = None) -> int:
                     except Exception as e:
                         log.warning(f"[course] 月營收 {yy}{mm:02d} {mkt}: {e}")
                         continue
-                    rows = []
-                    for g in _ROW.findall(t.replace("\r", "").replace("\n", "")):
-                        def num(x):
-                            try:
-                                return float(str(x).replace(",", "").strip())
-                            except ValueError:
-                                return None
-                        rows.append((f"{yy}{mm:02d}", g[0], num(g[5]), num(g[8])))
-                    c.executemany("INSERT OR REPLACE INTO revenue_month VALUES (?,?,?,?)", rows)
+                    rows = [(f"{yy}{mm:02d}", g[0], num(g[5]), num(g[8]), num(g[1])) for g in _ROW.findall(t.replace("\r", "").replace("\n", ""))]
+                    c.executemany("INSERT OR REPLACE INTO revenue_month (ym, stock_id, yoy, cum_yoy, rev) VALUES (?,?,?,?,?)", rows)
                     n += len(rows)
                     time.sleep(1)
     c.commit()
     c.close()
+    return n
+
+
+def _months_back(day: str, backs) -> list:
+    y, m = int(day[:4]), int(day[4:6])
+    out = []
+    for back in backs:
+        mm, yy = m - back, y
+        while mm <= 0:
+            mm += 12
+            yy -= 1
+        out.append((yy, mm))
+    return out
+
+
+def refresh_revenue(day: str | None = None) -> int:
+    """公開資訊觀測站月營收彙總表：最近 2 個月份，寫進 revenue_month"""
+    day = day or datetime.now().strftime("%Y%m%d")
+    return _fetch_revenue_months(_months_back(day, (1, 2)))
+
+
+def ensure_revenue_history(months: int = 14) -> int:
+    """PLAN-B82（週 MACD＋月營收創 12 個月新高）：最近 months 個月裡，沒有「當月營收」的月份補抓（每個月份一天最多試一次）"""
+    day = datetime.now().strftime("%Y%m%d")
+    c = _conn()
+    _init(c)
+    have = {r[0] for r in c.execute("SELECT ym FROM revenue_month WHERE rev IS NOT NULL GROUP BY ym HAVING COUNT(*) >= 500")}
+    tried = json.loads((c.execute("SELECT v FROM course_meta WHERE k='rev_backfill'").fetchone() or ["{}"])[0] or "{}")
+    c.close()
+    need = [(yy, mm) for yy, mm in _months_back(day, range(1, months + 1)) if f"{yy}{mm:02d}" not in have and tried.get(f"{yy}{mm:02d}") != day]
+    if not need:
+        return 0
+    n = _fetch_revenue_months(need)
+    tried.update({f"{yy}{mm:02d}": day for yy, mm in need})
+    c = _conn()
+    c.execute("INSERT OR REPLACE INTO course_meta VALUES ('rev_backfill', ?)", (json.dumps(tried),))
+    c.commit()
+    c.close()
+    log.info(f"[course] 月營收補抓 {len(need)} 個月、{n} 筆")
     return n
 
 

@@ -613,7 +613,10 @@ def _prewarm():
     def _wave(sym):
         from wave import service as _ws
         _ws.snapshot(sym=sym)
-    for name, fn in (("指數", _ind), ("處置股", _disp), ("可轉債清單", _cb), ("連動", _movers),
+    def _opt():
+        import opt_flags                       # PLAN-B82：重開機後記憶體裡的掃描結果補上 ⭐ 優化研究條件（不重掃）
+        lg.info(f"[prewarm] 優化研究標註 {opt_flags.annotate_current()}")
+    for name, fn in (("優化研究標註", _opt), ("指數", _ind), ("處置股", _disp), ("可轉債清單", _cb), ("連動", _movers),
                      ("大盤解析加權", lambda: _wave("TWII")), ("大盤解析台指期", lambda: _wave("TX"))):
         try:
             fn()

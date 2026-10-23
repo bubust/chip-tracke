@@ -1134,6 +1134,15 @@ async def run_market_scan(strategy_params: dict = None):
         except Exception as _qe:
             print(f"[SCAN] 品質分失敗（不影響結果）: {_qe}")
 
+        # ⭐ 優化研究（PLAN-B82）：籌碼／月營收條件研究通過的策略，每一列加 o（符合的網站排前面）；失敗不影響結果
+        try:
+            import opt_flags as _of
+            _scan_status["phase"] = "opt"
+            _os = await loop.run_in_executor(None, lambda: _of.annotate(all_results))
+            print(f"[SCAN] ⭐ 優化研究：{_os}")
+        except Exception as _oe:
+            print(f"[SCAN] 優化研究標註失敗（不影響結果）: {_oe}")
+
         _scan_status["results"] = all_results
         _save_scan_cache(all_results)  # 持久化，重啟後訊號不消失
 
