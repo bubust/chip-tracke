@@ -495,6 +495,43 @@ details.guide[open]>summary::before{content:'▾ ';}
   /* ⚠出貨日徽章、📋 講義訊號卡（B66） */
   .dist-badge { margin-left:4px; font-size:.68rem; color:#f59e0b; border:1px solid #f59e0b66; background:#f59e0b18; border-radius:3px; padding:0 4px; white-space:nowrap; cursor:help; }
   .cs-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:10px; margin-top:8px; }
+  /* PLAN-B82 策略篩選頁：狀態列＋4 小格＋展開區、按鈕收緊、一句結論、回測細節分頁 */
+  #tab-screen > .card { margin-bottom:10px; }
+  .scr-top, .scr-bar-card { padding:10px 14px !important; }
+  .scr-status { display:flex; align-items:center; gap:10px; flex-wrap:wrap; min-height:28px; }
+  .scr-badge { font-size:.86rem; flex:1 1 320px; line-height:1.5; }
+  .scr-badge .ok { color:#3fb950; }
+  .scr-badge .warn { color:#f59e0b; font-weight:700; }
+  .scr-fail { font-size:.78rem; color:var(--accent); }
+  .scr-warn { font-size:.78rem; color:#d29922; margin-top:2px; }
+  .scr-tiles { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:8px; }
+  .scr-tile { all:unset; box-sizing:border-box; cursor:pointer; display:flex; flex-direction:column; justify-content:center; gap:1px;
+              padding:7px 10px; min-height:58px; max-height:80px; overflow:hidden; border:1px solid var(--border); border-radius:10px;
+              background:rgba(255,255,255,.02); color:var(--text); }
+  .scr-tile b { font-size:.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .scr-tile .t1, .scr-tile .t2 { display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; word-break:break-all; }
+  .scr-tile .t1 { font-size:.82rem; }
+  .scr-tile .t2 { font-size:.74rem; color:var(--muted); }
+  .scr-tile:hover { border-color:var(--accent); }
+  .scr-tile:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+  .scr-tile[aria-expanded="true"] { border-color:var(--accent); background:rgba(79,142,247,.10); }
+  .scr-tile.alert { border-color:#ef4444; }
+  .scr-tile.alert .t1 { color:var(--up); font-weight:700; }
+  .scr-panel { margin-top:8px; border:1px solid var(--border); border-radius:10px; padding:10px 12px; }
+  .scr-panel-h { display:flex; align-items:center; justify-content:space-between; gap:8px; font-weight:800; margin-bottom:6px; }
+  @media (max-width:700px) { .scr-tiles { grid-template-columns:repeat(2,minmax(0,1fr)); } .scr-panel { padding:8px; } }
+  @media (max-width:480px) { .scr-badge { flex:1 1 0; min-width:0; font-size:.8rem; } #btn-trigger-gh { min-height:32px !important; padding:4px 8px; font-size:.76rem !important; } }
+  #screen-strat-bar { gap:5px !important; }
+  #screen-strat-bar .screen-strat-btn { font-size:.8rem; padding:4px 9px; }
+  #screen-strat-bar .strat-divider { margin-top:2px; font-size:.74rem; }
+  @media (max-width:480px) { #screen-strat-bar .screen-strat-btn { min-height:36px; font-size:.78rem !important; padding:3px 8px; } }
+  .scr-verdict { font-size:.9rem; line-height:1.6; margin:0 0 8px; }
+  .scr-verdict:empty { display:none; }
+  .scr-verdict .v2 { color:var(--up); font-weight:700; }
+  .scr-dtabs { display:flex; gap:6px; flex-wrap:wrap; margin:8px 0 4px; }
+  .scr-dtab { all:unset; cursor:pointer; font-size:.8rem; padding:3px 10px; border:1px solid var(--border); border-radius:999px; color:var(--muted); }
+  .scr-dtab.active { border-color:var(--accent); color:var(--accent); font-weight:700; }
+  .scr-detail > summary { cursor:pointer; font-weight:700; font-size:.88rem; }
   @media (max-width:700px) { .cs-grid { grid-template-columns:1fr; } }
   .cs-box { background:var(--card2); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; }
   .cs-box.alert { border-color:#ef4444; box-shadow:0 0 0 1px #ef444455 inset; }
@@ -505,9 +542,9 @@ details.guide[open]>summary::before{content:'▾ ';}
   .cs-chip.hot { color:#f59e0b; border-color:#f59e0b66; }
   .cs-cols { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
   @media (max-width:500px) { .cs-cols { grid-template-columns:1fr; } }
-  #course-card .dp-open-btn .t { display:none; }
-  #course-card .dp-open-btn { padding:0 5px !important; font-size:.74rem; }
-  #course-card .lk-tbl td { white-space:normal; }
+  .scr-panel[data-k="course"] .dp-open-btn .t { display:none; }
+  .scr-panel[data-k="course"] .dp-open-btn { padding:0 5px !important; font-size:.74rem; }
+  .scr-panel[data-k="course"] .lk-tbl td { white-space:normal; }
   .sector-alert { border:1px solid #ef4444; background:rgba(239,68,68,.08); border-radius:8px; padding:6px 10px; margin-bottom:8px; font-size:.84rem; }
   /* ⇅ 兩檔對比（B65） */
   .cmp-bar { display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid #1e2435; flex-wrap:wrap; }
@@ -850,29 +887,32 @@ details.guide[open]>summary::before{content:'▾ ';}
 
 <!-- ═══════════════════════ 策略篩選 ═══════════════════════ -->
 <div id="tab-screen" class="tab">
-  <div class="card" id="crash-card" style="display:none"></div>
-  <div class="card" id="course-card" style="display:none"></div>
-  <div class="card" id="fixed825-card" style="display:none"></div>
-  <div class="card" id="quality-card" style="display:none"></div>
-
-  <div class="card">
-    <!-- Cache 預熱狀態列 -->
+  <!-- PLAN-B82 B：① 狀態列＋② 4 小格＋③ 展開區（點哪格開哪格、一次一個） -->
+  <div class="card scr-top">
     <div id="cache-warmup-bar" style="display:none !important"></div>
     <div id="cache-ready-bar" style="display:none !important"></div>
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
-      <button class="btn green" id="btn-trigger-gh" onclick="triggerGithubScan()" title="在伺服器直接執行全市場掃描">⚡ 全市場掃描</button>
-      <span id="screen-progress-text" style="color:var(--muted);font-size:.82rem"></span>
+    <div class="scr-status">
+      <div id="gh-scan-last-badge" class="scr-badge" title="每個交易日 18:00 伺服器自動掃描全市場，打開網頁就會拿最新那次的結果&#10;失敗＝抓不到資料（點「失敗清單」看原因）&#10;跳過＝超過 60 天沒有成交的殭屍股（下市/長期停牌）">載入中…</div>
+      <a href="#" id="scan-fail-link" class="scr-fail" onclick="showScanFailures();return false" style="display:none">失敗清單</a>
+      <button class="btn sm ghost" id="btn-trigger-gh" onclick="triggerGithubScan()" title="平常不用按：每個交易日 18:00 伺服器會自動掃描全市場">↻ 重新掃描</button>
     </div>
-    <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:4px">
-      <div id="gh-scan-last-badge" style="font-size:.78rem;min-height:1.2em" title="命中N筆＝各策略命中數加總（同一支股票符合 3 個策略算 3 筆）&#10;不重複M支＝至少符合一個策略的股票數&#10;成功＝抓到 K 線資料的股票數&#10;失敗＝抓不到資料（點「失敗清單」看原因）&#10;跳過＝超過 60 天沒有成交的殭屍股（下市/長期停牌）"></div>
-      <a href="#" onclick="showScanFailures();return false" style="font-size:.75rem;color:var(--accent)">失敗清單</a>
-    </div>
-    <div id="scan-warrant-note" style="font-size:.72rem;color:var(--muted);margin-bottom:4px"></div>
-    <div id="screen-progress-bar-wrap" style="display:none;margin-bottom:10px">
+    <div id="scan-chip-warn" class="scr-warn" style="display:none"></div>
+    <div id="screen-progress-text" class="muted" style="font-size:.8rem"></div>
+    <div id="screen-progress-bar-wrap" style="display:none;margin:4px 0 2px">
       <div style="background:var(--border);border-radius:4px;height:6px;overflow:hidden">
         <div id="screen-progress-bar" style="height:100%;background:var(--accent);transition:width .3s;width:0%"></div>
       </div>
     </div>
+    <div class="scr-tiles">
+      <button type="button" class="scr-tile" data-k="crash" aria-expanded="false" aria-controls="screen-info-panel" onclick="screenTile('crash')"><b>📉 大跌買點</b><span class="t1">載入中…</span><span class="t2"></span></button>
+      <button type="button" class="scr-tile" data-k="course" aria-expanded="false" aria-controls="screen-info-panel" onclick="screenTile('course')"><b>📋 講義訊號</b><span class="t1">載入中…</span><span class="t2"></span></button>
+      <button type="button" class="scr-tile" data-k="f825" aria-expanded="false" aria-controls="screen-info-panel" onclick="screenTile('f825')"><b>📊 回測總表</b><span class="t1">載入中…</span><span class="t2"></span></button>
+      <button type="button" class="scr-tile" data-k="opt" aria-expanded="false" aria-controls="screen-info-panel" onclick="screenTile('opt')"><b>⭐ 優化研究</b><span class="t1">載入中…</span><span class="t2"></span></button>
+    </div>
+    <div id="screen-info-panel" class="scr-panel" role="region" style="display:none"></div>
+  </div>
+
+  <div class="card scr-bar-card">
     <!-- 策略快篩（掃描前後都顯示；掃描完後顯示各策略命中數） -->
     <div id="screen-strat-bar" style="display:flex;flex-wrap:wrap;gap:6px">
       <button class="btn ghost screen-strat-btn" data-s="S_BEST" onclick="viewStrategy('S_BEST')" style="border-color:#f59e0b;color:#f59e0b;font-weight:700" title="用 5 年官方資料（含 2022 空頭、含下市股、含除權息）回測 18,426 種組合：沒有方法全部過關，這是最接近的（負乖離抄底＋破底翻 3 天內都出現）。每筆勝率高，但帳戶回撤超標；點開看完整說明">🔬 研究候選 <span class="strat-cnt" id="cnt-S_BEST"></span></button>
@@ -885,7 +925,7 @@ details.guide[open]>summary::before{content:'▾ ';}
       <button class="btn ghost screen-strat-btn" data-s="S_THUNDER" onclick="viewStrategy('S_THUNDER')" title="合併版：①盤整 90 天（區間 ≤15%）後帶量 2.5 倍突破（回檔 ≤0.618 時目標價＝第一段高點−突破點＋回檔低點）②底部量滾量（跌深後站上季線＋連續爆量）">⚡ 平地一聲雷 <span class="strat-cnt" id="cnt-S_THUNDER"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_XIANREN" onclick="viewStrategy('S_XIANREN')" title="盤整後上攻收長上影線（第一次出量）→ 繼續盤整 1～10 天不破低、沒過頂 → 今天第二次出量收紅；停損＝仙人指路那根的低點">🧙 仙人指路 <span class="strat-cnt" id="cnt-S_XIANREN"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_WARRANT_TOP" onclick="viewStrategy('S_WARRANT_TOP')">📈 認購前十大 <span class="strat-cnt" id="cnt-S_WARRANT_TOP"></span></button>
-      <div class="strat-divider" style="flex-basis:100%;font-size:.74rem;color:var(--muted);margin-top:6px">📚 上課筆記策略（做多 14 個；⛔ 之後 7 個是做空／出場警訊）· 籌碼類（投信、融券、大戶）在全市場掃描最後另外抓資料計算</div>
+      <div class="strat-divider" style="flex-basis:100%;color:var(--muted)">📚 上課筆記（做多 14 個、⛔ 做空／出場 7 個；籌碼類掃描最後另外算）</div>
       <button class="btn ghost screen-strat-btn" data-s="S_WMACD" onclick="viewStrategy('S_WMACD')" title="週 K、MACD(10,20,50)：大跌後重新站上 20 週線且週柱由綠翻紅；沒破 20 週線、MACD 沒翻綠就抱">📅 週MACD大波段 <span class="strat-cnt" id="cnt-S_WMACD"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_BIAS" onclick="viewStrategy('S_BIAS')" title="季線（60BIAS）負乖離 ≤ −20%；確認：定海神針（長下影不破低）或第一個向上跳空；分批或 10% 停損">🧲 負乖離抄底 <span class="strat-cnt" id="cnt-S_BIAS"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_RSI_OS" onclick="viewStrategy('S_RSI_OS')" title="RSI(6) 跌破 20 後第一次勾起突破 20；破前低立刻出場，不攤平">🔄 RSI6 超賣勾起 <span class="strat-cnt" id="cnt-S_RSI_OS"></span></button>
@@ -915,19 +955,21 @@ details.guide[open]>summary::before{content:'▾ ';}
   <!-- 篩選說明 / 錯誤區 -->
   <div class="card" id="screen-placeholder" style="text-align:center;padding:36px 20px;color:var(--muted)">
     <div style="font-size:2rem;margin-bottom:12px">🔍</div>
-    <div style="font-size:.95rem;margin-bottom:6px">點擊「全市場掃描」開始掃描所有策略</div>
-    <div style="font-size:.82rem">全市場約 2000+ 支，需 10~15 分鐘，請耐心等候</div>
+    <div style="font-size:.95rem;margin-bottom:6px">還沒有掃描結果</div>
+    <div style="font-size:.82rem">每個交易日 18:00 伺服器會自動掃描全市場（約 10～15 分鐘），完成後打開這頁就會顯示</div>
     <div id="screen-error-msg" style="display:none;margin-top:16px;color:var(--red);font-size:.88rem;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 16px"></div>
   </div>
 
   <div class="card" id="screen-result-card" style="display:none">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
       <div>
         <strong id="screen-result-title">篩選結果</strong>
         <span id="screen-result-count" style="font-size:.82rem;color:var(--muted);margin-left:8px"></span>
       </div>
       <button class="btn" style="font-size:.8rem;padding:5px 12px" onclick="openStrategyBacktest()">🔬 批量回測此策略</button>
     </div>
+    <div id="strat-verdict" class="scr-verdict"></div>
+    <div id="scan-warrant-note" style="display:none;font-size:.76rem;color:var(--muted);margin-bottom:6px"></div>
     <div id="best-explain" style="display:none;margin-bottom:14px"></div>
     <div id="best-near" style="display:none;margin-bottom:14px"></div>
     <div id="fbd-live" style="display:none;margin-bottom:12px"></div>
@@ -2418,7 +2460,7 @@ function switchTab(name) {
   if (name === 'relationship') { const rf2 = document.getElementById('relationship-iframe'); if (rf2 && !rf2.dataset.loaded) { rf2.dataset.loaded = '1'; rf2.src = '/relationship/'; } }
   if (name === 'link') { linkOnShow(); }
   if (name === 'market') { _mktOnShow(); }
-  if (name === 'screen') { loadCrashCard(); loadCourseCard(); loadFixed825Card(); loadQualityCard(); }
+  if (name === 'screen') { loadCrashCard(); loadCourseCard(); loadFixed825Card(); loadOptCard(); _tileRender(); }
   if (name === 'treasury') { tbOnShow(); }
   if (name === 'mna') { mnaOnShow(); }
   if (name === 'cb') { cbOnShow(); }
@@ -2463,15 +2505,19 @@ function wlRowBtn(sid, call) {
 
 // ── localStorage 自選清單備份 ──
 const WL_LS_KEY      = 'chip_tracker_watchlist_v1';
-const SCREEN_LS_KEY  = 'chip_tracker_screen_v1';
+const SCREEN_LS_KEY  = 'chip_tracker_screen_v2';   // PLAN-B82：{finished_at, data_date, results}；舊 v1 只有 results（讀到當沒有 finished_at）
 const MKT_LS_KEY     = 'chip_tracker_mkt_v1';
 
+let _screenMeta = { finished_at: null, data_date: null };   // 畫面上這份掃描結果是哪一次（伺服器 finished_at、收盤日）
 function lsSaveScreen(results) {
-  try { localStorage.setItem(SCREEN_LS_KEY, JSON.stringify(results)); } catch(e) {}
+  try { localStorage.setItem(SCREEN_LS_KEY, JSON.stringify({ finished_at: _screenMeta.finished_at, data_date: _screenMeta.data_date, results })); } catch(e) {}
 }
-function lsLoadScreen() {
-  try { return JSON.parse(localStorage.getItem(SCREEN_LS_KEY) || '{}'); } catch(e) { return {}; }
+function lsLoadScreenFull() {
+  try { const o = JSON.parse(localStorage.getItem(SCREEN_LS_KEY) || 'null'); if (o && o.results && typeof o.results === 'object') return o; } catch(e) {}
+  try { const v1 = JSON.parse(localStorage.getItem('chip_tracker_screen_v1') || 'null'); if (v1 && typeof v1 === 'object') return { finished_at: null, data_date: null, results: v1 }; } catch(e) {}
+  return { finished_at: null, data_date: null, results: {} };
 }
+function lsLoadScreen() { return lsLoadScreenFull().results || {}; }
 function lsSaveMkt(mktData) {
   try { localStorage.setItem(MKT_LS_KEY, JSON.stringify(mktData)); } catch(e) {}
 }
@@ -4586,16 +4632,26 @@ let _mkt = lsLoadMkt();   // 頁面重整後從 localStorage 恢復
 let _mktView = 'buyers';
 
 let _mktLoadedAt = 0;
-function _mktOnShow() {           // B70：切到這頁自動載入（用現有資料，不重抓）；10 分鐘內不重複
+function _mktOnShow() {           // B70：切到這頁自動載入（伺服器資料庫，不重抓官方）；10 分鐘內不重複
   if (Date.now() - _mktLoadedAt < 10 * 60 * 1000) return;
-  _mktLoadedAt = Date.now();
-  scanMarket(0);
+  scanMarket(0, (_mkt.buyers || []).length > 0);
 }
-async function scanMarket(refresh = 0) {
+// PLAN-B82 A3：頁面切回來／每 10 分鐘，正在看全市場排行而且超過 10 分鐘沒載入 → 背景更新
+function _mktFreshCheck() {
+  const tab = document.getElementById('tab-market');
+  if (!tab || !tab.classList.contains('active') || _mktBusy) return;
+  if (Date.now() - _mktLoadedAt < 10 * 60 * 1000) return;
+  scanMarket(0, true);
+}
+let _mktBusy = false;
+async function scanMarket(refresh = 0, quiet = false) {
+  if (_mktBusy && quiet) return;
+  _mktBusy = true;
+  _mktLoadedAt = Date.now();
   const btn = document.getElementById('btn-scan');
   btn.disabled = true;
   if (refresh) btn.textContent = '⏳ 更新中（最多約 1 分鐘）...';
-  document.getElementById('mkt-tbody').innerHTML =
+  if (!quiet) document.getElementById('mkt-tbody').innerHTML =
     `<tr><td colspan="11" class="empty"><span class="spinner" style="display:inline-block;vertical-align:middle;margin-right:8px"></span>${refresh ? '抓證交所／櫃買三大法人…' : '載入中…'}</td></tr>`;
   const q = new URLSearchParams({ top: 50, refresh: refresh ? 1 : 0, sort: document.getElementById('mkt-sort').value,
     market: document.getElementById('mkt-market').value, etf: document.getElementById('mkt-etf').checked ? 1 : 0 });
@@ -4603,19 +4659,27 @@ async function scanMarket(refresh = 0) {
     const r = await api('GET', `/api/market/scan?${q}`);
     _mkt.buyers  = r.top_buyers  || [];
     _mkt.sellers = r.top_sellers || [];
+    _mkt.date = String(r.date || '');
     lsSaveMkt(_mkt);
-    const d = String(r.date || '');
-    const now = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+    const d = _mkt.date;
+    const _sn = _twParts(r.server_now);
+    const now = _sn ? `${_p2(_sn.hh)}:${_p2(_sn.mm)}` : new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
     document.getElementById('scan-meta').innerHTML =
-      `資料日期 <b>${d.slice(0, 4)}/${d.slice(4, 6)}/${d.slice(6, 8)}</b> · 上市 ${(r.markets || {}).twse || 0}／上櫃 ${(r.markets || {}).tpex || 0} 檔 · ${now} 載入` +
+      `資料日期 <b>${_ymdLabel(d)}</b> · 每天 18:00 自動更新（證交所約 16:00 公布）· 上市 ${(r.markets || {}).twse || 0}／上櫃 ${(r.markets || {}).tpex || 0} 檔 · ${now} 載入` +
       (r.price_ok ? '' : ' · <span style="color:#d29922">當天股價還沒進資料庫（股價、占量先空白）</span>') +
       ((r.notes || []).length ? ` · <span class="muted">${_esc(r.notes.join('；'))}</span>` : '');
     renderMarket();
   } catch (e) {
-    toast(e.message, true);
-    document.getElementById('mkt-tbody').innerHTML =
-      `<tr><td colspan="11" class="empty" style="color:var(--red)">載入失敗：${_esc(e.message)}</td></tr>`;
+    if (quiet && (_mkt.buyers || []).length) {      // 背景更新失敗：留著上次的表，不跳錯誤
+      const _mm = document.getElementById('scan-meta');
+      if (_mm) _mm.textContent = `上次載入的排行${_mkt.date ? '（資料日期 ' + _ymdLabel(_mkt.date) + '）' : ''}；更新失敗，等一下會再試`;
+    } else {
+      toast(e.message, true);
+      document.getElementById('mkt-tbody').innerHTML =
+        `<tr><td colspan="11" class="empty" style="color:var(--red)">載入失敗：${_esc(e.message)}</td></tr>`;
+    }
   } finally {
+    _mktBusy = false;
     btn.disabled = false;
     btn.textContent = '🔄 更新今日資料';
   }
@@ -5231,10 +5295,12 @@ function _scanWarrantNote(s) {
   const el = document.getElementById('scan-warrant-note');
   _chipErrors = (s && s.chip_errors) || {};
   const ce = Object.keys(_chipErrors);
-  const parts = [];
-  if (s && s.warrant_note) parts.push('🏷 ' + s.warrant_note);
-  if (ce.length) parts.push(`⚠ 籌碼型策略 ${ce.length} 個計算失敗（${ce.map(k => STRATEGY_LABELS[k] ? STRATEGY_LABELS[k].split('（')[0] : k).join('、')}），點進去看原因`);
-  if (el) el.textContent = parts.join('　');
+  if (el && s && s.warrant_note) el.textContent = '🏷 ' + s.warrant_note;
+  const w = document.getElementById('scan-chip-warn');
+  if (w) {
+    w.textContent = ce.length ? `⚠ 籌碼型策略 ${ce.length} 個計算失敗（${ce.map(k => STRATEGY_LABELS[k] ? STRATEGY_LABELS[k].split('（')[0] : k).join('、')}），點進去看原因` : '';
+    w.style.display = ce.length ? '' : 'none';
+  }
 }
 
 function _ghBadgeSet(text, isOk, persist) {
@@ -5243,9 +5309,105 @@ function _ghBadgeSet(text, isOk, persist) {
     el.textContent = text;
     el.style.color = isOk === false ? '#f85149' : isOk === true ? '#3fb950' : 'var(--muted)';
   }
-  if (persist !== false) {
-    try { localStorage.setItem('chip_scan_badge', JSON.stringify({text, isOk})); } catch(e) {}
+}
+
+// ── PLAN-B82 A2：狀態列＝伺服器的資料（收盤日、完成時間、伺服器台灣時間），不看使用者電腦的時鐘 ──
+let _lastScanStatus = null;      // 最近一次 /api/screen/status
+let _screenServerNow = null;     // 伺服器台灣時間（YYYY-MM-DDTHH:MM:SS，沒有時區）
+const _WD = '日一二三四五六';
+function _twParts(iso) {         // 台灣時間字串直接拆，不經過瀏覽器時區
+  const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  if (!m) return null;
+  const [y, mo, d, hh, mm] = m.slice(1).map(Number);
+  return { y, mo, d, hh, mm, wd: new Date(Date.UTC(y, mo - 1, d)).getUTCDay(), ymd: m[1] + m[2] + m[3] };
+}
+function _ymdLabel(ymd) {
+  ymd = String(ymd || '');
+  if (!/^\d{8}$/.test(ymd)) return '—';
+  const wd = new Date(Date.UTC(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6))).getUTCDay();
+  return `${+ymd.slice(4, 6)}/${+ymd.slice(6)}（${_WD[wd]}）`;
+}
+const _p2 = n => String(n).padStart(2, '0');
+function _scanStatusHtml(meta, st, serverNow) {
+  if (st && st.running) return '⏳ 全市場掃描進行中…（每天 18:00 自動），跑完會自動換成新結果';
+  const f = _twParts(meta.finished_at);
+  if (!f) return meta.data_date ? `📅 <b>${_ymdLabel(meta.data_date)}</b> 收盤 · 每天 18:00 自動更新` : '還沒有掃描結果（每個交易日 18:00 自動掃描）';
+  let h = `📅 <b>${_ymdLabel(meta.data_date)}</b> 收盤 · 每天 18:00 自動更新 · 最近一次 ${f.mo}/${f.d} ${_p2(f.hh)}:${_p2(f.mm)}`;
+  if (st && st.finished_at === meta.finished_at && (st.yahoo_ok || 0) > 0) h += ` <span class="ok">✅ 成功 ${Number(st.yahoo_ok).toLocaleString()}／失敗 ${st.yahoo_fail || 0}</span>`;
+  const n = _twParts(serverNow);
+  if (n && n.wd >= 1 && n.wd <= 5 && n.hh * 60 + n.mm >= 18 * 60 + 30) {
+    const done = f.ymd > n.ymd || (f.ymd === n.ymd && f.hh * 60 + f.mm >= 17 * 60 + 30);
+    if (!done) h += ' <span class="warn">⚠ 今天 18:00 的自動掃描還沒完成（伺服器重開會自動補跑）</span>';
+    else if (meta.data_date && String(meta.data_date) < n.ymd) h += ' <span class="muted">（今天休市，官方沒有今天的資料）</span>';
   }
+  return h;
+}
+function _renderScanStatusLine(warn) {
+  const el = document.getElementById('gh-scan-last-badge');
+  if (!el) return;
+  el.style.color = '';
+  el.innerHTML = (warn ? `<span class="warn">${_esc(warn)}</span> ` : '') + _scanStatusHtml(_screenMeta, _lastScanStatus, _screenServerNow);
+  const fl = document.getElementById('scan-fail-link');
+  if (fl) fl.style.display = (_lastScanStatus && !_lastScanStatus.running && (_lastScanStatus.yahoo_fail || 0) > 0) ? '' : 'none';
+}
+function _screenTotal(res) { return Object.values(res || {}).filter(Array.isArray).reduce((a, x) => a + x.length, 0); }
+// 用伺服器的結果（pending＝主要策略已完成、籌碼型還在算，finished_at 還是上一次的 → 先記 null，跑完再補）
+function _applyServerResults(r, pending) {
+  _screenAllResults = r.results || {};
+  _screenMeta = { finished_at: pending ? null : (r.finished_at || null), data_date: r.data_date || null };
+  if (r.server_now) _screenServerNow = r.server_now;
+  lsSaveScreen(_screenAllResults);
+  try { localStorage.removeItem('chip_tracker_screen_v1'); localStorage.removeItem('chip_scan_badge'); } catch (e) {}
+  const ph = document.getElementById('screen-placeholder');
+  if (ph) ph.style.display = 'none';
+  renderStratBar();
+  const k = _viewingStrategy || Object.keys(STRATEGY_LABELS).find(x => (_screenAllResults[x] || []).length > 0);
+  if (k) viewStrategy(k);
+}
+// 伺服器比畫面上的新（或畫面上沒有）→ 換成伺服器的；回傳有沒有換
+async function _screenSyncFromServer(initial) {
+  let r;
+  try { r = await api('GET', '/api/screen/results'); }
+  catch (e) { if (initial && _screenTotal(_screenAllResults)) _renderScanStatusLine('⚠ 連不到伺服器，下面是上次載入的結果'); return false; }
+  if (r.server_now) _screenServerNow = r.server_now;
+  const newer = !!r.finished_at && (!_screenMeta.finished_at || r.finished_at > _screenMeta.finished_at);
+  let changed = false;
+  if (_screenTotal(r.results) > 0 && (newer || !_screenTotal(_screenAllResults))) { _applyServerResults(r); changed = true; }
+  _renderScanStatusLine();
+  return changed;
+}
+// 頁面切回來／取得焦點／每 10 分鐘：有新的掃描就換（同時只跑一個、5 分鐘內不重複；失敗不清本機、不跳錯誤）
+let _sfBusy = false, _sfLast = 0;
+async function _screenFreshCheck(force) {
+  if (_sfBusy || (!force && Date.now() - _sfLast < 5 * 60 * 1000)) return;
+  _sfBusy = true;
+  _sfLast = Date.now();
+  try {
+    const res = await fetch(API_BASE + '/api/screen/status', { cache: 'no-store' });
+    if (!res.ok) return;
+    const st = await res.json();
+    _lastScanStatus = st;
+    if (st.server_now) _screenServerNow = st.server_now;
+    _scanWarrantNote(st);
+    if (st.running) { if (!_ghPollTimer) _attachRunningScan(); return; }
+    if (st.finished_at && (!_screenMeta.finished_at || st.finished_at > _screenMeta.finished_at)) {
+      if (await _screenSyncFromServer()) toast(`已更新到 ${_ymdLabel(_screenMeta.data_date)} 收盤的掃描結果`);
+    } else _renderScanStatusLine();
+  } catch (e) { /* 網路閃斷：下一次再看 */ }
+  finally { _sfBusy = false; }
+}
+// 伺服器掃描正在跑（18:00 自動或別人按的）→ 接上進度追蹤
+function _attachRunningScan() {
+  const _ghBtn = document.getElementById('btn-trigger-gh');
+  if (_ghBtn) { _ghBtn.disabled = true; _ghBtn.textContent = '⏳ 掃描中...'; }
+  document.getElementById('screen-progress-bar-wrap').style.display = 'block';
+  _ghScanStartedAt = Date.now();
+  _ghFullAt = null;
+  window._ghResultsPreloaded = false;
+  if (_ghPollTimer) clearInterval(_ghPollTimer);
+  _ghPollTimer = setInterval(_pollGhProgress, 5000);
+  _pollGhProgress();
+  _renderScanStatusLine();
 }
 
 async function triggerGithubScan() {
@@ -5270,12 +5432,12 @@ async function triggerGithubScan() {
     } else {
       toast('觸發失敗：' + res.message, true);
       btn.disabled = false;
-      btn.textContent = '⚡ 全市場掃描';
+      btn.textContent = '↻ 重新掃描';
     }
   } catch (e) {
     toast('觸發失敗：' + e.message, true);
     btn.disabled = false;
-    btn.textContent = '⚡ 全市場掃描';
+    btn.textContent = '↻ 重新掃描';
   }
 }
 
@@ -5294,14 +5456,12 @@ function _ghFollowUntilDone() {
       }
       clearInterval(_ghFollowTimer); _ghFollowTimer = null;
       if (s.running) return;
+      _lastScanStatus = s;
+      if (s.server_now) _screenServerNow = s.server_now;
       const r = await api('GET', '/api/screen/results');
-      if (!r || !r.results || !Object.values(r.results).some(a => (a || []).length)) return;
-      _screenAllResults = r.results;
-      lsSaveScreen(_screenAllResults);
-      renderStratBar();
-      if (_viewingStrategy) viewStrategy(_viewingStrategy);
-      const _ts = new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'});
-      _ghBadgeSet(`${_ts} ✅ ${_screenHitSummary(_screenAllResults).text} · 成功${s.yahoo_ok}/失敗${s.yahoo_fail}/跳過${s.skipped_stale||0}`, true);
+      if (!r || !r.results || !Object.values(r.results).some(a => (a || []).length)) { _renderScanStatusLine(); return; }
+      _applyServerResults(r);
+      _renderScanStatusLine();
     } catch (e) { /* 網路閃斷：下一輪再試 */ }
   }, 10000);
 }
@@ -5321,7 +5481,7 @@ async function _pollGhProgress() {
         // 到 100% 之後整理超過 10 分鐘 → 強制解鎖（兜底；正常會在下面預先載入結果後就解鎖）
         if (Date.now() - _ghFullAt > 600000) {
           clearInterval(_ghPollTimer); _ghPollTimer = null;
-          btn.disabled = false; btn.textContent = '⚡ 全市場掃描';
+          btn.disabled = false; btn.textContent = '↻ 重新掃描';
           document.getElementById('screen-progress-text').textContent = '';
           document.getElementById('screen-progress-bar-wrap').style.display = 'none';
           const _tsNow = new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'});
@@ -5341,7 +5501,7 @@ async function _pollGhProgress() {
             if (_preloadDone) return;   // 防止 timeout + fetch 雙重呼叫
             _preloadDone = true;
             clearInterval(_ghPollTimer); _ghPollTimer = null;
-            btn.disabled = false; btn.textContent = '⚡ 全市場掃描';
+            btn.disabled = false; btn.textContent = '↻ 重新掃描';
             document.getElementById('screen-progress-text').textContent = '';
             document.getElementById('screen-progress-bar-wrap').style.display = 'none';
             const _ts = new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'});
@@ -5355,19 +5515,14 @@ async function _pollGhProgress() {
           api('GET', '/api/screen/results').then(r => {
             let tot = 0;
             if (r && r.results) {
-              _screenAllResults = r.results;
-              tot = Object.values(_screenAllResults).reduce((a,b)=>a+b.length,0);
-              if (tot > 0) {
-                lsSaveScreen(_screenAllResults); renderStratBar();
-                const first = Object.keys(STRATEGY_LABELS).find(k=>(_screenAllResults[k]||[]).length>0);
-                if(first) viewStrategy(first);
-              }
+              tot = _screenTotal(r.results);
+              if (tot > 0) _applyServerResults(r, true);   // 籌碼型策略還在算：finished_at 跑完才補
             }
             if (tot > 0) {
               const _hs = _screenHitSummary(_screenAllResults);
               _scanWarrantNote(s);
               _unlockGhBtn(`✅ 掃描完成！${_hs.text}`, false,
-                `✅ ${_hs.text} · 成功${s.yahoo_ok}/失敗${s.yahoo_fail}/跳過${s.skipped_stale||0}`, true);
+                `⏳ 主要策略完成（${_hs.text}），籌碼型策略整理中…`, true);
             } else {
               _unlockGhBtn('掃描完成（無符合策略）', false, '⚠️ 無符合策略');
             }
@@ -5398,19 +5553,15 @@ async function _pollGhProgress() {
       _ghPollTimer = null;
       document.getElementById('screen-progress-bar').style.width = '100%';
       const r = await api('GET', '/api/screen/results');
-      _screenAllResults = r.results || {};
-      const newTotal = Object.values(_screenAllResults).reduce((acc, a) => acc + a.length, 0);
-      lsSaveScreen(_screenAllResults);
-      renderStratBar();
-      const first = Object.keys(STRATEGY_LABELS).find(k => (_screenAllResults[k] || []).length > 0);
-      if (first) viewStrategy(first);
-      const _ts2 = new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'});
+      _lastScanStatus = s;
+      if (s.server_now) _screenServerNow = s.server_now;
+      if (_screenTotal(r.results) > 0) _applyServerResults(r);
       const _hs2 = _screenHitSummary(_screenAllResults);
       _scanWarrantNote(s);
-      _ghBadgeSet(`${_ts2} ✅ ${_hs2.text}（掃${s.progress} 成${s.yahoo_ok}/失${s.yahoo_fail}/跳${s.skipped_stale||0}）`, true);
+      _renderScanStatusLine();
       toast(`✅ 掃描完成！共掃 ${s.progress} 支，${_hs2.text}`);
       btn.disabled = false;
-      btn.textContent = '⚡ 全市場掃描';
+      btn.textContent = '↻ 重新掃描';
       document.getElementById('screen-progress-text').textContent = '';
       document.getElementById('screen-progress-bar-wrap').style.display = 'none';
     } else if (elapsed < 30) {
@@ -5421,7 +5572,7 @@ async function _pollGhProgress() {
       clearInterval(_ghPollTimer);
       _ghPollTimer = null;
       btn.disabled = false;
-      btn.textContent = '⚡ 全市場掃描';
+      btn.textContent = '↻ 重新掃描';
       document.getElementById('screen-progress-text').textContent = '';
       document.getElementById('screen-progress-bar-wrap').style.display = 'none';
       const _ts3 = new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'});
@@ -5668,16 +5819,10 @@ function _courseResearchHtml(strategy) {
     <summary style="cursor:pointer;font-weight:700">📚 講義版本 5 年回測　${tag}</summary>${body}
     <div class="muted" style="font-size:.72rem;margin-top:4px">樣本內 2021-10～2024-06 挑、樣本外 2024-07～2026-08 驗；隨機進場＝同出場、同月份筆數。完整報告：research/course/results/REPORT.md</div></details>`;
 }
-async function _renderStratResearch(strategy) {
-  const el = document.getElementById('strat-research');
-  if (!el) return;
-  if (_best2 === null) { try { _best2 = await apiOnce('/api/best2/strategies', 6e5); } catch (e) { _best2 = {}; } }
-  if (_courseRes === null) { try { _courseRes = await apiOnce('/api/course/research', 6e5); } catch (e) { _courseRes = {}; } }
-  await _getF825();
-  await _getQRes();
-  const r = (_best2.strategies || {})[strategy];
-  const courseHtml = _qualityStratHtml(strategy) + _courseResearchHtml(strategy) + _f825StratHtml(strategy);
-  if (!r) { if (courseHtml) { el.style.display = 'block'; el.innerHTML = courseHtml; } else el.style.display = 'none'; return; }
+// 「原本 vs 改良」（PLAN-BEST2）那段 HTML；沒有這個策略＝''
+function _best2StratHtml(strategy) {
+  const r = ((_best2 || {}).strategies || {})[strategy];
+  if (!r) return '';
   const b = r.baseline || {}, p = r.pick, e7 = r.e7_10;
   const pct = x => x == null ? '—' : `${x >= 0 ? '+' : ''}${(x * 100).toFixed(2)}%`;
   const pw = x => x == null ? '—' : `${Math.round(x * 100)}%`;
@@ -5686,24 +5831,94 @@ async function _renderStratResearch(strategy) {
   const verdict = r.improved
     ? `<b style="color:var(--up)">✅ 建議改用：${_esc(p.filter)}；${_esc(p.exit)}</b>${pc != null && pc < 0 ? `<span style="color:#f59e0b">（每筆比原本好，但整個帳戶照做 5 年年化仍是 ${pct(pc)}）</span>` : ''}`
     : `<b style="color:#f59e0b">⚠ 回測找不到穩定更好的出場（${_esc((r.reasons || []).slice(0, 2).join('；') || '樣本內沒有合格組合')}）</b>`;
-  el.style.display = 'block';
-  el.innerHTML = `<details ${r.improved ? 'open' : ''} style="border:1px solid var(--border);border-radius:8px;padding:8px 12px">
+  return `<details open style="border:1px solid var(--border);border-radius:8px;padding:8px 12px">
     <summary style="cursor:pointer;font-weight:700">📊 5 年回測：原本 vs 改良　<span style="font-weight:400;font-size:.85rem">${verdict}</span></summary>
     <div class="tbl-wrap" style="margin-top:6px"><table style="font-size:.82rem"><thead><tr><th>做法</th><th>樣本內 勝率／平均每筆</th><th>樣本外 勝率／平均每筆</th><th>平均抱</th><th>帳戶年化／最大回撤（10 檔）</th></tr></thead><tbody>
       <tr><td>舊預設（2ATR 停損＋2.5ATR 移動停損、最多 60 天）</td><td>${pw(b.is_win)}／<span style="${col(b.is_mean)}">${pct(b.is_mean)}</span></td><td>${pw(b.oos_win)}／<span style="${col(b.oos_mean)}">${pct(b.oos_mean)}</span></td><td>${b.all_days != null ? b.all_days.toFixed(0) + ' 天' : '—'}</td><td>${r.port ? `${pct(r.port.base.cagr)}／${pct(r.port.base.mdd)}` : '—'}</td></tr>
       ${p ? `<tr><td>改良候選：${_esc(p.filter)}；${_esc(p.exit)}</td><td>${pw(p.is_win)}／<span style="${col(p.is_mean)}">${pct(p.is_mean)}</span></td><td>${pw(p.oos_win)}／<span style="${col(p.oos_mean)}">${pct(p.oos_mean)}</span></td><td>${p.all_days != null ? p.all_days.toFixed(0) + ' 天' : '—'}</td><td>${r.port ? `${pct(r.port.pick.cagr)}／${pct(r.port.pick.mdd)}` : '—'}</td></tr>` : ''}
       ${e7 ? `<tr><td>固定停損 10%、沒跌破一直抱（收盤判斷）</td><td colspan="2">勝率 ${pw(e7.win)}、平均每筆 <span style="${col(e7.mean)}">${pct(e7.mean)}</span>；60 天內被洗出場 ${pw(e7.wash60)}</td><td>${e7.days != null ? e7.days.toFixed(0) + ' 天' : '—'}</td><td>${pct(e7.port_cagr)}／${pct(e7.port_mdd)}</td></tr>` : ''}
     </tbody></table></div>
-    <div class="muted" style="font-size:.74rem;margin-top:4px">5 年官方資料（含下市、含股利）、每筆扣 0.785% 成本；改良候選是用樣本內（2021-10～2024-06）勝率最高挑的，樣本外（2024-07～2026-08）有真的比較好、而且勝過隨機進場才算「建議改用」。同期加權年化 +23%。</div></details>` + courseHtml;
+    <div class="muted" style="font-size:.74rem;margin-top:4px">5 年官方資料（含下市、含股利）、每筆扣 0.785% 成本；改良候選是用樣本內（2021-10～2024-06）勝率最高挑的，樣本外（2024-07～2026-08）有真的比較好、而且勝過隨機進場才算「建議改用」。同期加權年化 +23%。</div></details>`;
+}
+const _SHORT_KEYS = ['S1_SHORT', 'S_DBREAK', 'S_W60_BREAK', 'S_MA_ALLDOWN', 'S_DANGER', 'S_KDJ_HIGH', 'S_KDJ_DIV'];
+// 結果卡標題下的一句結論（PLAN-B82 B ⑤）
+function _renderStratVerdict(s) {
+  const el = document.getElementById('strat-verdict');
+  if (!el) return;
+  const lines = [];
+  const x = ((_f825 || {}).strategies || {})[s];
+  if (s === 'S_BEST') { /* 研究候選下面有完整說明 */ }
+  else if (x && (x.oos || {}).n) {
+    const o = x.oos, mm = o.mean;
+    const tag = !x.beats_random ? '<span class="muted">✗ 沒勝過隨機進場</span>' : (mm == null || mm <= 0) ? '<span style="color:#f59e0b">△ 比隨機進場好，但平均每筆還是虧</span>' : '<b style="color:var(--up)">✅ 勝過隨機進場、平均每筆賺</b>';
+    lines.push(`📊 5 年回測（停損 8%／停利 25%）：樣本外勝率 <b>${_f825w(o.win)}</b>、平均每筆 <b style="${_f825c(mm)}">${_f825p(mm, 2)}</b>（${o.n.toLocaleString()} 筆）　${tag}`);
+  } else if (CHIP_COURSE_KEYS.includes(s) || s === 'S_WARRANT_TOP') lines.push('<span class="muted">📊 沒有 5 年回測（要籌碼／權證的歷史資料）</span>');
+  else if (_SHORT_KEYS.includes(s)) lines.push('<span class="muted">📊 做空／出場警訊：沒有做多回測</span>');
+  const q = ((_qRes || {}).strategies || {})[s], b1 = _qB1(s);
+  if (b1) lines.push(`<span class="v2">⭐ 建議：符合「${_esc(b1.desc)}」的排前面</span>（樣本外勝率 ${_qw(((q || {}).base || {}).oos ? q.base.oos.win : null)} → ${_qw(b1.oos.win)}）`);
+  const ob = ((((_optRes || {}).strategies || {})[s] || {}).base || {}).oos || {};
+  _optPassed(s).forEach(y => {
+    lines.push(y.fam === 'entry'
+      ? `<span class="v2">🕐 建議進場：${_esc(y.desc)}</span>（樣本外勝率 ${_qw(ob.win)} → ${_qw((y.oos || {}).win)}）`
+      : `<span class="v2">⭐ 建議（${_esc(y.label.slice(2))}）：符合「${_esc(y.desc)}」的排前面</span>（樣本外勝率 ${_qw(ob.win)} → ${_qw((y.oos || {}).win)}）`);
+  });
+  el.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
+}
+let _sdTab = 'f825', _sdOpen = false;
+async function _renderStratResearch(strategy) {
+  const el = document.getElementById('strat-research');
+  if (!el) return;
+  if (_best2 === null) { try { _best2 = await apiOnce('/api/best2/strategies', 6e5); } catch (e) { _best2 = {}; } }
+  if (_courseRes === null) { try { _courseRes = await apiOnce('/api/course/research', 6e5); } catch (e) { _courseRes = {}; } }
+  await Promise.all([_getF825(), _getQRes(), _getOptRes()]);
+  if (strategy !== _viewingStrategy) return;      // 等資料時已經換了別的策略
+  _renderStratVerdict(strategy);
+  const tabs = [];
+  const f = _f825StratHtml(strategy); if (f) tabs.push(['f825', '8%／25% 回測', f]);
+  const o = _optStratHtml(strategy) + _qualityStratHtml(strategy); if (o) tabs.push(['opt', '優化研究', o]);
+  const b2 = _best2StratHtml(strategy); if (b2) tabs.push(['best2', '原本 vs 改良', b2]);
+  const c = _courseResearchHtml(strategy); if (c) tabs.push(['course', '講義版本', c]);
+  if (!tabs.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const cur = tabs.find(t => t[0] === _sdTab) ? _sdTab : tabs[0][0];
+  el.style.display = 'block';
+  el.innerHTML = `<details class="scr-detail"${_sdOpen ? ' open' : ''} ontoggle="_sdOpen=this.open"><summary>📈 回測細節（${tabs.map(t => t[1]).join('／')}）</summary>
+    <div class="scr-dtabs">${tabs.map(t => `<button type="button" class="scr-dtab${t[0] === cur ? ' active' : ''}" onclick="_sdTab='${t[0]}';_renderStratResearch(_viewingStrategy)">${t[1]}</button>`).join('')}</div>
+    <div>${tabs.find(t => t[0] === cur)[2]}</div></details>`;
+}
+
+// ── PLAN-B82 B：策略篩選頁 4 小格＋展開區（一次一個；各 loader 算好格子狀態＋展開內容）──
+const _TILES = { crash: '📉 大跌買點', course: '📋 講義訊號', f825: '📊 回測總表', opt: '⭐ 優化研究' };
+const _tileBody = {};
+let _tileOpen = (() => { try { const k = localStorage.getItem('chip_screen_panel'); return k && _TILES[k] ? k : null; } catch (e) { return null; } })();
+function _tileSet(k, t1, t2, alert) {
+  const b = document.querySelector(`.scr-tile[data-k="${k}"]`);
+  if (!b) return;
+  b.querySelector('.t1').textContent = t1 || '';
+  b.querySelector('.t2').textContent = t2 || '';
+  b.classList.toggle('alert', !!alert);
+  b.title = [t1, t2].filter(Boolean).join('\n') + '\n（點一下展開）';
+}
+function _tileBodySet(k, html) { _tileBody[k] = html; if (_tileOpen === k) _tileRender(); }
+function _tileRender() {
+  document.querySelectorAll('.scr-tile').forEach(b => b.setAttribute('aria-expanded', b.dataset.k === _tileOpen ? 'true' : 'false'));
+  const p = document.getElementById('screen-info-panel');
+  if (!p) return;
+  if (!_tileOpen) { p.style.display = 'none'; p.innerHTML = ''; p.dataset.k = ''; return; }
+  p.style.display = 'block';
+  p.dataset.k = _tileOpen;
+  p.innerHTML = `<div class="scr-panel-h"><span>${_TILES[_tileOpen]}</span><button class="btn sm ghost" onclick="screenTile(null)" aria-label="收起">✕ 收起</button></div>${_tileBody[_tileOpen] ?? '<div class="muted">載入中…</div>'}`;
+}
+function screenTile(k) {
+  _tileOpen = (k && _tileOpen !== k) ? k : null;
+  try { localStorage.setItem('chip_screen_panel', _tileOpen || ''); } catch (e) {}
+  _tileRender();
 }
 
 // ── 📋 講義訊號（PLAN-COURSE）：大盤出貨日、主流族群、當沖名單、漲停打開、出貨日 ──
 let _courseToday = null;
 async function loadCourseCard(force) {
-  const el = document.getElementById('course-card');
-  if (!el) return;
   let r;
-  try { r = await api('GET', '/api/course/today'); } catch (e) { return; }
+  try { r = await api('GET', '/api/course/today'); } catch (e) { _tileSet('course', '讀取失敗', '等一下再點一次'); return; }
   _courseToday = r;
   if (r.research) _courseRes = _courseRes || r.research;
   const items = (r.research || {}).items || {};
@@ -5750,13 +5965,10 @@ async function loadCourseCard(force) {
     <details style="margin-top:4px"><summary style="cursor:pointer" class="muted">今天全部 ${dt.length} 檔</summary><div style="max-height:260px;overflow:auto"><table class="lk-tbl"><tbody>
     ${dt.slice(0, 120).map(x => `<tr><td>${stock(x.stock_id, x.name, dt.map(y => ({ id: y.stock_id, name: y.name })), '出貨日')}</td><td>${_esc(x.type_name)}</td><td class="num" style="${col(x.chg)}">${pct(x.chg)}</td><td class="num">量${x.vol_x}倍</td></tr>`).join('')}</tbody></table></div></details>
     <div class="cs-note">高檔（收盤 ≥ 60 日最高 × 0.9、波段漲 ≥ 20%）出現「下跌出量」（跌 ≥ 1.5%、量 ≥ 1.5 倍且比昨天大）或「量大不漲」（量 ≥ 2 倍、漲跌 ±1% 內或長上影收黑）。</div>${note('dist')}</div>`;
-  el.style.display = 'block';
-  el.style.borderColor = (m.dist_day || (s.crash || []).length || (live.opened || []).length) ? '#ef4444' : '';
   const alerts = [m.dist_day ? '大盤出貨日' : '', (s.crash || []).length ? '主流族群大跌' : '', (live.opened || []).length ? `漲停打開 ${live.opened.length} 檔` : ''].filter(Boolean);
-  el.innerHTML = `<details ${alerts.length ? 'open' : ''}><summary style="cursor:pointer"><b>📋 講義訊號</b>
-      ${alerts.length ? `<b style="color:var(--up)">🔔 ${alerts.join('、')}</b>` : '<span class="muted">大盤出貨日／主流族群大跌／當沖名單／漲停打開／出貨日（點開）</span>'}
-      <span class="muted" style="font-size:.74rem">　每晚掃描後更新；盤中每分鐘看漲停打開</span></summary>
-    <div class="cs-grid">${mBox}${sBox}${lBox}${dBox2}${dBox}</div></details>`;
+  _tileSet('course', alerts.length ? `🔔 ${alerts.join('、')}` : '沒有警示', `出貨日 ${dt.length} 檔・漲停候選 ${(lim.candidates || []).length} 檔`, alerts.length > 0);
+  _tileBodySet('course', `<div class="muted" style="font-size:.78rem">大盤出貨日／主流族群大跌／漲停打開／出貨日／盤前當沖名單；每晚掃描後更新，盤中每分鐘看漲停打開</div>
+    <div class="cs-grid">${mBox}${sBox}${lBox}${dBox2}${dBox}</div>`);
 }
 
 // ── ⭐ 品質分（PLAN-B73）：個股條件 F1～F9，研究通過才拿來排序；不隱藏任何股票 ──
@@ -5781,12 +5993,11 @@ function _qCell(row, b1) {
     ? `<td title="${_esc('符合回測建議：' + (b1.desc || '') + '\n\n' + tip)}" style="cursor:help;white-space:nowrap"><b style="color:var(--up)">⭐ 建議</b></td>`
     : `<td title="${_esc('不符合回測建議：' + (b1.desc || '') + '\n\n' + tip)}" class="muted" style="cursor:help">—</td>`;
 }
-async function loadQualityCard() {
-  const el = document.getElementById('quality-card');
-  if (!el) return;
-  const R = await _getQRes();
+// B73 提高勝率（價格條件）的總表 HTML：放在「⭐ 優化研究」展開區最下面
+function _qualityBodyHtml() {
+  const R = _qRes || {};
   const sc = R.score || {}, F = R.flags || {}, m = R.meta || {}, S = R.strategies || {};
-  if (!sc.lifts) { el.style.display = 'none'; return; }
+  if (!sc.lifts) return '';
   const per = (m.periods || {});
   const md = d => d ? `${String(d).slice(0, 4)}-${String(d).slice(4, 6)}` : '';
   const keys = Object.keys(S).filter(k => S[k].b1 && (S[k].base || {}).oos).sort((a, b) =>
@@ -5804,14 +6015,73 @@ async function loadQualityCard() {
   const lift = Object.keys(F).map(k => { const x = sc.lifts[k] || {};
     return `<tr><td>${_esc(F[k])}</td><td class="num">${_qp(x.lift)}</td><td class="num">${_qp(x.oos_lift)}</td></tr>`; }).join('');
   const npass = keys.filter(k => S[k].b1.passed).length;
-  el.style.display = 'block';
-  el.innerHTML = `<details><summary style="cursor:pointer"><b>⭐ 提高勝率：每個策略加個股條件的 5 年回測</b>　<span style="font-size:.85rem">${npass ? `<b style="color:var(--up)">✅ ${npass} 個策略通過（${keys.filter(k => S[k].b1.passed).map(k => _esc(STRATEGY_SHORT[k] || k)).join('、')}）→ 符合的股票標 ⭐ 排前面</b>` : '<b style="color:#f59e0b">⚠ 沒有策略通過</b>'}</span></summary>
-    <div style="font-size:.84rem;margin:6px 0">出場固定 停損 8%／停利 25%（跟回測預設一樣），只測「挑哪些股票」：9 個個股條件、單一或兩兩組合（45 種），<b>樣本內挑一個、樣本外驗一次</b>。勝率是先碰到 +25% 的比例。<b>不會藏任何股票</b>，只有通過的策略會把符合的排前面。</div>
+  return `<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:700">B73 價格條件（9 個個股條件，2026-10-14）　${npass ? `<b style="color:var(--up)">✅ ${npass} 個通過（${keys.filter(k => S[k].b1.passed).map(k => _esc(STRATEGY_SHORT[k] || k)).join('、')}）</b>` : '<span class="muted">沒有通過</span>'}</summary>
+    <div style="font-size:.84rem;margin:6px 0">出場固定 停損 8%／停利 25%，只測「挑哪些股票」：9 個個股條件、單一或兩兩組合（45 種），樣本內挑一個、樣本外驗一次。不會藏任何股票，通過的策略把符合的排前面。</div>
     <div class="tbl-wrap"><table style="font-size:.8rem"><thead><tr><th>策略</th><th>原本 樣本外 勝率／平均</th><th>樣本內挑出的條件</th><th>加條件後 樣本外 勝率／平均（筆）</th><th>勝率差</th><th>每天平均檔數</th><th>校正後 p</th><th>結果</th></tr></thead><tbody>${rows}</tbody></table></div>
     <details style="margin-top:8px"><summary style="cursor:pointer" class="muted">共用「品質分」為什麼沒用（點開）</summary>
       <div style="font-size:.8rem;margin:4px 0">把 20 個策略的交易合在一起看：沒有一個條件讓勝率提高 3 個百分點以上（事先定的門檻）→ 不做通用的星等排序。順勢的條件（大盤在季線上、格局多頭、月線上揚）在樣本外反而讓勝率下降。</div>
       <div class="tbl-wrap"><table style="font-size:.8rem"><thead><tr><th>條件</th><th>樣本內勝率差</th><th>樣本外勝率差</th></tr></thead><tbody>${lift}</tbody></table></div></details>
-    <div class="muted" style="font-size:.74rem;margin-top:6px;line-height:1.6">樣本內 ${md((per.is || [])[0])}～${md((per.is || [])[1])}、樣本外 ${md((per.oos || [])[0])}～${md((per.oos || [])[1])}。通過＝樣本外筆數 ≥ 50、勝率比原本高 ≥ 5 個百分點、平均每筆比原本好、20 個策略 Benjamini-Hochberg 校正後 p < 0.10（月份 block bootstrap，事先定好）。產業分類用現在的對照表。籌碼型策略沒有 5 年資料，沒有回測。研究程式 research/b73/run_quality.py。</div></details>`;
+    <div class="muted" style="font-size:.74rem;margin-top:6px;line-height:1.6">樣本內 ${md((per.is || [])[0])}～${md((per.is || [])[1])}、樣本外 ${md((per.oos || [])[0])}～${md((per.oos || [])[1])}。通過＝樣本外筆數 ≥ 50、勝率比原本高 ≥ 5 個百分點、平均每筆比原本好、20 個策略 BH 校正後 p < 0.10。研究程式 research/b73/run_quality.py。</div></details>`;
+}
+
+// ── ⭐ 優化研究（PLAN-B82 C）：籌碼／月營收／進場時機／多策略共振，研究通過的才影響網站 ──
+let _optRes = null;
+async function _getOptRes() {
+  if (_optRes === null) { try { _optRes = await apiOnce('/api/opt/research', 6e5); } catch (e) { _optRes = {}; } }
+  return _optRes || {};
+}
+const _OPT_FAMS = [['chip', '💹 籌碼'], ['rev', '📈 月營收'], ['entry', '🕐 進場時機'], ['res', '🔗 多策略共振']];
+// 這個策略在 B82 通過的方法（沒有＝[]）
+function _optPassed(strategy) {
+  const x = ((_optRes || {}).strategies || {})[strategy];
+  return x ? _OPT_FAMS.filter(([f]) => x[f] && x[f].passed).map(([f, lab]) => ({ fam: f, label: lab, ...x[f] })) : [];
+}
+function _optCell(x) {
+  if (!x) return '<td class="muted" title="樣本內沒有合格的方法">—</td>';
+  const o = x.oos || {};
+  return `<td class="num" title="${_esc((x.desc || '') + '\n樣本外 ' + (o.n || 0) + ' 筆、勝率 ' + _qw(o.win) + '、平均 ' + _qp(o.mean, 2) + '\n校正後 p ' + (x.p_adj != null ? x.p_adj.toFixed(3) : '—'))}">${x.passed ? '<b style="color:var(--up)">✅ ' + _qw(o.win) + '</b>' : '<span class="muted">✗ ' + _qw(o.win) + '</span>'}</td>`;
+}
+async function loadOptCard() {
+  const [R, Q] = await Promise.all([_getOptRes(), _getQRes()]);
+  const S = R.strategies || {}, m = R.meta || {};
+  const nB73 = Object.values((Q || {}).strategies || {}).filter(x => x.b1 && x.b1.passed).length;
+  const keys = Object.keys(S);
+  const passed = [];
+  keys.forEach(k => _OPT_FAMS.forEach(([f, lab]) => { if (S[k][f] && S[k][f].passed) passed.push(`${STRATEGY_SHORT[k] || k} ${lab.slice(2)}`); }));
+  const rl = R.resonance_list || null;
+  if (rl && rl.passed) passed.push('🎯 共振名單');
+  if (!keys.length) {
+    _tileSet('opt', nB73 ? `價格條件 ✅ ${nB73} 個通過` : '價格條件沒有通過', '籌碼／月營收／進場／共振研究進行中');
+    _tileBodySet('opt', `<div class="muted" style="font-size:.84rem">籌碼、月營收、進場時機、多策略共振的 5 年研究還在跑，跑完會出現在這裡。</div>${_qualityBodyHtml()}`);
+    return;
+  }
+  _tileSet('opt', passed.length + nB73 ? `✅ ${passed.length + nB73} 個方法通過` : '這次都沒通過',
+    passed.length ? passed.slice(0, 3).join('、') + (passed.length > 3 ? '…' : '') : `價格條件 ${nB73} 個；籌碼／營收／進場／共振 0 個`, false);
+  const md = d => d ? `${String(d).slice(0, 4)}-${String(d).slice(4, 6)}` : '';
+  const per = m.periods || {};
+  const rows = keys.sort((a, b) => ((S[b].base || {}).oos || {}).mean - ((S[a].base || {}).oos || {}).mean).map(k => { const x = S[k], bo = (x.base || {}).oos || {};
+    return `<tr style="cursor:pointer" onclick="viewStrategy('${_esc(k)}');document.getElementById('screen-result-card').scrollIntoView({behavior:'smooth'})">
+      <td style="white-space:normal;min-width:120px">${_esc(STRATEGY_SHORT[k] || x.label || k)}</td>
+      <td class="num">${_qw(bo.win)}／<span style="${bo.mean > 0 ? 'color:var(--up)' : 'color:var(--down)'}">${_qp(bo.mean, 2)}</span></td>
+      ${_OPT_FAMS.map(([f]) => _optCell(x[f])).join('')}</tr>`; }).join('');
+  const rlHtml = rl ? `<div style="font-size:.84rem;margin-top:8px">🎯 <b>共振名單</b>（任何股票 5 天內被 ≥ 2 個不同做多策略選到）：樣本外勝率 <b>${_qw((rl.oos || {}).win)}</b>、平均每筆 ${_qp((rl.oos || {}).mean, 2)}（${(rl.oos || {}).n || 0} 筆）；全部做多訊號合併 ${_qw((rl.base || {}).win)}／${_qp((rl.base || {}).mean, 2)}；隨機進場 ${_qw((rl.random || {}).win)}／${_qp((rl.random || {}).mean, 2)}　${rl.passed ? '<b style="color:var(--up)">✅ 通過（網站有「🎯 共振」按鈕）</b>' : '<span class="muted">✗ 沒通過</span>'}</div>` : '';
+  _tileBodySet('opt', `<div style="font-size:.86rem;margin-bottom:6px">每個策略各試 4 種新方法（出場一樣 停損 8%／停利 25%）：<b>樣本內挑最好的一個 → 樣本外驗一次</b>。表裡是挑出來那個方法的<b>樣本外勝率</b>；✅＝通過（網站會用）、✗＝沒通過（只當參考）、—＝樣本內就沒有合格的。滑過格子看是哪個方法。</div>
+    <div class="tbl-wrap"><table style="font-size:.8rem"><thead><tr><th>策略</th><th>原本 樣本外 勝率／平均</th>${_OPT_FAMS.map(([, lab]) => `<th>${lab}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
+    ${rlHtml}
+    <div class="muted" style="font-size:.74rem;margin-top:6px;line-height:1.6">${_esc(m.rules || '')}　樣本內 ${md((per.is || [])[0])}～${md((per.is || [])[1])}、樣本外 ${md((per.oos || [])[0])}～${md((per.oos || [])[1])}。${_esc(m.timing || '')}${m.expected_false != null ? `　這次通過 ${m.n_passed} 項，校正後預期約 ${Number(m.expected_false).toFixed(1)} 項可能是運氣。` : ''}研究程式 research/b82/、報告 research/b82/REPORT.md。</div>
+    ${_qualityBodyHtml()}`);
+}
+function _optStratHtml(strategy) {
+  const R = _optRes || {}, x = (R.strategies || {})[strategy];
+  if (!x) return '';
+  const bo = (x.base || {}).oos || {};
+  const row = (lab, y) => !y ? `<tr><td>${lab}</td><td colspan="5" class="muted">樣本內沒有合格的方法</td></tr>` :
+    `<tr><td>${lab}</td><td style="white-space:normal;min-width:160px;font-size:.78rem">${_esc(y.desc || '')}</td><td class="num">${(y.oos || {}).n || 0}</td><td class="num"><b>${_qw((y.oos || {}).win)}</b>／<span style="${(y.oos || {}).mean > 0 ? 'color:var(--up)' : 'color:var(--down)'}">${_qp((y.oos || {}).mean, 2)}</span></td><td class="num">${y.p_adj != null ? y.p_adj.toFixed(3) : '—'}</td><td>${y.passed ? '<b style="color:var(--up)">✅ 通過</b>' : '<span class="muted">✗</span>'}</td></tr>`;
+  return `<div style="font-size:.84rem;margin:4px 0 6px">原本（不加條件、隔天開盤買）樣本外 <b>${_qw(bo.win)}</b>／${_qp(bo.mean, 2)}（${bo.n || 0} 筆）。下面是每一族在樣本內挑出來的方法、樣本外結果：</div>
+    <div class="tbl-wrap"><table style="font-size:.8rem"><thead><tr><th>方法</th><th>樣本內挑出的</th><th>樣本外筆數</th><th>勝率／平均</th><th>校正後 p</th><th>結果</th></tr></thead><tbody>
+    ${_OPT_FAMS.map(([f, lab]) => row(lab, x[f])).join('')}</tbody></table></div>
+    ${x.entry && x.entry.fill_rate != null ? `<div class="muted" style="font-size:.76rem;margin-top:4px">進場時機：挑出的方法有 ${_qw(x.entry.fill_rate)} 的訊號買得到；盤中成交再多扣 0.2% 滑價時樣本外 ${_qw(((x.entry.slip || {}).oos || {}).win)}／${_qp(((x.entry.slip || {}).oos || {}).mean, 2)}（只當參考）</div>` : ''}
+    <div class="muted" style="font-size:.72rem;margin-top:4px">通過＝樣本外筆數 ≥ 50、勝率比原本高 ≥ 5 個百分點、平均每筆比原本好、全部檢定一起 BH 校正後 p < 0.10（事先定好）。</div>`;
 }
 function _qualityStratHtml(strategy) {
   const R = _qRes || {}, x = (R.strategies || {})[strategy], F = R.flags || {};
@@ -5865,12 +6135,14 @@ function _f825Reasons(rs) {
   return `<span style="color:var(--up)">停利 ${_f825w(rs.tp)}</span>／<span style="color:var(--down)">停損 ${_f825w(rs.sl)}</span>${rs.open ? `／抱著 ${_f825w(rs.open)}` : ''}`;
 }
 async function loadFixed825Card() {
-  const el = document.getElementById('fixed825-card');
-  if (!el) return;
   const F = await _getF825();
   const S = F.strategies || {}, m = F.meta || {};
   const keys = Object.keys(S).filter(k => (S[k].oos || {}).n).sort((a, b) => (S[b].oos.mean ?? -9) - (S[a].oos.mean ?? -9));
-  if (!keys.length) { el.style.display = 'none'; return; }
+  if (!keys.length) { _tileSet('f825', '沒有資料', ''); _tileBodySet('f825', '<div class="muted">還沒有回測資料</div>'); return; }
+  const cls = k => { const x = S[k], mm = (x.oos || {}).mean; return !x.beats_random ? 'x' : (mm == null || mm <= 0) ? 'm' : 'ok'; };
+  const cnt = { ok: 0, m: 0, x: 0 };
+  keys.forEach(k => cnt[cls(k)]++);
+  _tileSet('f825', `✅ ${cnt.ok}／△ ${cnt.m}／✗ ${cnt.x}`, `${keys.length} 個做多策略・停損 8%／停利 25%`);
   const per = m.periods || {}, tx = m.taiex || {};
   const md = d => d ? `${String(d).slice(0, 4)}-${String(d).slice(4, 6)}` : '';
   const rows = keys.map(k => {
@@ -5885,15 +6157,13 @@ async function loadFixed825Card() {
       <td class="num"><span style="${_f825c(pf.cagr)}">${_f825p(pf.cagr)}</span>／<span style="color:var(--down)">${_f825p(pf.mdd)}</span></td>
       <td class="num" style="border-left:1px solid var(--border)">${_f825Vol(x).cell}</td><td>${_f825Vol(x).tag}</td></tr>`;
   }).join('');
-  el.style.display = 'block';
-  el.innerHTML = `<details><summary style="cursor:pointer"><b>📊 全部策略 5 年回測：停損 8%／停利 25%（不限天數）</b>
-      <span class="muted" style="font-size:.8rem">　${keys.length} 個做多策略；依樣本外平均每筆排序，點策略名稱看那個策略</span></summary>
-    <div class="tbl-wrap" style="margin-top:6px"><table style="font-size:.8rem"><thead><tr><th>策略</th><th>樣本外筆數</th><th>勝率</th><th>平均每筆</th><th>平均抱</th><th>出場（全期）</th><th>隨機進場 勝率／平均</th><th>勝過隨機</th><th>全期 勝率／平均</th><th>帳戶年化／最大回撤</th><th style="border-left:1px solid var(--border)">加「量 ≥ 前一天 2 倍」：樣本外</th><th>跟不加比</th></tr></thead>
+  _tileBodySet('f825', `<div style="font-size:.86rem;margin-bottom:6px">${keys.length} 個做多策略、5 年官方資料、停損 8%／停利 25%（不限天數）；依樣本外平均每筆排序，點策略名稱看那個策略。<b>✅</b>＝勝過隨機進場而且每筆賺、<b>△</b>＝比隨機好但還是虧、<b>✗</b>＝沒勝過隨機。</div>
+    <div class="tbl-wrap"><table style="font-size:.8rem"><thead><tr><th>策略</th><th>樣本外筆數</th><th>勝率</th><th>平均每筆</th><th>平均抱</th><th>出場（全期）</th><th>隨機進場 勝率／平均</th><th>勝過隨機</th><th>全期 勝率／平均</th><th>帳戶年化／最大回撤</th><th style="border-left:1px solid var(--border)">加「量 ≥ 前一天 2 倍」：樣本外</th><th>跟不加比</th></tr></thead>
     <tbody>${rows}</tbody></table></div>
     <div class="muted" style="font-size:.74rem;margin-top:6px;line-height:1.6">${_esc(m.entry || '')}；${_esc(m.exit || '')}；成本 ${_esc(m.cost || '')}。股票池：${_esc(m.pool || '')}。
       樣本內 ${md((per.is || [])[0])}～${md((per.is || [])[1])}、樣本外 ${md((per.oos || [])[0])}～${md((per.oos || [])[1])}（最近的交易還沒出場的用最新收盤算）。
       加量條件：${_esc(m.vol2 || '')}。
-      隨機進場：${_esc(m.random || '')}；勝過隨機＝樣本外勝率和平均都比隨機高（✅ 還要自己平均每筆是賺的；△＝比隨機好但還是虧）。8%／25% 的停利比停損遠 3 倍，勝率本來就只有 2～4 成，要看平均每筆和帳戶結果。帳戶：${_esc(m.port || '')}。同期加權年化 ${_f825p(tx.cagr)}、最大回撤 ${_f825p(tx.mdd)}（不含股利）。歷史回測不代表未來。</div></details>`;
+      隨機進場：${_esc(m.random || '')}。8%／25% 的停利比停損遠 3 倍，勝率本來就只有 2～4 成，要看平均每筆和帳戶結果。帳戶：${_esc(m.port || '')}。同期加權年化 ${_f825p(tx.cagr)}、最大回撤 ${_f825p(tx.mdd)}（不含股利）。歷史回測不代表未來。</div>`);
 }
 function _f825StratHtml(strategy) {
   const x = ((_f825 || {}).strategies || {})[strategy];
@@ -5914,25 +6184,21 @@ function _f825StratHtml(strategy) {
 }
 
 async function loadCrashCard() {
-  const el = document.getElementById('crash-card');
-  if (!el) return;
   let r;
-  try { r = await api('GET', '/api/crash/today'); } catch (e) { return; }
+  try { r = await api('GET', '/api/crash/today'); } catch (e) { _tileSet('crash', '讀取失敗', '等一下再點一次'); return; }
   const t = r.today || {}, h = r.history || {};
-  if (t.error) return;
+  if (t.error) { _tileSet('crash', '今天還沒有資料', ''); return; }
   const deepOn = Object.entries(t.deep || {}).filter(([, v]) => v).map(([k]) => (t.labels || {})[k]);
   const pct = x => x == null ? '—' : `${x >= 0 ? '+' : ''}${(x * 100).toFixed(1)}%`;
   const evRows = (h.events || []).map(e => `<tr><td>${e.date.slice(0, 4)}/${e.date.slice(4, 6)}/${e.date.slice(6)}</td>${['0050', '2330', '2454', 'TOP10'].map(inst => {
       const x = (e.rows || []).find(y => y.inst === inst) || {};
       return `<td>${['H20', 'H60', 'H120'].map(k => `<span style="${x[k] > 0 ? 'color:var(--up)' : x[k] < 0 ? 'color:var(--down)' : ''}">${pct(x[k])}</span>`).join('／')}</td>`; }).join('')}</tr>`).join('');
-  el.style.display = 'block';
-  el.style.borderColor = deepOn.length ? '#ef4444' : '';
-  el.innerHTML = `<details ${deepOn.length ? 'open' : ''}><summary style="cursor:pointer"><b>📉 大跌買點</b>
-      ${deepOn.length ? `<b style="color:var(--up)">🔔 深跌條件成立：${deepOn.map(_esc).join('、')} → 過去滿期的 4 波裡 3 波，買 0050／台積電抱 60～120 天是賺的（建議分批）</b>` : '<span class="muted">今天沒有深跌</span>'}
-      <span class="muted" style="font-size:.8rem">　加權 ${t.taiex}（比 60 日最高 ${pct(t.dd)}、比季線 ${pct(t.bias)}）　負乖離抄底 ${t.bias_count ?? '—'} 檔　${t.date ? t.date.slice(4, 6) + '/' + t.date.slice(6) : ''}</span></summary>
+  _tileSet('crash', deepOn.length ? `🔔 深跌：${deepOn.join('、')}` : '今天沒有深跌', `加權比 60 日高 ${pct(t.dd)}・負乖離 ${t.bias_count ?? '—'} 檔`, deepOn.length > 0);
+  _tileBodySet('crash', `<div style="font-size:.88rem">${deepOn.length ? `<b style="color:var(--up)">🔔 深跌條件成立：${deepOn.map(_esc).join('、')} → 過去滿期的 4 波裡 3 波，買 0050／台積電抱 60～120 天是賺的（建議分批）</b>` : '今天沒有深跌'}
+      <span class="muted" style="font-size:.8rem">　加權 ${t.taiex}（比 60 日最高 ${pct(t.dd)}、比季線 ${pct(t.bias)}）　負乖離抄底 ${t.bias_count ?? '—'} 檔　${t.date ? t.date.slice(4, 6) + '/' + t.date.slice(6) : ''}</span></div>
     <div style="font-size:.84rem;margin:6px 0">${_esc(h.text || '')}</div>
     <div class="tbl-wrap"><table style="font-size:.8rem"><thead><tr><th>深跌訊號日</th><th>0050 抱 20／60／120 天</th><th>台積電</th><th>聯發科</th><th>前 10 大成交金額股</th></tr></thead><tbody>${evRows}</tbody></table></div>
-    <div class="muted" style="font-size:.74rem;margin-top:4px">深跌＝加權比 60 日最高跌 ≥ 15%、或低於 60 日線 ≥ 10%、或負乖離抄底（季線乖離 ≤ −20%）≥ 100 檔；隔天開盤買、扣成本、含股利。5 年只有 4～5 波，不做顯著性保證；跌 8～10% 的中度回檔回測跟隨便挑日子買差不多。深跌第一天會推 Telegram。</div></details>`;
+    <div class="muted" style="font-size:.74rem;margin-top:4px">深跌＝加權比 60 日最高跌 ≥ 15%、或低於 60 日線 ≥ 10%、或負乖離抄底（季線乖離 ≤ −20%）≥ 100 檔；隔天開盤買、扣成本、含股利。5 年只有 4～5 波，不做顯著性保證；跌 8～10% 的中度回檔回測跟隨便挑日子買差不多。深跌第一天會推 Telegram。</div>`);
 }
 
 // ── 🔗 連動／處置（PLAN-LINK）──
@@ -6295,6 +6561,8 @@ function renderScreenTable(strategy, data) {
   if (_bn) { _bn.style.display = strategy === 'S_BEST' ? 'block' : 'none'; if (strategy === 'S_BEST') _renderBestNear(data.length); }
   const _fl = document.getElementById('fbd-live');
   if (_fl) { _fl.style.display = strategy === 'S_FBD' ? 'block' : 'none'; if (strategy === 'S_FBD') _renderFbdLive(); }
+  const _wn = document.getElementById('scan-warrant-note');
+  if (_wn) _wn.style.display = strategy === 'S_WARRANT_TOP' && _wn.textContent ? 'block' : 'none';
   _renderStratResearch(strategy);
   const _b1 = _qB1(strategy);
   const _hasQ = !!_b1 && data.some(r => r.q);
@@ -6448,107 +6716,45 @@ async function warmupServer() {
   loadDistMap();
   startCacheWarmupPolling();
 
-  // 恢復上次掃描狀態標誌（只有最終結果才存 localStorage，重整後仍顯示）
-  try {
-    const _b = JSON.parse(localStorage.getItem('chip_scan_badge') || 'null');
-    if (_b) {
-      // 舊版存的是「找到 N 支」（其實是各策略加總），改成「命中 N 筆／不重複 M 支」
-      let _t = _b.text;
-      const _ls = (typeof lsLoadScreen === 'function') ? lsLoadScreen() : null;
-      if (/找到 \d+ 支/.test(_t) && _ls && _screenHitSummary(_ls).hits) _t = _t.replace(/找到 \d+ 支/, _screenHitSummary(_ls).text);
-      _ghBadgeSet(_t, _b.isOk, false);  // persist=false 避免重寫
-    }
-  } catch(e) {}
-  let _initStatus = null;
-  try { _initStatus = await api('GET', '/api/screen/status'); _scanWarrantNote(_initStatus); } catch(e) {}
-
-  // 偵測掃描正在執行 → 自動重連進度追蹤（不需要使用者再按一次）
-  try {
-    if (!_initStatus) throw new Error('no status');
-    if (_initStatus.running) {
-      const _ghBtn = document.getElementById('btn-trigger-gh');
-      _ghBtn.disabled = true; _ghBtn.textContent = '⚡ 掃描中...';
-      document.getElementById('screen-progress-bar-wrap').style.display = 'block';
-      _ghScanStartedAt = Date.now();  // 以重連時間為基準（顯示重連後 elapsed）
-      _ghFullAt = null;
-      window._ghResultsPreloaded = false;
-      if (_ghPollTimer) clearInterval(_ghPollTimer);
-      _ghPollTimer = setInterval(_pollGhProgress, 5000);
-      _pollGhProgress();  // 立即執行一次，不等 5 秒
-      const _badgeEl = document.getElementById('gh-scan-last-badge');
-      if (_badgeEl) { _badgeEl.textContent = '⏳ 掃描進行中，自動追蹤中...'; _badgeEl.style.color='var(--muted)'; }
-    }
-  } catch(e) { /* 無法取得狀態，略過重連 */ }
-
-  // 從 localStorage 恢復策略掃描結果（重整後不消失）
-  const _savedScreen = lsLoadScreen();
-  const _savedScreenTotal = Object.values(_savedScreen).reduce((s, a) => s + a.length, 0);
-  // 先從伺服器取得 finished_at（判斷資料新鮮度）
-  let _serverFinishedAt = null;
-  try {
-    const _sr = await api('GET', '/api/screen/results');
-    _serverFinishedAt = _sr.finished_at || null;
-    const _srResults = _sr.results || {};
-    const _srTotal = Object.values(_srResults).reduce((s,a)=>s+a.length,0);
-    if (_srTotal > 0 && _savedScreenTotal === 0) {
-      // localStorage 空白時，從伺服器補回
-      _screenAllResults = _srResults;
-      lsSaveScreen(_screenAllResults);
-      document.getElementById('screen-placeholder').style.display = 'none';
-      renderStratBar();
-      const _first2 = Object.keys(STRATEGY_LABELS).find(k => (_screenAllResults[k]||[]).length > 0);
-      if (_first2) viewStrategy(_first2);
-    }
-  } catch(e) { /* 伺服器無結果 */ }
-
-  if (_savedScreenTotal > 0 && !_screenAllResults.S1) {
-    _screenAllResults = _savedScreen;
+  // PLAN-B82 A2：先畫本機上次的（標「正在跟伺服器確認」），再一定跟伺服器比，伺服器比較新就換掉
+  const _lsFull = lsLoadScreenFull();
+  if (_screenTotal(_lsFull.results) > 0) {
+    _screenAllResults = _lsFull.results;
+    _screenMeta = { finished_at: _lsFull.finished_at || null, data_date: _lsFull.data_date || null };
     document.getElementById('screen-placeholder').style.display = 'none';
     renderStratBar();
     const _first = Object.keys(STRATEGY_LABELS).find(k => (_screenAllResults[k] || []).length > 0);
     if (_first) viewStrategy(_first);
+    const _bd = document.getElementById('gh-scan-last-badge');
+    if (_bd) _bd.textContent = `上次載入的結果${_screenMeta.data_date ? '（' + _ymdLabel(_screenMeta.data_date) + ' 收盤）' : ''}，正在跟伺服器確認…`;
   }
+  let _initStatus = null;
+  try {
+    _initStatus = await api('GET', '/api/screen/status');
+    _lastScanStatus = _initStatus;
+    if (_initStatus.server_now) _screenServerNow = _initStatus.server_now;
+    _scanWarrantNote(_initStatus);
+  } catch (e) {}
+  if (_initStatus && _initStatus.running) _attachRunningScan();   // 掃描中伺服器結果是半套的 → 不換，跑完自動換
+  else await _screenSyncFromServer(true);
+  _sfLast = Date.now();
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { _screenFreshCheck(); _mktFreshCheck(); } });
+  window.addEventListener('focus', () => { _screenFreshCheck(); _mktFreshCheck(); });
+  setInterval(() => { if (document.visibilityState === 'visible') { _screenFreshCheck(); _mktFreshCheck(); } }, 10 * 60 * 1000);
 
-  // 顯示掃描日期 + 過期警告
-  if (_serverFinishedAt) {
-    const _scanDt = new Date(_serverFinishedAt);
-    const _diffH = (Date.now() - _scanDt.getTime()) / 3600000;
-    const _scanDateStr = _scanDt.toLocaleString('zh-TW', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
-    const _badgeEl = document.getElementById('gh-scan-last-badge');
-    if (_badgeEl && !_badgeEl.textContent) {
-      if (_diffH > 36) {
-        _badgeEl.textContent = `⚠️ 掃描資料已過期（${_scanDateStr}），請重新掃描`;
-        _badgeEl.style.color = '#f47e7a';
-      } else {
-        _badgeEl.textContent = `上次掃描：${_scanDateStr}`;
-        _badgeEl.style.color = 'var(--muted)';
-      }
-    }
-  }
-
-  // 從 localStorage 恢復全市場排行結果
+  // 全市場排行：先畫上次的（寫資料日期＋更新中），背景拿伺服器最新的
   const _savedMkt = lsLoadMkt();
   if ((_savedMkt.buyers || []).length > 0) {
     _mkt = _savedMkt;
     renderMarket();
+    const _mm = document.getElementById('scan-meta');
+    if (_mm) _mm.textContent = `上次載入的排行${_mkt.date ? '（資料日期 ' + _ymdLabel(_mkt.date) + '）' : ''}，更新中…`;
   }
-
+  _wlPromise.then(() => scanMarket(0, true)).catch(() => {});
 
   await _wlPromise;
   await loadPill();
   renderQueryHistory();
-  // 頁面重整後自動恢復掃描進度（如果伺服器掃描仍在跑）
-  try {
-    const s = await api('GET', '/api/screen/status');
-    if (s.running) {
-      document.getElementById('screen-progress-bar-wrap').style.display = 'block';
-      const btn = document.getElementById('btn-screen');
-      btn.disabled = true;
-      btn.textContent = '⏳ 掃描中...';
-      if (!_screenPollTimer)
-        _screenPollTimer = setInterval(pollScreenStatus, 3000);
-    }
-  } catch(e) {}
 })();
 
 // ═════════════════════════════ K 線圖 Modal ═════════════════════════════
