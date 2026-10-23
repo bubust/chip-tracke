@@ -128,3 +128,25 @@ def test_market_meta_says_daily_update():
     s = _html()
     assert "每天 18:00 自動更新（證交所約 16:00 公布）" in s
     assert "_mktFreshCheck" in s
+
+
+def test_opt_research_endpoint_reads_json_and_tolerates_missing(tmp_path, monkeypatch):
+    import json
+    import server
+    monkeypatch.setattr(server, "BASE_DIR", tmp_path)
+    server._OPT_RES.update(mtime=None, data={})
+    assert server.api_opt_research() == {}
+    d = tmp_path / "research" / "b82"
+    d.mkdir(parents=True)
+    (d / "opt_research.json").write_text(json.dumps({"meta": {"n_tests": 81}, "strategies": {"S10": {"chip": {"passed": False}}}}), encoding="utf-8")
+    out = server.api_opt_research()
+    assert out["meta"]["n_tests"] == 81 and out["strategies"]["S10"]["chip"]["passed"] is False
+
+
+def test_frontend_only_uses_passed_research():
+    """網站只認 passed:true（_optPassed 過濾、建議行只從 _optPassed 來）"""
+    s = _html()
+    m = re.search(r"function _optPassed\(strategy\) \{(.*?)\n\}", s, re.S)
+    assert m and "x[f].passed" in m.group(1)
+    v = re.search(r"function _renderStratVerdict\(s\) \{(.*?)\n\}", s, re.S).group(1)
+    assert "_optPassed(s)" in v and "opt" not in v.replace("_optPassed", "").replace("_optRes", "")

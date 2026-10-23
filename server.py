@@ -4183,6 +4183,22 @@ def api_quality_research():
     return quality.research()
 
 
+_OPT_RES = {"mtime": None, "data": {}}
+
+
+@app.get("/api/opt/research")
+def api_opt_research():
+    """⭐ 優化研究（PLAN-B82，research/b82/opt_research.json）：籌碼／月營收／進場時機／多策略共振，每個策略挑出的方法、樣本外結果、是否通過"""
+    path = BASE_DIR / "research" / "b82" / "opt_research.json"
+    try:
+        mt = path.stat().st_mtime
+        if _OPT_RES["mtime"] != mt:
+            _OPT_RES.update(mtime=mt, data=json.loads(path.read_text(encoding="utf-8")))
+        return _OPT_RES["data"]
+    except Exception:      # noqa: BLE001  研究還沒跑完／檔案壞掉 → 網站當作沒有
+        return {}
+
+
 @app.get("/api/global-brief")
 def api_global_brief(wave: int = 0):
     """08:30 盤前推播的國際盤區塊預覽（PLAN-B72 F；只抓不推）；wave=1 加上大盤解析那段（PLAN-B74 §9）"""

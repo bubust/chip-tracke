@@ -5389,7 +5389,7 @@ async function _screenFreshCheck(force) {
     _lastScanStatus = st;
     if (st.server_now) _screenServerNow = st.server_now;
     _scanWarrantNote(st);
-    if (st.running) { if (!_ghPollTimer) _attachRunningScan(); return; }
+    if (st.running) { if (!_ghPollTimer && !_ghFollowTimer) _attachRunningScan(); return; }   // 已經在追（含籌碼型整理中）就不重接
     if (st.finished_at && (!_screenMeta.finished_at || st.finished_at > _screenMeta.finished_at)) {
       if (await _screenSyncFromServer()) toast(`已更新到 ${_ymdLabel(_screenMeta.data_date)} 收盤的掃描結果`);
     } else _renderScanStatusLine();
