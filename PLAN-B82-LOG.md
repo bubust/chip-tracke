@@ -75,3 +75,8 @@
 - Gemini：**APPROVED**（2 低：查詢可合併、MOPS 格式變動要警示 → 不改）。reviews_b82/insp8_gemini.json
 - Groq（opt_flags.py 去註解）：兩次 json_validate_failed 空輸出 → **作業失敗，不算通過**
 - pytest 506；b82_ui、b82_all_ui 本機 ALL PASS
+
+## 部署（研究結果）＋正式站驗證（2026-10-24 04:16～04:25）
+- 361a5d5 部署成功；開機預熱 annotate_current 補標註：S2 20 列（今天 0 符合）、假跌破 3 列（0 符合）、週 MACD 16 列（7 符合月營收創 12 個月新高）；月營收 14 個月補抓成功
+- 正式站 tests_ui/b82_ui.py、tests_ui/b82_all_ui.py **ALL PASS**；週 MACD 頁「⭐ 符合回測建議 7 支（排前面）」、一句結論含同條件隨機
+- 最終狀態：計畫 Gemini 核准（§0–7 第 4 輪、§8 第 1 輪）；程式 8 批 Gemini 全部核准；Groq 計畫 A/B 份核准、C 份剩已駁回點；Groq 程式第 1、2 批核准／駁回、第 8 批作業失敗（不算通過）
