@@ -17,7 +17,7 @@ import pandas as pd
 import engine
 from run825 import masks, split, random_825
 from run_quality import month_boot_p, bh, b1_pass, per_day, RULE_B1
-import common as CM
+import b82common as CM
 from sim_entry import SimE
 
 IS = ('20211001', '20240630')

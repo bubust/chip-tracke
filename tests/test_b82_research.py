@@ -8,7 +8,7 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'research', 'b82'))
-import common as CM  # noqa: E402
+import b82common as CM  # noqa: E402
 
 
 @pytest.mark.parametrize('p,t', [(9.99, 0.01), (10, 0.05), (49.95, 0.05), (50, 0.1), (99.9, 0.1), (100, 0.5), (499.5, 0.5), (500, 1.0), (999, 1.0), (1000, 5.0)])

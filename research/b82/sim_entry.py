@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import engine
 from run825 import Sim825, STP, TGT, CAP
-from common import tick
+from b82common import tick
 
 LIMIT_UP = 1.095
 
