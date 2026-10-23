@@ -57,3 +57,4 @@
 - 研究候選說明改預設收起（手機原本佔滿整屏才看到股票）、批量回測按鈕縮小
 - 策略篩選結果表、尾盤追蹤兩張表手機改卡片（_mcLabel 把表頭放到每格 data-l 當小標）
 - Gemini：**APPROVED**（reviews_b82/insp4_gemini.json）；tests_ui/b82_all_ui.py 本機 ALL PASS
+- §8 第 3 輪：可轉債／收購併購／庫藏股表格手機卡片（mc-gen 通用樣式）；Gemini **APPROVED**（reviews_b82/insp5_gemini.json）；b82_all_ui 本機 ALL PASS

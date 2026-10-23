@@ -85,7 +85,7 @@ function mnaRender() {
   const body = document.getElementById('mna-body');
   if (!rows.length) { body.innerHTML = `<div style="color:var(--muted);text-align:center;padding:30px">${_mnaRows.length ? '沒有符合條件的資料' : '尚無資料'}</div>`; return; }
   const td = (v, x = '') => `<td style="padding:5px 8px;white-space:nowrap;${x}">${v}</td>`;
-  body.innerHTML = `<div class="tbl-wrap" style="overflow-x:auto"><table style="width:100%;font-size:.8rem;border-collapse:collapse">
+  body.innerHTML = `<div class="tbl-wrap" style="overflow-x:auto"><table class="mc mc-gen" style="width:100%;font-size:.8rem;border-collapse:collapse">
     <thead><tr style="background:#1c2128;color:var(--muted)"><th style="padding:6px 4px;white-space:nowrap">自選</th>${_MNA_COLS.map(([lab, key, tip]) => {
       const arrow = _mnaSort.col === key ? (_mnaSort.dir > 0 ? ' ▲' : ' ▼') : '';
       return `<th title="${_mnaE(tip || '點一下排序')}" onclick="mnaSortBy('${key}')" style="cursor:pointer;user-select:none;padding:6px 8px;white-space:nowrap${key === 'target_id' || key === 'acquirer' ? ';text-align:left' : ''}">${lab}${arrow}</th>`;
@@ -112,6 +112,7 @@ function mnaRender() {
         ${td(_mnaE(r.consideration || '—'))}
       </tr>`;
     }).join('')}</tbody></table></div>`;
+  if (typeof _mcLabelAll === 'function') _mcLabelAll(body);   // 手機卡片的小標（B82 D）
 }
 
 function mnaDetail(id) {

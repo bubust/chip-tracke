@@ -129,7 +129,7 @@ function cbRender() {
   const td = (v, x = '') => `<td style="padding:5px 8px;white-space:nowrap;${x}">${v}</td>`;
   const flow = r => r.flow.map(f => `<span title="${f.n}. ${_cbE(f.name)}${f.unknown ? '（無資料）' : ''}" style="display:inline-block;width:15px;height:15px;line-height:15px;text-align:center;border-radius:50%;font-size:.72rem;margin-right:1px;${
     f.on ? (f.n === 4 ? 'background:#22c55e;color:#000' : 'background:#ef4444;color:#fff') : f.unknown ? 'border:1px dashed #30363d;color:#484f58' : 'border:1px solid #30363d;color:var(--muted)'}">${f.n}</span>`).join('');
-  body.innerHTML = `<div class="tbl-wrap" style="overflow-x:auto"><table style="width:100%;font-size:.8rem;border-collapse:collapse">
+  body.innerHTML = `<div class="tbl-wrap" style="overflow-x:auto"><table class="mc mc-gen" style="width:100%;font-size:.8rem;border-collapse:collapse">
     <thead><tr style="background:#1c2128;color:var(--muted)">
       <th style="padding:6px 4px;white-space:nowrap">自選</th>${_CB_COLS.map(c => `<th onclick="cbSortBy('${c.key}')"${c.title ? ` title="${_cbE(c.title)}"` : ''} style="padding:6px 8px;white-space:nowrap;text-align:${c.align};cursor:pointer;user-select:none;${_cbSort.key === c.key ? 'color:var(--accent)' : ''}">${c.label}${_cbSort.key === c.key ? (_cbSort.dir === 1 ? ' ▲' : ' ▼') : ''}</th>`).join('')}
     </tr></thead><tbody>${rows.map(r => {
@@ -154,6 +154,7 @@ function cbRender() {
         ${td(_cbD(r.maturity_date) + (r.days_to_maturity != null && r.days_to_maturity <= 365 ? `<br><span style="font-size:.72rem;color:#f59e0b">剩 ${r.days_to_maturity} 天</span>` : ''))}
       </tr>`;
     }).join('')}</tbody></table></div>`;
+  if (typeof _mcLabelAll === 'function') _mcLabelAll(body);   // 手機卡片的小標（B82 D）
 }
 
 function cbDetail(code) {

@@ -146,9 +146,10 @@ function tbRender() {
   }
   _tbRenderSummary(rows);
   const th = ([k, label]) => `<th onclick="tbSortBy('${k}')" title="${_TB_HINT[k] || ''}" style="cursor:pointer;white-space:nowrap;padding:6px 8px;text-align:${['stock_id', 'name', 'purpose'].includes(k) ? 'left' : 'right'}">${label}${_tbSort.col === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`;
-  body.innerHTML = `<div class="tbl-wrap" style="overflow-x:auto"><table style="width:100%;font-size:.8rem;border-collapse:collapse">
+  body.innerHTML = `<div class="tbl-wrap" style="overflow-x:auto"><table class="mc mc-gen" style="width:100%;font-size:.8rem;border-collapse:collapse">
     <thead><tr style="background:#1c2128;color:var(--muted)"><th style="padding:6px 4px;white-space:nowrap">自選</th>${_TB_COLS.map(th).join('')}</tr></thead>
     <tbody>${rows.map(_tbRow).join('')}</tbody></table></div>`;
+  if (typeof _mcLabelAll === 'function') _mcLabelAll(body);   // 手機卡片的小標（B82 D）
 }
 
 function _tbRow(r) {

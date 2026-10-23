@@ -1706,6 +1706,20 @@ async function loadHealth() {
     .tail-tbl td.l:not(:first-child) { grid-column: 1 / -1; }
     .tail-tbl td.l:not(:first-child)::before { display: none !important; }
     .tail-tbl td:last-child { grid-column: 1 / -1; text-align: right !important; }
+    /* 可轉債／收購併購／庫藏股：通用卡片（第 1 欄自選鈕放右上、第 2 欄名稱當標題） */
+    table.mc-gen { min-width: 0 !important; width: 100%; }
+    table.mc-gen thead { display: none; }
+    table.mc-gen, table.mc-gen > tbody { display: block; }
+    table.mc-gen > tbody > tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 8px; padding: 10px 6px; border-bottom: 1px solid var(--border); align-items: start; }
+    table.mc-gen > tbody > tr > td { display: block; padding: 0 !important; border: none !important; text-align: left !important; white-space: normal !important; min-width: 0; position: static !important; }
+    table.mc-gen > tbody > tr > td[data-l]::before { content: attr(data-l); display: block; color: var(--muted); font-size: .72rem; font-weight: 400; }
+    table.mc-gen > tbody > tr > td:first-child { grid-row: 1; grid-column: 3; text-align: right !important; }
+    table.mc-gen > tbody > tr > td:nth-child(2) { grid-row: 1; grid-column: 1 / 3; font-size: .95rem; }
+    table.mc-gen > tbody > tr > td:first-child::before, table.mc-gen > tbody > tr > td:nth-child(2)::before { display: none !important; }
+    table.mc-gen > tbody > tr > td[colspan] { grid-column: 1 / -1; }
+    #tb-body table.mc-gen > tbody > tr > td:nth-child(2) { grid-column: 1; }
+    #tb-body table.mc-gen > tbody > tr > td:nth-child(3) { grid-row: 1; grid-column: 2; font-size: .95rem; }
+    #tb-body table.mc-gen > tbody > tr > td:nth-child(3)::before { display: none !important; }
     /* 庫藏股統計：3 欄小格 */
     #tb-summary { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 6px !important; }
     #tb-summary > div { padding: 6px 4px !important; }
@@ -8402,9 +8416,9 @@ async function saveAllStratParams() {
   </div>
 </div>
 
-<script src="/treasury/static/treasury.js?v=20261024b82"></script>
-<script src="/mna/static/mna.js?v=20261024b82"></script>
-<script src="/cb/static/cb.js?v=20261024b82"></script>
+<script src="/treasury/static/treasury.js?v=20261024b82b"></script>
+<script src="/mna/static/mna.js?v=20261024b82b"></script>
+<script src="/cb/static/cb.js?v=20261024b82b"></script>
 <script src="/tail/static/tail.js?v=20261024b82b"></script>
 <script src="/notes/static/notes.js?v=20261023b81"></script>
 <script src="/discuss/static/discuss.js?v=20261007a"></script>
