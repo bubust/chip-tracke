@@ -1593,6 +1593,7 @@ async function loadHealth() {
   .dp-open-btn { margin-left:6px;padding:1px 7px;font-size:.72rem;border-color:#a78bfa !important;color:#a78bfa !important;white-space:nowrap;vertical-align:middle }
   @media (max-width: 480px) { .dp-open-btn { min-height:0 !important;padding:2px 6px !important;font-size:.8rem !important } .dp-open-btn .t { display:none } }
 
+  small { font-size: max(.72rem, 80%); }   /* B82 D1：<small> 不小於 11.5px */
   /* ═══ PLAN-B82 D：全分頁版面（電腦分頁列一行、手機標題列一行、觀察清單／排行手機卡片、按鈕加大）═══ */
   @media (min-width: 1280px) {
     nav { gap: 2px !important; padding: 6px 12px !important; flex-wrap: nowrap !important; }
