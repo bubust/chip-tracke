@@ -36,3 +36,13 @@
 - Groq sim_entry（去註解）：REVISE 3 點**全部不成立**——收盤價不適用融資延後（MARGIN_LAG 只管融資）、E1 t 來自 sig[:-1] 所以 t+1 在範圍內／E4 先過濾 e<T、回檔掛單價 ≤ 收盤×0.99 在一價漲停日不可能成交
 - Groq common（第 1 次 json_validate_failed，重試）：REVISE 5 點，採納 1（shift_rows 一律轉浮點數）；「for … if … else [] 語法錯」實測可執行（pytest＋試跑），缺量＝不符合是設計、營收年增下限 −100% 不會被 −1e9 遮蔽、15／20 日不會超過月底 → 駁回
 - 試跑（10 個月真資料，IS 2021-10～2022-03、OOS 2022-04～08、bootstrap 200）：整條流程 51 秒、E0＝trades825 斷言通過、法人／融資 0 天缺漏
+
+## 部署 1（A＋B）＋正式站驗證
+- 2026-10-24 00:41 推 22a2716（pytest 499＋1 失敗：研究資料夾 b81／b82 都有 common.py，一起跑會互相蓋掉，不影響網站）→ 00:42 afa5b31 改名 b82common.py 後 500 passed 再推；GH Actions 部署成功
+- tests_ui/b82_ui.py 對正式站 **27/27 全過**（舊 localStorage 換成伺服器結果、切回頁面自動更新、休市／還沒完成文字、手機 2 欄、0 JS 錯誤）
+- ⚠ afa5b31 誤把 research/b82/fetch.log 提交（公開資料下載進度，無害）→ 下一個提交移除＋gitignore
+
+## §8 全分頁版面（用戶 00:4x 追加）計畫審查
+- 健檢：scratchpad audit.py（正式站 14 分頁 × 1440／390 截圖＋量測）：0 個整頁橫捲；小字 10.2～10.9px、手機小按鈕、說明預設展開、寬表格
+- Gemini：**APPROVED**（低：隱藏欄用 display:none、電腦版不受 media query 影響、收合狀態避免閃爍）
+- Groq：REVISE 3 點 → F1（CSS 卡片會壞即時更新）駁回：grep 確認沒有程式用欄位位置（.cells[]、nth-child）更新，全部用 id；F2（44px）部分採納：篩選鈕 36px、表格內小鈕 32px（44px 會讓卡片太高）；F3（分頁列放不下）已涵蓋：nav 本來就 overflow-x:auto，測試量高度
