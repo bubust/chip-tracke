@@ -171,6 +171,12 @@
   .wv-trees { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin-top: 10px; }
   .wv-tree-box { border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; min-width: 0; }
   .wv-tree-box.alt { border-color: rgba(251,146,60,.4); }
+  /* B83 關鍵分水嶺（她 10/28：C-3-2 極限區 vs 下降趨勢線轉浪口） */
+  .wv-ws { margin-top: 10px; border: 1px solid rgba(244,114,182,.55); background: rgba(244,114,182,.08); border-radius: 12px; padding: 10px 14px; font-size: .95rem; line-height: 1.6; }
+  .wv-ws.ok { border-color: rgba(52,211,153,.6); background: rgba(52,211,153,.08); }
+  .wv-ws .t { font-weight: 800; color: #f472b6; margin-bottom: 2px; }
+  .wv-ws.ok .t { color: var(--up, #34d399); }
+  .wv-ws ul { margin: 6px 0 0; padding-left: 18px; }
   .wv-tree-box .hd { font-weight: 800; font-size: 1.05rem; }
   .wv-tree-box .hd .path { font-size: 1.4rem; font-variant-numeric: tabular-nums; margin: 0 6px; }
   ul.wv-tree, ul.wv-tree ul { list-style: none; margin: 0; padding-left: 1.1em; }
@@ -1054,6 +1060,6 @@ setInterval(() => { if (_regimeVisible() && Date.now() - _lastLoad >= 300000) { 
 // 視窗 resize 時重繪圖表
 window.addEventListener('resize', () => { window.__regimeRedraw(); });
 </script>
-<script src="/regime/static/wave.js?v=20261023b81"></script>
+<script src="/regime/static/wave.js?v=20261028b83"></script>
 </body>
 </html>

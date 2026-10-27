@@ -222,7 +222,8 @@
   }
 
   // ── ① 結論卡 ──
-  const trendTxt = (c, nz) => c.with_trend ? `${nz.dir < 0 ? '下跌' : '上漲'}大段還在走` : `大段走完、${nz.dir < 0 ? '反彈' : '回檔'}中`;
+  // B83 她 10/28 的說法：維持原架構（大段還在走）vs 級數轉浪（大段走完）
+  const trendTxt = (c, nz) => c.with_trend ? `維持原架構・${nz.dir < 0 ? '下跌' : '上漲'}大段還在走` : `級數轉浪・大段走完、${nz.dir < 0 ? '反彈' : '回檔'}中`;
   const fmtV = v => num(v) == null ? '—' : `${fmt(v, S.vol_unit === '億' ? 0 : 0)} ${esc(S.vol_unit || '')}`;
   const FIBS = r => r == null ? '' : `接近 ${r}`;
 
@@ -564,11 +565,17 @@
       const ev = nz.evidence || {};
       const P = nz.primary || {}, A = nz.alternate;
       const kill = c => (c.rules || []).filter(r => !/這一小段的起點/.test(r.why)).slice(0, 1).map(r => `${r.side === 'below' ? '跌破' : '漲過'} <b>${fmt(r.price)}</b> → ${esc(c.path)} 作廢`).join('');
-      extra = `<div style="margin-top:8px">起點：<b>${esc(nz.anchor.label)} ${fmt(nz.anchor.p)}</b>
+      // B83 關鍵分水嶺＋她的兩個版本怎麼確認（nest.plan 裡「版本 1／版本 2」那兩行）
+      const ws = (nz.gates || []).find(g => g.k === '分水嶺');
+      const vlines = (nz.plan || []).filter(x => /^版本 [12]/.test(x));
+      const wsBox = ws ? `<div class="wv-ws${ws.ok ? ' ok' : ''}"><div class="t">🚦 ${esc(ws.t.split('：')[0])}</div>
+          <div>${esc(ws.t.split('：').slice(1).join('：'))}</div>${vlines.length ? `<ul>${vlines.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>` : '';
+      extra = `${wsBox}<div style="margin-top:8px">起點：<b>${esc(nz.anchor.label)} ${fmt(nz.anchor.p)}</b>
           <span class="wv-dim">（${nz.anchor.how === 'parent' ? '60 分這一段的起點（她：15 分是在 60 分結構裡找短脈動）' : nz.anchor.how === 'daily' ? '日 K 這一浪的起點' : '這段時間最早的極值'}）</span>
           → ${nz.dir < 0 ? '最低' : '最高'} <b>${fmt(nz.extreme.p)}</b> <span class="wv-dim">${esc(nz.extreme.label)}</span></div>
+        ${nz.merged ? `<div class="wv-dim" style="margin-top:4px">起點之後有 ${nz.n_seg + nz.merged} 段轉折，先把最小的 ${nz.merged} 段併掉、拆 ${nz.n_seg} 段（她的圖也只標大段＋子浪）</div>` : ''}
         <div style="margin-top:6px">盤面證據：<span class="wv-ev${ev.trend ? ' on' : ''}">${ev.trend ? '✅' : '⬜'} 越過${nz.dir < 0 ? '下降' : '上升'}趨勢線</span><span class="wv-ev${ev.f382 ? ' on' : ''}">${ev.f382 ? '✅' : '⬜'} ${nz.dir < 0 ? '站上' : '跌破'} 0.382</span>
-          <span class="wv-dim">（證據一致→原本的數法升權；兩個都成立時「大段走完」優先）</span></div>
+          <span class="wv-dim">（她：沒越過趨勢線前「維持原架構」優先；越過並站穩分水嶺才「級數轉浪」）</span></div>
         ${A ? `<div class="wv-what"><b>共同事實</b>：${fmt(nz.anchor.p)} 起${nz.dir < 0 ? '下跌' : '上漲'}，現在這一小段${nz.cur_dir < 0 ? '往下' : '往上'}。
           <b>真正分歧</b>：${esc(P.path)}（${P.with_trend ? '大段還沒走完' : '大段已走完'}）vs ${esc(A.path)}（${A.with_trend ? '大段還沒走完' : '大段已走完'}）。
           <b>市場裁決</b>：${[kill(P), kill(A)].filter(Boolean).join('；') || '看下面的如果…就…'}</div>` : ''}
@@ -995,7 +1002,7 @@
       const a = barAt(bars, tl.from.time), b = barAt(bars, tl.time_now);
       tline.setData(a != null && b != null && a < b ? [{ time: a, value: tl.from.p }, { time: b, value: tl.now }] : []);
     } else if (tline) tline.setData([]);
-    if (useNest) (nz.gates || []).filter(g => /關/.test(g.k)).forEach(g => add(g.price, '#fbbf24', g.k.replace('第', ''), 2, 1, false));
+    if (useNest) (nz.gates || []).filter(g => /關|分水嶺/.test(g.k)).forEach(g => add(g.price, g.k === '分水嶺' ? '#f472b6' : '#fbbf24', g.k.replace('第', ''), 2, 1, false));
     // 歷史範圍錐形（只有日 K、勾選才畫）
     const fc = S.forecast || {};
     if (!intra && !weekly && st.show.cone && fc.h5 && fc.h20) {
