@@ -16,3 +16,6 @@ jobs:
           python-version: "3.11"
       - run: pip install -q httpx numpy pandas
       - run: python scratch_probe/b80_probe.py
+      - run: |
+          git config user.name "probe" && git config user.email "probe@users.noreply.github.com"
+          git add scratch_probe/snap_*.json && git commit -m "chore: 暫時資料（線上完整快照）" && git push

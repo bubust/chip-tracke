@@ -1,9 +1,10 @@
-"""B80 暫時檢查：線上 bars5 最後一根、快照時間"""
+"""B83 暫時檢查：存一份線上 TX／TWII 完整快照（本機畫面檢查用）"""
 import json
 
 import httpx
 
-j = httpx.get("https://qiangni-tactics.fly.dev/api/wave/status", timeout=60).json()
-print(json.dumps({k: v for k, v in j.items() if k != "sources"}, ensure_ascii=False)[:4000])
-s = httpx.get("https://qiangni-tactics.fly.dev/api/wave/snapshot", params={"sym": "TX"}, timeout=120).json()
-print(s.get("generated"), s.get("price"), s.get("asof"), (s.get("chart") or {}).get("i15", [{}])[-1])
+for sym in ("TX", "TWII"):
+    j = httpx.get("https://qiangni-tactics.fly.dev/api/wave/snapshot", params={"sym": sym}, timeout=180).json()
+    with open(f"scratch_probe/snap_{sym}.json", "w") as f:
+        json.dump(j, f, ensure_ascii=False)
+    print(sym, j.get("generated"), len(json.dumps(j)))
