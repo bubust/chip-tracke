@@ -1,17 +1,15 @@
-"""B80 暫時檢查：把線上 TX／TWII 快照的分 K、日 K 轉折存成檔案（本機重跑多層浪名用）"""
+"""B80 暫時檢查：鉅亨台指期 5 分 K 夜盤有沒有 21:00 以後的資料、線上 bars5 狀態"""
 import json
+import os
+import sys
+
 import httpx
 
-BASE = "https://qiangni-tactics.fly.dev"
-out = {}
-for sym in ("TX", "TWII"):
-    j = httpx.get(f"{BASE}/api/wave/snapshot", params={"sym": sym}, timeout=180).json()
-    ch = j.get("chart") or {}
-    out[sym] = {"generated": j.get("generated"), "price": j.get("price"),
-                "i60": ch.get("i60"), "i30": ch.get("i30"), "i15": ch.get("i15"),
-                "daily": (ch.get("bars") or [])[-120:],
-                "small": {k: (j.get("waves") or {}).get("small", {}).get(k) for k in ("pivots", "tentative", "primary", "alternate")},
-                "nest_keys": list((j.get("nest") or {}).keys()), "chart_keys": list(ch.keys())}
-with open("scratch_probe/live.json", "w") as f:
-    json.dump(out, f, ensure_ascii=False)
-print({k: (len(v["i60"] or []), len(v["i30"] or []), len(v["i15"] or []), v["chart_keys"]) for k, v in out.items()})
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from wave import futdata as FD  # noqa: E402
+
+rows = FD.fetch_cnyes("TX", "5", days=3)
+print("cnyes TX 5m", len(rows))
+for r in rows[-40:]:
+    print(FD.tw_dt(r[0]).strftime("%m/%d %H:%M"), r[1:5])
+print(json.dumps(httpx.get("https://qiangni-tactics.fly.dev/api/wave/status", timeout=60).json(), ensure_ascii=False)[:3000])
