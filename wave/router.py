@@ -115,13 +115,17 @@ def api_panel_job(jid: str):
 # ── 排程與推播用 ──────────────────────────────────────────────────────────────
 def scheduled(kind: str):
     """08:20 國外指數＋台指期夜盤＋重算；13:45 加權收盤；13:50 分 K 存檔；16:30 籌碼＋逐筆檔補分 K＋重算＋AI 圓桌；
-    21:40 融資；05:10（二～六）夜盤分 K 存檔"""
+    21:40 融資；05:10、05:40（二～六）夜盤分 K 存檔；夜盤 22:40～04:40 每小時存分 K（B83）"""
     try:
         wd = D.tw_now().weekday()
         if kind == "night_close":
             if 1 <= wd <= 5:
                 FD.live_bars("TX")
                 S.snapshot(force=True, sym="TX")
+            return
+        if kind == "night_save":                          # B83：夜盤每小時存一次分 K（沒人開網頁時夜盤會整段沒存到）
+            if FD.in_session("TX"):
+                FD.live_bars("TX")
             return
         if kind == "intraday_close":
             if wd < 5:

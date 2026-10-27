@@ -385,6 +385,9 @@ def _nest_line(snap: dict) -> str:
     if a:
         s += f"；備選 {a.get('path')}（{a.get('text')}）"
     s += "；關卡：" + "；".join(f"{g['k']}{'✅' if g.get('ok') else ''} {g['t']}" for g in nz.get("gates") or [])
+    vl = [x for x in nz.get("plan") or [] if x.startswith("版本")]       # B83 她 10/28 的兩個版本怎麼確認
+    if vl:
+        s += "；" + "；".join(vl)
     for x in (snap.get("positioning") or {}).values():
         if x:
             s += f"；{x['tf']}定位：" + "；".join(x["lines"])
@@ -403,6 +406,8 @@ def _nest_prices(snap: dict) -> list:
         out += [g["price"] for g in nz.get("gates") or []]
         if nz.get("trendline"):
             out.append(nz["trendline"]["now"])
+        ws = nz.get("watershed") or {}
+        out += [ws[k] for k in ("lo", "hi") if ws.get(k) is not None] + [v for v, _ in ws.get("lv") or []] + [v for v, _ in ws.get("brk") or []]
         for c in (nz.get("primary"), nz.get("alternate")):
             if c:
                 out += [r["price"] for r in c.get("rules") or []] + [t["price"] for t in c.get("targets") or []]
