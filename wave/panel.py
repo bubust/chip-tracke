@@ -301,6 +301,11 @@ def facts_b75(snap: dict) -> list:
     nl = _nest_line(snap)
     if nl:
         L.append(f"【多層浪名（加權 60 分，照 @fanny55520 的拆法）】{nl}")
+    vo = snap.get("volume") or {}
+    if vo:
+        from .volume import describe as _vd
+        L.append("【量能（加權；學 @fanny55520 的「帶量」「最後一推」，回測結果見研究）】"
+                 + "；".join(_vd(vo.get(k), nm) for k, nm in (("60m", "60 分"), ("1d", "日 K"))))
     lu = (snap.get("levels") or {}).get("ultra") or {}
     if lu.get("support") or lu.get("resistance"):
         L.append("【超短線支撐】" + ("；".join(_z(z) for z in lu.get("support") or []) or "無") +
@@ -433,8 +438,13 @@ def allowed_levels(snap: dict) -> list:
     for k in (snap.get("key") or {}).values():
         if k:
             out += [k.get("price"), k.get("wave_invalid")]
-    for z in [z for side in ("support", "resistance") for z in (((snap.get("levels") or {}).get("m30") or {}).get(side) or [])]:
-        out += [z["price"], z["lo"], z["hi"]] + [s_["price"] for s_ in z["sources"]]
+    for lk in ("m30", "m15"):
+        for z in [z for side in ("support", "resistance") for z in (((snap.get("levels") or {}).get(lk) or {}).get(side) or [])]:
+            out += [z["price"], z["lo"], z["hi"]] + [s_["price"] for s_ in z["sources"]]
+    for lm in (snap.get("levelmap") or {}).values():          # B80 價位梯（目標、母尺、成交密集區…）
+        out += [it.get("price") for it in (lm or {}).get("items") or []]
+    for vx in (snap.get("volume") or {}).values():
+        out += [x for z in (vx or {}).get("zones") or [] for x in (z.get("lo"), z.get("hi"), z.get("mid"))]
     out += _nest_prices(snap)
     tx = snap.get("tx") or {}
     if tx.get("ok"):

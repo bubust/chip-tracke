@@ -463,6 +463,13 @@ def _scan_step1():
                 await run_market_scan(strategy_params=params)
             _aio.run(_update_then_scan())
             lg.info("[scan_scheduler] Step 1 完成")
+            # 全市場排行（PLAN-B82 A1）：再補一次最近 3 天三大法人（掃描裡籌碼步驟抓過的日期會跳過，幾秒）
+            try:
+                import chip_course as _cc
+                _ri = _cc.refresh_inst(3)
+                lg.info(f"[scan_scheduler] 三大法人 {_ri.get('fetched', '')} {'；'.join(_ri.get('messages') or [])}")
+            except Exception as _ie:
+                lg.warning(f"[scan_scheduler] 三大法人補抓失敗: {_ie}")
             # 🔬 研究候選（PLAN-BEST）：今天的訊號、持有中的出場（同一天只推一次）
             try:
                 from best_routes import push_best_signals, push_best_exits
@@ -606,7 +613,10 @@ def _prewarm():
     def _wave(sym):
         from wave import service as _ws
         _ws.snapshot(sym=sym)
-    for name, fn in (("指數", _ind), ("處置股", _disp), ("可轉債清單", _cb), ("連動", _movers),
+    def _opt():
+        import opt_flags                       # PLAN-B82：重開機後記憶體裡的掃描結果補上 ⭐ 優化研究條件（不重掃）
+        lg.info(f"[prewarm] 優化研究標註 {opt_flags.annotate_current()}")
+    for name, fn in (("優化研究標註", _opt), ("指數", _ind), ("處置股", _disp), ("可轉債清單", _cb), ("連動", _movers),
                      ("大盤解析加權", lambda: _wave("TWII")), ("大盤解析台指期", lambda: _wave("TX"))):
         try:
             fn()
@@ -3071,7 +3081,7 @@ async def api_market_scan(top: int = 50, refresh: int = 0, side: str = "buy", so
     kw = dict(sort=sort, market=market if market in ("all", "twse", "tpex") else "all", etf=bool(etf), top=top)
     buyers = market_rank.filter_sort(rows, side="buy", **kw)
     sellers = market_rank.filter_sort(rows, side="sell", **kw)
-    return {"date": dates[0].replace("-", ""), "total": len(rows), "price_ok": has_px,
+    return {"date": dates[0].replace("-", ""), "server_now": _tw_now_iso(), "total": len(rows), "price_ok": has_px,
             "markets": {"twse": sum(1 for r in rows if r["market"] == "twse"), "tpex": sum(1 for r in rows if r["market"] == "tpex")},
             "top_buyers": buyers, "top_sellers": sellers, "notes": notes}
 
@@ -3844,10 +3854,29 @@ async def api_screen_run(background_tasks: BackgroundTasks):
     background_tasks.add_task(_scan_with_price_update, strategy_params)
     return {"ok": True, "message": "全市場掃描已啟動（含今日報價更新）..."}
 
+def _scan_data_date(results) -> str | None:
+    """掃描結果裡最新的 last_date（YYYYMMDD）＝這次掃描用的是哪一天的收盤（PLAN-B82 A1）"""
+    best = None
+    for rows in (results or {}).values():
+        for r in rows or []:
+            d = str((r or {}).get("last_date") or "")
+            if len(d) == 8 and d.isdigit() and (best is None or d > best):
+                best = d
+    return best
+
+
+def _tw_now_iso() -> str:
+    """伺服器台灣時間（沒有時區，跟 finished_at 同格式）：前端判斷「今天」「18:30 以後」只看這個，不看使用者電腦的時鐘"""
+    return datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None).isoformat(timespec="seconds")
+
+
 @app.get("/api/screen/status")
 def api_screen_status():
-    from yahoo_price import get_scan_status
-    return get_scan_status()
+    from yahoo_price import get_scan_status, get_scan_results
+    st = dict(get_scan_status())
+    st["data_date"] = None if st.get("running") else _scan_data_date(get_scan_results())
+    st["server_now"] = _tw_now_iso()
+    return st
 
 _levels_cache: dict = {}
 _levels_df: dict = {}      # {sid: 算關鍵價位用的那份日 K}：觀察清單滾動停損從進場日重播用（PLAN-STOP.md）
@@ -4157,6 +4186,22 @@ def api_quality_research():
     return quality.research()
 
 
+_OPT_RES = {"mtime": None, "data": {}}
+
+
+@app.get("/api/opt/research")
+def api_opt_research():
+    """⭐ 優化研究（PLAN-B82，research/b82/opt_research.json）：籌碼／月營收／進場時機／多策略共振，每個策略挑出的方法、樣本外結果、是否通過"""
+    path = BASE_DIR / "research" / "b82" / "opt_research.json"
+    try:
+        mt = path.stat().st_mtime
+        if _OPT_RES["mtime"] != mt:
+            _OPT_RES.update(mtime=mt, data=json.loads(path.read_text(encoding="utf-8")))
+        return _OPT_RES["data"]
+    except Exception:      # noqa: BLE001  研究還沒跑完／檔案壞掉 → 網站當作沒有
+        return {}
+
+
 @app.get("/api/global-brief")
 def api_global_brief(wave: int = 0):
     """08:30 盤前推播的國際盤區塊預覽（PLAN-B72 F；只抓不推）；wave=1 加上大盤解析那段（PLAN-B74 §9）"""
@@ -4215,6 +4260,8 @@ def api_screen_results():
     raw = get_scan_results()   # {strategy_key: [result_dict, ...]}
     return JSONResponse(content=_sanitize_for_json({
         "finished_at": _scan_status_ts(),
+        "data_date":   _scan_data_date(raw),
+        "server_now":  _tw_now_iso(),
         "strategies":  STRATEGIES,
         "results":     raw,
     }))

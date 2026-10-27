@@ -1,0 +1,87 @@
+{
+ "cal": {
+  "1.5": {
+   "avg_days": 0.3448,
+   "n_pivots": 112
+  },
+  "2.0": {
+   "avg_days": 0.4726,
+   "n_pivots": 82
+  },
+  "2.5": {
+   "avg_days": 0.6275,
+   "n_pivots": 62
+  },
+  "3.0": {
+   "avg_days": 0.8824,
+   "n_pivots": 44
+  },
+  "3.5": {
+   "avg_days": 1.1498,
+   "n_pivots": 34
+  },
+  "4.0": {
+   "avg_days": 1.4053,
+   "n_pivots": 28
+  }
+ },
+ "report": {
+  "1.5": {
+   "avg_days": 0.3519,
+   "n_pivots": 55
+  },
+  "2.0": {
+   "avg_days": 0.5,
+   "n_pivots": 39
+  },
+  "2.5": {
+   "avg_days": 0.6786,
+   "n_pivots": 29
+  },
+  "3.0": {
+   "avg_days": 0.7308,
+   "n_pivots": 27
+  },
+  "3.5": {
+   "avg_days": 0.7917,
+   "n_pivots": 25
+  },
+  "4.0": {
+   "avg_days": 0.95,
+   "n_pivots": 21
+  }
+ },
+ "tx": {
+  "1.5": {
+   "avg_days": 0.0863,
+   "n_pivots": 346
+  },
+  "2.0": {
+   "avg_days": 0.1149,
+   "n_pivots": 260
+  },
+  "2.5": {
+   "avg_days": 0.1558,
+   "n_pivots": 192
+  },
+  "3.0": {
+   "avg_days": 0.2269,
+   "n_pivots": 132
+  },
+  "3.5": {
+   "avg_days": 0.2869,
+   "n_pivots": 103
+  },
+  "4.0": {
+   "avg_days": 0.3484,
+   "n_pivots": 85
+  }
+ },
+ "m": 2.0,
+ "floor": 0.003,
+ "target_days": 0.5,
+ "cal_period": "2026-07-28～2026-09-21",
+ "n_days": 60,
+ "n_bars": 1080,
+ "data": "加權 15 分 K（Yahoo 5 分 K 60 天彙總；樣本短只當參考）"
+}

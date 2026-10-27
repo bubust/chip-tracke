@@ -50,10 +50,10 @@ function tailSortBy(zone, col) {
 
 function _tailRow(zone, r) {
   const ma = r.ma10_now == null ? '—'
-    : `${_tN(r.ma10_now)}<br><span style="font-size:.68rem;color:${r.above_ma10 ? '#ef4444' : '#22c55e'}">${r.above_ma10 ? '站上' : '跌破'}</span>`;
+    : `${_tN(r.ma10_now)}<br><span style="font-size:.72rem;color:${r.above_ma10 ? '#ef4444' : '#22c55e'}">${r.above_ma10 ? '站上' : '跌破'}</span>`;
   const name = `<b class="link" style="color:var(--accent);cursor:pointer" onclick="tailChart('${_tE(r.stock_id)}')">${_tE(r.stock_id)}</b> ${_tE(r.name || '')}` +
-    `<br><span style="font-size:.66rem;color:var(--muted)">${_tE(r.source || '')}</span>`;
-  const px = r.price == null ? '—' : `${_tN(r.price)}<br><span style="font-size:.66rem;color:var(--muted)">${_tD(r.price_date)}</span>`;
+    `<br><span style="font-size:.72rem;color:var(--muted)">${_tE(r.source || '')}</span>`;
+  const px = r.price == null ? '—' : `${_tN(r.price)}<br><span style="font-size:.72rem;color:var(--muted)">${_tD(r.price_date)}</span>`;
   const act = `<span class="tail-act" style="display:inline-flex;gap:3px">
       ${typeof wlRowBtn === 'function' ? wlRowBtn(r.stock_id, `tailAddWl('${_tE(r.stock_id)}')`) : ''}
       <button class="btn sm ghost" title="編輯／移區" onclick="tailEdit(${r.id})">✏️</button>
@@ -79,7 +79,7 @@ function _tailTable(zone, rows) {
     return (typeof x === 'string' ? x.localeCompare(y) : x - y) * s.dir; });
   const head = _TAIL_COLS[zone].map(([lab, key]) => key
     ? `<th onclick="tailSortBy('${zone}','${key}')">${lab}${s.col === key ? (s.dir > 0 ? ' ▲' : ' ▼') : ''}</th>` : '<th></th>').join('');
-  return `<div class="tbl-wrap" style="overflow-x:auto"><table class="tail-tbl"><thead><tr>${head}</tr></thead>
+  return `<div class="tbl-wrap" style="overflow-x:auto"><table class="tail-tbl mc"><thead><tr>${head}</tr></thead>
     <tbody>${rows.map(r => _tailRow(zone, r)).join('')}</tbody></table></div>`;
 }
 
@@ -89,6 +89,7 @@ function tailRender() {
   const watch = rows.filter(r => r.zone !== 'stop'), stop = rows.filter(r => r.zone === 'stop');
   document.getElementById('tail-watch').innerHTML = _tailTable('watch', watch);
   document.getElementById('tail-stop-zone').innerHTML = _tailTable('stop', stop);
+  if (typeof _mcLabelAll === 'function') { _mcLabelAll(document.getElementById('tail-watch')); _mcLabelAll(document.getElementById('tail-stop-zone')); }   // 手機卡片的小標（B82 D）
   document.getElementById('tail-n-watch').textContent = watch.length;
   document.getElementById('tail-n-stop').textContent = stop.length;
   // 統計：全部（停損的用停損價算）

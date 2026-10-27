@@ -30,7 +30,7 @@ function tbBadge(sid) {
   const a = _tbActive[sid];
   if (!a) return '';
   const tip = `庫藏股${a.status}：${a.period_start || ''}～${a.period_end || ''}，預定 ${a.plan_lots ?? '—'} 張，價格區間 ${a.price_low ?? '—'}～${a.price_high ?? '—'}`;
-  return `<span title="${_tbEsc(tip)}" style="margin-left:4px;font-size:.66rem;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:3px;padding:0 4px;white-space:nowrap">🏦庫藏</span>`;
+  return `<span title="${_tbEsc(tip)}" style="margin-left:4px;font-size:.72rem;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:3px;padding:0 4px;white-space:nowrap">🏦庫藏</span>`;
 }
 
 async function tbLoadActive() {
@@ -146,9 +146,10 @@ function tbRender() {
   }
   _tbRenderSummary(rows);
   const th = ([k, label]) => `<th onclick="tbSortBy('${k}')" title="${_TB_HINT[k] || ''}" style="cursor:pointer;white-space:nowrap;padding:6px 8px;text-align:${['stock_id', 'name', 'purpose'].includes(k) ? 'left' : 'right'}">${label}${_tbSort.col === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`;
-  body.innerHTML = `<div class="tbl-wrap" style="overflow-x:auto"><table style="width:100%;font-size:.8rem;border-collapse:collapse">
+  body.innerHTML = `<div class="tbl-wrap" style="overflow-x:auto"><table class="mc mc-gen" style="width:100%;font-size:.8rem;border-collapse:collapse">
     <thead><tr style="background:#1c2128;color:var(--muted)"><th style="padding:6px 4px;white-space:nowrap">自選</th>${_TB_COLS.map(th).join('')}</tr></thead>
     <tbody>${rows.map(_tbRow).join('')}</tbody></table></div>`;
+  if (typeof _mcLabelAll === 'function') _mcLabelAll(body);   // 手機卡片的小標（B82 D）
 }
 
 function _tbRow(r) {
@@ -159,14 +160,14 @@ function _tbRow(r) {
   return `<tr data-key="${key}" style="border-top:1px solid #21262d;cursor:pointer" onclick="tbToggle('${r.stock_id}','${key}')">
     <td style="padding:5px 4px;text-align:center">${wlRowBtn(r.stock_id, `tbAddWl('${_tbEsc(r.stock_id)}','${_tbEsc(r.name).replace(/'/g, '')}')`)}</td>
     <td style="padding:5px 8px;color:var(--muted)">${_tbEsc(r.stock_id)}</td>
-    <td style="padding:5px 8px;white-space:nowrap">${_tbEsc(r.name)}${r.market === 'tpex' ? '<span style="color:var(--muted);font-size:.68rem"> 櫃</span>' : ''}</td>
+    <td style="padding:5px 8px;white-space:nowrap">${_tbEsc(r.name)}${r.market === 'tpex' ? '<span style="color:var(--muted);font-size:.72rem"> 櫃</span>' : ''}</td>
     ${td(`<span style="font-size:.72rem;padding:1px 7px;border-radius:10px;background:${c}22;color:${c};border:1px solid ${c}55">${r.status}</span>`)}
     ${td(_tbDate(r.board_date))}
-    ${td(`${_tbDate(r.period_start)}～${_tbDate(r.period_end)}${r.days_left != null ? `<br><span style="font-size:.7rem;color:#f59e0b">剩 ${r.days_left} 天</span>` : ''}`)}
+    ${td(`${_tbDate(r.period_start)}～${_tbDate(r.period_end)}${r.days_left != null ? `<br><span style="font-size:.72rem;color:#f59e0b">剩 ${r.days_left} 天</span>` : ''}`)}
     <td style="padding:5px 8px;white-space:nowrap" title="${_tbEsc(r.purpose)}">${_tbEsc(_tbPurposeShort(r.purpose))}</td>
     ${td(_tbNum(r.plan_lots))}
     ${td(r.price_high != null ? `${_tbNum(r.price_low, 1)}～${_tbNum(r.price_high, 1)}` : '—')}
-    ${td(r.price != null ? `${_tbNum(r.price, 2)}${r.range_pos ? `<br><span style="font-size:.68rem;color:${posColor}">${r.range_pos}</span>` : ''}` : '—')}
+    ${td(r.price != null ? `${_tbNum(r.price, 2)}${r.range_pos ? `<br><span style="font-size:.72rem;color:${posColor}">${r.range_pos}</span>` : ''}` : '—')}
     ${td(_tbPct(r.to_high_pct), `color:${r.to_high_pct == null ? 'var(--muted)' : r.to_high_pct >= 0 ? '#f59e0b' : 'var(--muted)'}`)}
     ${td(_tbPct(r.chg_since_board), `color:${_tbColor(r.chg_since_board)};font-weight:600`)}
     ${td(_tbNum(r.bought_lots))}
@@ -184,7 +185,7 @@ function _tbRenderSummary(rows) {
   const done = rows.filter(r => r.status === '已結束' && r.exec_ratio != null);
   const avgExec = done.length ? done.reduce((s, r) => s + r.exec_ratio, 0) / done.length : null;
   const box = (label, val, hint = '') => `<div title="${hint}" style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;text-align:center">
-    <div style="font-size:.7rem;color:var(--muted)">${label}</div><div style="font-size:1.15rem;font-weight:700">${val}</div></div>`;
+    <div style="font-size:.72rem;color:var(--muted)">${label}</div><div style="font-size:1.15rem;font-weight:700">${val}</div></div>`;
   el.innerHTML = box('列表筆數', rows.length) +
     box('進行中', live.length) +
     box('進行中且現價在區間內', inRange, '公司還能在這個價位買，等於有買盤支撐') +

@@ -2,7 +2,8 @@
 - 轉折只用收完的日 K；盤中即時價只當現價（算距離、判斷在支撐還是壓力那邊），並檢查「可能轉折」
 - 研究結果讀 wave/stats.json（research/wave/run.py 產生）；沒通過的一律標 △
 - 預測區間＝全部歷史分布（R6：相似狀態沒有比較準 → 只當參考）
-B75：sym＝TWII（加權）／TX（台指期近月、全盤含夜盤）分開算、分開快取；超短線（60 分 K）、轉折點、期貨＋籌碼綜合研判、融資增減"""
+B75：sym＝TWII（加權）／TX（台指期近月、全盤含夜盤）分開算、分開快取；超短線（60 分 K）、轉折點、期貨＋籌碼綜合研判、融資增減
+B80：15 分 K、成交量（volume[tf]）、價位梯＋如果…就…＋三條路（levelmap[tf]）、K 棒帶 volume（加權＝億、台指期＝口）"""
 from __future__ import annotations
 
 import json
@@ -17,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 from . import advice as AD, composite as CP, data as D, engine as E, features as F, forecast as FC, futdata as FD, nest as NE, \
-    intraday as I, keylevel as KL, levels as LV
+    intraday as I, keylevel as KL, levelmap as LM, levels as LV, voldata as VD, volume as VO
 from .plain import plain
 
 log = logging.getLogger(__name__)
@@ -336,7 +337,17 @@ def _research(st: dict) -> dict:
                 "籌碼（外資現貨、期貨、融資）：對之後 5／20 天加權沒有預測力 △",
                 "國際：只有「前一晚費半 → 加權隔天」有效（樣本外 R² 約 0.2）✅",
                 "過去相似狀態：比直接看全部歷史還略差 → 預測區間改用全部歷史 △",
-            ] + _research_b75(st)}
+            ] + _research_b75(st) + _research_b80(st)}
+
+
+def _research_b80(st: dict) -> list:
+    """B80 量能規則（research/b80）：一句話結論"""
+    tests = (st.get("volume") or {}).get("tests") or {}
+    if not tests:
+        return []
+    ok = [k for k, x in tests.items() if x.get("pass_d1") or x.get("pass_d2")]
+    return ["量能（帶量突破、最後一推、站不住、修正成熟度、量縮修正、成交密集區）：" +
+            (f"{'、'.join(ok)} 有效 ✅，其他 △" if ok else "扣掉離兩邊距離造成的差異後，日 K（2000 起）、60 分 K（近 3 年）都跟隨機差不多 △")]
 
 
 def _research_b75(st: dict) -> list:
@@ -528,6 +539,188 @@ def _fut_chips_out(fc: pd.DataFrame) -> dict:
             "opt_f_bull": _f(last.opt_f_bull, 0), "opt_chg1": _f(last.opt_f_bull - r.iloc[-2].opt_f_bull, 0) if len(r) > 1 else None}
 
 
+# ── B80 成交量（PLAN-B80 §5）────────────────────────────────────────────────
+VOL_UNIT = {"TWII": "億", "TX": "口"}
+
+
+def _disp_v(sym: str, v) -> Optional[float]:
+    """畫圖用：加權元 → 億（1 位小數）、台指期口；沒有量 → None（計算一律用原始值）"""
+    v = VO.vol_of(v)
+    if v is None:
+        return None
+    return round(v / 1e8, 1) if sym == "TWII" else int(round(v))
+
+
+def _disp_bars(sym: str, bs: list) -> list:
+    out = []
+    for x in bs:
+        y = {k: x[k] for k in ("time", "open", "high", "low", "close") if k in x}
+        if x.get("partial"):
+            y["partial"] = True
+        y["volume"] = _disp_v(sym, x.get("volume"))
+        out.append(y)
+    return out
+
+
+def _slot_fn(sym: str, tf: int):
+    def f(bar):
+        s = FD.session_of(sym, bar["time"])
+        return None if not s else (s[0], int((bar["time"] - s[1]) // (tf * 60)))
+    return f
+
+
+def _leg_out(leg: Optional[dict], lab) -> Optional[dict]:
+    if not leg:
+        return None
+    x = {k: (round(v, 4) if isinstance(v, float) else v) for k, v in leg.items() if k not in ("k_ext", "start")}
+    x["start"] = {"p": _f(leg["start"]["p"]), "t": lab(leg["start"]["i"])}
+    x["ext_t"] = lab(leg["k_ext"])
+    return x
+
+
+def _vol_block(sym: str, rv: list, vols: list, h, l, c, piv: list, atr_v: float, price: float, key: str, lab,
+               look: int, partial: Optional[dict] = None) -> dict:
+    """共用：最後一根量、進行中、波段力道／修正成熟度、帶量突破、成交密集區（rv、vols 跟 h／l／c 對齊＝收完的 K 棒）"""
+    has = sum(1 for v in vols if VO.vol_of(v) is not None)
+    out = {"ok": True, "unit": VOL_UNIT[sym], "has_vol": has >= max(5, 0.5 * len(vols[-look:]) if vols else 5)}
+    if not out["has_vol"]:
+        out["note"] = "這段沒有量的資料"
+    k = len(rv) - 1
+    if k >= 0:
+        out["last"] = {"v": _disp_v(sym, vols[k]), "rv": None if rv[k] is None else round(rv[k], 2), "label": VO.rv_label(rv[k]), "t": lab(k)}
+    if partial:
+        out["partial"] = partial
+    dif = VO.macd_dif(c) if len(c) >= 30 else None
+    leg = VO.leg_info(h, l, c, rv, dif, piv, price=price)
+    out["leg"] = _leg_out(leg, lab)
+    out["breaks"] = [{"t": lab(e["k"]), "dir": e["dir"], "level": _f(e["level"]), "rv": None if e["rv"] is None else round(e["rv"], 2),
+                      "kind": e["kind"]} for e in VO.breakouts(c, rv, piv, VO.BREAK_LOOK[key])]
+    out["zones"] = VO.vol_zones(h, l, c, vols, atr_v, look)
+    return out
+
+
+def _vol_intra(sym: str, tf: int, bs: list, a: dict, price: float, now_ts: float) -> dict:
+    """分 K：rvol 比同時段（之前的交易日）；a＝analyze_tf（收完的 K 棒）"""
+    if not bs or not a.get("ok"):
+        return {"ok": False, "note": (a or {}).get("note") or "分 K 資料不足"}
+    try:
+        rv_all, refs = VO.rvol_slots(bs, _slot_fn(sym, tf))
+        done = [x for x in bs if not x.get("partial")]
+        rv = rv_all[:len(done)]
+        part = None
+        if bs[-1].get("partial"):
+            x = bs[-1]
+            s = FD.session_of(sym, x["time"])
+            length = (min(x["time"] + tf * 60, s[2]) if s else x["time"] + tf * 60) - x["time"]
+            r = VO.partial_rvol(x.get("volume"), refs.get(_slot_fn(sym, tf)(x)), now_ts - x["time"], length)
+            part = {"v": _disp_v(sym, x.get("volume")), "rv": None if r is None else round(r, 2), "label": VO.rv_label(r),
+                    "early": (now_ts - x["time"]) < VO.PARTIAL_MIN * length}
+        h, l, c = a["hlc"]
+        times = a["times"]
+        lab = lambda i: FD.tw_dt(times[i]).strftime("%m/%d %H:%M")     # noqa: E731
+        return _vol_block(sym, rv, [x.get("volume") for x in done], h, l, c, a["an"]["pivots"], a["atr"], price,
+                          f"{tf}m", lab, I.SHOW[tf], part)
+    except Exception as e:     # noqa: BLE001
+        log.exception(f"[wave] 分 K 量能失敗 {sym} {tf}：{e}")
+        return {"ok": False, "note": f"量能計算失敗：{e}"}
+
+
+_ratio_cache: dict = {"day": None, "v": None}
+
+
+def _mi5_ratio() -> float:
+    """每日成交金額（FMTQIK，含零股等）÷ 盤中統計（MI_5MINS）近 20 天中位數（約 1.05）；算不出來 → 1"""
+    today = D.tw_now().strftime("%Y-%m-%d")
+    if _ratio_cache["day"] == today and _ratio_cache["v"]:
+        return _ratio_cache["v"]
+    r = 1.0
+    try:
+        to = VD.load_turnover()
+        per: dict = {}
+        for ts, v in VD.load_vol5("TWII", int(time.time() - 40 * 86400)).items():
+            d = FD.tw_dt(ts).strftime("%Y-%m-%d")
+            per.setdefault(d, [0, 0.0])
+            per[d][0] += 1
+            per[d][1] += v
+        xs = [to[d] / s for d, (n, s) in per.items() if n >= 50 and s > 0 and to.get(d) and d != today]
+        if len(xs) >= 3:
+            r = float(np.median(xs[-20:]))
+    except Exception as e:     # noqa: BLE001
+        log.warning(f"[wave] 成交金額換算比例失敗：{e}")
+    _ratio_cache.update(day=today, v=r)
+    return r
+
+
+def _twii_fracs(now) -> list:
+    """加權過去 20 個完整交易日：開盤後同一時間累計占全天的比例（日 K 盤中預估全天量）"""
+    per: dict = {}
+    base_today = now.strftime("%Y-%m-%d")
+    for ts, v in VD.load_vol5("TWII", int(time.time() - 35 * 86400)).items():
+        dt = FD.tw_dt(ts)
+        d = dt.strftime("%Y-%m-%d")
+        if d == base_today:
+            continue
+        per.setdefault(d, []).append((dt.hour * 3600 + dt.minute * 60 - 9 * 3600, v))
+    per = {d: r for d, r in per.items() if len(r) >= 50}
+    keep = dict(sorted(per.items())[-20:])
+    el = now.hour * 3600 + now.minute * 60 + now.second - 9 * 3600
+    return VD.day_fracs(keep, el)
+
+
+def _daily_vols(sym: str, b: dict) -> list:
+    if sym == "TX":
+        return [None if pd.isna(v) else float(v) for v in b["tw"]["v"].values] if "v" in b["tw"] else [None] * len(b["dates"])
+    to = VD.load_turnover()
+    return [to.get(str(d)) for d in b["dates"]]
+
+
+def _week(d) -> str:
+    return pd.Timestamp(str(d)).strftime("%G-%V")
+
+
+def _weekly_vols(dates, vols: list) -> dict:
+    """週 K 量＝這週每天（收完的日 K）加總，週別跟 weekly() 一樣 %G-%V；→ {週別: 量}（週 K 棒本來就不含盤中今天）"""
+    out: dict = {}
+    for d, v in zip(dates, vols):
+        wk = _week(d)
+        out.setdefault(wk, None)
+        if VO.vol_of(v) is not None:
+            out[wk] = (out[wk] or 0.0) + float(v)
+    return out
+
+
+def _vol_daily(sym: str, b: dict, an_deg: dict, vols: list, price: float, key: str, look: int,
+               part_v: Optional[float] = None, est: Optional[dict] = None) -> dict:
+    try:
+        rv = VO.rvol_plain(vols)
+        lab = lambda i: str(b["dates"][i])[5:]     # noqa: E731
+        part = None
+        if part_v is not None:
+            ref = [VO.vol_of(v) for v in vols[-VO.N_REF:]]
+            ref = [v for v in ref if v is not None]
+            mean = sum(ref) / len(ref) if len(ref) >= VO.MIN_N else None
+            part = {"v": _disp_v(sym, part_v), "est": None if not est else _disp_v(sym, est["est"]),
+                    "rv": None if not (est and mean) else round(est["est"] / mean, 2)}
+            part["label"] = VO.rv_label(part["rv"])
+        return _vol_block(sym, rv, vols, b["h"], b["l"], b["c"], an_deg.get("pivots") or [], b["atr"], price, key, lab, look, part)
+    except Exception as e:     # noqa: BLE001
+        log.exception(f"[wave] 日 K 量能失敗 {sym}：{e}")
+        return {"ok": False, "note": f"量能計算失敗：{e}"}
+
+
+def _vol_research(st: dict) -> dict:
+    """stats.json volume（research/b80）→ 每條規則 ✅／△；還沒跑研究 → 全部 △"""
+    v = st.get("volume") or {}
+    tests = v.get("tests") or {}
+    out = {}
+    for k in ("V1", "V2", "V2b", "V3", "V4", "V5"):
+        x = tests.get(k) or {}
+        # 分 K（15／30／60 分）看 60 分 K 的回測（pass_d2）、日 K／週 K 看日 K 的回測（pass_d1）
+        out[k] = {"pass_d1": bool(x.get("pass_d1")), "pass_d2": bool(x.get("pass_d2")), "text": x.get("text") or "研究還沒跑，先當參考"}
+    out["note"] = v.get("note") or ""
+    return out
+
+
 def _session_label(sym: str, now) -> str:
     if not FD.in_session(sym, now):
         return "休市"
@@ -536,9 +729,12 @@ def _session_label(sym: str, now) -> str:
     return "日盤" if (8, 45) <= (now.hour, now.minute) <= (13, 50) else "夜盤"
 
 
-def _intraday(sym: str, b: dict, price: float, lv_c, live_rows: list, st: dict) -> dict:
-    b60 = I.bars(sym, 60, live_rows)
-    b30 = I.bars(sym, 30, live_rows)
+def _intraday(sym: str, b: dict, price: float, lv_c, live_rows: list, st: dict, vol_live: Optional[dict] = None) -> dict:
+    now_ts = time.time()
+    rows = I.rows5(sym, live_rows, now_ts, vol_live)
+    b60 = I.bars(sym, 60, rows=rows, now_ts=now_ts)
+    b30 = I.bars(sym, 30, rows=rows, now_ts=now_ts)
+    b15 = I.bars(sym, 15, rows=rows, now_ts=now_ts)
     # 「昨天」＝最後一根收完的日 K（盤中＝昨天；收盤後＝今天，給下一盤用）
     daily = {"prev_h": float(b["h"][-1]), "prev_l": float(b["l"][-1]), "prev_c": float(b["c"][-1]),
              "ma20": float(np.mean(lv_c[-20:])) if len(lv_c) >= 20 else None}
@@ -550,9 +746,17 @@ def _intraday(sym: str, b: dict, price: float, lv_c, live_rows: list, st: dict) 
             daily["night_h"] = max(x["high"] for x in cur)
             daily["night_l"] = min(x["low"] for x in cur)
     trend = 0 if daily["ma20"] is None else (1 if price > daily["ma20"] else -1)
-    a = I.analyze(sym, b60, b30, price, daily, trend)
-    out = {"tf60": b60[-I.SHOW[60]:], "tf30": b30[-I.SHOW[30]:], "ok": a.get("ok"), "note": a.get("note")}
-    out["nest"] = {"60m": _nest(a, 60, price, b), "30m": _nest(a.get("m30") or {}, 30, price, b)}
+    a = I.analyze(sym, b60, b30, price, daily, trend, b15=b15)
+    out = {"tf60": _disp_bars(sym, b60[-I.SHOW[60]:]), "tf30": _disp_bars(sym, b30[-I.SHOW[30]:]),
+           "tf15": _disp_bars(sym, b15[-I.SHOW[15]:]), "ok": a.get("ok"), "note": a.get("note")}
+    n60 = _nest(a, 60, price, b)
+    seg = ((n60.get("primary") or {}).get("seg1")) if n60.get("ok") else None
+    parent = None if not seg else {"t0": seg["time"], "t1": seg["time"] + 3600, "typ": seg["t"], "role": seg.get("role")}
+    out["nest"] = {"60m": n60, "30m": _nest(a.get("m30") or {}, 30, price, b), "15m": _nest(a.get("m15") or {}, 15, price, b, parent)}
+    # B80 量能＋價位梯要用的（_tf 只在伺服器端，compute 用完就刪，不進快照）
+    out["_tf"] = {"60m": a, "30m": a.get("m30") or {}, "15m": a.get("m15") or {}}
+    out["vol"] = {"60m": _vol_intra(sym, 60, b60, a, price, now_ts), "30m": _vol_intra(sym, 30, b30, a.get("m30") or {}, price, now_ts),
+                  "15m": _vol_intra(sym, 15, b15, a.get("m15") or {}, price, now_ts)}
     if a.get("ok"):
         out["wave"] = I.wave_out(a)
         out["levels"] = a["levels"]
@@ -563,10 +767,15 @@ def _intraday(sym: str, b: dict, price: float, lv_c, live_rows: list, st: dict) 
     if m30.get("ok"):
         out["m30"].update(wave=I.wave_out(m30), levels=m30["levels"], key=_key_out(m30["cands"], "m30", price, m30["atr"], st),
                           atr=_f(m30["atr"], 0))
+    m15 = a.get("m15") or {}
+    out["m15"] = {"ok": bool(m15.get("ok")), "note": m15.get("note")}
+    if m15.get("ok"):
+        out["m15"].update(wave=I.wave_out(m15), levels=m15["levels"], key=_key_out(m15["cands"], "m15", price, m15["atr"], st),
+                          atr=_f(m15["atr"], 0))
     return out
 
 
-def _nest(a: dict, tf: int, price: float, b: dict) -> dict:
+def _nest(a: dict, tf: int, price: float, b: dict, parent: Optional[dict] = None) -> dict:
     """B79 多層浪名（學 @fanny55520）：分 K 轉折從「日 K 這一浪的起點」開始拆成 C-1-4-b 式浪名＋關卡＋操作紀律"""
     if not a.get("ok"):
         return {"ok": False, "note": a.get("note")}
@@ -575,7 +784,7 @@ def _nest(a: dict, tf: int, price: float, b: dict) -> dict:
     tlabel = lambda i: FD.tw_dt(times[i]).strftime("%m/%d %H:%M")     # noqa: E731
     try:
         out = NE.build(a["an"], times, price, I.TF[tf]["tfn"], daily_cnt=(b["an"].get("small") or {}).get("primary"),
-                       daily_dates=b["dates"], tdate=tdate, tlabel=tlabel)
+                       daily_dates=b["dates"], tdate=tdate, tlabel=tlabel, parent_seg=parent)
     except Exception as e:     # noqa: BLE001
         log.exception(f"[wave] 多層浪名失敗 {tf}：{e}")
         return {"ok": False, "note": f"多層浪名計算失敗：{e}"}
@@ -612,8 +821,9 @@ def _nest_timeline(a: dict, tf: int, b: dict, tdate, tlabel, n_days: int = 10) -
 
 # ── B76 多週期一覽 ─────────────────────────────────────────────────────────
 # 週期 → (waves 的鍵, key／levels 的鍵)。舊鍵：ultra＝60 分、short＝日 K、swing＝週 K（B75 名稱沿用，AI 圓桌與推播相容）
-TF_KEYS = {"30m": ("intra30", "m30"), "60m": ("intra", "ultra"), "1d": ("small", "short"), "1wk": ("mid", "swing")}
-TF_LABEL = {"30m": "30 分", "60m": "60 分", "1d": "日 K", "1wk": "週 K"}
+TF_KEYS = {"15m": ("intra15", "m15"), "30m": ("intra30", "m30"), "60m": ("intra", "ultra"), "1d": ("small", "short"), "1wk": ("mid", "swing")}
+TF_LABEL = {"15m": "15 分", "30m": "30 分", "60m": "60 分", "1d": "日 K", "1wk": "週 K"}
+TF_WIN = {"15m": I.TF[15]["win"], "30m": I.TF[30]["win"], "60m": I.TF[60]["win"], "1d": LV.SHORT_WIN, "1wk": LV.SWING_WIN}
 
 
 def _ladder(waves: dict, key: dict, lv: dict) -> list:
@@ -634,7 +844,20 @@ def _ladder(waves: dict, key: dict, lv: dict) -> list:
     return rows
 
 
-def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[list] = None) -> dict:
+def _vol_live(sym: str) -> Optional[dict]:
+    """加權盤中：今天 MI_5MINS（收完的＋進行中那根）；台指期 → None（bars5 的量本來就對）"""
+    if sym != "TWII":
+        return None
+    m = VD.mi5_today()
+    if not m:
+        return None
+    mp = dict(m["done"])
+    if m.get("part"):
+        mp[m["part"][0]] = m["part"][1]
+    return {"map": mp, "cum": m["cum"], "s": m["s"]}
+
+
+def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[list] = None, vol_live: Optional[dict] = None) -> dict:
     b = base(sym)
     if not b.get("ok"):
         return b
@@ -674,10 +897,11 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
         key[mode] = _key_out(cands, mode, price, b["atr"], st)
     # 超短線（60 分 K）
     try:
-        intra = _intraday(sym, b, price, lv_c, live_rows or [], st)
+        intra = _intraday(sym, b, price, lv_c, live_rows or [], st, (vol_live or {}).get("map"))
     except Exception as e:     # noqa: BLE001
         log.exception(f"[wave] 分 K 失敗 {sym}：{e}")
-        intra = {"ok": False, "note": f"分 K 計算失敗：{e}", "tf60": [], "tf30": [], "m30": {"ok": False, "note": f"分 K 計算失敗：{e}"}}
+        intra = {"ok": False, "note": f"分 K 計算失敗：{e}", "tf60": [], "tf30": [], "tf15": [],
+                 "m30": {"ok": False, "note": f"分 K 計算失敗：{e}"}, "m15": {"ok": False, "note": f"分 K 計算失敗：{e}"}}
     if intra.get("ok"):
         waves["intra"] = intra["wave"]
         lv["ultra"] = intra["levels"]
@@ -693,6 +917,52 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
     else:
         lv["m30"] = {"support": [], "resistance": [], "note": [m30.get("note") or "30 分 K 資料不足"]}
         key["m30"] = None
+    m15 = intra.get("m15") or {}
+    if m15.get("ok"):
+        waves["intra15"] = m15["wave"]
+        lv["m15"] = m15["levels"]
+        key["m15"] = m15["key"]
+    else:
+        lv["m15"] = {"support": [], "resistance": [], "note": [m15.get("note") or "15 分 K 資料不足"]}
+        key["m15"] = None
+    # B80 成交量：日 K（加權＝FMTQIK 成交金額、台指期＝日盤＋夜盤口數）、週 K、分 K
+    vols = _daily_vols(sym, b)
+    part_v, est = None, None
+    if use_live:
+        if sym == "TWII" and vol_live and vol_live.get("cum"):
+            part_v = vol_live["cum"] * _mi5_ratio()
+            try:
+                est = VO.day_estimate(part_v, _twii_fracs(now))
+            except Exception as e:     # noqa: BLE001
+                log.warning(f"[wave] 預估全天量失敗：{e}")
+        elif sym == "TX":
+            part_v = VO.vol_of(live.get("v"))
+    for k, bar in enumerate(bars):
+        i = t - 299 + k if t >= 299 else k
+        if bar.get("partial"):
+            bar["volume"] = _disp_v(sym, part_v)
+        elif 0 <= i < len(vols):
+            bar["volume"] = _disp_v(sym, vols[i])
+    wvol = _weekly_vols(dates, vols)
+    weekly_bars = [{**w, "volume": _disp_v(sym, wvol.get(_week(w["time"])))} for w in b["weekly"]]
+    vol = dict(intra.get("vol") or {})
+    vol["1d"] = _vol_daily(sym, b, an["small"], vols, price, "1d", 120, part_v, est)
+    vol["1wk"] = _vol_daily(sym, b, an["mid"], vols, price, "1wk", 250)
+    try:
+        now_wk = _week(live["date"] if use_live else now.strftime("%Y-%m-%d"))
+        wks = [_week(w["time"]) for w in b["weekly"]]
+        cur_wk = None
+        if wks and wks[-1] == now_wk:                    # 這週還沒走完：最後一根是進行中（含盤中今天）
+            cur_wk = (wvol.get(wks[-1]) or 0.0) + (VO.vol_of(part_v) or 0.0)
+            wks = wks[:-1]
+        wk_list = [wvol.get(k) for k in wks]
+        wrv = VO.rvol_plain(wk_list)
+        if wk_list and vol["1wk"].get("ok"):
+            vol["1wk"]["last"] = {"v": _disp_v(sym, wk_list[-1]), "rv": None if wrv[-1] is None else round(wrv[-1], 2),
+                                  "label": VO.rv_label(wrv[-1]), "t": "上週" if cur_wk is not None else "這週"}
+            vol["1wk"]["partial"] = None if not cur_wk else {"v": _disp_v(sym, cur_wk), "rv": None, "label": "這週到目前"}
+    except Exception as e:     # noqa: BLE001
+        log.warning(f"[wave] 週 K 量失敗：{e}")
     stale_reason = None
     if not use_live and FD.in_session(sym, now) and live is None:
         stale_reason = ("盤中即時加權抓不到" if sym == "TWII" else "台指期即時抓不到") + "，顯示最近收盤"
@@ -706,11 +976,14 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
                  "stale": stale_reason is not None, "stale_reason": stale_reason, "session": _session_label(sym, now)},
         "price": _f(price), "prev_close": _f(prev), "chg": _f(price - prev), "chg_pct": _pct(price, prev),
         "atr": _f(b["atr"], 0), "trend240": b["trend"],
-        "chart": {"bars": bars, "weekly": b["weekly"], "ma": mas, "i60": intra.get("tf60") or [], "i30": intra.get("tf30") or []},
+        "chart": {"bars": bars, "weekly": weekly_bars, "ma": mas, "i60": intra.get("tf60") or [], "i30": intra.get("tf30") or [],
+                  "i15": intra.get("tf15") or []},
         "nest": intra.get("nest") or {},
-        "v": 76,
+        "v": 81,
         "intra": {"ok": bool(intra.get("ok")), "note": intra.get("note"), "atr": intra.get("atr"), "m": E.INTRA["m"],
-                  "m30": {"ok": bool(m30.get("ok")), "note": m30.get("note"), "atr": m30.get("atr"), "m": E.INTRA30["m"]}},
+                  "m30": {"ok": bool(m30.get("ok")), "note": m30.get("note"), "atr": m30.get("atr"), "m": E.INTRA30["m"]},
+                  "m15": {"ok": bool(m15.get("ok")), "note": m15.get("note"), "atr": m15.get("atr"), "m": E.INTRA15["m"]}},
+        "volume": vol, "vol_unit": VOL_UNIT[sym],
         "waves": waves, "levels": lv, "key": key, "forecast": fc,
         "chips": b["chips"], "global": b["global"], "context": b["context"], "research": b["research"],
         "fut_chips": _fut_chips_out(b["fchips"]), "margin": CP.margin_block(b["chips_df"], now.strftime("%Y-%m-%d")),
@@ -735,9 +1008,61 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
     # B79 她的「日線定位」寫法（母尺、防守區、鐵律底線、威脅版本）
     snap["positioning"] = {tf: NE.positioning(waves.get(dg, {}).get("primary"), waves.get(dg, {}).get("alternate"), price, nm)
                            for tf, dg, nm in (("1d", "small", "日 K"), ("1wk", "mid", "週 K"))}
+    # B80 價位梯＋如果…就…＋三條路（每個週期一份）
+    vres = _vol_research(st)
+    snap["research"] = {**(snap.get("research") or {}), "volume": vres}
+    lm = {}
     snap["ladder"] = _ladder(waves, key, lv)
+    ldir = {r["tf"]: r.get("dir") or 0 for r in snap["ladder"]}
+    # B81：週 K 的母尺跟日 K 同一段 → 週 K 不再重複放母尺那組（PLAN-B81 §7.2）
+    same_pos = LM.same_ruler(snap["positioning"].get("1wk"), snap["positioning"].get("1d"))
+    sres = st.get("setups") or {}
+    for tf, (wk, lk) in TF_KEYS.items():
+        try:
+            intra_tf = tf in ("15m", "30m", "60m")
+            nz = (snap["nest"].get(tf) or {}) if intra_tf else None
+            vx = vol.get(tf) or {}
+            leg = vx.get("leg") or {}
+            ld = (nz.get("cur_dir") if nz and nz.get("ok") else None) or leg.get("dir") or 0
+            a_tf = ((intra.get("_tf") or {}).get(tf) or {}) if intra_tf else None
+            hlc = (a_tf.get("hlc") if a_tf and a_tf.get("ok") else None) if intra_tf else (h, l, c)
+            w = waves.get(wk) or {}
+            pos = None if intra_tf or (tf == "1wk" and same_pos) else snap["positioning"].get(tf)
+            lm[tf] = LM.build({"price": price, "win": TF_WIN[tf], "levels": lv.get(lk) or {}, "key": key.get(lk),
+                               "nest": nz, "wave": {"primary": w.get("primary"), "alternate": w.get("alternate")},
+                               "positioning": pos, "zones": vx.get("zones") or [],
+                               "leg_dir": ld, "vol_ok": bool((vres.get("V1") or {}).get("pass_d2" if intra_tf else "pass_d1")), "hlc": hlc})
+            if tf == "1wk" and same_pos:
+                lm[tf]["mother_note"] = "母尺跟日 K 同一段（防守區、鐵律底線看日 K）"
+            # B81 試單地圖：ATR＝該週期（週 K 用日 K 的 ATR，跟回測一樣）；順逆勢看週期按鈕的方向
+            atr_tf = (a_tf.get("atr") if a_tf and a_tf.get("ok") else None) if intra_tf else b["atr"]
+            tfc = "intra" if intra_tf else tf
+            res = {sid: {tr: {**r, "tfc": tfc} for tr, r in (x or {}).items()} for sid, x in (sres.get(tfc) or {}).items()
+                   if sid in ("L", "S", "B")}
+            su = LM.setups(lm[tf].get("items") or [], price, atr_tf, ldir.get(tf, 0), sym, res)
+            lm[tf]["setups"] = su
+            if not isinstance(lm[tf].get("top3"), dict):          # 審查 Groq F1：停損格一定寫回快照
+                lm[tf]["top3"] = {}
+            top = lm[tf]["top3"]
+            mid = su.get("main")
+            lst = su.get("list") or []
+            mx = next((x for x in lst if x["id"] == mid), None)
+            if mx is not None and sym == "TWII" and mx["id"] == "S":    # 加權的減碼區不是交易 → 停損格改用多單那筆
+                mx = next((x for x in lst if x["id"] != "S" and x["rr"] is not None and x["rr"] >= LM.SETUP_MIN_RR), None)
+            if top.get("stop") is None and mx is not None:    # 停損格不空白：用主要試單的停損（她的多空線）
+                top["stop"] = {"price": mx["stop"], "dist_pct": round((mx["stop"] / price - 1) * 100, 2) if price else None,
+                               "name": "多空線", "act": f"{mx['title']}的停損（{'跌破' if mx['side'] == 1 else '漲過'}就出場）"}
+                top["stop_src"] = "setup"
+        except Exception as e:     # noqa: BLE001
+            log.exception(f"[wave] 價位梯失敗 {sym} {tf}：{e}")
+            lm[tf] = {"ok": False, "note": f"價位梯計算失敗：{e}"}
+    snap["levelmap"] = lm
     snap["ladder_text"] = AD.ladder_summary(snap["ladder"])
     snap["advice"] = AD.build(snap)
+    abt = st.get("advice_bt") or {}
+    if snap["advice"].get("ok") and abt.get("text") and isinstance(snap["advice"].get("range"), dict):   # B81 R-A：方向一致調持股的回測結果照實標
+        snap["advice"]["range"]["why"] = list(snap["advice"]["range"].get("why") or []) + [abt["text"]]
+        snap["advice"]["range"]["bt"] = "✅" if abt.get("pass_S0") else "△"
     kind = ("live" if use_live else "close") if sym == "TWII" else f"TX:{'live' if use_live else 'close'}"
     try:
         with D.db() as conn:
@@ -766,7 +1091,7 @@ def _live_day(sym: str) -> Optional[dict]:
     x = FD.live_tx_day()
     if not x:
         return None
-    return {"date": x["date"], "o": x["o"], "h": x["h"], "l": x["l"], "c": x["c"], "time": D.tw_now().strftime("%H:%M:%S")}
+    return {"date": x["date"], "o": x["o"], "h": x["h"], "l": x["l"], "c": x["c"], "v": x.get("v"), "time": D.tw_now().strftime("%H:%M:%S")}
 
 
 def snapshot(force: bool = False, sym: str = "TWII") -> dict:
@@ -786,7 +1111,8 @@ def snapshot(force: bool = False, sym: str = "TWII") -> dict:
         try:
             live = _live_day(sym) if session else None
             rows = FD.live_bars(sym) if session else []
-            snap = compute(sym, live, rows)
+            vl = _vol_live(sym) if session else None
+            snap = compute(sym, live, rows, vol_live=vl)
         except Exception as e:     # noqa: BLE001
             log.exception(f"[wave] 計算失敗 {sym}：{e}")
             snap = last_good(sym) or {"ok": False, "error": f"計算失敗：{e}"}

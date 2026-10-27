@@ -127,33 +127,34 @@ function cbRender() {
     return;
   }
   const td = (v, x = '') => `<td style="padding:5px 8px;white-space:nowrap;${x}">${v}</td>`;
-  const flow = r => r.flow.map(f => `<span title="${f.n}. ${_cbE(f.name)}${f.unknown ? '（無資料）' : ''}" style="display:inline-block;width:15px;height:15px;line-height:15px;text-align:center;border-radius:50%;font-size:.62rem;margin-right:1px;${
+  const flow = r => r.flow.map(f => `<span title="${f.n}. ${_cbE(f.name)}${f.unknown ? '（無資料）' : ''}" style="display:inline-block;width:15px;height:15px;line-height:15px;text-align:center;border-radius:50%;font-size:.72rem;margin-right:1px;${
     f.on ? (f.n === 4 ? 'background:#22c55e;color:#000' : 'background:#ef4444;color:#fff') : f.unknown ? 'border:1px dashed #30363d;color:#484f58' : 'border:1px solid #30363d;color:var(--muted)'}">${f.n}</span>`).join('');
-  body.innerHTML = `<div class="tbl-wrap" style="overflow-x:auto"><table style="width:100%;font-size:.8rem;border-collapse:collapse">
+  body.innerHTML = `<div class="tbl-wrap" style="overflow-x:auto"><table class="mc mc-gen" style="width:100%;font-size:.8rem;border-collapse:collapse">
     <thead><tr style="background:#1c2128;color:var(--muted)">
       <th style="padding:6px 4px;white-space:nowrap">自選</th>${_CB_COLS.map(c => `<th onclick="cbSortBy('${c.key}')"${c.title ? ` title="${_cbE(c.title)}"` : ''} style="padding:6px 8px;white-space:nowrap;text-align:${c.align};cursor:pointer;user-select:none;${_cbSort.key === c.key ? 'color:var(--accent)' : ''}">${c.label}${_cbSort.key === c.key ? (_cbSort.dir === 1 ? ' ▲' : ' ▼') : ''}</th>`).join('')}
     </tr></thead><tbody>${rows.map(r => {
       const t = _CB_TIER[r.tier];
       return `<tr style="border-top:1px solid #21262d;cursor:pointer" onclick="cbDetail('${_cbE(r.code)}')">
         ${td(wlRowBtn(r.sid, `cbAddWl('${_cbE(r.code)}')`), 'padding:5px 4px;text-align:center')}
-        ${td(`<b style="color:var(--accent)">${_cbE(r.code)}</b> ${_cbE(r.name || '')}<br><span style="font-size:.7rem;color:var(--muted)">${_cbE(r.sid)} ${_cbE(r.issuer || '')}</span>`)}
-        ${td(`<span class="sig ${t.cls}">${t.label}</span><br><span style="font-size:.66rem;color:var(--muted)">${_cbWhatShort(r)}${r.score} 分</span>`)}
-        ${td(`<b>${_cbN(r.cb_price)}</b>${r.near_par ? `<br><span style="font-size:.66rem;color:#ef4444">${r.cb_price < 100 ? '低於面額' : '貼近面額'}</span>` : ''}`, 'text-align:right')}
+        ${td(`<b style="color:var(--accent)">${_cbE(r.code)}</b> ${_cbE(r.name || '')}<br><span style="font-size:.72rem;color:var(--muted)">${_cbE(r.sid)} ${_cbE(r.issuer || '')}</span>`)}
+        ${td(`<span class="sig ${t.cls}">${t.label}</span><br><span style="font-size:.72rem;color:var(--muted)">${_cbWhatShort(r)}${r.score} 分</span>`)}
+        ${td(`<b>${_cbN(r.cb_price)}</b>${r.near_par ? `<br><span style="font-size:.72rem;color:#ef4444">${r.cb_price < 100 ? '低於面額' : '貼近面額'}</span>` : ''}`, 'text-align:right')}
         ${td(_cbN(r.stock_price), 'text-align:right')}
-        ${td(`${_cbN(r.conv_price)}${r.conv_src !== '發行時' ? `<br><span style="font-size:.64rem;color:var(--muted)">${r.conv_src === '手動' ? '手動' : '已調整'}</span>` : ''}`, 'text-align:right')}
+        ${td(`${_cbN(r.conv_price)}${r.conv_src !== '發行時' ? `<br><span style="font-size:.72rem;color:var(--muted)">${r.conv_src === '手動' ? '手動' : '已調整'}</span>` : ''}`, 'text-align:right')}
         ${td(_cbN(r.parity, 1), 'text-align:right')}
-        ${td(_cbP(r.premium_pct) + (r.grab ? '<br><span style="font-size:.64rem;color:#ef4444">🔥搶購</span>' : r.lock ? '<br><span style="font-size:.64rem;color:#22c55e">鎖利</span>'
-          : r.near_par && r.premium_pct > 30 ? '<br><span style="font-size:.64rem;color:var(--muted)" title="股價要漲這麼多 CB 才會跟漲">純債型</span>' : ''), `text-align:right;color:${r.premium_pct == null ? 'var(--muted)' : r.grab ? '#ef4444' : 'var(--text)'}`)}
+        ${td(_cbP(r.premium_pct) + (r.grab ? '<br><span style="font-size:.72rem;color:#ef4444">🔥搶購</span>' : r.lock ? '<br><span style="font-size:.72rem;color:#22c55e">鎖利</span>'
+          : r.near_par && r.premium_pct > 30 ? '<br><span style="font-size:.72rem;color:var(--muted)" title="股價要漲這麼多 CB 才會跟漲">純債型</span>' : ''), `text-align:right;color:${r.premium_pct == null ? 'var(--muted)' : r.grab ? '#ef4444' : 'var(--text)'}`)}
         ${td(flow(r))}
-        ${td(_cbP(r.rev_yoy) + (r.rev_turn ? '<br><span style="font-size:.64rem;color:#ef4444">負轉正</span>' : ''), `text-align:right;color:${r.rev_yoy == null ? 'var(--muted)' : r.rev_yoy > 0 ? '#ef4444' : '#22c55e'}`)}
-        ${td(r.short_chg5 == null ? (r.short_now != null ? _cbN(r.short_now, 0) + ' 張' : '—') : `${r.short_chg5 >= 0 ? '+' : ''}${_cbN(r.short_chg5, 0)}<br><span style="font-size:.64rem;color:var(--muted)">餘 ${_cbN(r.short_now, 0)}</span>`,
+        ${td(_cbP(r.rev_yoy) + (r.rev_turn ? '<br><span style="font-size:.72rem;color:#ef4444">負轉正</span>' : ''), `text-align:right;color:${r.rev_yoy == null ? 'var(--muted)' : r.rev_yoy > 0 ? '#ef4444' : '#22c55e'}`)}
+        ${td(r.short_chg5 == null ? (r.short_now != null ? _cbN(r.short_now, 0) + ' 張' : '—') : `${r.short_chg5 >= 0 ? '+' : ''}${_cbN(r.short_chg5, 0)}<br><span style="font-size:.72rem;color:var(--muted)">餘 ${_cbN(r.short_now, 0)}</span>`,
           `text-align:right;${r.short_surge ? 'color:#22c55e;font-weight:700' : r.short_drop ? 'color:#ef4444;font-weight:700' : ''}`)}
         ${td(r.cb_vol != null ? `${_cbN(r.cb_vol, 0)}<span style="color:var(--muted)">／${_cbN(r.cb_vol_avg20, 0)}</span>` : '—', `text-align:right;${r.cb_vol_surge ? 'color:#ef4444;font-weight:700' : ''}`)}
         ${td(r.converted_pct != null ? r.converted_pct.toFixed(1) + '%' : '—', 'text-align:right')}
         ${td(r.stage.length ? r.stage.map(_cbE).join('<br>') : '<span class="muted">—</span>', 'font-size:.74rem')}
-        ${td(_cbD(r.maturity_date) + (r.days_to_maturity != null && r.days_to_maturity <= 365 ? `<br><span style="font-size:.66rem;color:#f59e0b">剩 ${r.days_to_maturity} 天</span>` : ''))}
+        ${td(_cbD(r.maturity_date) + (r.days_to_maturity != null && r.days_to_maturity <= 365 ? `<br><span style="font-size:.72rem;color:#f59e0b">剩 ${r.days_to_maturity} 天</span>` : ''))}
       </tr>`;
     }).join('')}</tbody></table></div>`;
+  if (typeof _mcLabelAll === 'function') _mcLabelAll(body);   // 手機卡片的小標（B82 D）
 }
 
 function cbDetail(code) {
