@@ -1,0 +1,16 @@
+name: b85-probe
+on:
+  push:
+    branches: [claude/backtest-redesign-impl-516r4s]
+    paths: ["scratch_probe/b85_probe.py"]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q httpx
+      - run: python scratch_probe/b85_probe.py
