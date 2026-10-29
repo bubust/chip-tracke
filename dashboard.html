@@ -1588,7 +1588,7 @@ async function loadHealth() {
     body.dp-split #chart-modal-box { width:100vw !important;height:58dvh !important }
     body.dp-split #deep-panel { inset:auto 0 0 0;width:100vw;height:42dvh;border-top:2px solid #30363d }
     /* 手機同時看：藏均線／畫線工具列和圖例列，K 線才看得到 */
-    body.dp-split #chart-modal-box > div:nth-child(2), body.dp-split #chart-modal-box > div:nth-child(3) { display:none !important }
+    body.dp-split #chart-modal-box > div:nth-child(2), body.dp-split #chart-modal-box > div:nth-child(3), body.dp-split #chart-fbd-note { display:none !important }
   }
   .dp-open-btn { margin-left:6px;padding:1px 7px;font-size:.72rem;border-color:#a78bfa !important;color:#a78bfa !important;white-space:nowrap;vertical-align:middle }
   @media (max-width: 480px) { .dp-open-btn { min-height:0 !important;padding:2px 6px !important;font-size:.8rem !important } .dp-open-btn .t { display:none } }
@@ -3697,7 +3697,7 @@ function _btEnsureStockPanel() {
   document.getElementById('bt-body').before(ctrl);
   btUpdateStopUI();
   const sel = document.getElementById('bt-signal');
-  const ma10 = `<option value="__fbd">🟡 MA10 假跌破（看多）— K 線黃色標記，非策略</option>
+  const ma10 = `<option value="__fbd">🟡 MA10 站回（看多）— K 線黃色「站回」標記，不是 🪤 假跌破策略</option>
                 <option value="__fbr">🟡 MA10 假突破（看空）— K 線黃色標記，非策略</option>`;
   sel.innerHTML = `<option value="${_btPreferredStrategy}">${STRATEGY_LABELS[_btPreferredStrategy] || _btPreferredStrategy}</option>` + ma10;
   _btStrategiesLoaded = fetch('/api/backtest/strategies').then(r => r.json()).then(list => {
@@ -3861,9 +3861,9 @@ async function runIdxBacktest(key) {
         </div>`;
     }
     body.innerHTML = `
-      <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">⚙️ MA10 假跌破/假突破 · 進場：訊號當日收盤 · 出場：${exitHint}${days>0?' · 最多'+days+'天':''}${slHint}${tpHint}${filterHint?' · 篩選：'+filterHint:''}</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">⚙️ MA10 站回／假突破 · 進場：訊號當日收盤 · 出場：${exitHint}${days>0?' · 最多'+days+'天':''}${slHint}${tpHint}${filterHint?' · 篩選：'+filterHint:''}</div>
       <div style="font-size:.72rem;color:#484f58;margin-bottom:10px">🔴 紅=獲利　🟢 綠=虧損（台股慣例）｜持至末端 = 無出場條件觸發，持有到最後一筆資料</div>
-      ${statBlock('fbd','🟡 假跌破（看多）','#fbbf24')}
+      ${statBlock('fbd','🟡 站回 MA10（看多）','#fbbf24')}
       ${statBlock('fbr','🟢 假突破（看空）','#3fb950')}
     `;
   } catch(e) {
@@ -7271,15 +7271,26 @@ function _rebuildChartMarkers() {
   const maMap = { ma5, ma10, ma20 };
   const markers = [];
 
-  // ── 假跌破 / 假突破（MA 模式）──
+  // ── 站回均線／🪤 假跌破／假突破（MA 模式）──
+  // 2026-10-29 用戶：K 線圖標「假跌破」但 13:10 清單沒有（群創）→ 只站回均線的標「站回」；
+  // 日 K＋MA10 時再跑一次 🪤 假跌破策略（跟 scanner.screen_sfbd、13:10 清單同一套），全部條件成立才標「🪤假跌破」
+  let lastReclaim = null;
   if (_fakeBdMA) {
     const selMA = maMap[_fakeBdMA];
+    const maName = { ma5: 'MA5', ma10: 'MA10', ma20: 'MA20' }[_fakeBdMA];
+    const doFbd = _fakeBdMA === 'ma10' && _chartCachedMarkerData.daily;
     if (selMA) {
       for (let i = 1; i < n - 1; i++) {
         if (isNaN(selMA[i]) || isNaN(selMA[i + 1])) continue;
-        // i 日跌破 MAx，i+1 日收復 → 假跌破
+        // i 日收在 MAx 下，i+1 日站回 → 站回；MA10 再看 🪤 假跌破策略
         if (closes[i] < selMA[i] && closes[i + 1] > selMA[i + 1]) {
-          markers.push({ time: _rt(ohlcv[i + 1]), position: 'belowBar', color: '#fbbf24', shape: 'arrowUp', text: _mt('假跌破', '假跌'), size: 1 });
+          const chk = doFbd ? _fbdCheck(_chartCachedMarkerData, i + 1, _fbdParams || FBD_DEFAULT) : null;
+          if (chk && chk.ok) {
+            markers.push({ time: _rt(ohlcv[i + 1]), position: 'belowBar', color: '#f97316', shape: 'arrowUp', text: _mt('🪤假跌破', '🪤'), size: 2 });
+          } else {
+            markers.push({ time: _rt(ohlcv[i + 1]), position: 'belowBar', color: '#fbbf24', shape: 'arrowUp', text: _mt(`站回${maName}`, '站回'), size: 1 });
+          }
+          lastReclaim = { j: i + 1, chk, maName };
         }
         // i 日突破 MAx，i+1 日跌回 → 假突破
         if (closes[i] > selMA[i] && closes[i + 1] < selMA[i + 1]) {
@@ -7344,6 +7355,64 @@ function _rebuildChartMarkers() {
 
   markers.sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0);
   try { cSeries.setMarkers(markers); } catch(e) {}
+  _fbdNote(lastReclaim && lastReclaim.j >= n - 5 ? lastReclaim : null);
+}
+
+// ── 🪤 假跌破策略（S_FBD）：跟 scanner.screen_sfbd（13:10 清單、18:00 掃描）同一套條件，參數用策略篩選 ⚙️ 存的 ──
+const FBD_DEFAULT = { min_price: 10, min_vol_lots: 300, break_window: 4, break_vol_ratio: 2.5, vol_ref_days: 20, macd_ref_days: 3 };
+let _fbdParams = null;
+async function _loadFbdParams() {
+  try {
+    const d = _allStratData || await api('GET', '/api/params/strategies');
+    _fbdParams = { ...FBD_DEFAULT, ...(((d || {}).S_FBD || {}).values || {}) };
+  } catch (e) { _fbdParams = { ...FBD_DEFAULT }; }
+  return _fbdParams;
+}
+
+// j＝站回 MA10 那天（前一天收在 MA10 下）→ {ok, fails:[沒過的條件]}；盤中最後一根的量用前 20 日均量墊（跟 fbd_live 一樣）
+function _fbdCheck(d, j, p) {
+  const { ohlcv, closes, ma10, ma60, osc } = d;
+  const r = ohlcv[j], c = closes[j], b = j - 1, f2 = x => (+x).toFixed(2);
+  const fails = [];
+  const nRef = Math.max(1, +p.vol_ref_days || 20), mr = Math.max(1, +p.macd_ref_days || 3);
+  const prevVols = ohlcv.slice(Math.max(0, j - nRef), j).map(x => +x.volume || 0);
+  const prevAvg = prevVols.length ? prevVols.reduce((s, v) => s + v, 0) / prevVols.length : 0;
+  const vol = d.live && j === ohlcv.length - 1 ? Math.max(+r.volume || 0, prevAvg) : (+r.volume || 0);
+  if (j < 64 || isNaN(ma60[j])) fails.push('資料不到 65 天');
+  if (!(c > +p.min_price)) fails.push(`股價 ${c} 沒超過 ${p.min_price}`);
+  if (vol < +p.min_vol_lots) fails.push(`量 ${Math.round(vol).toLocaleString('zh-TW')} 張不到 ${p.min_vol_lots}`);
+  if (!isNaN(ma60[j]) && !(ma10[j] > ma60[j])) fails.push(`10 日線 ${f2(ma10[j])} 在季線 ${f2(ma60[j])} 下（不是多頭格局）`);
+  if (!(osc[j] < 0 && j - mr >= 0 && osc[j] > osc[j - mr])) fails.push(osc[j] >= 0 ? 'MACD 已經是紅柱（策略要綠柱縮短）' : `MACD 綠柱沒有比 ${mr} 天前縮短`);
+  if (!(c > +r.open)) fails.push('今天沒收紅');
+  const vols = ohlcv.slice(Math.max(0, j - nRef + 1), j + 1).map(x => +x.volume || 0);
+  vols[vols.length - 1] = vol;
+  const vol20 = vols.reduce((s, v) => s + v, 0) / vols.length;
+  const bv = +ohlcv[b].volume || 0;
+  if (vol20 > 0 && bv > vol20 * +p.break_vol_ratio) fails.push(`跌破那天爆量（${(bv / vol20).toFixed(1)} 倍均量，上限 ${p.break_vol_ratio} 倍）`);
+  if (!(c > closes[b])) fails.push('收盤沒吃回跌破那天的收盤');
+  return { ok: fails.length === 0, fails };
+}
+
+// 圖上方一行：最近 5 根裡最後一次站回均線，說清楚是不是 🪤 假跌破、哪個條件沒過
+function _fbdNote(x) {
+  const el = document.getElementById('chart-fbd-note');
+  if (!el) return;
+  if (!x) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const d = _chartCachedMarkerData, r = d.ohlcv[x.j];
+  const day = r.ts != null ? new Date(r.ts * 1000).toISOString().slice(5, 16).replace('T', ' ').replace('-', '/')
+    : `${String(r.date).slice(4, 6)}/${String(r.date).slice(6, 8)}`;
+  const ma = { MA5: d.ma5, MA10: d.ma10, MA20: d.ma20 }[x.maName][x.j];
+  const live = d.live && x.j === d.ohlcv.length - 1 ? '<span style="color:#9598a1">（盤中，收盤才算數）</span>' : '';
+  let html;
+  if (x.chk && x.chk.ok) {
+    html = `<b style="color:#f97316">🪤 ${day} 假跌破成立</b>：站回 MA10 ${(+ma).toFixed(2)}，策略條件全部通過（跟 13:10 清單、18:00 掃描同一套）${live}`;
+  } else if (x.chk) {
+    html = `<b style="color:#fbbf24">▲ ${day} 站回 MA10 ${(+ma).toFixed(2)}</b>，但 <b>🪤 假跌破策略不成立</b>：${x.chk.fails.map(_esc).join('、')}${live}`;
+  } else {
+    html = `<b style="color:#fbbf24">▲ ${day} 站回 ${x.maName} ${(+ma).toFixed(2)}</b>${d.daily ? '' : '（分 K 只標站回，🪤 假跌破策略看日 K）'}${live}`;
+  }
+  el.innerHTML = html;
+  el.style.display = 'block';
 }
 
 // 前高／前低（跟 price_levels.py 同一套）：前高＝pivots(h,5,'high')＋recent_high(h,5)（壓力區用的前高）；
@@ -7783,8 +7852,11 @@ async function openChart(stockId, savedRange = null) {
     [bbUpperS, bbLowerS, bbMidS].forEach(s => { s.applyOptions({ visible: _chartOverlayState.bb }); _bbSeriesRefs.push(s); });
 
     // ── 快取資料 + 建立所有標記 ──
-    _chartCachedMarkerData = { ohlcv, closes, ma5, ma10, ma20, chipDateMap, cSeries };
+    _chartCachedMarkerData = { ohlcv, closes, ma5, ma10, ma20, ma60, chipDateMap, cSeries,
+                               osc: _calcMACD(closes).hist, daily: _chartInterval === '1d' && !stockId.startsWith('__idx_'),
+                               live: _trading && String(ohlcv[n - 1].date) === new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10).replace(/-/g, '') };   // 最後一根是今天、盤中
     _rebuildChartMarkers();
+    if (!_fbdParams) _loadFbdParams().then(() => _rebuildChartMarkers());   // 用使用者 ⚙️ 的假跌破參數重標一次
 
     // 蠟燭 legend：滑鼠停在哪根就顯示那天的 開／高／低／收、漲跌（對前一根收盤）；第二行均線
     const cLeg = _mkLegend(cEl);
@@ -8409,7 +8481,8 @@ async function saveAllStratParams() {
     <!-- 圖例說明列（手機預設收起，按「ℹ️ 圖例」展開）-->
     <div id="chart-legend" style="display:flex;align-items:center;padding:5px 16px;background:#0a0f1a;flex-shrink:0;flex-wrap:wrap;gap:12px;border-bottom:1px solid #1a1f2e">
       <span style="font-size:.8rem;color:#6b7280">圖例：</span>
-      <span style="font-size:.8rem;color:#fbbf24" title="跌破 MAx 次日收復 → 洗盤完成，看多訊號">▲黃 假跌破（MAx）</span>
+      <span style="font-size:.8rem;color:#f97316" title="日 K 站回 MA10，而且 🪤 假跌破策略全部條件成立（10 日線在季線上、MACD 綠柱縮短、收紅、跌破那天沒爆量…）＝跟 13:10 清單同一套">▲橘大 🪤 假跌破（策略成立）</span>
+      <span style="font-size:.8rem;color:#fbbf24" title="前一天收在 MAx 下、今天站回；只是站回，不等於假跌破策略成立（圖上方那行會寫哪個條件沒過）">▲黃 站回 MAx</span>
       <span style="font-size:.8rem;color:#22c55e" title="突破 MAx 次日跌回 → 假突破，看空訊號">▼綠 假突破（MAx）</span>
       <span style="font-size:.8rem;color:#38bdf8" title="收盤跌破前 10 天最低點，隔天收回">▲藍 破低收復</span>
       <span style="font-size:.8rem;color:#22c55e" title="收盤突破前 10 天最高點，隔天跌回">▼綠 破高回落</span>
@@ -8419,8 +8492,10 @@ async function saveAllStratParams() {
       <span style="font-size:.8rem;color:#6b7280">｜</span>
       <span style="font-size:.8rem;color:#f59e0b" title="左右各 5 根的波段高點，跟壓力線同一套">●橘 前高</span>
       <span style="font-size:.8rem;color:#4ade80" title="相鄰兩個小高點（左右各 3 根）之間的最低點，跟支撐、滾動停損同一套">●綠 前低</span>
-      <span class="leg-mob-note" style="font-size:.8rem;color:#9598a1">手機上標記字縮寫：假跌／假突＝假跌破／假突破、收復／回落＝破低收復／破高回落、建＝建倉、⚠＝接盤、數字＝前高／前低</span>
+      <span class="leg-mob-note" style="font-size:.8rem;color:#9598a1">手機上標記字縮寫：🪤＝假跌破策略成立、站回＝站回均線、假突＝假突破、收復／回落＝破低收復／破高回落、建＝建倉、⚠＝接盤、數字＝前高／前低</span>
     </div>
+    <!-- 最近一次站回 MA10：是不是 🪤 假跌破、哪個條件沒過（_fbdNote）-->
+    <div id="chart-fbd-note" style="display:none;padding:4px 16px;font-size:.82rem;line-height:1.5;background:#0f1523;border-bottom:1px solid #1a1f2e;flex-shrink:0"></div>
     <div id="chart-tv-container" style="flex:1;overflow:hidden"></div>
   </div>
 </div>

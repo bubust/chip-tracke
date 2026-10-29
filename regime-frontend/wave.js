@@ -1153,8 +1153,16 @@
     return wd >= 2 && wd <= 6 && m <= 305;
   }
 
+  // 上方固定（10-29 用戶）：哨兵捲出畫面＝標題列已經黏在上面 → 加 .stuck 縮小
+  function bindSticky() {
+    const sen = $('wv-sticky-sentinel'), stk = $('wv-sticky');
+    if (!sen || !stk || !('IntersectionObserver' in window)) return;
+    new IntersectionObserver(([e]) => stk.classList.toggle('stuck', !e.isIntersecting && e.boundingClientRect.top < 0)).observe(sen);
+  }
+
   window.addEventListener('DOMContentLoaded', () => {
     if (!$('wv-root')) return;
+    bindSticky();
     bind();
     setTab(st.tab);
     load(false);
