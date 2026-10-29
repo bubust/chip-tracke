@@ -189,6 +189,11 @@
   .wv-ws .t { font-weight: 800; color: #f472b6; margin-bottom: 2px; }
   .wv-ws.ok .t { color: var(--up, #34d399); }
   .wv-ws ul { margin: 6px 0 0; padding-left: 18px; }
+  .wv-ws.life { border-color: rgba(251,146,60,.6); background: rgba(251,146,60,.08); }
+  .wv-ws.life .t { color: #fb923c; }
+  .wv-ws.life.broke { border-color: rgba(34,197,94,.6); background: rgba(34,197,94,.08); }
+  .wv-ws.life.broke .t { color: #4ade80; }
+  .wv-ws + .wv-ws { margin-top: 8px; }
   .wv-tree-box .hd { font-weight: 800; font-size: 1.05rem; }
   .wv-tree-box .hd .path { font-size: 1.4rem; font-variant-numeric: tabular-nums; margin: 0 6px; }
   ul.wv-tree, ul.wv-tree ul { list-style: none; margin: 0; padding-left: 1.1em; }
@@ -1079,6 +1084,6 @@ setInterval(() => { if (_regimeVisible() && Date.now() - _lastLoad >= 300000) { 
 // 視窗 resize 時重繪圖表
 window.addEventListener('resize', () => { window.__regimeRedraw(); });
 </script>
-<script src="/regime/static/wave.js?v=20261029b84"></script>
+<script src="/regime/static/wave.js?v=20261030b85"></script>
 </body>
 </html>

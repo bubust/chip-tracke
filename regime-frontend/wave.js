@@ -566,10 +566,15 @@
       const P = nz.primary || {}, A = nz.alternate;
       const kill = c => (c.rules || []).filter(r => !/這一小段的起點/.test(r.why)).slice(0, 1).map(r => `${r.side === 'below' ? '跌破' : '漲過'} <b>${fmt(r.price)}</b> → ${esc(c.path)} 作廢`).join('');
       // B83 關鍵分水嶺＋她的兩個版本怎麼確認（nest.plan 裡「版本 1／版本 2」那兩行）
+      // B85 她 10/29：B（C-2）走完第一段以後的「生死臨界線」優先放最上面，兩個版本跟著它
       const ws = (nz.gates || []).find(g => g.k === '分水嶺');
+      const life = (nz.gates || []).find(g => g.k === '生死線');
       const vlines = (nz.plan || []).filter(x => /^版本 [12]/.test(x));
-      const wsBox = ws ? `<div class="wv-ws${ws.ok ? ' ok' : ''}"><div class="t">🚦 ${esc(ws.t.split('：')[0])}</div>
-          <div>${esc(ws.t.split('：').slice(1).join('：'))}</div>${vlines.length ? `<ul>${vlines.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>` : '';
+      const cut = t => { const k = Math.min(...['（', '：'].map(ch => t.indexOf(ch)).filter(x => x > 0)); return [t.slice(0, k), t.slice(k)]; };
+      const wsCard = (g, cls, withV, tag) => { const [h, b] = cut(g.t); return `<div class="wv-ws ${cls}"><div class="t">🚦 ${esc(h)}${tag}</div>
+          <div>${esc(b.replace(/^：/, ''))}</div>${withV && vlines.length ? `<ul>${vlines.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>`; };
+      const wsBox = (life ? wsCard(life, 'life' + (life.ok ? ' broke' : ''), true, life.ok ? '（已跌破）' : '') : '')
+        + (ws ? wsCard(ws, ws.ok ? 'ok' : '', !life, '') : '');
       extra = `${wsBox}<div style="margin-top:8px">起點：<b>${esc(nz.anchor.label)} ${fmt(nz.anchor.p)}</b>
           <span class="wv-dim">（${nz.anchor.how === 'parent' ? '60 分這一段的起點（她：15 分是在 60 分結構裡找短脈動）' : nz.anchor.how === 'daily' ? '日 K 這一浪的起點' : '這段時間最早的極值'}）</span>
           → ${nz.dir < 0 ? '最低' : '最高'} <b>${fmt(nz.extreme.p)}</b> <span class="wv-dim">${esc(nz.extreme.label)}</span></div>
@@ -1002,7 +1007,7 @@
       const a = barAt(bars, tl.from.time), b = barAt(bars, tl.time_now);
       tline.setData(a != null && b != null && a < b ? [{ time: a, value: tl.from.p }, { time: b, value: tl.now }] : []);
     } else if (tline) tline.setData([]);
-    if (useNest) (nz.gates || []).filter(g => /關|分水嶺/.test(g.k)).forEach(g => add(g.price, g.k === '分水嶺' ? '#f472b6' : '#fbbf24', g.k.replace('第', ''), 2, 1, false));
+    if (useNest) (nz.gates || []).filter(g => /關|分水嶺|生死線/.test(g.k)).forEach(g => add(g.price, g.k === '分水嶺' ? '#f472b6' : g.k === '生死線' ? '#fb923c' : '#fbbf24', g.k.replace('第', ''), 2, 1, false));
     // 歷史範圍錐形（只有日 K、勾選才畫）
     const fc = S.forecast || {};
     if (!intra && !weekly && st.show.cone && fc.h5 && fc.h20) {
