@@ -784,7 +784,8 @@ def _nest(a: dict, tf: int, price: float, b: dict, parent: Optional[dict] = None
     tlabel = lambda i: FD.tw_dt(times[i]).strftime("%m/%d %H:%M")     # noqa: E731
     try:
         out = NE.build(a["an"], times, price, I.TF[tf]["tfn"], daily_cnt=(b["an"].get("small") or {}).get("primary"),
-                       daily_dates=b["dates"], tdate=tdate, tlabel=tlabel, parent_seg=parent)
+                       daily_dates=b["dates"], tdate=tdate, tlabel=tlabel, parent_seg=parent,
+                       closes=(a.get("hlc") or (None, None, None))[2])
     except Exception as e:     # noqa: BLE001
         log.exception(f"[wave] 多層浪名失敗 {tf}：{e}")
         return {"ok": False, "note": f"多層浪名計算失敗：{e}"}

@@ -636,30 +636,55 @@ def limit_zone(c: dict, seq: list, d0: int) -> Optional[dict]:
             "lv": [(round(v, 2), t) for v, t in out["lv"]], "brk": [(round(v, 2), t) for v, t in brk]}
 
 
+YOUNG = 0.618            # B85 日 K 剛換成新的推動浪、還沒走出前一段修正的 0.618：先從前一段修正的起點數（她 10/29：45523 起的反彈先當 C-2）
+
+
+def daily_seg(daily_cnt: Optional[dict]) -> Optional[tuple]:
+    """日 K 主要劇本 → (起點 label, 下一點 label, 第一層性質 M／C, young)。
+    B85：現在這一浪是推動（1、3、5、C）、前一浪是修正，而且現在這一浪還沒走出前一段的 YOUNG 倍 →
+    新的一浪還沒證明自己，先從前一段修正的起點拆（反彈可能只是那段修正的 B／2；她 10/29 把 45523→47606 當 C-2-a）"""
+    L = (daily_cnt or {}).get("labels") or []
+    if len(L) < 2:
+        return None
+    role = daily_role(daily_cnt)
+    if len(L) >= 3:
+        p0, s0, s1 = L[-3], L[-2], L[-1]
+        prev_role = daily_role({**daily_cnt, "current": str(s0.get("label") or "")})
+        prev_len, cur_len = abs(s0["p"] - p0["p"]), abs(s1["p"] - s0["p"])
+        if role == "M" and prev_role == "C" and prev_len > 0 and cur_len < YOUNG * prev_len:
+            return p0, s0, "C", True
+    return L[-2], L[-1], role, False
+
+
 def _anchor(pts: list, daily_cnt: Optional[dict], daily_dates, tdate) -> tuple:
-    """起點：日 K 主要劇本「現在這一浪」的起點，對到分 K 同方向轉折（前後 2 天內最極端的）；對不到 → 視窗內較早的極值"""
+    """起點：日 K 主要劇本「現在這一浪」的起點（B85：新的一浪還太小 → 前一段的起點，見 daily_seg），對到分 K 同方向轉折：
+    日期在「前一根日 K 那天～這根日 K 後 2 天」內最極端的（B85：以前只看前後 2 天，颱風休市 10/23 的 45523 併在 10/27 那根，對不到）；
+    對不到 → 視窗內較早的極值。回傳 (索引, how, 第一層性質, young)"""
     n = len(pts)
     lo_i = max(0, n - 1 - MAX_PIV)
     lo_d = max(0, n - 1 - ANCHOR_LOOK)                   # B83 日 K 起點可以比較遠（轉折太多由 NEST_SEG 併段處理）
-    if daily_cnt and daily_dates is not None and len(daily_cnt.get("labels") or []) >= 2:
-        L = daily_cnt["labels"]
-        s0, s1 = L[-2], L[-1]
+    seg = daily_seg(daily_cnt) if daily_dates is not None else None
+    if seg:
+        s0, s1, role, young = seg
         typ = "L" if s1["p"] > s0["p"] else "H"
         try:
             import datetime as _dt
-            d_s = _dt.date.fromisoformat(str(daily_dates[s0["i"]])[:10])
-            cand = [k for k in range(lo_d, n - 2) if pts[k]["t"] == typ and abs((tdate(pts[k]["i"]) - d_s).days) <= 2]
+            day = lambda k: _dt.date.fromisoformat(str(daily_dates[k])[:10])   # noqa: E731
+            d_s = day(s0["i"])
+            d_lo = min(d_s - _dt.timedelta(days=2), day(s0["i"] - 1) if s0["i"] >= 1 else d_s)
+            d_hi = d_s + _dt.timedelta(days=2)
+            cand = [k for k in range(lo_d, n - 2) if pts[k]["t"] == typ and d_lo <= tdate(pts[k]["i"]) <= d_hi]
         except Exception:  # noqa: BLE001
             cand = []
         if cand:
             k = (max if typ == "H" else min)(cand, key=lambda q: pts[q]["p"])
-            return k, "daily"
+            return k, "daily", role, young
     win = range(lo_i, n - 2)
     if not win:
-        return None, None
+        return None, None, None, False
     kmax = max(win, key=lambda q: pts[q]["p"] if pts[q]["t"] == "H" else -1e18)
     kmin = min(win, key=lambda q: pts[q]["p"] if pts[q]["t"] == "L" else 1e18)
-    return min(kmax, kmin), "window"
+    return min(kmax, kmin), "window", None, False
 
 
 def anchor_at(pts: list, t0: int, t1: int, typ: str, times) -> Optional[int]:
@@ -671,9 +696,75 @@ def anchor_at(pts: list, t0: int, t1: int, typ: str, times) -> Optional[int]:
     return (max if typ == "H" else min)(cand, key=lambda q: pts[q]["p"])
 
 
+LIFE_R = 0.7             # B85 她 10/29 的生死臨界線上緣＝C-2-a 的 0.7（46,148）；下緣＝C-2-a 最後一段起漲點（46,006）
+NEXT_OF = {"B": "C", "b": "c", "2": "3", "4": "5"}
+
+
+def life_line(c: dict, seq: list, pts: list, d0: int, price: float, t_now: int, closes=None) -> Optional[dict]:
+    """B85 她 10/29「生死臨界線」：主要數法是逆著大段的那段（B／2／4，她的 C-2）、而且它的第一段（a）已經走完 →
+    a 的 0.7～a 最後一段的起漲點＝生死臨界線（60 分收盤要守住）；a 的 0.618＝跌破後反抽的關卡；
+    a 高點之後走了幾根 K（她：橫台磨 8～12 根）、MACD 綠柱修到哪（她：指標修完、價格還在地板＝時間額度用完）"""
+    X = (c["tree"].get("subs") or [None])[-1]
+    if not X or not X.get("partial") or X["k"] == "atom" or len(X["subs"]) < 2:
+        return None
+    a = X["subs"][0]
+    A0, A1 = seq[a["i"]], seq[a["j"]]
+    La = abs(A1["p"] - A0["p"])
+    if La <= 0:
+        return None
+    up = -d0                                             # X（逆勢那段）的方向
+    lv = lambda r: A1["p"] - up * r * La                 # noqa: E731
+    k0 = next((k for k, q in enumerate(pts) if q["i"] == A0["i"]), None)
+    k1 = next((k for k, q in enumerate(pts) if q["i"] == A1["i"]), None)
+    origin = None
+    if k0 is not None and k1 is not None:
+        origin = next((pts[k]["p"] for k in range(k1 - 1, k0, -1) if pts[k]["t"] == A0["t"]), None)
+    edge = origin if origin is not None and (origin - lv(LIFE_R)) * up < 0 else lv(0.786)
+    zone = sorted([lv(LIFE_R), edge])
+    far = zone[0] if up > 0 else zone[1]                 # 往大段方向那一邊：越過＝生死線失守
+    near = zone[1] if up > 0 else zone[0]
+    if (price - A1["p"]) * up > 0:
+        return None                                      # 已經過 a 的高點：X 段還在往上走，生死線用不到
+    if k1 is not None and any((q["p"] - far) * up < 0 for q in pts[k1 + 1:-1]):
+        return None                                      # 之前已經穿過臨界區又拉回來（例 10/21 的 B-b 46136）：這條線她不用
+    name = c["path"][0] if c["path"] else "B"
+    nxt = NEXT_OF.get(name, "下一")
+    bars = t_now - A1["i"]
+    dn, brk = ("跌破", "破") if up > 0 else ("漲過", "過")
+    macd = ""
+    if closes is not None and len(closes) > A1["i"] + 1:
+        import numpy as _np
+        cl = _np.asarray(closes, float)
+        ema = lambda x, n: _np.array(list(__import__("itertools").accumulate(x, lambda e, v: v * (2 / (n + 1)) + e * (1 - 2 / (n + 1)))))   # noqa: E731
+        dif = ema(cl, 12) - ema(cl, 26)
+        osc = dif - ema(dif, 9)
+        seg = osc[A1["i"]:]
+        worst = float(seg.min() if up > 0 else seg.max())
+        now = float(osc[-1])
+        if worst * up < 0:
+            fixed = abs(now) <= 0.25 * abs(worst) or now * up > 0
+            macd = (f"；MACD {'綠' if up > 0 else '紅'}柱從 {worst:+.0f} {'翻正' if now * up > 0 else '縮到'} {now:+.0f}"
+                    f"（{'指標修得差不多了' if fixed else '指標還在修'}）")
+    ext_p = A0["p"]
+    span = abs(seq[0]["p"] - ext_p)
+    rs = (1.0, 1.618) if name == "2" else (0.618, 1.0)
+    tg = "、".join(f"{r:g} 倍＝{_fmt(A1['p'] + d0 * r * span)}" for r in rs)
+    t = (f"生死臨界線 {_fmt(zone[1] if up > 0 else zone[0])}～{_fmt(far)}（{name}-a {_fmt(A0['p'])}→{_fmt(A1['p'])} 的 {LIFE_R:g}＝{_fmt(lv(LIFE_R))}"
+         + (f"、{name}-a 最後一段起漲點 {_fmt(origin)}" if origin is not None and edge == origin else f"、0.786＝{_fmt(lv(0.786))}")
+         + f"）：60 分 K 收盤守住＝{name}（她的 C-2）還沒走完；帶量實體{dn}（或{dn}後反抽不過 0.618＝{_fmt(lv(0.618))}）"
+         + f"＝{name} 結束、{nxt} 段{'主跌' if d0 < 0 else '主升'}開始，直接看{brk} {_fmt(ext_p)}。"
+         + f"{name}-a 高點之後已經 {bars} 根 K（她：橫台磨 8～12 根才判）{macd}")
+    plan = [f"版本 1（{name} 還在走＝她的 C-2）：60 分收盤守住 {_fmt(near)}～{_fmt(far)} → {name} 段後面還有一段{'反彈' if up > 0 else '回檔'}，或繼續橫盤磨時間",
+            f"版本 2（{name} 結束、{nxt} 段{'主跌' if d0 < 0 else '主升'}＝她的 C-3）：60 分帶量實體{dn} {_fmt(far)}（或反抽不過 {_fmt(lv(0.618))}）"
+            f" → 看{brk} {_fmt(ext_p)}；{nxt}＝前一段（{_fmt(seq[0]['p'])}→{_fmt(ext_p)}）的 {tg}（以 {_fmt(A1['p'])} 當 {name} 結束估）"]
+    return {"name": name, "zone": [round(zone[0], 2), round(zone[1], 2)], "far": round(far, 2), "near": round(near, 2),
+            "origin": origin, "r618": round(lv(0.618), 2), "r70": round(lv(LIFE_R), 2), "bars": bars,
+            "broken": bool((price - far) * up < 0), "a": [A0["p"], A1["p"]], "t": t, "plan": plan}
+
+
 def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: Optional[dict] = None,
-          daily_dates=None, tdate=None, tlabel=None, parent_seg: Optional[dict] = None) -> dict:
-    """分 K 的 analyze 結果 → 多層浪名＋關卡＋操作紀律。
+          daily_dates=None, tdate=None, tlabel=None, parent_seg: Optional[dict] = None, closes=None) -> dict:
+    """分 K 的 analyze 結果 → 多層浪名＋關卡＋操作紀律。closes（B85，可省）：分 K 收盤價，算 MACD 綠柱修復
     an：engine.analyze（pivots、tentative）；times：K 棒時間；tdate(i)→date、tlabel(i)→字串（分 K 第 i 根）
     parent_seg（B80 15 分 K）：{time, t0, t1, typ, name}＝上一層（60 分）主要數法第一層進行中那段的起點，對得到就從那裡拆"""
     piv = list(an.get("pivots") or [])
@@ -683,15 +774,15 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
         return {"ok": False, "note": f"{tfn} K 轉折還不夠"}
     tdate = tdate or (lambda i: None)
     tlabel = tlabel or (lambda i: str(i))
-    anchor, how = None, None
+    anchor, how, role, young = None, None, None, False
     if parent_seg:
         anchor = anchor_at(pts, parent_seg["t0"], parent_seg["t1"], parent_seg["typ"], times)
         how = "parent" if anchor is not None else None
+        role = parent_seg.get("role") if anchor is not None else None
     if anchor is None:
-        anchor, how = _anchor(pts, daily_cnt, daily_dates, tdate)
+        anchor, how, role, young = _anchor(pts, daily_cnt, daily_dates, tdate)
     if anchor is None:
         return {"ok": False, "note": f"{tfn} K 找不到起點"}
-    role = daily_role(daily_cnt) if how == "daily" else (parent_seg.get("role") if how == "parent" and parent_seg else None)
     # B83 起點之後的轉折：太多（> NEST_SEG 段）或拆不出合規則的數法 → 一次併掉最小的一段再試（她的圖只標大段＋子浪）
     seq = pts[anchor:]
     n_raw = len(seq) - 1
@@ -765,6 +856,7 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
                 "rules": [{**r, "price": round(r["price"], 2)} for r in _rule_levels(c, seq, d0)],
                 "targets": _targets(c, seq)}
     P, A, T3 = out_c(prim), out_c(alt), out_c(third)
+    life = life_line(prim, seq, pts, d0, price, len(times) - 1, closes) if prim and not _with_trend(prim, d0) else None
     # 關卡（她的寫法）：反向（逆著起點那一大段）走時 → 分水嶺（B83）、前提趨勢線、0.382、前高頸線＋0.5、0.618＋第 1 段低點區、失敗
     up_word, dn_word = ("反彈", "下跌") if d0 < 0 else ("回檔", "上漲")
     gates = []
@@ -837,7 +929,8 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
         lows = [q for q in seq[ext_k + 1:-1] if q["t"] != seq[0]["t"]]
         fail = (f"{'跌破' if d0 < 0 else '漲過'} {_fmt(lows[-1]['p'])}（這段{up_word}裡的低點）→ 這段{up_word}的數法不成立；" if lows else "")
         gates.append({"k": "失敗", "price": e_p, "ok": False,
-                      "t": fail + f"{'跌破' if d0 < 0 else '漲過'} {_fmt(e_p)}（{'新低' if d0 < 0 else '新高'}）→ 第 5 段{dn_word}"})
+                      "t": fail + f"{'跌破' if d0 < 0 else '漲過'} {_fmt(e_p)}（{'新低' if d0 < 0 else '新高'}）→ "
+                           + (f"C 段主{dn_word[-1]}（她的 C-3）" if life else f"第 5 段{dn_word}")})
     else:
         tg = [t for t in (P or {}).get("targets", [])][-2:]
         if tg:
@@ -855,7 +948,7 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
     plan = []
     if cur_dir != d0:
         plan.append(f"這段是逆著{'下跌' if d0 < 0 else '上漲'}大段的{up_word}＝逃命波：到 0.5～0.618 分批{'出多單' if d0 < 0 else '回補空單'}，不要過度歡樂")
-        if watershed:                                    # B83 她 10/28 的兩個版本＋盤中怎麼確認
+        if watershed and not life:                       # B83 她 10/28 的兩個版本＋盤中怎麼確認
             brk = [(v, t) for v, t in watershed["brk"] if (price - v) * -d0 > 0]
             s1 = (f"版本 1（維持原架構 {watershed['path']}）：{_fmt(watershed['far'])} {'開高衝不過' if d0 < 0 else '開低跌不破'}、在分水嶺前被"
                   f"{'壓回' if d0 < 0 else '拉回'}" + "".join(f" → {'跌破' if d0 < 0 else '漲過'} {_fmt(v)}（{t}）"
@@ -867,6 +960,9 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
                            f" → 目標 {tg}")
     else:
         plan.append(f"順著大段{dn_word}中：{up_word}沒過前一個{'反彈高點' if d0 < 0 else '回檔低點'}就照原方向，別逆勢{'接多' if d0 < 0 else '放空'}")
+    if life:                                             # B85 她 10/29：B（C-2）走完第一段以後的兩個版本
+        gates.insert(0, {"k": "生死線", "price": life["far"], "ok": life["broken"], "t": life["t"]})
+        plan[1:1] = life["plan"]
     if P and P["path"].endswith(("c", "C", "5")):
         st_ = next((r for r in P["rules"] if "這一小段的起點" in r["why"]), None)
         if st_:
@@ -875,14 +971,14 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
     plan.append("走一口留一口：第一個目標到了先出一半，剩下的防守拉到成本或多空線")
     plan.append("壓回失速、加速往反方向走＝盤中立刻換數法（她：一但壓回是失速的就轉浪）")
     return {"ok": True, "tf": tfn, "anchor": {"i": seq[0]["i"], "time": int(times[seq[0]["i"]]), "p": a_p, "how": how,
-                                             "label": tlabel(seq[0]["i"])},
+                                             "label": tlabel(seq[0]["i"]), "young": young},
             "extreme": {"p": e_p, "label": tlabel(seq[ext_k]["i"])}, "dir": d0, "cur_dir": cur_dir,
             "daily_role": role, "fib": {str(k): round(v, 2) for k, v in fib.items()},
             "trendline": None if not tl else {"from": {**tl["from"], "time": int(times[tl["from"]["i"]])},
                                               "now": round(tl["now"], 2), "time_now": int(times[t_now]),
                                               "to": {**tl["to"], "time": int(times[tl["to"]["i"]])}},
             "evidence": ev, "primary": P, "alternate": A, "third": T3, "gates": gates, "plan": plan,
-            "watershed": watershed, "n_seg": len(seq) - 1, "merged": n_raw - (len(seq) - 1)}
+            "watershed": watershed, "life": life, "n_seg": len(seq) - 1, "merged": n_raw - (len(seq) - 1)}
 
 
 def timeline(piv: list, h, l, c, times: list, ends: list, tfn: str, daily_at, daily_dates, tdate, tlabel) -> list:

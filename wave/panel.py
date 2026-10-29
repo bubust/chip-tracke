@@ -408,6 +408,8 @@ def _nest_prices(snap: dict) -> list:
             out.append(nz["trendline"]["now"])
         ws = nz.get("watershed") or {}
         out += [ws[k] for k in ("lo", "hi") if ws.get(k) is not None] + [v for v, _ in ws.get("lv") or []] + [v for v, _ in ws.get("brk") or []]
+        lf = nz.get("life") or {}                        # B85 生死臨界線
+        out += [v for v in (lf.get("r70"), lf.get("r618"), lf.get("origin")) if v is not None] + list(lf.get("zone") or [])
         for c in (nz.get("primary"), nz.get("alternate")):
             if c:
                 out += [r["price"] for r in c.get("rules") or []] + [t["price"] for t in c.get("targets") or []]
