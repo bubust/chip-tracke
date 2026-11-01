@@ -10,6 +10,8 @@ margin_maint.py — 個股融資維持率（估計）＋「融資維持率偏低
   - 收盤一天變動超過 14%（漲跌幅 10%）＝減資／分割／大額除權 → 成本跟著股價等比例調整（維持率不因此跳動）
 資料：TWSE rwd MI_MARGN（selectType=ALL）＋櫃買 margin/balance → chip_data/course.db margin_flow（chip_course.refresh
 每天順便存、backfill 回補半年）；股價：price_daily（官方日行情，不還原）
+大盤融資維持率（不是估的）：官方融資金額總數（證交所「信用交易統計」、櫃買 summary「融資金(仟元)」）→ margin_total；
+  維持率＝Σ（各檔融資餘額 × 收盤）÷ 官方融資金額
 """
 from __future__ import annotations
 
@@ -24,7 +26,7 @@ KEEP_DAYS = 400           # margin_flow 留多久（日曆天）
 LEV = {"twse": 0.6, "tpex": 0.5}
 MKT_NAME = {"twse": "上市", "tpex": "上櫃"}
 CALL = 130.0              # 追繳線（%）
-JUMP = 0.14               # 收盤一天變動超過這個＝減資／分割／除權
+LIMIT = 0.10              # 漲跌幅；隔 n 天的收盤變動超過 (1±10%)^n 再多 3% ＝減資／分割／除權（中間缺價的日子也算進去）
 _TW = timezone(timedelta(hours=8))
 
 PARAMS = [
@@ -48,6 +50,12 @@ def save_flows(c, ds: str, flows: dict) -> dict:
                           [(ds, sid, mk, *v) for sid, v in rows.items()])
             c.execute("INSERT OR REPLACE INTO fetch_log VALUES ('mflow',?,?,?)", (ds, mk, len(rows)))
         n[mk] = len(rows) if ok else 0
+        tot = flows.get(mk + "_total")
+        if tot and flows.get(mk + "_date") == ds:
+            c.execute("INSERT OR REPLACE INTO margin_total VALUES (?,?,?,?,?,?,?,?)",
+                      (ds, mk, tot["bal_lots"], tot["amt_k"], tot.get("buy_lots"), tot.get("buy_amt_k"), tot.get("sell_amt_k"),
+                       tot.get("repay_amt_k")))
+            c.execute("INSERT OR REPLACE INTO fetch_log VALUES ('mtotal',?,?,1)", (ds, mk))
     return n
 
 
@@ -61,8 +69,8 @@ def backfill(n_days: int = MAINT_DAYS, budget_s: Optional[float] = None, progres
     days = [d for d in CC._weekdays_back(n_days + 15) if d < today]
     stat = {"fetched": 0, "closed": 0, "failed": 0, "left": 0}
     with closing(CC.get_conn()) as c:
-        got = {(d, m) for d, m in c.execute("SELECT date, market FROM fetch_log WHERE kind='mflow'")}
-        todo = [d for d in days if (d.isoformat(), "twse") not in got or (d.isoformat(), "tpex") not in got]
+        got = {(k, d, m) for k, d, m in c.execute("SELECT kind, date, market FROM fetch_log WHERE kind IN ('mflow','mtotal')")}
+        todo = [d for d in days if any((k, d.isoformat(), m) not in got for k in ("mflow", "mtotal") for m in ("twse", "tpex"))]
         if todo:
             with client() as cl:
                 for k, d in enumerate(todo, 1):
@@ -78,7 +86,7 @@ def backfill(n_days: int = MAINT_DAYS, budget_s: Optional[float] = None, progres
                         if n[mk]:
                             stat["fetched"] += 1
                         elif mk + "_date" in flows:            # 有回應、沒資料＝休市
-                            c.execute("INSERT OR REPLACE INTO fetch_log VALUES ('mflow',?,?,0)", (ds, mk))
+                            c.executemany("INSERT OR REPLACE INTO fetch_log VALUES (?,?,?,0)", [(k, ds, mk) for k in ("mflow", "mtotal")])
                             stat["closed"] += 1
                         else:
                             stat["failed"] += 1
@@ -101,11 +109,12 @@ def need_backfill(min_days: int = 100) -> bool:
 
 # ── 估計 ─────────────────────────────────────────────────────────────────────
 
-def estimate(rows: list, px: dict) -> Optional[dict]:
+def estimate(rows: list, px: dict, track: bool = False) -> Optional[dict]:
     """rows：[(YYYY-MM-DD, 買進, 賣出, 現償, 前日餘額, 今日餘額, 資券互抵)]（張，舊→新）；px：{YYYY-MM-DD: (高, 低, 收)}
-    → {bal, avg（平均融資成本，每股）, close（最後一天有價的收盤）, conf（可信度 0～1）, chg5, adj（調整次數）, days, date}"""
+    → {bal, avg（平均融資成本，每股）, close（最後一天有價的收盤）, conf（可信度 0～1）, chg5, adj（調整次數）, days, date}
+    track：另外回 series＝[(日期, 平均成本, 收盤, 餘額)]（每天，畫維持率走勢用）"""
     cost = bal = init = last_c = None
-    adj, hist, last_d = 0, [], None
+    adj, hist, last_d, gap, series = 0, [], None, 0, []
     for d, b, s, r, pv, bl, off in rows:
         p = px.get(d)
         cl = typ = None
@@ -118,8 +127,11 @@ def estimate(rows: list, px: dict) -> Optional[dict]:
             cost, bal, init, last_c = bl * typ, bl, bl, cl
             hist.append(bl)
             last_d = d
+            if track:
+                series.append((d, cost / bl if bl > 0 else None, cl, bl))
             continue
-        jumped = cl is not None and last_c and abs(cl / last_c - 1) > JUMP
+        gap += 1                                            # 距離上一個有價的日子幾天（中間缺價的也算）
+        jumped = cl is not None and last_c and not ((1 - LIMIT) ** gap * 0.97 <= cl / last_c <= (1 + LIMIT) ** gap * 1.03)
         if jumped:                                          # 減資／分割／除權：成本跟著股價等比例調整
             cost *= cl / last_c
             adj += 1
@@ -145,13 +157,18 @@ def estimate(rows: list, px: dict) -> Optional[dict]:
                 init *= bl / (pool - red)
         bal = bl
         if cl is not None:
-            last_c, last_d = cl, d
+            last_c, last_d, gap = cl, d, 0
         hist.append(bl)
+        if track:
+            series.append((d, cost / bal if bal > 0 else None, cl, bl))
     if cost is None or not bal or bal <= 0 or not last_c or cost <= 0:
         return None
-    return {"bal": bal, "avg": cost / bal, "close": last_c, "conf": max(0.0, 1 - init / bal),
-            "chg5": bal - hist[-6] if len(hist) >= 6 else None, "adj": adj, "days": len(hist), "date": rows[-1][0],
-            "px_date": last_d}
+    out = {"bal": bal, "avg": cost / bal, "close": last_c, "conf": max(0.0, 1 - init / bal),
+           "chg5": bal - hist[-6] if len(hist) >= 6 else None, "adj": adj, "days": len(hist), "date": rows[-1][0],
+           "px_date": last_d}
+    if track:
+        out["series"] = series
+    return out
 
 
 def maint_of(close: float, avg: float, mkt: str) -> float:

@@ -79,6 +79,8 @@ def get_conn():
                                                PRIMARY KEY (date, sid));                                   -- 融資／融券餘額（張）
         CREATE TABLE IF NOT EXISTS margin_flow (date TEXT, sid TEXT, mkt TEXT, name TEXT, buy REAL, sell REAL, repay REAL,
                                                 prev REAL, bal REAL, off REAL, PRIMARY KEY (date, sid));   -- 融資買賣／餘額（張，維持率估計）
+        CREATE TABLE IF NOT EXISTS margin_total (date TEXT, mkt TEXT, bal_lots REAL, amt_k REAL, buy_lots REAL, buy_amt_k REAL,
+                                                 sell_amt_k REAL, repay_amt_k REAL, PRIMARY KEY (date, mkt));  -- 官方融資金額總數（仟元）
         CREATE TABLE IF NOT EXISTS fetch_log (kind TEXT, date TEXT, market TEXT, rows INTEGER,
                                               PRIMARY KEY (kind, date, market));                           -- 抓成功的日期（假日／還沒公布不記，下次再抓）
     """)

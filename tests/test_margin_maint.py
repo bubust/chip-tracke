@@ -41,6 +41,25 @@ def test_parsers_and_balance_identity():
     assert parse_twse_margin_flow({"stat": "很抱歉，沒有符合條件的資料!"}) == {}
 
 
+def test_official_totals():
+    """官方融資金額總數（大盤融資維持率用）：證交所「信用交易統計」、櫃買 summary（2026-10-30 真實數字）"""
+    from cb.parser import parse_tpex_margin_total, parse_twse_margin_total
+    tw = {"tables": [{"fields": ["項目", "買進", "賣出", "現金(券)償還", "前日餘額", "今日餘額"],
+                      "data": [["融資(交易單位)", "353,926", "377,224", "9,729", "9,588,756", "9,555,729"],
+                               ["融券(交易單位)", "36,026", "45,607", "1,224", "189,002", "197,359"],
+                               ["融資金額(仟元)", "20,744,449", "29,996,997", "1,190,414", "633,910,848", "623,467,886"]]}] + TW["tables"][1:]}
+    assert parse_twse_margin_total(tw) == {"bal_lots": 9555729, "amt_k": 623467886, "buy_lots": 353926, "buy_amt_k": 20744449,
+                                           "sell_amt_k": 29996997, "repay_amt_k": 1190414}
+    tp = {"tables": [{**TP["tables"][0], "summary": [
+        ["", "合計(張)", "2,335,123", "53,116", "79,207", "1,764", "2,307,268", "", "", "", "37,451", "5,362", "6,062", "573", "36,178",
+         "", "", "", "", ""],
+        ["", "融資金(仟元)", "209,958,881", "6,036,883", "10,403,471", "290,948", "205,301,345", "", "", "", "", "", "", "", "", "", "",
+         "", "", ""]]}]}
+    assert parse_tpex_margin_total(tp) == {"bal_lots": 2307268, "amt_k": 205301345, "buy_lots": 53116, "buy_amt_k": 6036883,
+                                           "sell_amt_k": 10403471, "repay_amt_k": 290948}
+    assert parse_twse_margin_total(TW) is None and parse_tpex_margin_total(TP) is None
+
+
 def _rows(spec):
     """spec：[(買進, 賣出, 現償, 今日餘額, 資券互抵)] → estimate 的 rows（前日餘額自動接）"""
     out, prev = [], None
@@ -109,8 +128,9 @@ def test_save_flows_skips_other_date_and_backfill_marks_holidays(tmp_path, monke
             pass
         else:
             ds = d.isoformat()
+            tot = {"bal_lots": 100, "amt_k": 5000, "buy_lots": 10, "buy_amt_k": 500, "sell_amt_k": 0, "repay_amt_k": 0}
             flows.update(twse={"2409": ("友達", 10, 0, 0, 100, 110, 0)}, twse_date=ds, tpex={"3105": ("穩懋", 0, 5, 0, 50, 45, 0)},
-                         tpex_date=ds)
+                         tpex_date=ds, twse_total=tot, tpex_total=tot)
         return {}, {}
     monkeypatch.setattr(F, "fetch_margin_day", fake)
     monkeypatch.setattr(MM.time, "sleep", lambda s: None)
@@ -119,6 +139,8 @@ def test_save_flows_skips_other_date_and_backfill_marks_holidays(tmp_path, monke
     calls.clear()
     st2 = MM.backfill(n_days=10)                   # 第二次：只重抓連線失敗的日子
     assert calls and all(d.weekday() == 1 for d in calls)
+    with sqlite3.connect(str(tmp_path / "course.db")) as c2:
+        assert c2.execute("SELECT COUNT(*) FROM margin_total").fetchone()[0] > 0
 
 
 def test_screen_end_to_end(tmp_path, monkeypatch):

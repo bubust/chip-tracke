@@ -208,6 +208,38 @@ def parse_tpex_margin_flow(j: dict) -> dict:
     return out
 
 
+def parse_twse_margin_total(j: dict) -> Optional[dict]:
+    """TWSE MI_MARGN 第一張「信用交易統計」→ {bal_lots, amt_k（融資金額今日餘額，仟元）, buy_lots, buy_amt_k, sell_amt_k, repay_amt_k}"""
+    for t in (j or {}).get("tables") or []:
+        f = t.get("fields") or []
+        if f[:1] != ["項目"] or "今日餘額" not in f:
+            continue
+        rows = {str(r[0]).strip(): r for r in t.get("data") or [] if r}
+        lots, amt = rows.get("融資(交易單位)"), rows.get("融資金額(仟元)")
+        if not lots or not amt:
+            return None
+        ib, isell, irp, ibal = (f.index(k) for k in ("買進", "賣出", "現金(券)償還", "今日餘額"))
+        out = {"bal_lots": num(lots[ibal]), "amt_k": num(amt[ibal]), "buy_lots": num(lots[ib]), "buy_amt_k": num(amt[ib]),
+               "sell_amt_k": num(amt[isell]), "repay_amt_k": num(amt[irp])}
+        return out if out["amt_k"] and out["bal_lots"] else None
+    return None
+
+
+def parse_tpex_margin_total(j: dict) -> Optional[dict]:
+    """櫃買 margin/balance 的 summary（合計(張)／融資金(仟元)）→ 同 parse_twse_margin_total"""
+    for t in (j or {}).get("tables") or []:
+        f = t.get("fields") or []
+        rows = {str(r[1]).strip(): r for r in t.get("summary") or [] if len(r) > 6}
+        lots, amt = rows.get("合計(張)"), rows.get("融資金(仟元)")
+        if not lots or not amt or "資餘額" not in f:
+            continue
+        ib, isell, irp, ibal = (f.index(k) for k in ("資買", "資賣", "現償", "資餘額"))
+        out = {"bal_lots": num(lots[ibal]), "amt_k": num(amt[ibal]), "buy_lots": num(lots[ib]), "buy_amt_k": num(amt[ib]),
+               "sell_amt_k": num(amt[isell]), "repay_amt_k": num(amt[irp])}
+        return out if out["amt_k"] and out["bal_lots"] else None
+    return None
+
+
 def parse_openapi_margin(rows: list) -> dict:
     """TWSE openapi MI_MARGN / 櫃買 tpex_mainboard_margin_balance → {sid: 融券餘額（張）}"""
     out = {}
