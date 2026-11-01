@@ -2143,6 +2143,12 @@ def _deep_sector(stock_id: str, last_price_date: str | None, dates: list) -> dic
             "total": total, "date": ld, "stale": behind > 5}
 
 
+def _deep_maint(sid: str, close):
+    """🩸 個股融資維持率（估計，margin_maint.py）；沒有融資資料回 None"""
+    import margin_maint as _mm
+    return _mm.estimate_one(sid, close)
+
+
 def _deep_market_regime() -> dict | None:
     """總經面板最新一天的大盤狀態（只顯示，不計分）"""
     try:
@@ -2257,15 +2263,18 @@ async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False, retu
             asyncio.to_thread(_deep_sector, stock_id, dates[-1] if dates else None, dates[-30:]),
             asyncio.to_thread(_kpct),
             asyncio.to_thread(_deep_strategies_today, stock_id),
-            asyncio.to_thread(_deep_market_regime)]
+            asyncio.to_thread(_deep_market_regime),
+            asyncio.to_thread(_deep_maint, stock_id, tc)]
     res = await asyncio.gather(*jobs, return_exceptions=True)
     for i, r in enumerate(res):
         if isinstance(r, BaseException):
             log.warning(f"[deep-analysis] {stock_id} job {i}: {type(r).__name__} {r}")
-    (levels, chip, val, rev, inc, eps_hist, news, rev_hist, sector, kp, strats, regime) = (
+    (levels, chip, val, rev, inc, eps_hist, news, rev_hist, sector, kp, strats, regime, maint) = (
         None if isinstance(r, BaseException) else r for r in res)
     if chip is None:
         chip = {"error": "籌碼資料讀取失敗"}
+    if maint:
+        chip["maint"] = maint                                   # 🩸 融資維持率（估計）＋近 60 天走勢
     kpct_change = (kp or {}).get("change")
     vol_sum = float(volumes.tail(int(chip.get("days") or 0)).sum()) if not chip.get("error") else None
 
@@ -2597,6 +2606,14 @@ async def api_watchlist_summary():
             item["kpct_prev"]   = None
             item["kpct_change"] = None
             item["kpct_date"]   = None
+    # 🩸 融資維持率（估計，margin_maint.py）：現價 ÷（平均融資成本 × 成數）；沒有融資資料的（ETF 以外不能融資的）不放
+    try:
+        import margin_maint as _mm
+        _mt = await asyncio.to_thread(_mm.estimate_many, stock_ids, {it["stock_id"]: it.get("close") for it in result})
+        for item in result:
+            item["maint"] = _mt.get(item["stock_id"])
+    except Exception as _mte:      # noqa: BLE001
+        print(f"[wl-summary] 融資維持率失敗：{_mte}")
     # ── 注入策略掃描訊號：優先補充 has_data=False 及 signal_title="—" 的股票 ──
     try:
         from yahoo_price import get_scan_results
@@ -4082,6 +4099,8 @@ _POS_HEAD = {
     "stop_close": ("🛑", "收盤跌破停損，依規則出場"),
     "stop_clear": ("✅", "收盤站回停損之上，盤中預警解除"),
     "target":     ("🎯", "碰到目標價"),
+    "maint_low":  ("🩸", "融資維持率偏低（估計 ≤ 140%）：融資斷頭賣壓變大"),
+    "maint_call": ("🩸", "融資維持率跌破 130%（估計）：融資戶追繳／斷頭中"),
 }
 
 
@@ -4141,6 +4160,12 @@ def _pos_message(typ: str, sid: str, name: str, lv: dict, cost: float) -> str:
         lines.append(f"昨天算出的停損線 {al.get('stop_ref')}（含成本 −10% 底線 {e.get('floor')}）")
     if typ == "target":
         lines.append(f"目標價 {al.get('target_ref')}，今天最高 {lv.get('high')}")
+    mt = lv.get("_maint") or {}
+    if typ.startswith("maint") and mt:
+        lines.append(f"估計維持率 {mt['maint']}%：融資平均成本約 {mt['cost']}、追繳價 {mt['call_price']}"
+                     + ("（已跌破）" if mt["to_call_pct"] >= 0 else f"（再跌 {-mt['to_call_pct']:.1f}%）")
+                     + f"；融資 {mt['bal']:,} 張（5 日 {mt['chg5'] if mt['chg5'] is not None else '—'}）")
+        lines.append("融資多又被套＝再跌會有追繳／斷頭賣壓，守好停損（維持率是估的，只提醒）")
     if st:
         lines.append(f"目前停損 {st.get('price')}：{_h.escape(st.get('label') or '')}")
     lines.append("— 牆泥袋溥的戰術中心")
@@ -4175,8 +4200,22 @@ def check_positions(phase: str, dry: bool = False) -> list:
             types.append("stop_clear")
         if al.get("target_hit"):
             types.append("target")
+        keys = {}
+        if phase == "close":                                 # 🩸 融資維持率（估計）≤140% 每週最多一次、跌破 130% 再一次
+            try:
+                import margin_maint as _mm
+                mt = _mm.estimate_many([sid], {sid: lv.get("price")}).get(sid)
+            except Exception:       # noqa: BLE001
+                mt = None
+            if mt and mt["level"] in ("call", "low"):
+                lv["_maint"] = mt
+                wk = datetime.now(_TW_TZ).strftime("%G-W%V")
+                typ = "maint_call" if mt["level"] == "call" else "maint_low"
+                if not _pos_sent(sid, f"pos:maint_call:{wk}") and not (typ == "maint_low" and _pos_sent(sid, f"pos:maint_low:{wk}")):
+                    types.append(typ)
+                    keys[typ] = f"pos:{typ}:{wk}"
         for typ in types:
-            key = f"pos:{typ}:{today}"
+            key = keys.get(typ) or f"pos:{typ}:{today}"
             if _pos_sent(sid, key):
                 continue
             text = _pos_message(typ, sid, r["name"] or lv.get("name") or "", lv, cost)
@@ -4283,6 +4322,21 @@ def api_screen_results():
         "strategies":  STRATEGIES,
         "results":     raw,
     }))
+
+@app.get("/api/margin/maint/{sid}")
+def api_margin_maint(sid: str, close: float = None):
+    """🩸 個股融資維持率（估計）＋近 60 天走勢（深度分析、K 線圖）"""
+    import margin_maint as _mm
+    r = _mm.estimate_one(sid.strip().upper(), close)
+    return JSONResponse(content=_sanitize_for_json({"ok": bool(r), **(r or {"note": "沒有融資資料（不能融資、或還沒回補）"})}))
+
+
+@app.get("/api/margin/market")
+def api_margin_market():
+    """大盤融資維持率（官方融資金額 ÷ 融資股票市值）"""
+    import margin_maint as _mm
+    return JSONResponse(content=_sanitize_for_json(_mm.market_maint()))
+
 
 @app.get("/api/screen/strategy/{key}")
 def api_screen_strategy(key: str):

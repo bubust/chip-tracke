@@ -215,6 +215,11 @@ def _data_block(d: dict, rows: list) -> str:
     if mg:
         L.append(f"- 融資餘額 {_n(mg.get('margin'), 0)} 張（{mg.get('span_all')} 日 {_s(mg.get('margin_chg_all'), 0)}）、"
                  f"融券餘額 {_n(mg.get('short'), 0)} 張（{mg.get('span_all')} 日 {_s(mg.get('short_chg_all'), 0)}）")
+    mt = ch.get("maint")
+    if mt:
+        L.append(f"- 融資維持率（估計）{_n(mt.get('maint'), 1)}%：融資平均成本約 {_n(mt.get('cost'))} 元（{mt.get('market')}融資 "
+                 f"{round((mt.get('lev') or 0.6) * 10)} 成）、追繳價（130%）{_n(mt.get('call_price'))} 元；可信度 {mt.get('conf')}%"
+                 "（用每天融資買進×當天均價估、再用官方融資金額總數校正；個股沒有官方數字）")
     if ch.get("kpct") is not None:
         L.append(f"- 千張大戶持股 {_n(ch['kpct'])}%（比上週 {_s(ch.get('kpct_change'), 2)} 個百分點）")
 
