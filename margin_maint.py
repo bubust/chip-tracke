@@ -99,6 +99,10 @@ def backfill(n_days: int = MAINT_DAYS, budget_s: Optional[float] = None, progres
         c.execute("DELETE FROM margin_flow WHERE date<?", ((today - timedelta(days=KEEP_DAYS)).isoformat(),))
         c.commit()
         stat["days"] = c.execute("SELECT COUNT(DISTINCT date) FROM margin_flow").fetchone()[0]
+    if stat["fetched"]:                                     # 補到舊日子（例：官方總數）→ 同一個資料日的估計／校正要重算
+        _ALL.clear()
+        _CACHE.clear()
+        _MKT_CACHE.clear()
     return stat
 
 
@@ -190,7 +194,7 @@ def _price_rows(pc, sid: str, lo8: str) -> dict:
     return out
 
 
-_ALL: dict = {}            # {"asof", "n", "est", "k"}：全部股票的估計＋校正倍數（同一個資料日只算一次，約 2 秒）
+_ALL: dict = {}            # {"v": (資料日, n, {sid: 估計}, {市場: 校正})}：全部股票（同一個資料日只算一次，約 2 秒；整組一次換，多執行緒安全）
 
 
 def compute(min_lots: float = 0, n_days: int = MAINT_DAYS) -> tuple:
@@ -202,7 +206,8 @@ def compute(min_lots: float = 0, n_days: int = MAINT_DAYS) -> tuple:
 def calib(asof: Optional[str] = None) -> dict:
     """{市場: 校正倍數}＝官方融資金額 ÷ Σ（估計平均成本 × 成數 × 張）；資料日對不上或算不出來回 {}（＝不校正）"""
     a, _ = _compute_all()
-    return dict(_ALL.get("k") or {}) if a and (asof is None or a == asof) else {}
+    v = _ALL.get("v")
+    return dict(v[3]) if a and v and v[0] == a and (asof is None or a == asof) else {}
 
 
 def _calib_from(est: dict, asof: str) -> dict:
@@ -228,8 +233,9 @@ def _compute_all(n_days: int = MAINT_DAYS) -> tuple:
         if not dates:
             return None, {}
         lo, asof = dates[-1], dates[0]
-        if _ALL.get("asof") == asof and _ALL.get("n") == n_days:
-            return asof, _ALL["est"]
+        v = _ALL.get("v")
+        if v and v[0] == asof and v[1] == n_days:
+            return asof, v[2]
         keep = {r[0] for r in c.execute("SELECT sid FROM margin_flow WHERE date=? AND bal>0", (asof,))}
         series: dict = {}
         meta: dict = {}
@@ -248,8 +254,7 @@ def _compute_all(n_days: int = MAINT_DAYS) -> tuple:
             if e:
                 e["mkt"], e["name"] = meta[sid]
                 out[sid] = e
-    _ALL.clear()
-    _ALL.update(asof=asof, n=n_days, est=out, k=_calib_from(out, asof))
+    _ALL["v"] = (asof, n_days, out, _calib_from(out, asof))
     return asof, out
 
 
@@ -408,8 +413,9 @@ def market_maint(n: int = 60) -> dict:
             if not dates:
                 return {"ok": False, "note": "官方融資金額還沒抓到（網站重開後會回補）"}
             key = (dates[0], n)
-            if key in _MKT_CACHE:
-                return _MKT_CACHE[key]
+            hit = _MKT_CACHE.get("v")
+            if hit and hit[0] == key:
+                return hit[1]
             tot = {(d, m): (bl, amt) for d, m, bl, amt in c.execute(
                 "SELECT date, mkt, bal_lots, amt_k FROM margin_total WHERE date>=?", (dates[-1],))}
             c.execute("ATTACH DATABASE ? AS px", (str(PC.DB_PATH),))
@@ -444,6 +450,5 @@ def market_maint(n: int = 60) -> dict:
     out = {"ok": True, **last, "series": series,
            "chg5": round(last["all"] - series[-6]["all"], 1) if len(series) >= 6 else None,
            "low60": min(r["all"] for r in series)}
-    _MKT_CACHE.clear()
-    _MKT_CACHE[key] = out
+    _MKT_CACHE["v"] = (key, out)
     return out
