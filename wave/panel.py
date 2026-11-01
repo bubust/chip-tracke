@@ -391,11 +391,24 @@ def _nest_line(snap: dict) -> str:
     for x in (snap.get("positioning") or {}).values():
         if x:
             s += f"；{x['tf']}定位：" + "；".join(x["lines"])
+    src = nz.get("source") or {}                                      # B86 她 11/1 的源頭兩種切組
+    for k, nm in (("three", "第一種切組（三段式）"), ("five", "第二種切組（五段式・威脅）")):
+        v = src.get(k)
+        if v:
+            s += f"；{nm}：{v['desc']}，目標 " + "、".join(f"{t['label']} {t['price']:,.0f}" for t in v.get("targets") or [])
+    big = snap.get("big") or {}                                       # B86 三種日線定位
+    for i, x in enumerate(big.get("scenarios") or [], 1):
+        s += f"；日線定位 {i}：{x['title']}（" + "、".join(f"{v['label']} {v['price']:,.0f}" for v in x["levels"]) + f"）→ {x['after']}"
     return s
 
 
 def _nest_prices(snap: dict) -> list:
     out = []
+    for x in (snap.get("big") or {}).get("scenarios") or []:          # B86 三種日線定位的價位
+        out += [v["price"] for v in x["levels"]]
+    for v in ((((snap.get("nest") or {}).get("60m") or {}).get("source")) or {}).values():
+        if isinstance(v, dict):
+            out += [t["price"] for t in v.get("targets") or []] + [m["p"] for m in v.get("marks") or []]
     for x in (snap.get("positioning") or {}).values():
         if x:
             out += list(x["ruler"]) + [float(v) for v in x["levels"].values()] + [x["iron"]]

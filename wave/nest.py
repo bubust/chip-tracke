@@ -37,6 +37,9 @@ ANCHOR_LOOK = 80         # B83 找「日 K 這一浪的起點」最多往回看�
 ALT_GAP = 0.35           # B83 另一邊（大段還在走／已走完）的數法跟主要差這麼多以內就一定列出來
 T5_MAX = 2.618           # B83 第 5 段時間最多是第 1、3 段較長那段的幾倍（她：同級數的段落時間要相近；超過加 ln(倍數/上限)）
 EV_PRE = 0.20            # B83 還沒越過趨勢線：「大段已走完」的數法先加這麼多（她：前提是先越過下降趨勢線完成切組，不然大段還有下一段）
+FLAT_HARD = 1.45         # B86 平台 b 最多到 a 的幾倍（她 11/1 的「破底穿頭」46107→47555→45523：b＝1.40 倍 a）；超過 E.FLAT_MAX（1.38）的加 FLAT_OVER
+FLAT_OVER = 0.40
+ABC3_COST = 0.10         # B86 她的「三段式」：A 走三波（50265→48413→49594→46107）、B 不到 A 的 0.9（不是平台）、C 走五波；不是標準型態，只在源頭切組用
 G = {
     "r2": E.GUIDE["r2"], "r3": E.GUIDE["r3"], "r4": E.GUIDE["r4"], "r5": E.GUIDE["r5"],
     "zb": E.GUIDE["rB_zig"], "zc": (0.618, 1.0, 1.618), "fb": (1.0, 1.236), "fc": (1.0, 1.272, 1.618),
@@ -45,9 +48,9 @@ G = {
 }
 # 進行中的修正段「已經」回檔超過這個比例 → 加懲罰（ln(實際/上限)），讓證據改變排序（她說的：證據衝突就打開替代結構）
 SOFT_MAX = {"imp2": 0.786, "imp4": 0.5, "zb": 0.786, "fb": 1.236, "dia": 0.81}
-ROLES = {"imp": "MCICM", "diag": "CCCCC", "zz": "MCM", "flat": "CCM"}    # B83 I＝第 3 段：只能是五段推動（楔形只出現在 1、5、A、C）
+ROLES = {"imp": "MCICM", "diag": "CCCCC", "zz": "MCM", "flat": "CCM", "abc3": "CCM"}    # B83 I＝第 3 段：只能是五段推動（楔形只出現在 1、5、A、C）
 KINDS_OF = {"M": ("imp", "diag"), "I": ("imp",), "C": ("zz", "flat")}
-KIND_NAME = {"imp": "五段推動", "diag": "楔形", "zz": "鋸齒（5-3-5）", "flat": "平台（3-3-5）", "atom": "一段"}
+KIND_NAME = {"imp": "五段推動", "diag": "楔形", "zz": "鋸齒（5-3-5）", "flat": "平台（3-3-5）", "abc3": "三段式（A 三波、C 五波）", "atom": "一段"}
 
 
 def _pen(r: float, guides) -> float:
@@ -95,6 +98,7 @@ class _Parser:
         self.last = self.n - 1
         self.mc: dict = {}
         self.mp: dict = {}
+        self.keep_first = False                           # B86 源頭切組：第一層的「第一段終點」不同就分開留（不然只留最便宜的拆法）
 
     # ── 基本 ──
     def d(self, i: int) -> int:
@@ -119,6 +123,8 @@ class _Parser:
             own = (sum(pens.values()) + E.PRIOR_PEN) / (len(pens) + E.PRIOR_N) + NODE_COST
         if kind == "diag":
             own += DIAG_COST
+        if kind == "abc3":
+            own += ABC3_COST
         if kind in ("imp", "diag") and len(subs) >= 4 and not subs[3].get("partial"):
             own += _alternation(subs[1], subs[3])
         return {"k": kind, "i": i, "j": j, "d": d, "subs": subs, "pens": {k: round(v, 3) for k, v in pens.items()},
@@ -175,26 +181,31 @@ class _Parser:
                 ref = max(self.ix[b[1]] - self.ix[b[0]], self.ix[b[3]] - self.ix[b[2]])
                 if ref > 0 and t5 > 0:
                     extra += _soft(t5 / ref, T5_MAX)
-        else:                                             # zz／flat
+        else:                                             # zz／flat／abc3（B86 三段式：規則同鋸齒，但 A 是三波、B 不到 A 的 0.9）
+            zl = kind in ("zz", "abc3")
             if nb >= 2:
                 rb_now = (X[1] - seg_lo(2)) / L[1]        # b（含進行中）最深回到哪
-                if kind == "zz" and not seg_lo(2) > X[0]:
+                if zl and not seg_lo(2) > X[0]:
                     return None                           # 鋸齒 b 不破 a 的起點
-                if kind == "flat" and rb_now > E.FLAT_MAX:
+                if kind == "flat" and rb_now > FLAT_HARD:
                     return None
+                if kind == "flat" and rb_now > E.FLAT_MAX:
+                    extra += FLAT_OVER + _soft(rb_now, E.FLAT_MAX)   # B86 破底穿頭：b 超過 a 的 1.38 倍（她 11/1：46107→47555→45523）
             if k >= 2:
                 rb = L[2] / L[1]
                 if kind == "flat" and rb < E.FLAT_MIN:
                     return None
-                pens["rB"] = _pen(rb, G["zb"] if kind == "zz" else G["fb"])
+                if kind == "abc3" and rb >= E.FLAT_MIN:
+                    return None                           # B 走到 A 的 0.9 以上＝平台，不重複算
+                pens["rB"] = _pen(rb, G["zb"] if zl else G["fb"])
             elif nb == 2 and partial:
-                extra += _soft(rb_now, SOFT_MAX["zb" if kind == "zz" else "fb"])
+                extra += _soft(rb_now, SOFT_MAX["zb" if zl else "fb"])
             if k >= 3:
-                if kind == "zz" and not X[3] > X[1]:
+                if zl and not X[3] > X[1]:
                     return None                           # 鋸齒 c 要過 a 的終點
                 if kind == "flat" and L[3] < RUN_FLAT_MIN * L[1]:
                     return None                           # 平台 c 太短（不到 a 的 0.618）
-                pens["rC"] = _pen(L[3] / L[1], G["zc"] if kind == "zz" else G["fc"])
+                pens["rC"] = _pen(L[3] / L[1], G["zc"] if zl else G["fc"])
         return pens, extra
 
     # ── 走完的一段 [i, j] ──
@@ -292,7 +303,7 @@ class _Parser:
                 else:
                     for ps in self.partials(b[k], roles[k], depth + 1):
                         nd = self._node(kind, i, None, d, subs + [ps], r[0], r[1], partial=True)
-                        sg = _sig(nd)
+                        sg = _sig(nd) + ((subs[0]["j"],) if self.keep_first and depth == 0 and subs else ())
                         if sg not in best or nd["cost"] < best[sg]["cost"]:
                             best[sg] = nd
             yield from best.values()
@@ -357,7 +368,8 @@ def tree_out(node: dict, seq: list, times, tlabel, prefix: Optional[list] = None
     return out
 
 
-def parse(pts: list, anchor: int = 0, parent_role: Optional[str] = None, top_k: int = 4, only_role: Optional[str] = None) -> list:
+def parse(pts: list, anchor: int = 0, parent_role: Optional[str] = None, top_k: int = 4, only_role: Optional[str] = None,
+          extra_top: tuple = (), keep_first: bool = False) -> list:
     """pts：轉折點（確認＋最後一個進行中的極值）；anchor：起點索引。回傳數法清單（分數低＝好），每個含：
     path（如 ['A','4','c']）、path_str、top_kind、chain、labels（{pts 索引: 浪名}）、cost、tree"""
     seq = pts[anchor:]
@@ -366,10 +378,11 @@ def parse(pts: list, anchor: int = 0, parent_role: Optional[str] = None, top_k: 
     P = _Parser(seq)
     if P.n < 3:
         return []
+    P.keep_first = keep_first
     d0 = P.d(0)
     cands = []
     for role in (only_role,) if only_role else ("M", "C"):          # B83 only_role：日 K 定好第一層是 1-5 還是 A-B-C → 先篩再取前 top_k
-        for kind in KINDS_OF[role]:
+        for kind in KINDS_OF[role] + (tuple(extra_top) if role == "C" else ()):   # B86 extra_top：第一層多試的型態（源頭切組的三段式）
             for nd in P._partials(kind, 0, d0, 0, kmin=0):
                 extra = ROLE_MISMATCH if parent_role and parent_role != role else 0.0
                 nd = dict(nd, cost=nd["cost"] + extra)
@@ -509,11 +522,11 @@ def _rule_levels(c: dict, seq: list, d0: int) -> list:
             out.append({"price": P(1), "side": side, "why": "第 4 段碰到第 1 段終點＝1、4 浪重疊，不是五段推動（化解成三段 abc）"})
         if node["k"] == "diag" and k == 3:
             out.append({"price": P(2), "side": side, "why": "楔形第 4 段不能過第 2 段終點"})
-        if node["k"] == "zz" and k == 1:
-            out.append({"price": P(0), "side": side, "why": "鋸齒 b 段不能破 a 的起點"})
+        if node["k"] in ("zz", "abc3") and k == 1:
+            out.append({"price": P(0), "side": side, "why": f"{'鋸齒' if node['k'] == 'zz' else '三段式'} b 段不能破 a 的起點"})
         if node["k"] == "flat" and k == 1:
             a = abs(P(1) - P(0))
-            out.append({"price": P(1) - d * E.FLAT_MAX * a, "side": side, "why": "平台 b 段不能超過 a 的 1.38 倍"})
+            out.append({"price": P(1) - d * FLAT_HARD * a, "side": side, "why": f"平台 b 段不能超過 a 的 {FLAT_HARD:g} 倍（破底穿頭的極限）"})
         node = subs[-1]
         depth += 1
     # 最深那一段的起點：反向超過＝這一段其實還沒開始（前一段在延伸）
@@ -552,7 +565,7 @@ def _targets(c: dict, seq: list) -> list:
         elif kind == "diag":
             if k in (1, 3):
                 tg = [(f"楔形第 {k + 1} 段回 {r:g}", P(k) - d * r * L(k)) for r in (0.66, 0.81)]
-        elif kind == "zz":
+        elif kind in ("zz", "abc3"):
             if k == 1:
                 tg = [(f"b 段回 {r:g}", P(1) - d * r * L(1)) for r in (0.5, 0.618)]
                 nx = [(f"c＝{r:g} 倍 a（b 在現價結束的話）", now + d * r * L(1)) for r in (1.0, 1.618)]
@@ -612,7 +625,7 @@ def limit_zone(c: dict, seq: list, d0: int) -> Optional[dict]:
     if out is None and m >= 1:
         key = (parent["k"], m)
         cap = {("imp", 1): SOFT_MAX["imp2"], ("imp", 3): SOFT_MAX["imp4"], ("diag", 1): SOFT_MAX["dia"], ("diag", 3): SOFT_MAX["dia"],
-               ("zz", 1): SOFT_MAX["zb"], ("flat", 1): 1.0}.get(key)
+               ("zz", 1): SOFT_MAX["zb"], ("abc3", 1): SOFT_MAX["zb"], ("flat", 1): 1.0}.get(key)
         if cap is None:
             return None
         if key == ("imp", 3):
@@ -620,7 +633,7 @@ def limit_zone(c: dict, seq: list, d0: int) -> Optional[dict]:
         elif key == ("diag", 3):
             hard = P(parent["subs"][1]["j"])                         # 楔形第 4 段不能過第 2 段終點
         elif key == ("flat", 1):
-            hard = P(s) + dirc * E.FLAT_MAX * lp
+            hard = P(s) + dirc * FLAT_HARD * lp
         else:
             hard = P(prev_s)                                         # 第 2 段／b 段不能破前一段起點
         lv = [(P(s) + dirc * cap * lp, f"前一段的 {cap:g}"), (hard, "硬規則")]
@@ -762,6 +775,101 @@ def life_line(c: dict, seq: list, pts: list, d0: int, price: float, t_now: int, 
             "broken": bool((price - far) * up < 0), "a": [A0["p"], A1["p"]], "t": t, "plan": plan}
 
 
+# ── B86 她 11/1 的「源頭」兩種切組：日 K 是 A-B-C 的 C（或 1-2-3 的 3）時，60 分從修正的起點（50,265）整段拆 ─────────
+SRC_TOP = 400            # 候選留前幾名再篩（她的版本分數不一定最好，要留得夠多才挑得到；只是切片，不多算）
+
+
+def _src_view(c: dict, seq: list, times, kinds_of) -> dict:
+    """一個源頭數法 → {path, text, marks:[{p, time, text}], segs:[(浪名, 起點, 終點, 型態)], cost}"""
+    tree = c["tree"]
+    labs = _sub_labels(c["top_kind"], 1)
+    segs = []
+    for m, sub in enumerate(tree["subs"]):
+        a_, b_ = seq[sub["i"]]["p"], (seq[sub["j"]]["p"] if sub.get("j") is not None else seq[-1]["p"])
+        segs.append({"lab": labs[m], "from": a_, "to": b_, "kind": KIND_NAME.get(sub["k"], ""), "k": sub["k"], "done": sub.get("j") is not None})
+    marks = []
+    for k, lab in sorted(c["labels"].items()):
+        parts = lab.split("-")
+        n = len(parts)
+        while n > 1 and parts[n - 1] in ("5", "c"):          # 「B-a-c」＝B-a 這段的終點、「A-c」＝A 的終點
+            n -= 1
+        if n <= 2:                                           # 第一、二層就好（她的圖：大段＋子浪）
+            q = seq[k]
+            marks.append({"p": q["p"], "time": int(times[q["i"]]), "text": "-".join(parts[:n])})
+    return {"path": c["path_str"], "top_kind": c["top_kind"], "kind": KIND_NAME.get(c["top_kind"], ""), "text": c["text"],
+            "cost": round(c["cost"], 4), "segs": segs, "marks": marks}
+
+
+def source_cut(pts: list, daily_cnt: Optional[dict], daily_dates, tdate, times, price: float) -> Optional[dict]:
+    """她 11/1「回到最源頭的思路」：日 K 這段修正的起點（50,265）到現在，60 分怎麼切組——
+    第一種（三段式）：A 走三波（50,265→48,413→49,594→46,107）、B 破底穿頭平台（→47,555→45,523→47,607）、C 走五波（47,607 起）
+    第二種（五段式，威脅）：第 1 段五波（50,265→45,523）、第 2 段（→47,607）、第 3 段（47,607 起，主跌才剛開始）
+    兩種的第二段都要結束在日 K 的 B（47,607）。三段式優先挑「B 破底穿頭」那種（她點名的型態），沒有才用分數最好的"""
+    L = (daily_cnt or {}).get("labels") or []
+    kind, cur = (daily_cnt or {}).get("kind"), str((daily_cnt or {}).get("current") or "")
+    if len(L) < 4 or not ((kind == "correction" and cur == "C") or (kind == "impulse" and cur == "3")):
+        return None
+    k0 = _anchor(pts, {**daily_cnt, "labels": [L[-4], L[-3]], "current": "A"}, daily_dates, tdate)
+    kB = _anchor(pts, {**daily_cnt, "labels": [L[-2], L[-1]], "current": "C"}, daily_dates, tdate)
+    if k0[0] is None or kB[0] is None or k0[1] != "daily" or kB[1] != "daily" or kB[0] <= k0[0]:
+        return None
+    seq = pts[k0[0]:]
+    pB = pts[kB[0]]
+    while len(seq) - 1 > NEST_SEG:
+        nxt = drop_smallest(seq)
+        if nxt is None:
+            return None
+        seq = nxt
+    jB = next((k for k, q in enumerate(seq) if q["i"] == pB["i"]), None)
+    if jB is None:
+        return None
+    d0 = 1 if seq[0]["t"] == "L" else -1
+    # 三段式：A 是三波（鋸齒／平台）、C 進行中；五段式：第 1 段是五波、第 3 段進行中（日 K 這一浪還在走）
+    c3 = [c for c in parse(seq, 0, top_k=SRC_TOP, only_role="C", extra_top=("abc3",), keep_first=True)
+          if len(c["tree"]["subs"]) == 3 and c["tree"]["subs"][1].get("j") == jB and c["tree"]["subs"][0]["k"] in ("zz", "flat")]
+    c5 = [c for c in parse(seq, 0, top_k=SRC_TOP, only_role="M", keep_first=True)
+          if c["top_kind"] == "imp" and len(c["tree"]["subs"]) == 3 and c["tree"]["subs"][1].get("j") == jB
+          and c["tree"]["subs"][0]["k"] == "imp"]
+
+    def breaks(c):                                           # B 是平台、而且 b 段刺穿 A 的終點（破底穿頭）
+        B = c["tree"]["subs"][1]
+        if B["k"] != "flat" or len(B["subs"]) < 2:
+            return False
+        a_end = seq[c["tree"]["subs"][0]["j"]]["p"]
+        return (seq[B["subs"][1]["j"]]["p"] - a_end) * d0 > 0     # 下跌（d0＝−1）：b 比 A 的低點更低
+    pick3 = min([c for c in c3 if breaks(c)] or c3, key=lambda c: c["cost"], default=None)
+    pick5 = min(c5, key=lambda c: c["cost"], default=None)
+    if not pick3 and not pick5:
+        return None
+    out = {"from": {"p": seq[0]["p"], "time": int(times[seq[0]["i"]])}, "b_end": pB["p"]}
+    wd = "跌" if d0 < 0 else "漲"
+    if pick3:
+        v = _src_view(pick3, seq, times, None)
+        A, B = v["segs"][0], v["segs"][1]
+        la = abs(A["to"] - A["from"])
+        v["targets"] = [{"label": f"C＝A 等幅（{_fmt(A['from'])}→{_fmt(A['to'])} 共 {la:,.0f} 點）", "price": round(B["to"] + d0 * la, 2)},
+                        {"label": "C＝1.618 倍 A", "price": round(B["to"] + d0 * 1.618 * la, 2)}]
+        v["bpn"] = breaks(pick3)
+        v["desc"] = (f"A＝{_fmt(A['from'])}→{_fmt(A['to'])}（{A['kind']}）、B＝{_fmt(B['from'])}→{_fmt(B['to'])}（{B['kind']}"
+                     + ("，破底穿頭" if v["bpn"] else "") + f"）、C＝{_fmt(B['to'])} 起{wd}（要走五波）")
+        out["three"] = v
+    if pick5:
+        v = _src_view(pick5, seq, times, None)
+        S1, S2 = v["segs"][0], v["segs"][1]
+        l1 = abs(S1["to"] - S1["from"])
+        v["targets"] = [{"label": f"第 3 段＝1 倍第 1 段（{l1:,.0f} 點）", "price": round(S2["to"] + d0 * l1, 2)},
+                        {"label": "第 3 段＝1.618 倍第 1 段", "price": round(S2["to"] + d0 * 1.618 * l1, 2)}]
+        v["desc"] = (f"第 1 段＝{_fmt(S1['from'])}→{_fmt(S1['to'])}（五波）、第 2 段＝→{_fmt(S2['to'])}、"
+                     f"第 3 段＝{_fmt(S2['to'])} 起主{wd}（才剛開始，裡面也要走五小段）")
+        lows = [m["p"] for m in v["marks"] if m["text"] == "3-1"]
+        if lows:                                             # 3-1 走完 → 3-2 是弱勢反彈：常見回 0.5～0.618，過了 3-1 的起點這個版本就作廢
+            l31 = abs(lows[0] - S2["to"])
+            v["rebound"] = {"p50": round(lows[0] - d0 * 0.5 * l31, 2), "p618": round(lows[0] - d0 * 0.618 * l31, 2), "kill": S2["to"],
+                            "low": lows[0]}
+        out["five"] = v
+    return out
+
+
 def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: Optional[dict] = None,
           daily_dates=None, tdate=None, tlabel=None, parent_seg: Optional[dict] = None, closes=None) -> dict:
     """分 K 的 analyze 結果 → 多層浪名＋關卡＋操作紀律。closes（B85，可省）：分 K 收盤價，算 MACD 綠柱修復
@@ -857,6 +965,10 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
                 "targets": _targets(c, seq)}
     P, A, T3 = out_c(prim), out_c(alt), out_c(third)
     life = life_line(prim, seq, pts, d0, price, len(times) - 1, closes) if prim and not _with_trend(prim, d0) else None
+    try:                                                     # B86 源頭兩種切組（她 11/1）：只在 60 分算（15／30 分從上一層接）
+        src = source_cut(pts, daily_cnt, daily_dates, tdate, times, price) if tfn == "60 分" and not parent_seg else None
+    except Exception:       # noqa: BLE001
+        src = None
     # 關卡（她的寫法）：反向（逆著起點那一大段）走時 → 分水嶺（B83）、前提趨勢線、0.382、前高頸線＋0.5、0.618＋第 1 段低點區、失敗
     up_word, dn_word = ("反彈", "下跌") if d0 < 0 else ("回檔", "上漲")
     gates = []
@@ -978,7 +1090,8 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
                                               "now": round(tl["now"], 2), "time_now": int(times[t_now]),
                                               "to": {**tl["to"], "time": int(times[tl["to"]["i"]])}},
             "evidence": ev, "primary": P, "alternate": A, "third": T3, "gates": gates, "plan": plan,
-            "watershed": watershed, "life": life, "n_seg": len(seq) - 1, "merged": n_raw - (len(seq) - 1)}
+            "watershed": watershed, "life": life, "n_seg": len(seq) - 1, "merged": n_raw - (len(seq) - 1),
+            "source": src}
 
 
 def timeline(piv: list, h, l, c, times: list, ends: list, tfn: str, daily_at, daily_dates, tdate, tlabel) -> list:
@@ -1062,6 +1175,21 @@ def positioning(prim: Optional[dict], alt: Optional[dict], price: float, tfn: st
     word = "回檔" if pd_ > 0 else "反彈"
     brk = "跌破" if pd_ > 0 else "漲過"
     d = lambda x: str(x.get("date") or "")[5:]               # noqa: E731
+    if depth >= 1 and len(L) >= 4:
+        # B86 已經超過這一段的起點（11/1 日 K：45,523→47,607 回檔 111%）→ 這段當母尺失效：前一段 L[-4]→L[-3] 跟現在同方向，
+        #     現在是它的延伸（A-B-C 的 C／1-2-3 的 3），改列「延伸段＝前一段的 0.618／1／1.618 倍」
+        p0, a1 = L[-4], L[-3]
+        la = abs(a1["p"] - p0["p"])
+        ext = {r: s1["p"] - pd_ * r * la for r in (0.618, 1.0, 1.618)}
+        lines = [f"定位 A（主要）：已經{brk}鐵律底線 {_fmt(s0['p'])}（{_fmt(s0['p'])}→{_fmt(s1['p'])} 這段{word} {depth:.0%}），"
+                 f"這段當母尺已經失效 → 現在是 {_fmt(p0['p'])}→{_fmt(a1['p'])} 那段的延伸（{d(p0)}～{d(a1)}，{la:,.0f} 點）",
+                 "延伸段（從 " + _fmt(s1["p"]) + " 起）＝前一段的 " + "、".join(f"{r:g} 倍 {_fmt(v)}" for r, v in ext.items())]
+        if alt:
+            lines.append(f"定位 B：{alt.get('text')}" + (f"；{'跌破' if alt.get('invalid_side') == 'below' else '漲過'} {_fmt(alt['invalid'])} 這個版本就作廢"
+                                                        if alt.get("invalid") is not None else ""))
+        return {"tf": tfn, "lines": lines, "ruler": [p0["p"], a1["p"]], "levels": {f"x{r:g}": round(v, 2) for r, v in ext.items()},
+                "iron": s1["p"], "depth": round(depth, 4), "passed": [f"x{r:g}" for r, v in ext.items() if (v - price) * -pd_ <= 0],
+                "extension": True}
     lines = [
         f"定位 A（主要）：{_fmt(s0['p'])}（{d(s0)}）→ {_fmt(s1['p'])}（{d(s1)}）這一段當母尺，現在 {_fmt(s1['p'])} → {_fmt(price)} 是它的{word}，"
         f"已經{word} {depth:.0%}",
@@ -1081,3 +1209,64 @@ def positioning(prim: Optional[dict], alt: Optional[dict], price: float, tfn: st
         lines.append(s)
     return {"tf": tfn, "lines": lines, "ruler": [s0["p"], s1["p"]], "levels": {str(k): round(v, 2) for k, v in lv.items()},
             "iron": s0["p"], "depth": round(depth, 4), "passed": [k for v, k in ladder if (v - price) * pd_ >= 0 and k != "起點"]}
+
+
+# ── B86 她 11/1「50265 起的下跌三種日線定位」：用週 K 轉折找全波段起點、第 (3) 浪、第 (4) 浪 ──────────────────────
+def big_picture(piv: list, price: float, mid_primary: Optional[dict] = None) -> Optional[dict]:
+    """piv：週 K 轉折（舊→新，{p, t, date}）。最新高點 H（50,265）之後在回檔時，列她的三種定位：
+    1. 全波段（G0→H，17,016→50,265）走完、進行更上層大 A 浪：全波段 0.382（37,564）是總修正目標
+    2. 第四大波還沒走完（只修正第 (3) 浪 31,740→49,240）：4-C／Y 浪看第 (3) 浪的 0.382～0.5（42,555～40,490），守住第 (4) 浪低點（39,442）
+    3. 49,240 早已結束全波段、H 是 B 波假突破 → 全波段 C 浪：全波段 0.382～0.5（37,564～33,641）
+    找法：G0＝H 之前最低的低點；H3＝H 之前最高的高點（49,240）；W4＝H3～H 之間最低（39,442）；
+    第 (3) 浪起點＝G0～H3 之間「漲最多的那一段」的起點（31,740→46,994 那段的 31,740）"""
+    P = [q for q in (piv or []) if q.get("p")]
+    if len(P) < 6:
+        return None
+    kH = max(range(len(P)), key=lambda k: P[k]["p"] if P[k]["t"] == "H" else -1e18)
+    if P[kH]["t"] != "H" or kH < 4 or price >= P[kH]["p"] or any(q["t"] == "H" and q["p"] > P[kH]["p"] for q in P[kH + 1:]):
+        return None
+    H = P[kH]
+    lows = [k for k in range(kH) if P[k]["t"] == "L"]
+    if not lows:
+        return None
+    k0 = min(lows, key=lambda k: P[k]["p"])
+    highs = [k for k in range(k0 + 1, kH) if P[k]["t"] == "H"]
+    if not highs:
+        return None
+    k3 = max(highs, key=lambda k: P[k]["p"])
+    w4 = [k for k in range(k3 + 1, kH) if P[k]["t"] == "L"]
+    ups = [k for k in range(k0, k3) if P[k]["t"] == "L" and P[k + 1]["t"] == "H"]
+    if not w4 or not ups:
+        return None
+    k4 = min(w4, key=lambda k: P[k]["p"])
+    ks = max(ups, key=lambda k: P[k + 1]["p"] - P[k]["p"])
+    G0, H3, W4, S3 = P[k0], P[k3], P[k4], P[ks]
+    full, w3, w4len = H["p"] - G0["p"], H3["p"] - S3["p"], H3["p"] - W4["p"]
+    f = lambda r: round(H["p"] - r * full, 2)                       # noqa: E731
+    g = lambda r: round(H3["p"] - r * w3, 2)                        # noqa: E731
+    d = lambda q: str(q.get("date") or "")[:10]                     # noqa: E731
+    sc = [
+        {"key": "A", "title": f"全波段 {_fmt(G0['p'])}→{_fmt(H['p'])} 走完，現在是更上層的大 A 浪",
+         "levels": [{"label": "全波段 0.236", "price": f(0.236)}, {"label": "全波段 0.382（總修正目標）", "price": f(0.382)}],
+         "after": "大 A 浪走完一定有一波日線級大 B 段反彈，之後才走大 C 浪"},
+        {"key": "4", "title": f"只修正第 (3) 浪 {_fmt(S3['p'])}→{_fmt(H3['p'])}：第四大波還沒走完（{_fmt(H3['p'])}→{_fmt(W4['p'])}＝W、"
+                              f"{_fmt(W4['p'])}→{_fmt(H['p'])}＝X 假突破、現在 Y／4-C）",
+         "levels": [{"label": "第 (3) 浪 0.382", "price": g(0.382)}, {"label": "第 (3) 浪 0.5（極限防守）", "price": g(0.5)},
+                    {"label": "Y＝0.618 倍 W", "price": round(H["p"] - 0.618 * w4len, 2)}, {"label": "Y＝W 等幅", "price": round(H["p"] - w4len, 2)},
+                    {"label": f"第 (4) 浪低點（要守住，跌破這個定位作廢）", "price": W4["p"]}],
+         "after": "在這區完成修正＝第四大波結束、直接轉入第 5 大波創高"},
+        {"key": "C", "title": f"{_fmt(H3['p'])} 早已結束全波段、{_fmt(H['p'])} 是 B 波假突破，現在全波段 C 浪",
+         "levels": [{"label": "C＝A 等幅（A＝" + f"{_fmt(H3['p'])}→{_fmt(W4['p'])}）", "price": round(H["p"] - w4len, 2)},
+                    {"label": "全波段 0.382", "price": f(0.382)}, {"label": "全波段 0.5", "price": f(0.5)}],
+         "after": "大 C 浪五波主跌，最深往全波段 0.382～0.5"},
+    ]
+    for x in sc:
+        x["levels"] = [dict(v, hit=bool(price <= v["price"])) for v in x["levels"]]
+    mk, cur = (mid_primary or {}).get("kind"), str((mid_primary or {}).get("current") or "")
+    labs = [round(float(q.get("p") or 0)) for q in (mid_primary or {}).get("labels") or []]
+    favored = "C" if (mk == "correction" and cur == "C" and round(H3["p"]) in labs and round(H["p"]) in labs) else None
+    return {"pts": {"g0": {"p": G0["p"], "date": d(G0)}, "s3": {"p": S3["p"], "date": d(S3)}, "h3": {"p": H3["p"], "date": d(H3)},
+                    "w4": {"p": W4["p"], "date": d(W4)}, "h": {"p": H["p"], "date": d(H)}},
+            "scenarios": sc, "favored": favored, "price": price,
+            "note": f"週 K 轉折：{_fmt(G0['p'])}（{d(G0)}）→ 第 (3) 浪 {_fmt(S3['p'])}→{_fmt(H3['p'])}、第 (4) 浪 {_fmt(W4['p'])}、"
+                    f"{_fmt(H['p'])}（{d(H)}）；三種定位的分界：守不守得住 {_fmt(W4['p'])}、反彈能不能切開日線斜率"}

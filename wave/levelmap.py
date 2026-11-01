@@ -106,11 +106,15 @@ def candidates(ctx: dict) -> list:
               "0.5": ("第一防守區 0.5", "第一防守區失守，下一個看第二極限防守區 0.618"),
               "0.618": ("第二極限防守區 0.618", "第二極限防守區失守，下一個看鐵律底線")}
     for r, v in (pos.get("levels") or {}).items():
-        nm, mean = MOTHER.get(r, (f"母尺 {r}", "回到母尺的 " + r))
         below = float(v) < px
+        if pos.get("extension"):                            # B86 母尺失效 → 延伸段＝前一段的幾倍
+            out.append({"price": float(v), "kind": "mother", "name": f"延伸 {r[1:]} 倍", "src": "前一段等幅延伸（她的 C＝A／c＝a）",
+                        "act": f"{'跌破' if below else '站上'} → 延伸段{'走到' if below else '還沒走到'}前一段的 {r[1:]} 倍"})
+            continue
+        nm, mean = MOTHER.get(r, (f"母尺 {r}", "回到母尺的 " + r))
         out.append({"price": float(v), "kind": "mother", "name": nm, "src": "前一段當母尺（她的日線定位）",
                     "act": f"{'跌破' if below else '站上'} → " + mean.format(w="回檔" if below else "反彈")})
-    if pos.get("iron") is not None:
+    if pos.get("iron") is not None and not pos.get("extension"):
         out.append({"price": float(pos["iron"]), "kind": "mother", "name": "鐵律底線", "src": "前一段的起點",
                     "act": f"{'跌破' if float(pos['iron']) < px else '漲過'} → 不是正常的回檔／反彈，母級結構作廢"})
     for z in ctx.get("zones") or []:
