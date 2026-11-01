@@ -527,6 +527,19 @@ def _composite(b: dict, st: dict, night: Optional[dict]) -> dict:
             "research": {k: (st.get("futures") or {}).get(k) for k in ("is", "oos", "generated", "n_tests")}}
 
 
+def _margin_out(chips_df, now) -> dict:
+    """融資餘額＋大盤融資維持率（官方融資金額 ÷ 融資股票市值，margin_maint.market_maint）"""
+    out = CP.margin_block(chips_df, now.strftime("%Y-%m-%d"))
+    try:
+        import margin_maint as MM
+        mt = MM.market_maint()
+        if mt.get("ok"):
+            out["maint"] = mt
+    except Exception as e:     # noqa: BLE001
+        log.warning(f"[wave] 大盤融資維持率失敗：{e}")
+    return out
+
+
 def _fut_chips_out(fc: pd.DataFrame) -> dict:
     if fc is None or fc.empty or "retail_ratio" not in fc:
         return {"ok": False}
@@ -987,7 +1000,7 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
         "volume": vol, "vol_unit": VOL_UNIT[sym],
         "waves": waves, "levels": lv, "key": key, "forecast": fc,
         "chips": b["chips"], "global": b["global"], "context": b["context"], "research": b["research"],
-        "fut_chips": _fut_chips_out(b["fchips"]), "margin": CP.margin_block(b["chips_df"], now.strftime("%Y-%m-%d")),
+        "fut_chips": _fut_chips_out(b["fchips"]), "margin": _margin_out(b["chips_df"], now),
         "night": None if not night else {k: (_f(v * 100, 2) if k == "ret" else v) for k, v in night.items()},
         "open_ref": _open_ref(b, st, night),          # 夜盤 → 加權開盤參考（B76：台指期頁的操作建議也用）
         "composite": _composite(b, st, night),

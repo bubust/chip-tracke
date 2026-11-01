@@ -732,13 +732,36 @@
         <td class="n" style="color:${colorOf(r.pct)}">${pctS(r.pct)}</td></tr>`).join('')}</table>`;
   }
 
+  // 大盤融資維持率（官方融資金額 ÷ 融資股票市值）：紅＜140、橘＜150、黃＜160
+  function maintBox(mt) {
+    if (!mt || !mt.ok) return '';
+    const col = v => v < 140 ? '#ef4444' : v < 150 ? '#f97316' : v < 160 ? '#eab308' : 'var(--fg)';
+    const ser = (mt.series || []).filter(r => num(r.all) != null);
+    let line = '';
+    if (ser.length >= 2) {
+      const W = 600, Hh = 60, vs = ser.map(r => r.all), lo = Math.min(...vs, 140), hi = Math.max(...vs), bw = W / ser.length;
+      const Y = v => Hh - 4 - (v - lo) / ((hi - lo) || 1) * (Hh - 8);
+      const pts = ser.map((r, i) => `${(i * bw + bw / 2).toFixed(1)},${Y(r.all).toFixed(1)}`).join(' ');
+      const dots = ser.map((r, i) => `<circle cx="${(i * bw + bw / 2).toFixed(1)}" cy="${Y(r.all).toFixed(1)}" r="5" fill="transparent"><title>${esc(md(r.date))} 整體 ${r.all}%（上市 ${r.twse}%、上櫃 ${r.tpex}%）</title></circle>`).join('');
+      line = `<svg class="wv-spark" viewBox="0 0 ${W} ${Hh}" preserveAspectRatio="none" role="img" aria-label="大盤融資維持率走勢">
+        <line x1="0" x2="${W}" y1="${Y(140).toFixed(1)}" y2="${Y(140).toFixed(1)}" stroke="#ef4444" stroke-dasharray="5 4" opacity=".6"/>
+        <polyline points="${pts}" fill="none" stroke="#f97316" stroke-width="1.8"/>${dots}</svg>`;
+    }
+    return `<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">
+      <div><b>🩸 大盤融資維持率 <span style="color:${col(mt.all)}">${mt.all}%</span></b>
+        <span class="wv-dim">（${md(mt.date)}；上市 <b style="color:${col(mt.twse)}">${mt.twse}%</b>、上櫃 <b style="color:${col(mt.tpex)}">${mt.tpex}%</b>${num(mt.chg5) != null ? `；5 天 ${sgn(mt.chg5, 1)} 個百分點` : ''}；近 ${ser.length} 天最低 ${mt.low60}%）</span></div>
+      ${line}
+      <div class="wv-what">＝所有融資股票的市值 ÷ 官方融資金額（${fmt(mt.amt_yi)} 億，證交所＋櫃買公布），<b>不是估的</b>。
+        個股跌破 130% 會被追繳；大盤跌到 140% 以下通常代表很多人已經在追繳／斷頭（急跌末段常見），只當描述、沒有回測。紅線＝140%。</div></div>`;
+  }
+
   function renderMargin() {
     const m = S.margin || {};
     const el = $('wv-margin');
-    if (!m.ok) { keepOpen(el, `<summary>💰 融資餘額<span class="s">${esc(m.note || '資料暫缺')}</span></summary>`); return; }
+    if (!m.ok) { keepOpen(el, `<summary>💰 融資餘額<span class="s">${esc(m.note || '資料暫缺')}</span></summary>${maintBox(m.maint)}`); return; }
     const stk = m.streak > 0 ? `連增 ${m.streak} 天` : m.streak < 0 ? `連減 ${-m.streak} 天` : '';
     const yi = (v, nd = 0) => `<b style="color:${colorOf(v)}">${sgn(v, nd)} 億</b>`;
-    keepOpen(el, `<summary>💰 融資餘額 ${fmt(m.amt)} 億：${md(m.date)} ${sgn(m.chg1, 0)} 億${stk ? '，' + stk : ''}
+    keepOpen(el, `<summary>💰 融資餘額 ${fmt(m.amt)} 億：${md(m.date)} ${sgn(m.chg1, 0)} 億${stk ? '，' + stk : ''}${m.maint && m.maint.ok ? `；大盤融資維持率 ${m.maint.all}%` : ''}
         <span class="s">5 天 ${sgn(m.chg5, 0)} 億、20 天 ${sgn(m.chg20, 0)} 億（${pctS(m.pct20, 1)}）；增加＝散戶加碼${m.pending ? '。' + esc(m.pending) : ''}</span></summary>
       <div class="wv-kv">
         <span class="k">餘額（${md(m.date)}）</span><span><b>${fmt(m.amt)} 億</b></span>
@@ -746,6 +769,7 @@
         <span class="k">5 天</span><span>${yi(m.chg5)}（${pctS(m.pct5)}）</span>
         <span class="k">20 天</span><span>${yi(m.chg20)}（${pctS(m.pct20)}）</span>
       </div>
+      ${maintBox(m.maint)}
       ${last10(m.last10)}
       ${spark(m.hist)}
       <div class="wv-dim" style="font-size:.84rem">柱子＝近 60 天每天增減（紅＝增加、綠＝減少，滑過看數字）；黃線＝餘額走勢</div>

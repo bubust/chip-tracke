@@ -342,6 +342,12 @@ def verdict(tech_row, chip=None, vol_sum=None, kpct_change=None, rev=None, inc=N
         notes.append("成交量太小或股價低於 10 元：不在回測範圍，機率與統計不適用")
     if bk == "strong" and pop == "main":
         notes.append(f"強勢股過去 20 天內平均最大回檔 {BUCKET_STATS['main']['strong']['mdd']}%，停損要設好")
+    mt = (chip or {}).get("maint") or {}
+    if mt.get("level") in ("call", "low"):                  # 🩸 融資維持率（估計）偏低：只提醒、不計分（沒回測）
+        notes.insert(0, f"🩸 融資維持率（估）{mt['maint']:g}%：融資 {mt['bal']:,} 張、平均成本約 {mt['cost']:g} 元，"
+                     + ("已跌破 130% 追繳線，正在追繳／斷頭" if mt["to_call_pct"] >= 0 else
+                        f"跌到 {mt['call_price']:g} 元（再跌 {-mt['to_call_pct']:.1f}%）跌破 130% 追繳線")
+                     + "；再跌會有斷頭賣壓，等融資大減、止跌再看（估計值、沒回測，只提醒）")
     notes.append(f"總分含沒回測的籌碼／基本面／產業（經驗權重）；回測期間 {BACKTEST_PERIOD}（大盤偏多），過去不代表未來；"
                  f"機率與報酬未扣來回成本約 {ROUND_TRIP_COST:g}%；部位建議是單筆風險，所有持股合計的風險也要控制")
     entry = lv.get("entry") or {}
