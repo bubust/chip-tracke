@@ -6,13 +6,15 @@ chip_course.py — 上課筆記的籌碼面選股（2026-10-04 新增，掃描�
   S_SHORT_EBB  融券退潮：高檔強勢股的融券從高點連續減少 → 拉回不再是買點，減碼／出場
   S_BIGHOLD    千張大戶持股比率上升、散戶持股比率下降（創新低更好）＝籌碼集中
   S_TRUST_DUMP 投信高檔連續賣超（之前有佈局、股價拉高後連續倒貨 → 出場）
+  S_MAINT_LOW  融資維持率偏低（估計 ≤ 140%：再跌會有追繳／斷頭賣壓；估法見 margin_maint.py）
 
 資料來源（2026-10 GitHub Actions 實測可用）：
 - 投信：TWSE rwd fund/T86（可指定日期）；櫃買 OpenAPI tpex_3insti_daily_trading（只有最新一天，每天累積）
 - 融券餘額：cb.fetcher.fetch_short_day（TWSE rwd MI_MARGN＋櫃買 margin/balance，可指定日期）
 - 集保分級：TDCC OpenAPI 1-5（每週一份，每週累積）
 - 三大法人每日（深度分析用，PLAN-DEEP2 §4）：TWSE rwd fund/T86＋櫃買 www/zh-tw/insti/dailyTrade（兩邊都可指定日期）
-- 融資融券餘額每日：TWSE rwd MI_MARGN＋櫃買 margin/balance（cb.fetcher.fetch_margin_day）
+- 融資融券餘額每日：TWSE rwd MI_MARGN＋櫃買 margin/balance（cb.fetcher.fetch_margin_day）；同一份回應順便存融資買賣／餘額
+  到 margin_flow（個股融資維持率估計，margin_maint.py）
 資料存 chip_data/course.db。
 """
 from __future__ import annotations
@@ -24,6 +26,8 @@ from pathlib import Path
 
 import pandas as pd
 
+import margin_maint as MM
+
 DB_PATH = Path(__file__).parent / "chip_data" / "course.db"
 _TW = timezone(timedelta(hours=8))
 
@@ -33,8 +37,9 @@ CHIP_STRATEGIES = {
     "S_SHORT_EBB": "🌊 融券退潮（減碼／出場）",
     "S_BIGHOLD":   "🐋 大戶增、散戶減（籌碼集中）",
     "S_TRUST_DUMP": "🏃 投信高檔連續賣超（出場）",
+    "S_MAINT_LOW": "🩸 融資維持率偏低（斷頭風險）",
 }
-CHIP_SHORT = {"S_SHORT_EBB", "S_TRUST_DUMP"}
+CHIP_SHORT = {"S_SHORT_EBB", "S_TRUST_DUMP", "S_MAINT_LOW"}
 _MP = {"key": "min_price", "label": "最低股價", "type": "number", "default": 10, "min": 1, "max": 500, "step": 1}
 CHIP_PARAMS = {
     "S_TRUST_DUMP": [_MP, {"key": "sell_days", "label": "投信連續賣超天數（≥）", "type": "number", "default": 3, "min": 2, "max": 10, "step": 1},
@@ -47,6 +52,7 @@ CHIP_PARAMS = {
                    {"key": "min_lots", "label": "融券增加張數（≥）", "type": "number", "default": 200, "min": 50, "max": 5000, "step": 50}],
     "S_SHORT_EBB": [_MP, {"key": "down_days", "label": "融券連續減少天數（≥）", "type": "number", "default": 3, "min": 2, "max": 8, "step": 1},
                     {"key": "from_peak_pct", "label": "距融券高點減少%（≥）", "type": "number", "default": 15, "min": 5, "max": 80, "step": 5}],
+    "S_MAINT_LOW": [_MP, *MM.PARAMS],
     "S_BIGHOLD": [_MP, {"key": "retail_lots", "label": "散戶定義：持股幾張以下（10／50／400）", "type": "number", "default": 50, "min": 10, "max": 400, "step": 10},
                   {"key": "min_big_chg", "label": "大戶比率週增加（百分點 ≥）", "type": "number", "default": 0.1, "min": 0, "max": 5, "step": 0.1}],
 }
@@ -71,6 +77,8 @@ def get_conn():
                                                PRIMARY KEY (date, sid));                                   -- 三大法人買賣超（股）
         CREATE TABLE IF NOT EXISTS margin_bal (date TEXT, sid TEXT, margin REAL, short REAL,
                                                PRIMARY KEY (date, sid));                                   -- 融資／融券餘額（張）
+        CREATE TABLE IF NOT EXISTS margin_flow (date TEXT, sid TEXT, mkt TEXT, name TEXT, buy REAL, sell REAL, repay REAL,
+                                                prev REAL, bal REAL, off REAL, PRIMARY KEY (date, sid));   -- 融資買賣／餘額（張，維持率估計）
         CREATE TABLE IF NOT EXISTS fetch_log (kind TEXT, date TEXT, market TEXT, rows INTEGER,
                                               PRIMARY KEY (kind, date, market));                           -- 抓成功的日期（假日／還沒公布不記，下次再抓）
     """)
@@ -262,7 +270,9 @@ def refresh(progress=None) -> dict:
                     msgs.append(f"櫃買法人 {ds}：{type(e).__name__}")
                 time.sleep(0.6)
             if (ds, "twse") not in got_m or (ds, "tpex") not in got_m or ds not in have_s:
-                tw, tp = fetch_margin_day(cl, d)
+                flows = {}
+                tw, tp = fetch_margin_day(cl, d, flows)
+                MM.save_flows(c, ds, flows)
                 for mk, mm in (("twse", tw), ("tpex", tp)):
                     c.executemany("INSERT OR REPLACE INTO margin_bal VALUES (?,?,?,?)",
                                   [(ds, s, v[0], v[1]) for s, v in mm.items()])
@@ -289,6 +299,12 @@ def refresh(progress=None) -> dict:
                 msgs.append(f"集保 {dd}")
         except Exception as e:
             msgs.append(f"集保：{type(e).__name__}")
+    try:                                                    # 個股融資維持率：補漏掉的日子（第一次回補半年最多 5 分鐘，之後幾乎不用抓）
+        st = MM.backfill(budget_s=300, progress=progress)
+        if st.get("failed") or st.get("left"):
+            msgs.append(f"融資流量 缺{st.get('failed', 0)}／剩{st.get('left', 0)}天")
+    except Exception as e:      # noqa: BLE001
+        msgs.append(f"融資流量：{type(e).__name__}")
     c.execute("INSERT OR REPLACE INTO course_status VALUES ('last_refresh', ?)",
               (datetime.now(_TW).strftime("%Y-%m-%d %H:%M") + ("：" + "、".join(msgs) if msgs else ""),))
     c.commit()
@@ -533,6 +549,11 @@ def screen_bighold(c, get_df, names, p):
     return out
 
 
+def screen_maint_low(_, get_df, names, p):
+    """融資維持率偏低：估法見 margin_maint.py（融資買進 × 當天均價累積平均成本）"""
+    return MM.screen(get_df, names, p)
+
+
 def run_all(names: dict = None, strategy_params: dict = None, do_refresh: bool = True) -> dict:
     """回傳 {策略: [結果]}；names = {sid: 名稱}"""
     from price_cache import get_stock_ohlcv
@@ -560,7 +581,7 @@ def run_all(names: dict = None, strategy_params: dict = None, do_refresh: bool =
         shorts = _series(c, "short_bal", "bal", since)
         for key, fn, arg in (("S_TRUST5", screen_trust5, trust), ("S_SHORT_UP", screen_short_up, shorts),
                              ("S_SHORT_EBB", screen_short_ebb, shorts), ("S_BIGHOLD", screen_bighold, c),
-                             ("S_TRUST_DUMP", screen_trust_dump, trust)):
+                             ("S_TRUST_DUMP", screen_trust_dump, trust), ("S_MAINT_LOW", screen_maint_low, None)):
             try:
                 out[key] = fn(arg, get_df, names, p(key))
             except Exception as e:

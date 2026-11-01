@@ -1037,6 +1037,18 @@ async def lifespan(app: FastAPI):
         _POS_SCHED = _pos_watch
     except Exception as _pwe:
         import logging; logging.getLogger(__name__).warning(f"[positions_scheduler] {_pwe}")
+    # 🩸 個股融資維持率（margin_maint.py）：重開 3 分鐘後補齊半年的融資流量（第一次約 5～7 分鐘，之後幾秒），
+    # 補完馬上算「融資維持率偏低」清單放進策略篩選（不用等 18:00 掃描）
+    try:
+        def _maint_init():
+            import time as _t, logging as _lg
+            _t.sleep(180)
+            import margin_maint as _mm
+            r = _sched_heavy("margin_maint", _mm.backfill_and_publish, _load_strategy_params().get("S_MAINT_LOW") or {})
+            _lg.getLogger(__name__).info(f"[margin_maint] {r}")
+        threading.Thread(target=_maint_init, daemon=True).start()
+    except Exception as _mme:
+        import logging; logging.getLogger(__name__).warning(f"[margin_maint_init] {_mme}")
     # ── 全市場掃描排程：每個交易日 18:00 自動執行（備援：GitHub Actions）──
     _scan_sched = None
     try:

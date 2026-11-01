@@ -949,6 +949,7 @@ details.guide[open]>summary::before{content:'▾ ';}
       <button class="btn ghost screen-strat-btn" data-s="S_KDJ_HIGH" onclick="viewStrategy('S_KDJ_HIGH')" title="大漲後 K、D > 80 且 J > 100，J 往下穿越 K、D：先賣一半，另一半破 5/10MA 或月線全賣；KD 黏 80 以上超過 3 天是鈍化別賣光">🎢 KDJ高檔死叉 <span class="strat-cnt" id="cnt-S_KDJ_HIGH"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_KDJ_DIV" onclick="viewStrategy('S_KDJ_DIV')" title="股價創前波新高、K 值高點卻比前波低，並出現死叉：逢高減碼">📉 KDJ高檔背離 <span class="strat-cnt" id="cnt-S_KDJ_DIV"></span></button>
       <button class="btn ghost screen-strat-btn" data-s="S_TRUST_DUMP" onclick="viewStrategy('S_TRUST_DUMP')" title="之前有佈局的投信在股價拉高後連續賣超：跟著賣出避險">🏃 投信高檔倒貨 <span class="strat-cnt" id="cnt-S_TRUST_DUMP"></span></button>
+      <button class="btn ghost screen-strat-btn" data-s="S_MAINT_LOW" onclick="viewStrategy('S_MAINT_LOW')" title="個股融資維持率（估計）≤ 140%：用每天融資買進張數×當天均價估平均融資成本；跌破 130% 券商追繳，再跌會有斷頭賣壓">🩸 融資維持率偏低 <span class="strat-cnt" id="cnt-S_MAINT_LOW"></span></button>
     </div>
   </div>
 
@@ -5315,9 +5316,10 @@ const STRATEGY_LABELS = {
   S_KDJ_HIGH: '🎢 KDJ高檔死叉（K、D > 80、J > 100 往下穿：先賣一半）',
   S_KDJ_DIV: '📉 KDJ高檔背離（股價創新高、K 值沒創新高＋死叉：逢高減碼）',
   S_TRUST_DUMP: '🏃 投信高檔倒貨（之前佈局的投信在高檔連續賣超：跟著出場）',
+  S_MAINT_LOW: '🩸 融資維持率偏低（估計 ≤ 140%：融資平均成本用每天融資買進×當天均價估；跌破 130% 追繳、再跌有斷頭賣壓）',
 };
 // 上課筆記新策略的額外欄位（[標題, 欄位, 格式]；表頭可點擊排序）
-const CHIP_COURSE_KEYS = ['S_TRUST5', 'S_SHORT_UP', 'S_SHORT_EBB', 'S_BIGHOLD', 'S_TRUST_DUMP'];
+const CHIP_COURSE_KEYS = ['S_TRUST5', 'S_SHORT_UP', 'S_SHORT_EBB', 'S_BIGHOLD', 'S_TRUST_DUMP', 'S_MAINT_LOW'];
 const _pctF = v => v == null ? '—' : `${v > 0 ? '+' : ''}${v}%`;
 const _dF = v => v ? `${String(v).replace(/-/g, '').slice(4, 6)}/${String(v).replace(/-/g, '').slice(6, 8)}` : '—';
 const COURSE_COLS = {
@@ -5344,6 +5346,9 @@ const COURSE_COLS = {
   S_KDJ_HIGH: [['K', 'k'], ['D', 'd'], ['J', 'j'], ['鈍化天數', 'dull_days'], ['5MA', 'ma5'], ['10MA', 'ma10'], ['月線', 'ma20']],
   S_KDJ_DIV: [['前波高點', 'prev_high'], ['前高日', 'prev_high_date', _dF], ['前波K', 'k_prev'], ['這次K', 'k_now']],
   S_TRUST_DUMP: [['連賣天數', 'sell_days', v => v + '天'], ['賣超(張)', 'sell_lots'], ['之前買超(張)', 'buy_lots'], ['60日高', 'high60'], ['10日線', 'ma10']],
+  S_MAINT_LOW: [['估計維持率', 'maint', v => v + '%'], ['融資餘額(張)', 'margin_lots'], ['融資5日增減', 'margin_chg5', v => (v > 0 ? '+' : '') + v],
+                ['融資成本(估)', 'margin_cost'], ['追繳價(130%)', 'call_price'], ['距追繳', 'to_call_pct', v => v >= 0 ? '已跌破' : `再跌 ${-v}%`],
+                ['可信度', 'conf', v => v + '%'], ['市場', 'market'], ['融資資料日', 'margin_date', _dF]],
   S_BEST: [['停損', 'stop'], ['停利', 'target'], ['最晚出場', 'last_day', _dF], ['怎麼做', 'plan']],
   S_BIGHOLD: [['千張大戶%', 'big_pct'], ['週增減', 'big_chg'], ['散戶%', 'retail_pct'], ['週增減', 'retail_chg'], ['散戶比率', 'retail_low'], ['大戶連增週', 'big_up_weeks']],
 };
@@ -5381,6 +5386,7 @@ const STRATEGY_SHORT = {
   S_KDJ_HIGH: '🎢 KDJ高檔死叉',
   S_KDJ_DIV: '📉 KDJ高檔背離',
   S_TRUST_DUMP: '🏃 投信高檔倒貨',
+  S_MAINT_LOW: '🩸 融資維持率偏低',
 };
 
 async function runScreen() {
