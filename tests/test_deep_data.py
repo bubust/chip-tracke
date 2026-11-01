@@ -116,7 +116,7 @@ def test_refresh_writes_inst_and_margin(monkeypatch, tmp_path):
     logged = set(c.execute("SELECT kind, date, market FROM fetch_log"))
     c.close()
     assert ("inst", "2026-10-06", "twse") in logged and ("inst", "2026-10-06", "tpex") in logged
-    assert not any(d == "2026-10-05" for _, d, _ in logged)         # 假日不記，下次再試
+    assert not any(d == "2026-10-05" for k, d, _ in logged if k != "mflow")   # 假日不記，下次再試（融資流量回補會記「休市 0 筆」）
 
     # 第二次：10-06 已抓過不再抓、10-05（假日）會再試
     fake2 = _FakeClient()

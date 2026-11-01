@@ -224,8 +224,9 @@ def screen(get_df, names: Optional[dict], p: dict) -> list:
                    to_call_pct=round((call / close - 1) * 100, 1), margin_chg5=None if e["chg5"] is None else round(e["chg5"]),
                    conf=round(e["conf"] * 100), market=MKT_NAME[e["mkt"]], margin_date=asof,
                    note=(f"估計維持率 {m:.0f}%：融資平均成本約 {e['avg']:.2f} 元（{MKT_NAME[e['mkt']]}融資 {LEV[e['mkt']] * 10:.0f} 成），"
-                         f"{'已跌破' if close <= call else f'跌到 {call:.2f} 元（再跌 {(1 - call / close) * 100:.1f}%）跌破'} 130% 追繳線。"
-                         "融資多、維持率低＝再跌會有追繳／斷頭賣壓；等融資大減（斷頭出清）、止跌後再看"
+                         + ("已跌破 130% 追繳線（這種多半已經有人被追繳／斷頭，剩下的融資成本其實比估的低、實際維持率會高一些）。"
+                            if close <= call else f"跌到 {call:.2f} 元（再跌 {(1 - call / close) * 100:.1f}%）跌破 130% 追繳線。")
+                         + "融資多、維持率低＝再跌會有追繳／斷頭賣壓；等融資大減（斷頭出清）、止跌後再看"
                          + ("；期間有減資／分割／除權，成本已等比例調整" if e["adj"] else "")))
         out.append(row)
     out.sort(key=lambda r: r["maint"])

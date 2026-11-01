@@ -4284,6 +4284,12 @@ def api_screen_results():
         "results":     raw,
     }))
 
+@app.get("/api/screen/strategy/{key}")
+def api_screen_strategy(key: str):
+    """單一策略目前的結果（🩸 融資維持率偏低：啟動回補完會單獨更新，不等整個掃描 → 點按鈕時抓這個）"""
+    from yahoo_price import get_scan_results
+    return JSONResponse(content=_sanitize_for_json({"key": key, "results": get_scan_results().get(key) or []}))
+
 def _scan_status_ts():
     from yahoo_price import get_scan_status
     return get_scan_status()["finished_at"]
