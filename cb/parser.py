@@ -166,6 +166,48 @@ def parse_tpex_margin_both(j: dict) -> dict:
     return out
 
 
+def parse_twse_margin_flow(j: dict) -> dict:
+    """TWSE rwd MI_MARGN（selectType=ALL）→ {sid: (名稱, 融資買進, 融資賣出, 現金償還, 前日餘額, 今日餘額, 資券互抵)}（張）
+    （個股融資維持率估計用；前日餘額＋買進－賣出－現償＝今日餘額，資券互抵同時算在買進跟賣出裡）"""
+    out = {}
+    for t in (j or {}).get("tables") or []:
+        f = t.get("fields") or []
+        if len(f) < 15 or "代號" not in f[0] or f[2] != "買進" or f[5] != "前日餘額" or f[6] != "今日餘額" or f[14] != "資券互抵":
+            continue
+        g = [(x.get("title"), x.get("span")) for x in (t.get("groups") or [])]
+        if g and g[:2] != [("股票", 2), ("融資", 6)]:
+            continue
+        for r in t.get("data") or []:
+            if len(r) < 15:
+                continue
+            v = [num(r[k]) for k in (2, 3, 4, 5, 6, 14)]
+            if None in v[:5]:
+                continue
+            out[str(r[0]).strip()] = (str(r[1]).strip(), *v[:5], v[5] or 0.0)
+    return out
+
+
+def parse_tpex_margin_flow(j: dict) -> dict:
+    """櫃買 /www/zh-tw/margin/balance → 同 parse_twse_margin_flow 的格式"""
+    out = {}
+    keys = ("資買", "資賣", "現償", "前資餘額(張)", "資餘額")
+    for t in (j or {}).get("tables") or []:
+        f = t.get("fields") or []
+        if not all(k in f for k in keys):
+            continue
+        ix = [f.index(k) for k in keys]
+        io_ = f.index("資券相抵(張)") if "資券相抵(張)" in f else None
+        for r in t.get("data") or []:
+            if len(r) <= max(ix):
+                continue
+            v = [num(r[k]) for k in ix]
+            if None in v:
+                continue
+            off = (num(r[io_]) if io_ is not None and io_ < len(r) else None) or 0.0
+            out[str(r[0]).strip()] = (str(r[1]).strip(), *v, off)
+    return out
+
+
 def parse_openapi_margin(rows: list) -> dict:
     """TWSE openapi MI_MARGN / 櫃買 tpex_mainboard_margin_balance → {sid: 融券餘額（張）}"""
     out = {}

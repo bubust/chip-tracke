@@ -64,20 +64,28 @@ def fetch_short_day(c: httpx.Client, d: date) -> dict:
     return out
 
 
-def fetch_margin_day(c: httpx.Client, d: date) -> tuple:
-    """(上市 {sid: (融資, 融券)}, 上櫃 {sid: (融資, 融券)})（張），抓不到的市場回空 dict"""
-    from .parser import parse_twse_margin_both, parse_tpex_margin_both
+def fetch_margin_day(c: httpx.Client, d: date, flows: dict = None) -> tuple:
+    """(上市 {sid: (融資, 融券)}, 上櫃 {sid: (融資, 融券)})（張），抓不到的市場回空 dict
+    flows：給 dict 就順便放 {"twse"／"tpex": parse_*_margin_flow 的結果}（個股融資維持率用，同一份回應不重抓）"""
+    from .parser import parse_twse_margin_both, parse_tpex_margin_both, parse_twse_margin_flow, parse_tpex_margin_flow, ymd
     tw, tp = {}, {}
     try:
         r = c.get("https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN",
                   params={"date": d.strftime("%Y%m%d"), "selectType": "ALL", "response": "json"})
-        tw = parse_twse_margin_both(r.json())
+        j = r.json()
+        tw = parse_twse_margin_both(j)
+        if flows is not None:
+            flows["twse"], flows["twse_date"] = parse_twse_margin_flow(j), ymd(j.get("date"))
     except Exception:
         pass
     try:
         r = c.post("https://www.tpex.org.tw/www/zh-tw/margin/balance",
                    data={"date": d.strftime("%Y/%m/%d"), "response": "json"})
-        tp = parse_tpex_margin_both(r.json())
+        j = r.json()
+        tp = parse_tpex_margin_both(j)
+        if flows is not None:
+            flows["tpex"] = parse_tpex_margin_flow(j)
+            flows["tpex_date"] = ymd(next((t.get("date") for t in j.get("tables") or [] if t.get("date")), None))
     except Exception:
         pass
     return tw, tp

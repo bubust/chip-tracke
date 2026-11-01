@@ -782,6 +782,16 @@ def get_scan_results() -> dict:
         return {k: list(v) for k, v in raw.items()}
 
 
+def set_strategy_results(key: str, rows: list) -> None:
+    """不跑整個掃描、只換掉某一個策略的結果（例：啟動時融資流量回補完，馬上放上 S_MAINT_LOW）"""
+    with _results_lock:
+        if _scan_status.get("results") is None:
+            _scan_status["results"] = {}
+        _scan_status["results"][key] = rows
+        snap = dict(_scan_status["results"])
+    _save_scan_cache(snap)
+
+
 async def run_market_scan(strategy_params: dict = None):
     """
     背景執行全市場策略掃描（上市 + 上櫃，全部 stocks.csv 股票）。
