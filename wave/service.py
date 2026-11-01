@@ -12,6 +12,7 @@ import math
 import os
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import numpy as np
@@ -22,6 +23,7 @@ from . import advice as AD, composite as CP, data as D, engine as E, features as
 from .plain import plain
 
 log = logging.getLogger(__name__)
+TW = timezone(timedelta(hours=8))
 STATS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stats.json")
 INTRADAY_TTL = 120
 SYMS = ("TWII", "TX")
@@ -468,6 +470,11 @@ def _night_info(b: dict, now=None) -> Optional[dict]:
                         "src": "鉅亨即時", "time": FD.tw_dt(q["ts"]).strftime("%H:%M") if q.get("ts") else ""}
         except Exception as e:     # noqa: BLE001
             log.info(f"[wave] 夜盤即時：{e}")
+    ah = _tx_after_hours(str(b["dates"][-1]), night_only=True) if b.get("dates") is not None and len(b["dates"]) else None
+    if ah:                                                  # B86 週末／夜盤結束後：本機存的夜盤 5 分 K（期交所日資料要等下一個交易日）
+        ref = float(b["c"][-1])
+        return {"ret": ah["c"] / ref - 1, "price": ah["c"], "ref": ref, "live": False, "src": "夜盤 5 分 K（本機存檔）",
+                "time": ah["time"].replace("夜盤收 ", ""), "date": ah["date"], "h": ah["h"], "l": ah["l"]}
     fd = b.get("fd")
     if fd is None or fd.empty:
         return None
@@ -871,6 +878,26 @@ def _vol_live(sym: str) -> Optional[dict]:
     return {"map": mp, "cum": m["cum"], "s": m["s"]}
 
 
+def _tx_after_hours(last_date: str, night_only: bool = False) -> Optional[dict]:
+    """B86 台指期收盤後（週末、夜盤結束到下一個日盤前）：日 K 最後一天 13:45 之後存下來的 5 分 K（夜盤）＝下一個交易日的一部分
+    （期交所把夜盤算進下一個交易日）→ 當成「進行中的那根日 K」，現價＝夜盤最後成交（以前週末現價停在日盤收盤，
+    11/1 顯示 45,301，夜盤已經跌到 44,052、收 44,442，多層浪名的關卡用錯價）"""
+    try:
+        y, m, d = (int(x) for x in last_date[:10].split("-"))
+        rows = [r for r in FD.load_bars5("TX", int(datetime(y, m, d, 13, 50, tzinfo=TW).timestamp())) if r[4] is not None]
+    except Exception as e:     # noqa: BLE001
+        log.info(f"[wave] 夜盤 5 分 K：{e}")
+        return None
+    nxt = (pd.Timestamp(last_date[:10]) + pd.offsets.BDay(1)).strftime("%Y-%m-%d")
+    if night_only:                                          # 夜盤報酬：只要下一個交易日 08:45 開盤以前的
+        y2, m2, d2 = (int(x) for x in nxt.split("-"))
+        rows = [r for r in rows if r[0] < datetime(y2, m2, d2, 8, 45, tzinfo=TW).timestamp()]
+    if not rows:
+        return None
+    return {"date": nxt, "o": rows[0][1], "h": max(r[2] for r in rows), "l": min(r[3] for r in rows), "c": rows[-1][4],
+            "v": sum(r[5] or 0 for r in rows), "time": "夜盤收 " + FD.tw_dt(rows[-1][0] + 300).strftime("%H:%M"), "after_hours": True}
+
+
 def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[list] = None, vol_live: Optional[dict] = None) -> dict:
     b = base(sym)
     if not b.get("ok"):
@@ -879,6 +906,8 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
     t = len(c) - 1
     last_date = str(dates[-1])
     now = D.tw_now()
+    if sym == "TX" and not live:
+        live = _tx_after_hours(last_date)
     use_live = bool(live and live.get("date") and live["date"] > last_date and live.get("c"))
     price = float(live["c"]) if use_live else float(c[-1])
     prev = float(c[-1]) if use_live else float(c[-2])
@@ -1022,6 +1051,18 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
     # B79 她的「日線定位」寫法（母尺、防守區、鐵律底線、威脅版本）
     snap["positioning"] = {tf: NE.positioning(waves.get(dg, {}).get("primary"), waves.get(dg, {}).get("alternate"), price, nm)
                            for tf, dg, nm in (("1d", "small", "日 K"), ("1wk", "mid", "週 K"))}
+    # B86 她 11/1「50265 起的下跌三種日線定位」（週 K 轉折）＋60 分源頭三段式的 C＝A 等幅
+    try:
+        big = NE.big_picture((waves.get("mid") or {}).get("pivots") or [], price, (waves.get("mid") or {}).get("primary"))
+        src3 = (((snap.get("nest") or {}).get("60m") or {}).get("source") or {}).get("three")
+        if big and src3 and src3.get("targets"):
+            t0 = src3["targets"][0]
+            big["scenarios"][0]["levels"].insert(0, {"label": f"60 分三段式 C＝A 等幅（{src3['segs'][0]['from']:,.0f}→{src3['segs'][0]['to']:,.0f}）",
+                                                     "price": t0["price"], "hit": bool(price <= t0["price"])})
+        snap["big"] = big
+    except Exception as e:     # noqa: BLE001
+        log.warning(f"[wave] 三種日線定位失敗：{e}")
+        snap["big"] = None
     # B80 價位梯＋如果…就…＋三條路（每個週期一份）
     vres = _vol_research(st)
     snap["research"] = {**(snap.get("research") or {}), "volume": vres}
