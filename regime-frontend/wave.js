@@ -581,6 +581,22 @@
         ${nzx && nzx.ok && nzx.anchor ? `<div class="wv-dim" style="margin-top:4px">下面是從 ${fmt(nzx.anchor.p)}（日 K 這一浪的起點）細拆：主要 ${esc(Pp.path || '')}${Aa.path ? `、備選 ${esc(Aa.path)}` : ''}
           ——「第 5 段／C 的五波還沒走完」對應第一種；「第 1 段已走完、現在第 2 段反彈」對應第二種的 3-1 走完、3-2 反彈</div>` : ''}</div>`;
     };
+    // B87 她 11/2 的「兩種」：第一種（第 1 段還沒走完、這段＝第 4 小段）vs 第二種（第 1 段走完、第 2 段反彈：走法 A／B）
+    const twoBox = (tw, nzx) => {
+      if (!tw || !tw.one || !tw.two) return '';
+      const o = tw.one, t = tw.two, A = t.A, B = t.B, up = nzx.dir < 0;
+      const GN = { main: '最可能', std: '標準', fail: `失敗型（不破 ${fmt(tw.low)}）` };
+      const grp = ['main', 'std', 'fail'].map(g => { const xs = o.targets.filter(x => x.grp === g); return xs.length
+        ? `<div>${GN[g]}：${xs.map(x => `<span class="wv-chip">${esc(x.label)} <b>${fmt(x.price)}</b></span>`).join('')}</div>` : ''; }).join('');
+      return `<div class="wv-src"><div class="t">🔀 這段${up ? '反彈' : '回檔'}的兩種（她 11/2：${fmt(tw.low)} 之後怎麼分辨）</div>
+        <div class="wv-srcv threat"><b>第一種＝${esc(o.path)}（她的 ${esc(o.her)}）</b>：${esc(o.text.replace(/^[^：]*：/, ''))}
+          <div>第 5 小段目標（以${up ? '反彈高點' : '回檔低點'} ${fmt(tw.R)} 估，盤中會跟著變）：</div>${grp}</div>
+        <div class="wv-srcv"><b>第二種＝${esc(t.path)}（她的 ${esc(t.her)}）</b>：${esc(t.text.replace(/^[^：]*：/, ''))}
+          <div><b>走法 A（標準 a-b-c）</b>：a＝${fmt(A.a[0])}→${fmt(A.a[1])}（到現在）；b 守 <b>${fmt(A.b_strict)}</b>（a 的 0.236）、極限 <b>${fmt(A.b_ext)}</b>（0.382）；c 依序：
+            ${A.c.map(c => `<span class="wv-chip">${c.hit ? '✅ ' : ''}${esc(c.label)} <b>${fmt(c.price)}</b></span>`).join('')}</div>
+          <div><b>走法 B（時間型、偏弱）</b>：<b>${fmt(Math.min(B.lo, B.hi))}～${fmt(Math.max(B.lo, B.hi))}</b> 來回磨 2～3 天，之後照樣第 3 段${up ? '下跌' : '上漲'}</div></div>
+        <ul style="margin:6px 0 0 18px;padding:0">${(tw.judge || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`;
+    };
     let trees, extra = '';
     if (nz && nz.ok) {
       trees = nestTreeBox(nz.primary, '版本一（主要）', nz, false) + nestTreeBox(nz.alternate, '版本二（備選）', nz, true);
@@ -594,17 +610,18 @@
       const vlines = (nz.plan || []).filter(x => /^版本 [12]/.test(x));
       const cut = t => { const k = Math.min(...['（', '：'].map(ch => t.indexOf(ch)).filter(x => x > 0)); return [t.slice(0, k), t.slice(k)]; };
       const wsCard = (g, cls, withV, tag) => { const [h, b] = cut(g.t); return `<div class="wv-ws ${cls}"><div class="t">🚦 ${esc(h)}${tag}</div>
-          <div>${esc(b.replace(/^：/, ''))}</div>${withV && vlines.length ? `<ul>${vlines.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>`; };
+          <div>${esc(b.replace(/^：/, ''))}</div>${withV && vlines.length && !nz.two ? `<ul>${vlines.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>`; };
       const wsBox = (life ? wsCard(life, 'life' + (life.ok ? ' broke' : ''), true, life.ok ? '（已跌破）' : '') : '')
         + (ws ? wsCard(ws, ws.ok ? 'ok' : '', !life, '') : '');
-      extra = `${srcBox(nz.source, nz)}${wsBox}<div style="margin-top:8px">起點：<b>${esc(nz.anchor.label)} ${fmt(nz.anchor.p)}</b>
+      extra = `${srcBox(nz.source, nz)}${wsBox}${twoBox(nz.two, nz)}<div style="margin-top:8px">起點：<b>${esc(nz.anchor.label)} ${fmt(nz.anchor.p)}</b>
           <span class="wv-dim">（${nz.anchor.how === 'parent' ? '60 分這一段的起點（她：15 分是在 60 分結構裡找短脈動）' : nz.anchor.how === 'daily' ? '日 K 這一浪的起點' : '這段時間最早的極值'}）</span>
           → ${nz.dir < 0 ? '最低' : '最高'} <b>${fmt(nz.extreme.p)}</b> <span class="wv-dim">${esc(nz.extreme.label)}</span></div>
         ${nz.merged ? `<div class="wv-dim" style="margin-top:4px">起點之後有 ${nz.n_seg + nz.merged} 段轉折，先把最小的 ${nz.merged} 段併掉、拆 ${nz.n_seg} 段（她的圖也只標大段＋子浪）</div>` : ''}
         <div style="margin-top:6px">盤面證據：<span class="wv-ev${ev.trend ? ' on' : ''}">${ev.trend ? '✅' : '⬜'} 越過${nz.dir < 0 ? '下降' : '上升'}趨勢線</span><span class="wv-ev${ev.f382 ? ' on' : ''}">${ev.f382 ? '✅' : '⬜'} ${nz.dir < 0 ? '站上' : '跌破'} 0.382</span>
           <span class="wv-dim">（她：沒越過趨勢線前「維持原架構」優先；越過並站穩分水嶺才「級數轉浪」）</span></div>
         ${A ? `<div class="wv-what"><b>共同事實</b>：${fmt(nz.anchor.p)} 起${nz.dir < 0 ? '下跌' : '上漲'}，現在這一小段${nz.cur_dir < 0 ? '往下' : '往上'}。
-          <b>真正分歧</b>：${esc(P.path)}（${P.with_trend ? '大段還沒走完' : '大段已走完'}）vs ${esc(A.path)}（${A.with_trend ? '大段還沒走完' : '大段已走完'}）。
+          <b>真正分歧</b>：${nz.two ? [P, A].map(x => `${esc(x.path)}（${x.path === nz.two.one.path ? '第 1 段還沒走完＝第一種' : '第 1 段已走完＝第二種'}）`).join(' vs ')
+            : `${esc(P.path)}（${P.with_trend ? '大段還沒走完' : '大段已走完'}）vs ${esc(A.path)}（${A.with_trend ? '大段還沒走完' : '大段已走完'}）`}。
           <b>市場裁決</b>：${[kill(P), kill(A)].filter(Boolean).join('；') || '看下面的如果…就…'}</div>` : ''}
         ${nz.third ? `<details class="wv-who"><summary>第三個候選：${esc(nz.third.path)}（分數很接近）</summary>${nestTreeBox(nz.third, '版本三', nz, true)}</details>` : ''}`;
     } else {
