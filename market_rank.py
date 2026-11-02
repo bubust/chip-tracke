@@ -5,8 +5,8 @@ market_rank.py — 全市場「法人買賣超排行」（B70，PLAN-B70.md §5�
 前端「連買連賣」讀 consecutive_buy/sell 但後端從沒算 → 永遠「—」。
 現在：chip_course.db inst_daily（上市＋上櫃，外資不含外資自營／投信／自營合計，股）
 - 三大合計＝外資＋投信＋自營（不加權）
-- 外資、投信各自的連買／連賣天數（從最新一天往回同號，0 或缺資料就斷）
-- 5 日合計、占成交量 %（price_daily 同一天的量，有才算）
+- 外資、投信、自營商各自的連買／連賣天數（從最新一天往回同號，0 或缺資料就斷）
+- 5 日合計、占成交量 %（price_daily 同一天的量，有才算）；三大合計、外資、投信、自營商各一份（2026-11-02：可以分別看四種排行榜）
 純函式 build_rows／filter_sort 可測；load_inst／attach_prices 讀資料庫。
 """
 from __future__ import annotations
@@ -54,16 +54,24 @@ def build_rows(dates: list, by: dict) -> list:
             "stock_id": sid, "foreign_lots": round(f), "trust_lots": round(t), "dealer_lots": round(de),
             "total_lots": round(f + t + de),
             "whale_flow_lots": round(f + t + de),          # 舊欄位名保留（值改為真正三者相加），推播／舊前端相容
-            "foreign_streak": streak(seq, 0), "trust_streak": streak(seq, 1),
+            "foreign_streak": streak(seq, 0), "trust_streak": streak(seq, 1), "dealer_streak": streak(seq, 2),
             "sum5_total": round(sum(x[0] + x[1] + x[2] for x in last5)),
             "sum5_foreign": round(sum(x[0] for x in last5)), "sum5_trust": round(sum(x[1] for x in last5)),
+            "sum5_dealer": round(sum(x[2] for x in last5)),
             "is_etf": is_etf(sid),
         })
     return out
 
 
-SORT_KEYS = {"total": "total_lots", "foreign": "foreign_lots", "trust": "trust_lots", "ratio": "vol_ratio_pct",
-             "sum5": "sum5_total"}
+# 排行榜：誰（三大合計／外資／投信／自營商）× 看什麼（當天張數／5 日合計／占成交量 %）
+WHO = {"total": ("total_lots", "sum5_total", "vol_ratio_pct"), "foreign": ("foreign_lots", "sum5_foreign", "foreign_ratio_pct"),
+       "trust": ("trust_lots", "sum5_trust", "trust_ratio_pct"), "dealer": ("dealer_lots", "sum5_dealer", "dealer_ratio_pct")}
+SORT_KEYS = {"total": "total_lots", "foreign": "foreign_lots", "trust": "trust_lots", "dealer": "dealer_lots",
+             "ratio": "vol_ratio_pct", "sum5": "sum5_total"}
+for _w, (_lots, _s5, _r) in WHO.items():
+    if _w != "total":
+        SORT_KEYS[f"sum5_{_w}"] = _s5
+        SORT_KEYS[f"ratio_{_w}"] = _r
 
 
 def filter_sort(rows: list, side: str = "buy", sort: str = "total", market: str = "all", etf: bool = False,
@@ -108,11 +116,13 @@ def attach_prices(rows: list, latest: str, price_db) -> bool:
     for r in rows:
         x = cur.get(r["stock_id"])
         if not x:
-            r.update(close=None, change_pct=None, vol_ratio_pct=None)
+            r.update(close=None, change_pct=None, vol_ratio_pct=None, foreign_ratio_pct=None, trust_ratio_pct=None, dealer_ratio_pct=None)
             continue
         close, vol = x
         pc = prev.get(r["stock_id"])
         r["close"] = round(float(close), 2) if close else None
         r["change_pct"] = round((close / pc - 1) * 100, 2) if close and pc else None
-        r["vol_ratio_pct"] = round(r["total_lots"] / vol * 100, 1) if vol and vol > 0 else None
+        for k_lots, _, k_ratio in WHO.values():
+            v = r.get(k_lots)
+            r[k_ratio] = round(v / vol * 100, 1) if v is not None and vol and vol > 0 else None
     return bool(cur)
