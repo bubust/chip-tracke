@@ -391,6 +391,13 @@ def _nest_line(snap: dict) -> str:
     for x in (snap.get("positioning") or {}).values():
         if x:
             s += f"；{x['tf']}定位：" + "；".join(x["lines"])
+    tw = nz.get("two") or {}                                          # B87 她 11/2 的兩種（第一種 3-1-4／第二種 3-2 走法 A、B）
+    if tw.get("one") and tw.get("two"):
+        o, t = tw["one"], tw["two"]
+        s += (f"；{o['text']}；第 5 小段目標 " + "、".join(f"{x['label']} {x['price']:,.0f}" for x in o["targets"])
+              + f"；{t['text']}；走法 A：b 守 {t['A']['b_strict']:,.0f}、極限 {t['A']['b_ext']:,.0f}，c 依序 "
+              + "→".join(f"{c['price']:,.0f}（{c['label']}）" for c in t["A"]["c"])
+              + f"；走法 B：{min(t['B']['lo'], t['B']['hi']):,.0f}～{max(t['B']['lo'], t['B']['hi']):,.0f} 來回 2～3 天（偏弱）；" + "；".join(tw.get("judge") or []))
     src = nz.get("source") or {}                                      # B86 她 11/1 的源頭兩種切組
     for k, nm in (("three", "第一種切組（三段式）"), ("five", "第二種切組（五段式・威脅）")):
         v = src.get(k)
@@ -421,6 +428,11 @@ def _nest_prices(snap: dict) -> list:
             out.append(nz["trendline"]["now"])
         ws = nz.get("watershed") or {}
         out += [ws[k] for k in ("lo", "hi") if ws.get(k) is not None] + [v for v, _ in ws.get("lv") or []] + [v for v, _ in ws.get("brk") or []]
+        tw = nz.get("two") or {}                         # B87 她 11/2 的兩種
+        if tw.get("one") and tw.get("two"):
+            o, t = tw["one"], tw["two"]
+            out += list(o["std"]) + [o["ceil"], o["hard"], tw["R"], tw["low"]] + [x["price"] for x in o["targets"]]
+            out += [t["A"]["b_strict"], t["A"]["b_ext"], t["B"]["lo"], t["B"]["hi"]] + [c["price"] for c in t["A"]["c"]]
         lf = nz.get("life") or {}                        # B85 生死臨界線
         out += [v for v in (lf.get("r70"), lf.get("r618"), lf.get("origin")) if v is not None] + list(lf.get("zone") or [])
         for c in (nz.get("primary"), nz.get("alternate")):
