@@ -795,6 +795,27 @@ def _intraday(sym: str, b: dict, price: float, lv_c, live_rows: list, st: dict, 
     return out
 
 
+def _pulses_mid(snap: dict, big: Optional[dict], price: float) -> None:
+    """B89 她 11/3：60 分三種細微脈動的「最後一腳」＝日線中線支撐（日線黃金切割的 0.5 大關卡）→ 補進關卡、版本、判斷"""
+    n60 = (snap.get("nest") or {}).get("60m") or {}
+    pz = n60.get("pulses")
+    if not (big and big.get("mid") and pz):
+        return
+    m50 = next(v for v in big["mid"]["levels"] if v["r"] == 0.5)
+    lab = f"{big['mid']['from']:,.0f}→{big['mid']['to']:,.0f} 的 0.5"
+    pz["mid"] = {"price": m50["price"], "label": lab, "from": big["mid"]["from"], "to": big["mid"]["to"]}
+    add = f"{m50['price']:,.0f}（{lab}）"
+    for g in n60.get("gates") or []:
+        if g.get("k") == "支撐":
+            g["t"] = g["t"].replace("（0.5 大關卡）", f" {add}")
+    n60["plan"] = [x.replace("日線中線支撐 0.5 大關卡", f"日線中線支撐 {add}") for x in n60.get("plan") or []]
+    pz["plan"] = [x.replace("日線中線支撐 0.5 大關卡", f"日線中線支撐 {add}") for x in pz.get("plan") or []]
+    pz["judge"] = [x.replace("（0.5 大關卡）", f" {add}") for x in pz.get("judge") or []]
+    if (price - m50["price"]) * -(n60.get("dir") or -1) > 0:
+        n60.setdefault("gates", []).append({"k": "中線支撐", "price": m50["price"], "ok": False,
+                                           "t": f"日線中線支撐 {add} → 破底延伸的最後一腳看這裡（0.5 大關卡）"})
+
+
 def _nest(a: dict, tf: int, price: float, b: dict, parent: Optional[dict] = None) -> dict:
     """B79 多層浪名（學 @fanny55520）：分 K 轉折從「日 K 這一浪的起點」開始拆成 C-1-4-b 式浪名＋關卡＋操作紀律"""
     if not a.get("ok"):
@@ -1060,6 +1081,10 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
             big["scenarios"][0]["levels"].insert(0, {"label": f"60 分三段式 C＝A 等幅（{src3['segs'][0]['from']:,.0f}→{src3['segs'][0]['to']:,.0f}）",
                                                      "price": t0["price"], "hit": bool(price <= t0["price"])})
         snap["big"] = big
+        try:
+            _pulses_mid(snap, big, price)
+        except Exception as e:     # noqa: BLE001
+            log.warning(f"[wave] 三種細微脈動的日線中線支撐失敗：{e}")
     except Exception as e:     # noqa: BLE001
         log.warning(f"[wave] 三種日線定位失敗：{e}")
         snap["big"] = None

@@ -564,7 +564,9 @@
     const bigBox = big ? `<div class="wv-pos"><div class="wv-dim" style="margin-bottom:4px">🗺️ ${fmt(big.pts.h.p)} 起的下跌：三種日線定位（她 11/1；${esc(big.note)}）</div>
       ${big.scenarios.map((x, i) => `<div class="wv-big${big.favored === x.key ? ' fav' : ''}"><b>${i + 1}. ${esc(x.title)}</b>${big.favored === x.key ? ' <span class="wv-badge">週 K 主要數法＝這個</span>' : ''}
         <div>${x.levels.map(v => `<span class="wv-lv${v.hit ? ' hit' : ''}">${v.hit ? '✅ ' : ''}${esc(v.label)} <b>${fmt(v.price)}</b></span>`).join('')}</div>
-        <div class="wv-dim">→ ${esc(x.after)}</div></div>`).join('')}</div>` : '';
+        <div class="wv-dim">→ ${esc(x.after)}</div></div>`).join('')}
+      ${big.mid ? `<div class="wv-big"><b>日線黃金切割</b>（第 (3) 浪起點 ${fmt(big.mid.from)} → 最高 ${fmt(big.mid.to)}；她 11/3：0.5 是日線層級最重要的中線支撐）
+        <div>${big.mid.levels.map(v => `<span class="wv-lv${v.hit ? ' hit' : ''}">${v.hit ? '✅ ' : ''}${esc(String(v.r))} <b>${fmt(v.price)}</b>${v.r === 0.5 ? ' 中線支撐大關卡' : ''}</span>`).join('')}</div></div>` : ''}</div>` : '';
     // B86 她 11/1 的源頭兩種切組（60 分從日 K 修正的起點整段拆）
     const srcBox = (src, nzx) => {
       if (!src || (!src.three && !src.five)) return '';
@@ -616,6 +618,20 @@
           <div><b>走法 B（時間型、偏弱）</b>：<b>${fmt(Math.min(B.lo, B.hi))}～${fmt(Math.max(B.lo, B.hi))}</b> 來回磨 2～3 天，之後照樣第 3 段${up ? '下跌' : '上漲'}</div></div>
         ${judge}</div>`;
     };
+    // B89 她 11/3 下午：跌破第 1 段低點以後的三種細微脈動（圖 3／4／5）
+    const pulseBox = pz => {
+      if (!pz || !pz.views) return '';
+      const up = (nz && nz.dir) < 0;
+      const chips = v => (v.marks || []).map(m => `<span class="wv-chip">${esc(m.text)} ${fmt(m.p)}</span>`).join('');
+      const tgs = v => (v.targets || []).map(t => `<span class="wv-lv${t.hit ? ' hit' : ''}">${t.hit ? '✅ ' : ''}${esc(t.label)} <b>${fmt(t.price)}</b></span>`).join('');
+      const nm = ['①', '②', '③'];
+      return `<div class="wv-src"><div class="t">🧩 三種細微脈動（她 11/3：${fmt(pz.end1)}、${fmt(pz.h2)} 兩個轉折分辨；都要先走完當下的 C／C-3）</div>
+        <div class="wv-dim">${pz.ma5 != null ? `先看 60 分 5 均 <b>${fmt(pz.ma5)}</b>（這筆下殺停了沒）；` : ''}上方最重要分水嶺 <b>${fmt(pz.end1)}</b>，再看 <b>${fmt(pz.f382)}</b>（0.382）；
+          下方 <b>${fmt(pz.low)}</b>${pz.mid ? `、日線中線支撐 <b>${fmt(pz.mid.price)}</b>（${esc(pz.mid.label)}）` : ''}</div>
+        ${pz.views.map((v, i) => `<div class="wv-srcv${v.key === '3' ? '' : ' threat'}"><b>${nm[i] || ''} ${esc(v.name)}</b>（她的${esc(v.fig)}）：現在 <b>${esc(v.now)}</b>
+          <div>${chips(v)}</div><div>${esc(v.next)}</div><div>${tgs(v)}</div></div>`).join('')}
+        <ul style="margin:6px 0 0 18px;padding:0">${(pz.judge || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`;
+    };
     let trees, extra = '';
     if (nz && nz.ok) {
       trees = nestTreeBox(nz.primary, '版本一（主要）', nz, false) + nestTreeBox(nz.alternate, '版本二（備選）', nz, true);
@@ -629,10 +645,10 @@
       const vlines = (nz.plan || []).filter(x => /^版本 [12]/.test(x));
       const cut = t => { const k = Math.min(...['（', '：'].map(ch => t.indexOf(ch)).filter(x => x > 0)); return [t.slice(0, k), t.slice(k)]; };
       const wsCard = (g, cls, withV, tag) => { const [h, b] = cut(g.t); return `<div class="wv-ws ${cls}"><div class="t">🚦 ${esc(h)}${tag}</div>
-          <div>${esc(b.replace(/^：/, ''))}</div>${withV && vlines.length && !nz.two ? `<ul>${vlines.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>`; };
+          <div>${esc(b.replace(/^：/, ''))}</div>${withV && vlines.length && !nz.two && !nz.pulses ? `<ul>${vlines.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>`; };
       const wsBox = (life ? wsCard(life, 'life' + (life.ok ? ' broke' : ''), true, life.ok ? '（已跌破）' : '') : '')
         + (ws ? wsCard(ws, ws.ok ? 'ok' : '', !life, '') : '');
-      extra = `${srcBox(nz.source, nz)}${wsBox}${twoBox(nz.two, nz)}<div style="margin-top:8px">起點：<b>${esc(nz.anchor.label)} ${fmt(nz.anchor.p)}</b>
+      extra = `${srcBox(nz.source, nz)}${pulseBox(nz.pulses)}${wsBox}${twoBox(nz.two, nz)}<div style="margin-top:8px">起點：<b>${esc(nz.anchor.label)} ${fmt(nz.anchor.p)}</b>
           <span class="wv-dim">（${nz.anchor.how === 'parent' ? '60 分這一段的起點（她：15 分是在 60 分結構裡找短脈動）' : nz.anchor.how === 'daily' ? '日 K 這一浪的起點' : '這段時間最早的極值'}）</span>
           → ${nz.dir < 0 ? '最低' : '最高'} <b>${fmt(nz.extreme.p)}</b> <span class="wv-dim">${esc(nz.extreme.label)}</span></div>
         ${nz.merged ? `<div class="wv-dim" style="margin-top:4px">起點之後有 ${nz.n_seg + nz.merged} 段轉折，先把最小的 ${nz.merged} 段併掉、拆 ${nz.n_seg} 段（她的圖也只標大段＋子浪）</div>` : ''}

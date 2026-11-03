@@ -404,6 +404,14 @@ def _nest_line(snap: dict) -> str:
             s += (f"；走法 A：b 守 {t['A']['b_strict']:,.0f}、極限 {t['A']['b_ext']:,.0f}，c 依序 " + "→".join(f"{c['price']:,.0f}（{c['label']}）" for c in t["A"]["c"])
                   + f"；走法 B：{min(t['B']['lo'], t['B']['hi']):,.0f}～{max(t['B']['lo'], t['B']['hi']):,.0f} 來回 2～3 天（偏弱）")
         s += "；" + "；".join(tw.get("judge") or [])
+    pz = nz.get("pulses") or {}                                       # B89 她 11/3 的三種細微脈動
+    if pz.get("views"):
+        s += (f"；三種細微脈動（分水嶺 {pz['end1']:,.0f}、0.382 {pz['f382']:,.0f}、低點 {pz['low']:,.0f}"
+              + (f"、60 分 5 均 {pz['ma5']:,.0f}" if pz.get("ma5") is not None else "")
+              + (f"、日線中線支撐 {pz['mid']['price']:,.0f}" if pz.get("mid") else "") + "）：")
+        s += "；".join(f"{v['fig']} {v['name']} 現在 {v['now']} → {v['next']}（目標 " + "、".join(f"{t['label']} {t['price']:,.0f}" for t in v["targets"]) + "）"
+                      for v in pz["views"])
+        s += "；" + "；".join(pz.get("judge") or [])
     src = nz.get("source") or {}                                      # B86 她 11/1 的源頭兩種切組
     for k, nm in (("three", "第一種切組（三段式）"), ("five", "第二種切組（五段式・威脅）")):
         v = src.get(k)
@@ -412,6 +420,8 @@ def _nest_line(snap: dict) -> str:
     big = snap.get("big") or {}                                       # B86 三種日線定位
     for i, x in enumerate(big.get("scenarios") or [], 1):
         s += f"；日線定位 {i}：{x['title']}（" + "、".join(f"{v['label']} {v['price']:,.0f}" for v in x["levels"]) + f"）→ {x['after']}"
+    if big.get("mid"):                                                # B89 日線黃金切割（中線支撐 0.5）
+        s += "；日線黃金切割：" + "、".join(f"{v['label']} {v['price']:,.0f}" for v in big["mid"]["levels"])
     return s
 
 
@@ -419,6 +429,7 @@ def _nest_prices(snap: dict) -> list:
     out = []
     for x in (snap.get("big") or {}).get("scenarios") or []:          # B86 三種日線定位的價位
         out += [v["price"] for v in x["levels"]]
+    out += [v["price"] for v in ((snap.get("big") or {}).get("mid") or {}).get("levels") or []]   # B89 日線黃金切割
     for v in ((((snap.get("nest") or {}).get("60m") or {}).get("source")) or {}).values():
         if isinstance(v, dict):
             out += [t["price"] for t in v.get("targets") or []] + [m["p"] for m in v.get("marks") or []]
@@ -443,6 +454,11 @@ def _nest_prices(snap: dict) -> list:
             if o.get("gate"):                            # B88 決戰關卡、移動停利、小 c 目標、第二種第 3 段／平台 b
                 out += [o["gate"]["lo"], o["gate"]["hi"], o["gate"]["mid"]] + list(o["gate"]["stop"]) + list(o.get("b") or [])
                 out += [v for c in o.get("c") or [] for v in (c["lo"], c["hi"])] + list(t.get("down") or []) + list(t.get("flat") or [])
+        pz = nz.get("pulses") or {}                      # B89 三種細微脈動
+        if pz.get("views"):
+            out += [pz["end1"], pz["h2"], pz["low"], pz["f382"]] + ([pz["ma5"]] if pz.get("ma5") is not None else [])
+            out += [t["price"] for v in pz["views"] for t in v["targets"]] + [m["p"] for v in pz["views"] for m in v["marks"]]
+            out += [pz["mid"]["price"]] if pz.get("mid") else []
         lf = nz.get("life") or {}                        # B85 生死臨界線
         out += [v for v in (lf.get("r70"), lf.get("r618"), lf.get("origin")) if v is not None] + list(lf.get("zone") or [])
         for c in (nz.get("primary"), nz.get("alternate")):
