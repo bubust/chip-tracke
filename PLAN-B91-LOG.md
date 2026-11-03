@@ -84,3 +84,19 @@
 - 18 個檢定沒有通過 → tail_research.json rules 全部 pass=false → 網站不標 ✅／⚠，改用大盤日線多頭／盤整／空頭分組描述
 - 結構：樣本外 26.1%／−0.32% → 26.7%／−0.18%；事後觀察：盤整 5／6 年負（2023 例外），寫明沒檢定
 - 研究期間被證交所擋一次（見上），補抓完 1,234 天
+
+## 融資正確率驗算＋改一年（用戶追加；research/b91/MARGIN-CHECK.md）
+- 官方 253 天逐日：買價 (高＋低＋收)÷3 最穩（上市每天 1.2%）；有效成數上市 57.8%／上櫃 56.1%（由總額校正吸收）；賣出照平均成本扣只差 0.7%／2.6%
+- 個股誤差主要是期初成本：半年 vs 一年，可信度 ≥90% 差 ±0.3 點、<50% 差 ±20 點 → MAINT_DAYS 130→260（≥90% 的股票 65%→88%）；
+  _compute_all 改照代號串流（尖峰 156MB→2MB、結果一樣）；refresh 後先算 calib；卡片「誤差參考 ±N 點」
+
+## 改名 B89 → B91
+- 另一個 session 同時用了 B89／B90（大盤浪名、PLAN-B89.md）→ 這批全部改 B91（檔名、research/b91、tests_ui/b91_ui.py、註解、JS v=20261103b91）；壓成一個提交 rebase 到 origin/main（CHANGELOG、dashboard 版本號兩個衝突手動合併）
+
+## 程式檢查第 2 輪（全新，insp_g_round2.json）
+- Gemini gemini-3.6-flash **APPROVED** 0 finding（範圍：margin_maint 串流＋一年、chip_course 預算、fbd_live year_line、tail_market 盤整命名＋防呆、tail.js 三組分組、dashboard 融資卡）
+- 3.8-flash 當天 20 次額度用完、3-flash-preview／3.7 一度 503
+
+## 驗證（合併 origin/main 之後）
+- pytest 588 passed；tests_ui/b91_ui.py ALL PASS（桌機／手機、真研究情境、融資卡）；tests_ui/b80_ui.py 全部通過（大盤解析沒壞）
+- 用戶授權「測試＋審查通過就上線」→ 推 main
