@@ -584,18 +584,37 @@
     // B87 她 11/2 的「兩種」：第一種（第 1 段還沒走完、這段＝第 4 小段）vs 第二種（第 1 段走完、第 2 段反彈：走法 A／B）
     const twoBox = (tw, nzx) => {
       if (!tw || !tw.one || !tw.two) return '';
-      const o = tw.one, t = tw.two, A = t.A, B = t.B, up = nzx.dir < 0;
+      const o = tw.one, t = tw.two, up = nzx.dir < 0;
+      const her = h => h ? `（她的 ${esc(h)}）` : '';
+      const txt = x => esc(String(x || '').replace(/^[^：]*：/, ''));
       const GN = { main: '最可能', std: '標準', fail: `失敗型（不破 ${fmt(tw.low)}）` };
-      const grp = ['main', 'std', 'fail'].map(g => { const xs = o.targets.filter(x => x.grp === g); return xs.length
+      const grp = ['main', 'std', 'fail'].map(g => { const xs = (o.targets || []).filter(x => x.grp === g); return xs.length
         ? `<div>${GN[g]}：${xs.map(x => `<span class="wv-chip">${esc(x.label)} <b>${fmt(x.price)}</b></span>`).join('')}</div>` : ''; }).join('');
+      const judge = `<ul style="margin:6px 0 0 18px;padding:0">${(tw.judge || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
+      if (tw.phase && tw.phase !== 'up1' && o.gate) {         // B88 她 11/2 晚上：反彈完回落（4-b 或 5 啟動）、再反彈（小 c 或 5-2）
+        const g = o.gate;
+        return `<div class="wv-src"><div class="t">🔀 ${tw.phase === 'pull' ? `${up ? '反彈' : '回檔'}完${up ? '回落' : '反彈'}` : `回落後再${up ? '反彈' : '回檔'}`}：兩種怎麼分辨（她 11/2 晚上的做法；b＝${fmt(o.b[0])}→${fmt(o.b[1])}）</div>
+          <div class="wv-srcv"><b>第一種甲＝${esc(o.path)}${her(o.her)}：4-b 落底、還有小 c</b>
+            <div>🎯 決戰關卡 <b>${fmt(g.lo)}～${fmt(g.hi)}</b>${g.hit ? ' ✅ 已站上' : ''}（b 的 0.5 附近，帶量實體${up ? '紅' : '黑'} K 站穩才是真 c）；防守 ${fmt(o.b[1])} ${up ? '下方' : '上方'}；
+              移動停利 <b>${fmt(g.stop[0])}</b>（0.382）→ <b>${fmt(g.lo)}～${fmt(g.stop[1])}</b>（0.5）</div>
+            <div>小 c 目標：${(o.c || []).map(c => `<span class="wv-chip">${c.hit ? '✅ ' : ''}${esc(c.t)} <b>${fmt(c.lo)}～${fmt(c.hi)}</b> ${esc(c.label)}</span>`).join('')}</div></div>
+          <div class="wv-srcv threat"><b>第一種乙：${fmt(tw.R)} 已是第 4 小段終點、第 5 小段啟動</b>：5-2 反抽到 <b>${fmt(g.lo)}～${fmt(g.hi)}</b> 就卡住（死貓跳）
+            <div>第 5 小段目標（從 ${fmt(tw.R)} 量）：</div>${grp}</div>
+          <div class="wv-srcv threat"><b>第二種＝${esc(t.path)}${her(t.her)}</b>：${txt(t.text)}
+            <div>第 3 段主${up ? '跌' : '漲'}：<span class="wv-chip">1 倍第 1 段 <b>${fmt(t.down[0])}</b></span><span class="wv-chip">1.618 倍 <b>${fmt(t.down[1])}</b></span>
+              ；平台 b 先回 <b>${fmt(t.flat[0])}～${fmt(t.flat[1])}</b></div></div>
+          ${judge}</div>`;
+      }
+      const A = t.A, B = t.B;
+      if (!A || !B) return '';
       return `<div class="wv-src"><div class="t">🔀 這段${up ? '反彈' : '回檔'}的兩種（她 11/2：${fmt(tw.low)} 之後怎麼分辨）</div>
-        <div class="wv-srcv threat"><b>第一種＝${esc(o.path)}（她的 ${esc(o.her)}）</b>：${esc(o.text.replace(/^[^：]*：/, ''))}
+        <div class="wv-srcv threat"><b>第一種＝${esc(o.path)}${her(o.her)}</b>：${txt(o.text)}
           <div>第 5 小段目標（以${up ? '反彈高點' : '回檔低點'} ${fmt(tw.R)} 估，盤中會跟著變）：</div>${grp}</div>
-        <div class="wv-srcv"><b>第二種＝${esc(t.path)}（她的 ${esc(t.her)}）</b>：${esc(t.text.replace(/^[^：]*：/, ''))}
+        <div class="wv-srcv"><b>第二種＝${esc(t.path)}${her(t.her)}</b>：${txt(t.text)}
           <div><b>走法 A（標準 a-b-c）</b>：a＝${fmt(A.a[0])}→${fmt(A.a[1])}（到現在）；b 守 <b>${fmt(A.b_strict)}</b>（a 的 0.236）、極限 <b>${fmt(A.b_ext)}</b>（0.382）；c 依序：
             ${A.c.map(c => `<span class="wv-chip">${c.hit ? '✅ ' : ''}${esc(c.label)} <b>${fmt(c.price)}</b></span>`).join('')}</div>
           <div><b>走法 B（時間型、偏弱）</b>：<b>${fmt(Math.min(B.lo, B.hi))}～${fmt(Math.max(B.lo, B.hi))}</b> 來回磨 2～3 天，之後照樣第 3 段${up ? '下跌' : '上漲'}</div></div>
-        <ul style="margin:6px 0 0 18px;padding:0">${(tw.judge || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`;
+        ${judge}</div>`;
     };
     let trees, extra = '';
     if (nz && nz.ok) {
