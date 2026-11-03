@@ -626,7 +626,7 @@
       const tgs = v => (v.targets || []).map(t => `<span class="wv-lv${t.hit ? ' hit' : ''}">${t.hit ? '✅ ' : ''}${esc(t.label)} <b>${fmt(t.price)}</b></span>`).join('');
       const nm = ['①', '②', '③'];
       return `<div class="wv-src"><div class="t">🧩 三種細微脈動（她 11/3：${fmt(pz.end1)}、${fmt(pz.h2)} 兩個轉折分辨；都要先走完當下的 C／C-3）</div>
-        <div class="wv-dim">${pz.ma5 != null ? `先看 60 分 5 均 <b>${fmt(pz.ma5)}</b>（這筆下殺停了沒）；` : ''}上方最重要分水嶺 <b>${fmt(pz.end1)}</b>，再看 <b>${fmt(pz.f382)}</b>（0.382）；
+        <div class="wv-dim">${pz.ma5 != null ? `先看 60 分 5 均 <b>${fmt(pz.ma5)}</b>${pz.ma5_ok ? ' ✅ 已站回' : ''}（這筆下殺停了沒）；` : ''}上方最重要分水嶺 <b>${fmt(pz.end1)}</b>，再看 <b>${fmt(pz.f382)}</b>（0.382）；
           下方 <b>${fmt(pz.low)}</b>${pz.mid ? `、日線中線支撐 <b>${fmt(pz.mid.price)}</b>（${esc(pz.mid.label)}）` : ''}</div>
         ${pz.views.map((v, i) => `<div class="wv-srcv${v.key === '3' ? '' : ' threat'}"><b>${nm[i] || ''} ${esc(v.name)}</b>（她的${esc(v.fig)}）：現在 <b>${esc(v.now)}</b>
           <div>${chips(v)}</div><div>${esc(v.next)}</div><div>${tgs(v)}</div></div>`).join('')}

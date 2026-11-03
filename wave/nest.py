@@ -1083,9 +1083,11 @@ def three_pulses(c3: dict, seq: list, d0: int, price: float, fib: dict, src: Opt
         ma5 = None
     f382, f5, f618 = fib[0.382], fib[0.5], fib[0.618]
     gates = []
-    if ma5 is not None and (ma5 - price) * -d0 > 0:
-        gates.append({"k": "止跌", "price": ma5, "ok": False,
-                      "t": f"{'站回' if d0 < 0 else '跌回'} 60 分 5 均 {_fmt(ma5)}（這筆下殺停了沒）→ 先止{wd[-1]}；站不回＝還在延伸"})
+    ma5_ok = ma5 is not None and (price - ma5) * -d0 > 0               # 已經站回 5 均＝這筆下殺先停了
+    if ma5 is not None:
+        gates.append({"k": "止跌", "price": ma5, "ok": ma5_ok,
+                      "t": f"{'站回' if d0 < 0 else '跌回'} 60 分 5 均 {_fmt(ma5)}（這筆下殺停了沒）→ 先止{wd[-1]}；"
+                           + ("已經站回，下一步看分水嶺" if ma5_ok else "站不回＝還在延伸")})
     gates.append({"k": "分水嶺", "price": end1, "ok": (price - end1) * -d0 > 0,
                   "t": f"上方最重要分水嶺 {_fmt(end1)}（第 1 段低點：①②的不重疊限制）→ {v_up}＝排除①②、進入大級數{up}（或③五小波已落底），"
                        f"壓回第二隻腳守住再偏多；{up}過不去又轉弱＝①（3-3-4）或②（C-4），順勢空最後一腳"})
@@ -1096,9 +1098,9 @@ def three_pulses(c3: dict, seq: list, d0: int, price: float, fib: dict, src: Opt
     judge = [f"{up}過不去 {_fmt(end1)} 又轉弱＝①（3-3-4）或②（C-4 弱勢整理後還有 C-5），順勢空最後一腳",
              f"{v_up} {_fmt(end1)}＝排除①②的不重疊限制 → 大級數{up}或③（五小波已落底）；壓回第二隻腳守住再偏多",
              f"{'跌破' if d0 < 0 else '漲過'} {_fmt(low)} 延伸＝①或②還在走，看日線中線支撐（0.5 大關卡）"]
-    plan = [f"版本 1（①／②：{up}過不去 {_fmt(end1)} 又轉弱）：① 3-3-4 或② C-4 弱勢整理後還有低點 → 順勢空最後一腳（日線中線支撐 0.5 大關卡）",
+    plan = [f"版本 1（①／②：{up}過不去 {_fmt(end1)} 又轉弱）：① 3-3-4 或② C-4 弱勢整理後還有低點 → 順勢空最後一腳，看日線中線支撐 0.5 大關卡",
             f"版本 2（③／大級數{up}：{v_up} {_fmt(end1)}）：壓回第二隻腳守住再偏多；之後看 {_fmt(f382)}（0.382）、{_fmt(f5)}（0.5）、{_fmt(f618)}（0.618）"]
-    return {"end1": end1, "h2": h2, "low": low, "ma5": ma5, "f382": round(f382, 2), "views": views, "gates": gates, "judge": judge,
+    return {"end1": end1, "h2": h2, "low": low, "ma5": ma5, "ma5_ok": ma5_ok, "f382": round(f382, 2), "views": views, "gates": gates, "judge": judge,
             "plan": plan, "mid": None}
 
 def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: Optional[dict] = None,
