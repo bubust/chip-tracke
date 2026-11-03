@@ -316,6 +316,45 @@ def refresh(progress=None) -> dict:
     return {"messages": msgs}
 
 
+def refresh_margin_today(now: "datetime | None" = None, fetch=None) -> dict:
+    """B91（用戶：「融資加 21:30 更新排程」）：只抓今天的融資融券（交易所約 21:00 後才公布，18:00 掃描抓不到）
+    → margin_flow／margin_limit／margin_total（MM.save_flows）＋margin_bal／short_bal，跟 refresh 同一套存法；
+    兩個市場都抓過＝不重抓；回應不是今天的資料（還沒公布、櫃買回別天）＝不存不記，下一次排程再試。
+    回 {date, twse, tpex（筆數）, fetched（有存到新的融資流量）, skipped（為什麼沒抓）}"""
+    from cb.fetcher import client as _client, fetch_margin_day
+    now = now or datetime.now(_TW)
+    d = now.date()
+    ds = d.isoformat()
+    out = {"date": ds, "twse": 0, "tpex": 0, "fetched": False, "skipped": None}
+    if d.weekday() >= 5:
+        out["skipped"] = "週末"
+        return out
+    c = get_conn()
+    try:
+        got = _logged(c, "margin")
+        if (ds, "twse") in got and (ds, "tpex") in got:
+            out["skipped"] = "今天已經抓過"
+            return out
+        flows = {}
+        with _client() as cl:
+            tw, tp = (fetch or fetch_margin_day)(cl, d, flows)
+        n = MM.save_flows(c, ds, flows)
+        for mk, mm in (("twse", tw), ("tpex", tp)):
+            if flows.get(mk + "_date") != ds or not mm:
+                continue
+            c.executemany("INSERT OR REPLACE INTO margin_bal VALUES (?,?,?,?)", [(ds, s, v[0], v[1]) for s, v in mm.items()])
+            c.executemany("INSERT OR REPLACE INTO short_bal VALUES (?,?,?)", [(ds, s, v[1]) for s, v in mm.items() if v[1] is not None])
+            _log(c, "margin", ds, mk, len(mm))
+            out[mk] = len(mm)
+        c.commit()
+        out["fetched"] = bool(n.get("twse") or n.get("tpex"))
+        if not out["fetched"]:
+            out["skipped"] = "交易所還沒公布今天的融資"
+    finally:
+        c.close()
+    return out
+
+
 def refresh_inst(n_days: int = 3) -> dict:
     """B70：只補最近 n 個平日的三大法人（上市 T86＋櫃買），全市場排行「更新今日資料」用；不抓融資券、集保。
     已成功抓過的日期／市場跳過（fetch_log），還沒公布的今天回空 → 不記錄"""

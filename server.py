@@ -1032,6 +1032,19 @@ async def lifespan(app: FastAPI):
                            id="wave_night_save1", replace_existing=True, max_instances=1, coalesce=True)
         _pos_watch.add_job(lambda: _wave_job("night_save"), "cron", day_of_week="tue-sat", hour="0-4", minute=40,
                            id="wave_night_save2", replace_existing=True, max_instances=1, coalesce=True)
+        # 🩸 融資（B91，用戶 11-03：「融資加 21:30 更新排程」）：交易所約 21:00 後公布當天融資，18:00 掃描抓不到 →
+        # 21:30 抓今天的、重算融資維持率＋「融資維持率偏低」清單；21:50、22:20 再試（已經抓到＝什麼都不做）
+        def _margin_evening():
+            import logging as _lg5
+            try:
+                import margin_maint as _mm2
+                r = _sched_heavy("margin_evening", _mm2.evening_update, _load_strategy_params().get("S_MAINT_LOW") or {})
+                _lg5.getLogger(__name__).info(f"[margin_evening] {r}")
+            except Exception as _mee:
+                _lg5.getLogger(__name__).warning(f"[margin_evening] {_mee}")
+        for _mh, _mmi in ((21, 30), (21, 50), (22, 20)):
+            _pos_watch.add_job(_margin_evening, "cron", day_of_week="mon-fri", hour=_mh, minute=_mmi,
+                               id=f"margin_evening_{_mh}{_mmi:02d}", replace_existing=True, max_instances=1, coalesce=True)
         _pos_watch.start()
         global _POS_SCHED
         _POS_SCHED = _pos_watch

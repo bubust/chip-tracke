@@ -334,6 +334,17 @@ def backfill_and_publish(params: Optional[dict] = None) -> dict:
     return stat
 
 
+def evening_update(params: Optional[dict] = None) -> dict:
+    """B91 晚上排程（21:30，21:50、22:20 補）：抓今天的融資 → 有新的才重算全市場估計＋校正、更新「融資維持率偏低」清單
+    （觀察清單、深度分析、K 線圖的快取是用「最新融資資料日」當 key，換日自動重算）"""
+    import chip_course as CC
+    r = CC.refresh_margin_today()
+    if r.get("fetched"):
+        pub = backfill_and_publish(params)
+        r["rows"], r["publish_error"] = pub.get("rows"), pub.get("error")
+    return r
+
+
 # ── 單檔／多檔（觀察清單、深度分析、K 線圖）───────────────────────────────────
 
 _CACHE: dict = {}          # (最新融資資料日, sid) → estimate（含 series）

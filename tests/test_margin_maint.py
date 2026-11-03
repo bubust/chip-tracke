@@ -314,3 +314,48 @@ def test_verdict_and_ai_mention_low_maintenance():
     assert v["score"] == v_ok["score"]                          # 不計分
     txt = deep_ai._data_block({"stock_id": "1111", "name": "甲", "chip": {"maint": mt}}, [])
     assert "融資維持率（估計）125%" in txt and "追繳價（130%）78 元" in txt
+
+
+def test_refresh_margin_today_2130(tmp_path, monkeypatch):
+    """B91 21:30 融資排程：抓今天的、存法跟 refresh 一樣；抓過不重抓；還沒公布不記；週末不抓"""
+    from datetime import datetime
+    monkeypatch.setattr(cc, "DB_PATH", tmp_path / "course.db")
+    calls = []
+
+    def fake(published):
+        def f(cl, d, flows):
+            calls.append(d)
+            ds = d.isoformat()
+            if not published:                       # 還沒公布：證交所沒資料、櫃買回前一天
+                flows.update(twse={}, twse_date=None, tpex={"3105": ("穩懋", 0, 5, 0, 50, 45, 0)}, tpex_date="2026-11-02")
+                return {}, {"3105": (45, 3)}
+            tot = {"bal_lots": 100, "amt_k": 5000, "buy_lots": 10, "buy_amt_k": 500, "sell_amt_k": 0, "repay_amt_k": 0}
+            flows.update(twse={"2409": ("友達", 10, 0, 0, 100, 110, 0)}, twse_date=ds, twse_total=tot, twse_lim={"2409": 1000},
+                         tpex={"3105": ("穩懋", 0, 5, 0, 50, 45, 0)}, tpex_date=ds, tpex_total=tot, tpex_lim={"3105": 900})
+            return {"2409": (110, 7)}, {"3105": (45, 3)}
+        return f
+    now = datetime(2026, 11, 3, 21, 30, tzinfo=cc._TW)
+    r = cc.refresh_margin_today(now, fetch=fake(False))
+    assert r["fetched"] is False and r["skipped"] == "交易所還沒公布今天的融資" and r["tpex"] == 0
+    with sqlite3.connect(str(tmp_path / "course.db")) as c:
+        assert c.execute("SELECT COUNT(*) FROM margin_bal").fetchone()[0] == 0            # 櫃買回前一天的不存
+    r = cc.refresh_margin_today(now, fetch=fake(True))
+    assert r["fetched"] and r["twse"] == 1 and r["tpex"] == 1
+    with sqlite3.connect(str(tmp_path / "course.db")) as c:
+        assert c.execute("SELECT bal FROM margin_flow WHERE sid='2409' AND date='2026-11-03'").fetchone()[0] == 110
+        assert c.execute("SELECT lim FROM margin_limit WHERE sid='3105' AND date='2026-11-03'").fetchone()[0] == 900
+        assert c.execute("SELECT margin, short FROM margin_bal WHERE sid='2409' AND date='2026-11-03'").fetchone() == (110, 7)
+        assert c.execute("SELECT COUNT(*) FROM margin_total WHERE date='2026-11-03'").fetchone()[0] == 2
+    n = len(calls)
+    assert cc.refresh_margin_today(now, fetch=fake(True))["skipped"] == "今天已經抓過" and len(calls) == n
+    assert cc.refresh_margin_today(datetime(2026, 11, 7, 21, 30, tzinfo=cc._TW), fetch=fake(True))["skipped"] == "週末"
+
+
+def test_evening_update_publishes_only_when_new(monkeypatch):
+    pub = []
+    monkeypatch.setattr(MM, "backfill_and_publish", lambda p=None: pub.append(p) or {"rows": 3})
+    monkeypatch.setattr(cc, "refresh_margin_today", lambda: {"fetched": False, "skipped": "交易所還沒公布今天的融資"})
+    assert MM.evening_update({"max_maint": 140})["skipped"] and pub == []
+    monkeypatch.setattr(cc, "refresh_margin_today", lambda: {"fetched": True})
+    r = MM.evening_update({"max_maint": 140})
+    assert pub == [{"max_maint": 140}] and r["rows"] == 3
