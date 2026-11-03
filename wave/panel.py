@@ -391,13 +391,19 @@ def _nest_line(snap: dict) -> str:
     for x in (snap.get("positioning") or {}).values():
         if x:
             s += f"；{x['tf']}定位：" + "；".join(x["lines"])
-    tw = nz.get("two") or {}                                          # B87 她 11/2 的兩種（第一種 3-1-4／第二種 3-2 走法 A、B）
+    tw = nz.get("two") or {}                                          # B87／B88 她 11/2 的兩種（版本那幾句已經在上面）
     if tw.get("one") and tw.get("two"):
         o, t = tw["one"], tw["two"]
-        s += (f"；{o['text']}；第 5 小段目標 " + "、".join(f"{x['label']} {x['price']:,.0f}" for x in o["targets"])
-              + f"；{t['text']}；走法 A：b 守 {t['A']['b_strict']:,.0f}、極限 {t['A']['b_ext']:,.0f}，c 依序 "
-              + "→".join(f"{c['price']:,.0f}（{c['label']}）" for c in t["A"]["c"])
-              + f"；走法 B：{min(t['B']['lo'], t['B']['hi']):,.0f}～{max(t['B']['lo'], t['B']['hi']):,.0f} 來回 2～3 天（偏弱）；" + "；".join(tw.get("judge") or []))
+        s += f"；{o.get('text', '')}；第 5 小段目標 " + "、".join(f"{x['label']} {x['price']:,.0f}" for x in o.get("targets") or [])
+        if o.get("gate"):
+            g = o["gate"]
+            s += (f"；決戰關卡 {g['lo']:,.0f}～{g['hi']:,.0f}（b 的 0.5 附近）、移動停利 {g['stop'][0]:,.0f}→{g['stop'][1]:,.0f}；小 c 目標 "
+                  + "、".join(f"{c['t']} {c['lo']:,.0f}～{c['hi']:,.0f}（{c['label']}）" for c in o.get("c") or []))
+        s += f"；{t.get('text', '')}"
+        if t.get("A") and t.get("B"):
+            s += (f"；走法 A：b 守 {t['A']['b_strict']:,.0f}、極限 {t['A']['b_ext']:,.0f}，c 依序 " + "→".join(f"{c['price']:,.0f}（{c['label']}）" for c in t["A"]["c"])
+                  + f"；走法 B：{min(t['B']['lo'], t['B']['hi']):,.0f}～{max(t['B']['lo'], t['B']['hi']):,.0f} 來回 2～3 天（偏弱）")
+        s += "；" + "；".join(tw.get("judge") or [])
     src = nz.get("source") or {}                                      # B86 她 11/1 的源頭兩種切組
     for k, nm in (("three", "第一種切組（三段式）"), ("five", "第二種切組（五段式・威脅）")):
         v = src.get(k)
@@ -432,7 +438,11 @@ def _nest_prices(snap: dict) -> list:
         if tw.get("one") and tw.get("two"):
             o, t = tw["one"], tw["two"]
             out += list(o["std"]) + [o["ceil"], o["hard"], tw["R"], tw["low"]] + [x["price"] for x in o["targets"]]
-            out += [t["A"]["b_strict"], t["A"]["b_ext"], t["B"]["lo"], t["B"]["hi"]] + [c["price"] for c in t["A"]["c"]]
+            if t.get("A") and t.get("B"):
+                out += [t["A"]["b_strict"], t["A"]["b_ext"], t["B"]["lo"], t["B"]["hi"]] + [c["price"] for c in t["A"]["c"]]
+            if o.get("gate"):                            # B88 決戰關卡、移動停利、小 c 目標、第二種第 3 段／平台 b
+                out += [o["gate"]["lo"], o["gate"]["hi"], o["gate"]["mid"]] + list(o["gate"]["stop"]) + list(o.get("b") or [])
+                out += [v for c in o.get("c") or [] for v in (c["lo"], c["hi"])] + list(t.get("down") or []) + list(t.get("flat") or [])
         lf = nz.get("life") or {}                        # B85 生死臨界線
         out += [v for v in (lf.get("r70"), lf.get("r618"), lf.get("origin")) if v is not None] + list(lf.get("zone") or [])
         for c in (nz.get("primary"), nz.get("alternate")):

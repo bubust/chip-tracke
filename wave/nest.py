@@ -870,34 +870,48 @@ def source_cut(pts: list, daily_cnt: Optional[dict], daily_dates, tdate, times, 
     return out
 
 
-def two_ways(c4: dict, seq: list, d0: int, price: float, fib: dict, src: Optional[dict] = None) -> Optional[dict]:
-    """B87 她 11/2 的「兩種」（@fanny55520 台指期 60 分，47,607→44,052 之後的反彈）：
-    - 第一種＝第 1 段還沒走完：這段反彈只是第 4 小段（她的 3-1-4），標準到第 3 小段的 0.5～整段 0.382（45,332～45,410）、
-      最多到第 3 小段裡前一個小反彈高點（45,597），後面還有第 5 小段破底：最可能 43,974～43,851、標準 43,704～43,449、
-      失敗型雙底 44,417～（不破 44,052）
-    - 第二種＝第 1 段已走完、現在第 2 段反彈（她的 3-2）：走法 A（標準 a-b-c）b 守 a 的 0.236（45,039）、極限 0.382（44,804～44,881），
-      c 依序站上 0.382（45,410）、45,597 → 45,830～46,126；走法 B（時間型）a 的 0.5（44,700）～a 高點（45,350）來回 2～3 天、偏弱
-    c4＝parser 的「4」候選（lab1 標出第 1、2、3 小段終點）；反彈的高點 R＝到現在為止的極值（盤中會跟著變）。"""
-    ends = {v: k for k, v in c4["lab1"].items()}
+def two_ways(c1: dict, c2: Optional[dict], seq: list, d0: int, price: float, fib: dict, src: Optional[dict] = None) -> Optional[dict]:
+    """B87／B88 她 11/2 的「兩種」（@fanny55520 台指期 60 分，47,607→44,052 之後）：
+    第一種＝第 1 段還沒走完（44,052 只是第 3 小段的終點，她的 3-1-4／3-1-5）；第二種＝第 1 段已走完（她的 3-2／3-3）。
+    分三個階段（極值之後走了幾段）：
+    - up1（反彈第一段進行中，B87 她 11/2 中午）：第一種標準 45,332～45,410、天花板 45,597，第 5 小段最可能 43,974～43,851、
+      標準 43,704～43,449、失敗型 44,417～；第二種走法 A（b 守 45,039、極限 44,804～44,881，c → 45,830～46,126）、走法 B（44,700↔45,350）
+    - pull（反彈高點之後回落中，B88 她 11/2 晚上 23:00：45,487→44,832）：第一種甲＝4-b 落底還有小 c（c 目標階梯 T1 45,364～45,410、
+      T2 45,487～45,583／45,597＝4-c 極限區、T3 45,830～45,891＝升格 3-2-c）；第一種乙＝啟動 1-5，5-2 反抽測 45,146～45,173（死貓跳）；
+      決戰關卡＝45,146～45,173（b 的 0.5 附近），帶量實體紅 K 站穩才是真 c，移動停利 45,080（0.382）→ 45,145～45,160
+    - up2（回落之後再反彈＝小 c 或 5-2）：同 pull 的價位，標出已經走到哪
+    c1＝parser 的第一種候選（lab1 標出第 1、2、3 小段終點）、c2＝第二種候選（極值＝第 1 段終點）。價位都用 seq 的轉折即時算。"""
+    ends = {v: k for k, v in c1["lab1"].items()}
     if not {"1", "2", "3"} <= set(ends):
         return None
     k1, k2, k3 = ends["1"], ends["2"], ends["3"]
+    n_after = len(seq) - 1 - k3
+    if n_after not in (1, 2, 3):
+        return None
+    phase = {1: "up1", 2: "pull", 3: "up2"}[n_after]
     a_p, e_p = seq[0]["p"], seq[k3]["p"]
     tent = seq[-1]["p"]
-    R = tent if (tent - price) * -d0 >= 0 else price                   # 反彈到現在的極值
-    a_len = abs(R - e_p)
+    dir_now = d0 if phase == "pull" else -d0
+    cur = tent if (tent - price) * dir_now >= 0 else price             # 進行中那段到現在的極值
+    H = cur if phase == "up1" else seq[k3 + 1]["p"]                    # 極值之後第一段反彈的終點
+    a_len = abs(H - e_p)
     if a_len <= 0:
         return None
     w1 = abs(seq[k1]["p"] - a_p)                                       # 第 1 小段長度
     w3 = abs(seq[k2]["p"] - e_p)                                       # 第 3 小段長度
+    L1 = abs(a_p - e_p)                                                # 第 1 段（起點→極值）長度
     beyond = lambda v, ref: (v - ref) * -d0 > 0                        # noqa: E731  v 在 ref 的反彈方向那一邊
+    srt = lambda xs: sorted(xs, key=lambda v: -d0 * v)                 # noqa: E731  反彈方向由近到遠
     inner = [seq[k]["p"] for k in range(k2 + 1, k3) if seq[k]["t"] == seq[0]["t"]]
     ceil_ = inner[-1] if inner else e_p - d0 * 0.618 * w3              # 第 3 小段裡前一個小反彈高點（小 4）；沒有就用 0.618
     std = sorted([e_p - d0 * 0.5 * w3, fib[0.382]])
     hard = seq[k1]["p"]                                                # 第 4 段不碰第 1 段終點（楔形放寬到第 2 段終點）
-    wd, up = ("跌", "反彈") if d0 < 0 else ("漲", "回檔")
-    tg = [("5＝0→3 的 0.382", R + d0 * 0.382 * abs(a_p - e_p), "main"), ("5＝1 倍第 1 小段", R + d0 * w1, "main"),
-          ("5＝0.618 倍第 1 小段", R + d0 * 0.618 * w1, "main"), ("第 4 小段的 1.272 倍外延", R + d0 * 1.272 * a_len, "std")]
+    wd, up, dn = ("跌", "反彈", "回落") if d0 < 0 else ("漲", "回檔", "反彈")
+    v_up, v_dn = ("漲過", "跌破") if d0 < 0 else ("跌破", "漲過")
+    hl = "高" if d0 < 0 else "低"
+    # 第一種的第 5 小段：從第 4 小段的終點（up1＝反彈到現在的極值；之後＝H）往下量
+    tg = [("5＝0→3 的 0.382", H + d0 * 0.382 * L1, "main"), ("5＝1 倍第 1 小段", H + d0 * w1, "main"),
+          ("5＝0.618 倍第 1 小段", H + d0 * 0.618 * w1, "main"), ("第 4 小段的 1.272 倍外延", H + d0 * 1.272 * a_len, "std")]
     t3 = (src or {}).get("three") or {}
     if t3.get("targets"):
         tg.append((t3["targets"][0]["label"].split("（")[0] + "（源頭三段式）", float(t3["targets"][0]["price"]), "std"))
@@ -906,27 +920,100 @@ def two_ways(c4: dict, seq: list, d0: int, price: float, fib: dict, src: Optiona
         g = g if (e_p - v) * -d0 > 0 or abs(v - e_p) < 1 else "fail"    # 沒有破 e_p＝失敗型（雙底／雙頂）
         targets.append({"label": lab, "price": round(v, 2), "grp": g})
     targets.sort(key=lambda t: -d0 * t["price"], reverse=True)          # 離現價近的先列
-    neck_ok = beyond(ceil_, R)
-    c_path = [(fib[0.382], "整段 0.382"), (ceil_, "第一種的天花板"), (fib[0.5], "0.5"), (hard, "第 1 小段終點"), (fib[0.618], "0.618 極限")]
-    c_path = sorted({round(v, 2): t for v, t in c_path}.items(), key=lambda x: -d0 * x[0])        # 反彈方向由近到遠
-    pre = "3-" if (src or {}).get("five", {}).get("path", "").startswith("3") and (src or {}).get("b_end") == a_p else ""
-    one = {"path": c4["path_str"], "her": f"{pre}1-4", "std": [round(std[0], 2), round(std[1], 2)], "ceil": round(ceil_, 2),
-           "hard": round(hard, 2), "targets": targets,
-           "text": f"第一種（第 1 段還沒走完）：{_fmt(e_p)} 只是第 3 小段的終點，這段{up}＝第 4 小段（她的 {pre}1-4）——標準 "
-                   f"{_fmt(std[0])}～{_fmt(std[1])}（第 3 小段 0.5～整段 0.382）、最多到 {_fmt(ceil_)}（第 3 小段裡前一個小{up}高點），"
-                   f"之後第 5 小段再{wd}破 {_fmt(e_p)}；{'漲過' if d0 < 0 else '跌破'} {_fmt(hard)}（第 1 小段終點）這個數法就不成立"}
-    A = {"a": [e_p, round(R, 2)], "b_strict": round(R + d0 * 0.236 * a_len, 2), "b_ext": round(R + d0 * 0.382 * a_len, 2),
-         "c": [{"price": v, "label": t, "hit": not beyond(v, R)} for v, t in c_path]}
-    B = {"lo": round(R + d0 * 0.5 * a_len, 2), "hi": round(R, 2)}
-    two = {"path": "2", "her": f"{pre}2", "A": A, "B": B,
-           "text": f"第二種（第 1 段已走完）：{_fmt(a_p)}→{_fmt(e_p)} 五小段走完，這段{up}＝第 2 段（她的 {pre}2），之後還有第 3 段主{wd}"}
+    grp = lambda g: "～".join(_fmt(t["price"]) for t in targets if t["grp"] == g)   # noqa: E731
+    five_txt = "；".join(x for x in (f"最可能 {grp('main')}" if grp("main") else "", f"標準 {grp('std')}" if grp("std") else "",
+                                     f"失敗型（不破 {_fmt(e_p)}、雙{'底' if d0 < 0 else '頂'}）{grp('fail')}" if grp("fail") else "") if x)
+    # 她的浪名（源頭第二種切組把 47,607 起算成第 3 段時才對得上：第一種＝3-1-x、第二種＝3-x）
+    pre = "3-" if str(((src or {}).get("five") or {}).get("path", "")).startswith("3") and (src or {}).get("b_end") == a_p else None
+    p1, p2 = c1["path_str"], (c2 or {}).get("path_str") or "2"
+    her1, her2 = (pre + "1-" + p1, pre + p2) if pre else (None, None)
+    hs = lambda h: f"＝她的 {h}" if h else ""                          # noqa: E731
     ws = {"lo": round(ceil_, 2), "hi": round(ceil_, 2), "far": round(ceil_, 2),
           "why": f"第一種（第 4 小段）最多到第 3 小段裡前一個小{up}高點", "lv": [(round(ceil_, 2), "前一個小 4"), (round(hard, 2), "硬規則")],
-          "brk": [], "path": c4["path_str"]}
-    judge = [f"{'站穩' if d0 < 0 else '跌破'} {_fmt(ceil_)}＝第一種不成立 → 第二種走法 A（c 段往 {_fmt(fib[0.5])}～{_fmt(hard)}）",
-             f"{'跌破' if d0 < 0 else '漲過'} {_fmt(A['b_ext'])}（a 的 0.382）＝走法 A 的 b 太深 → 走法 B（時間型）或第一種",
-             f"{'跌破' if d0 < 0 else '漲過'} {_fmt(e_p)}＝第一種的第 5 小段（或第二種失敗）"]
-    return {"R": round(R, 2), "low": e_p, "one": one, "two": two, "watershed": ws, "judge": judge, "ceil_hit": not neck_ok}
+          "brk": [], "path": p1}
+    out = {"phase": phase, "R": round(H, 2), "low": e_p, "watershed": ws, "ceil_hit": not beyond(ceil_, cur if phase != "pull" else H)}
+    one = {"path": p1, "her": her1, "std": [round(std[0], 2), round(std[1], 2)], "ceil": round(ceil_, 2), "hard": round(hard, 2),
+           "targets": targets}
+    two = {"path": p2, "her": her2}
+    if phase == "up1":
+        A = {"a": [e_p, round(H, 2)], "b_strict": round(H + d0 * 0.236 * a_len, 2), "b_ext": round(H + d0 * 0.382 * a_len, 2),
+             "c": [{"price": v, "label": t, "hit": not beyond(v, H)} for v, t in
+                   sorted({round(v, 2): t for v, t in [(fib[0.382], "整段 0.382"), (ceil_, "第一種的天花板"), (fib[0.5], "0.5"),
+                                                       (hard, "第 1 小段終點"), (fib[0.618], "0.618 極限")]}.items(), key=lambda x: -d0 * x[0])]}
+        B = {"lo": round(H + d0 * 0.5 * a_len, 2), "hi": round(H, 2)}
+        one["text"] = (f"第一種（第 1 段還沒走完）：{_fmt(e_p)} 只是第 3 小段的終點，這段{up}＝第 4 小段{('（她的 ' + her1 + '）') if her1 else ''}——標準 "
+                       f"{_fmt(std[0])}～{_fmt(std[1])}（第 3 小段 0.5～整段 0.382）、最多到 {_fmt(ceil_)}（第 3 小段裡前一個小{up}高點），"
+                       f"之後第 5 小段再{wd}破 {_fmt(e_p)}；{v_up} {_fmt(hard)}（第 1 小段終點）這個數法就不成立")
+        two.update(A=A, B=B, text=f"第二種（第 1 段已走完）：{_fmt(a_p)}→{_fmt(e_p)} 五小段走完，這段{up}＝第 2 段{('（她的 ' + her2 + '）') if her2 else ''}，"
+                                  f"之後還有第 3 段主{wd}")
+        out["judge"] = [f"{'站穩' if d0 < 0 else '跌破'} {_fmt(ceil_)}＝第一種不成立 → 第二種走法 A（c 段往 {_fmt(fib[0.5])}～{_fmt(hard)}）",
+                        f"{v_dn} {_fmt(A['b_ext'])}（a 的 0.382）＝走法 A 的 b 太深 → 走法 B（時間型）或第一種",
+                        f"{v_dn} {_fmt(e_p)}＝第一種的第 5 小段（或第二種失敗）"]
+        c_next = [c for c in A["c"] if not c["hit"]]
+        out["plan"] = [f"版本 1（第一種 {p1}{hs(her1)}）：{_fmt(std[0])}～{_fmt(std[1])}、最多 {_fmt(ceil_)} 被{'壓回' if d0 < 0 else '拉回'} → "
+                       f"第 5 小段破 {_fmt(e_p)}：{five_txt}",
+                       f"版本 2（第二種 {p2}{hs(her2)}）：走法 A（標準 a-b-c）a＝{_fmt(e_p)}→{_fmt(H)}（到現在的{hl}點），"
+                       f"b 守 {_fmt(A['b_strict'])}（a 的 0.236）、極限 {_fmt(A['b_ext'])}（0.382），c 依序{'站上' if d0 < 0 else '跌破'} "
+                       + " → ".join(f"{_fmt(c['price'])}（{c['label']}）" for c in c_next)
+                       + f"；走法 B（時間型、偏弱）在 {_fmt(min(B['lo'], B['hi']))}～{_fmt(max(B['lo'], B['hi']))} 來回磨 2～3 天，之後照樣第 3 段主{wd}"]
+        out.update(one=one, two=two)
+        return out
+    # ── pull／up2：H 之後回落（L）、可能再反彈（小 c 或 5-2） ──
+    L = cur if phase == "pull" else seq[k3 + 2]["p"]
+    R2 = cur if phase == "up2" else None
+    bl = abs(H - L)
+    if bl <= 0:
+        return None
+    at = lambda r: L - d0 * r * bl                                     # noqa: E731  從 L 往反彈方向走 b 的 r 倍
+    band = srt([at(0.48), at(0.52)])                                   # 決戰關卡：b 的 0.5 附近（她 45,146～45,173）
+    reach = lambda v: R2 is not None and not beyond(v, R2)             # noqa: E731  小 c／5-2 已經走到
+    ladder = [("T1", srt([at(0.81), fib[0.382]]), "b 的 0.81～整段 0.382"),
+              ("T2", srt([H, ceil_]), "前高～第一種的天花板（4-c 極限區）"),
+              ("T3", srt([fib[0.5], at(1.618)]), f"整段 0.5～b 的 1.618 倍（升格第二種 2-c{hs(pre + '2-c' if pre else None)}）")]
+    c_lad = [{"t": t, "lo": round(xs[0], 2), "hi": round(xs[-1], 2), "label": lab, "hit": reach(xs[0])} for t, xs, lab in ladder]
+    down3 = [round(H + d0 * L1, 2), round(H + d0 * 1.618 * L1, 2)]    # 第二種：2 在 H 結束 → 第 3 段＝1、1.618 倍第 1 段
+    flat = [round(H + d0 * 0.9 * a_len, 2), e_p]                       # 第二種：2 還沒走完（平台 b 回 0.9～1 倍 a）
+    gate = {"lo": round(band[0], 2), "hi": round(band[1], 2), "mid": round(at(0.5), 2), "hit": reach(band[1]),
+            "stop": [round(at(0.382), 2), round(at(0.5), 2)]}
+    fb = lambda: f"{_fmt(band[0])}～{_fmt(band[1])}"                   # noqa: E731
+    one.update(b=[round(H, 2), round(L, 2)], c=c_lad, gate=gate,
+               text=f"第一種（第 1 段還沒走完）：{_fmt(e_p)} 只是第 3 小段的終點、{_fmt(e_p)}→{_fmt(H)}＝第 4 小段（的 a）——還在第 4 小段的話，"
+                    f"{_fmt(H)}→{_fmt(L)}＝4-b，落底後還有小 c（最多到 {_fmt(ceil_)}）；第 4 小段已經在 {_fmt(H)} 結束的話，第 5 小段啟動、"
+                    f"再{wd}破 {_fmt(e_p)}")
+    two.update(down=down3, flat=flat,
+               text=f"第二種（第 1 段已走完）：{_fmt(e_p)}→{_fmt(H)}＝第 2 段{up}；2 在 {_fmt(H)} 結束（反彈偏弱＝走法 B 的預告）→ 第 3 段主{wd}；"
+                    f"2 還沒走完（平台 b）先回 {_fmt(flat[0])}～{_fmt(flat[1])} 再 c")
+    k_sol = "紅" if d0 < 0 else "黑"
+    out["judge"] = [f"帶量實體{k_sol} K {'站穩' if d0 < 0 else '跌破'} {_fmt(band[1])}（決戰關卡 {fb()}：b 的 0.5 附近）→ 第一種甲：4-b 落底、小 c 往 T1 "
+                    f"{_fmt(c_lad[0]['lo'])}～{_fmt(c_lad[0]['hi'])}；卡在 {fb()} → 第一種乙：第 5 小段的 5-2 死貓跳",
+                    f"小 c {v_up} {_fmt(ceil_)}（4-c 極限）、站上 T3 {_fmt(c_lad[2]['lo'])}＝升格第二種（2-c{hs(pre + '2-c' if pre else None)}）",
+                    f"{v_dn} {_fmt(e_p)}＝第一種乙的第 5 小段（看 {grp('main') or grp('std')}）或第二種第 3 段主{wd}（看 {_fmt(down3[0])}、{_fmt(down3[1])}）"]
+    if phase == "pull":
+        out["judge"].append(f"{v_up} {_fmt(H)}＝{up}還沒走完（回到第 4 小段／第 2 段進行中）")
+    tl_c = " → ".join(f"{c['t']} {_fmt(c['lo'])}～{_fmt(c['hi'])}{'✅' if c['hit'] else ''}" for c in c_lad) + "（T2＝4-c 極限區、T3＝升格第二種）"
+    stop_t = (f"移動停利推上 {_fmt(gate['stop'][0])}（b 的 0.382）、再推到 {_fmt(band[0])}～{_fmt(gate['stop'][1])}")
+    down_t = f"第 3 段主{wd} 1 倍第 1 段 {_fmt(down3[0])}、1.618 倍 {_fmt(down3[1])}"
+    if phase == "pull":
+        out["plan"] = [f"版本 1（第一種甲：{p1}{hs(her1)}，4-b 落底還有小 c）：防守放 {_fmt(L)} {'下方' if d0 < 0 else '上方'}；帶量站穩 {_fmt(band[1])} 後"
+                       f"{stop_t}；小 c 目標 {tl_c}",
+                       f"版本 2（第一種乙：{_fmt(H)} 已是第 4 小段終點、第 5 小段啟動{hs(pre + '1-5' if pre else None)}）：5-2 反抽到 {fb()} 就卡住（死貓跳）"
+                       f" → 第 5 小段破 {_fmt(e_p)}：{five_txt}",
+                       f"版本 3（第二種：{p2}{hs(her2)}）：2 在 {_fmt(H)} 結束 → {down_t}；2 還沒走完（平台 b）先回 {_fmt(flat[0])}～{_fmt(flat[1])} 再 c"]
+    else:
+        out["plan"] = [f"版本 1（第一種甲：{p1}{hs(her1)}，4-b 已在 {_fmt(L)} 落底、小 c 進行中）：防守 {_fmt(L)} {'下方' if d0 < 0 else '上方'}；"
+                       f"{'已站上' if gate['hit'] else '帶量站穩'} {_fmt(band[1])}{'，' if gate['hit'] else ' 後'}{stop_t}；小 c 目標 {tl_c}",
+                       f"版本 2（第一種乙：{_fmt(H)} 已是第 4 小段終點、這段＝5-2 反抽{hs(pre + '1-5-2' if pre else None)}）：到 {fb()} 就卡住（死貓跳）"
+                       f" → 第 5 小段破 {_fmt(e_p)}：{five_txt}",
+                       f"版本 3（第二種：{p2}{hs(her2)}）：2 還沒走完、這段＝2-c（走法 A 的 c）→ 站上 T3 {_fmt(c_lad[2]['lo'])} 確認；"
+                       f"2 已在 {_fmt(H)} 結束的話這段只是反抽 → {down_t}"]
+    out["gates"] = [{"k": "決戰關卡", "price": round(band[1], 2), "ok": gate["hit"],
+                     "t": f"決戰關卡 {fb()}（{_fmt(H)}→{_fmt(L)} 的 0.5 附近）→ 帶量實體{k_sol} K {'站穩' if d0 < 0 else '跌破'}＝第一種甲（4-b 落底、小 c 往 "
+                          f"{_fmt(c_lad[0]['lo'])}）；卡住＝第一種乙（第 5 小段的 5-2 死貓跳）"},
+                    {"k": "破底" if d0 < 0 else "破頂", "price": e_p, "ok": False,
+                     "t": f"{v_dn} {_fmt(e_p)}（前{'低' if d0 < 0 else '高'}）→ 第一種乙的第 5 小段（{grp('main') or grp('std')}）或第二種第 3 段主{wd}"
+                          f"（{_fmt(down3[0])}）"}]
+    out.update(one=one, two=two)
+    return out
 
 
 def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: Optional[dict] = None,
@@ -990,18 +1077,18 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
         opp = next((c for c in cands if _with_trend(c, d0) != _with_trend(prim, d0) and c["adj"] - prim["adj"] <= ALT_GAP), None)
         if opp is not None:
             alt, third = opp, alt
-    # B87 她 11/2 的「兩種」：反彈剛從極值出發、主要是「2」（第 1 段走完＝她的 3-2）或「4」（第 1 段還沒走完＝她的 3-1-4）時，
-    #     另一種一定拿對面那個比——B83 換進來的「1-2」跟「2」反彈的是同一段（只差級數名稱），不是真的另一種走法 → 往後挪成第三個
+    # B87 她 11/2 的「兩種」：極值之後（反彈中、反彈完回落、再反彈）主要是第二種（極值＝第 1 段終點：2、2-b、3…＝她的 3-2、3-3）
+    #     或第一種（極值＝第 3 小段終點：4、4-b、4-c…＝她的 3-1-4）時，另一個一定拿對面那種比——B83 換進來的「1-2」跟「2」
+    #     反彈的是同一段（只差級數名稱），不是真的另一種走法 → 往後挪成第三個（B88：反彈完回落時也一樣，她 11/2 晚上的 1-4-b／1-5）
     pair = None
-    if prim and cur_dir != d0 and ext_k == len(seq) - 2:
-        c2_ = next((c for c in cands if c["path_str"] == "2" and c["lab1"].get(ext_k) == "1"), None)
-        c4_ = next((c for c in cands if c["path_str"] == "4" and c["top_kind"] in ("imp", "diag") and c["lab1"].get(ext_k) == "3"), None)
-        if c2_ is not None and c4_ is not None and (prim is c2_ or prim is c4_) and abs(c2_["adj"] - c4_["adj"]) <= ALT_GAP:
-            other = c4_ if prim is c2_ else c2_
+    kind_ = lambda c: {"1": 2, "3": 1}.get(c["lab1"].get(ext_k)) if c["top_kind"] in ("imp", "diag") else None   # noqa: E731
+    if prim and 1 <= len(seq) - 1 - ext_k <= 3 and kind_(prim):
+        k_p = kind_(prim)
+        other = next((c for c in cands if kind_(c) and kind_(c) != k_p and abs(c["adj"] - prim["adj"]) <= ALT_GAP), None)
+        if other is not None:
             if alt is not other:
                 alt, third = other, (alt if alt is not None else third)
-            pair = c4_
-
+            pair = (prim, other) if k_p == 1 else (other, prim)        # (第一種, 第二種)
     def out_c(c):
         if not c:
             return None
@@ -1039,7 +1126,7 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
         src = source_cut(pts, daily_cnt, daily_dates, tdate, times, price) if tfn == "60 分" and not parent_seg else None
     except Exception:       # noqa: BLE001
         src = None
-    two = two_ways(pair, seq, d0, price, fib, src) if pair is not None else None
+    two = two_ways(pair[0], pair[1], seq, d0, price, fib, src) if pair is not None else None
     # 關卡（她的寫法）：反向（逆著起點那一大段）走時 → 分水嶺（B83）、前提趨勢線、0.382、前高頸線＋0.5、0.618＋第 1 段低點區、失敗
     up_word, dn_word = ("反彈", "下跌") if d0 < 0 else ("回檔", "上漲")
     gates = []
@@ -1058,10 +1145,12 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
             o_ = two["one"]
             watershed = dict(two["watershed"])
             gates.append({"k": "分水嶺", "price": o_["ceil"], "ok": beyond(o_["ceil"]) and ev["trend"],
-                          "t": f"關鍵分水嶺 {_fmt(o_['ceil'])}（她 11/2 兩種的分界）：第一種＝{o_['path']}（第 1 段還沒走完）這段{up_word}只是第 4 小段，"
+                          "t": f"關鍵分水嶺 {_fmt(o_['ceil'])}（{'她 11/2 ' if o_['her'] else ''}兩種的分界）：第一種＝{o_['path']}（第 1 段還沒走完）這段{up_word}只是第 4 小段，"
                                f"標準 {_fmt(o_['std'][0])}～{_fmt(o_['std'][1])}、最多到第 3 小段裡前一個小{up_word}高點 {_fmt(o_['ceil'])} → "
                                f"在這裡被壓回＝還有第 5 小段{dn_word}破 {_fmt(e_p)}；{'站穩' if d0 < 0 else '跌破'} {_fmt(o_['ceil'])}＝第二種"
-                               f"（2：第 1 段已走完、第 2 段{up_word}確認）；{'漲過' if d0 < 0 else '跌破'} {_fmt(o_['hard'])}（第 1 小段終點）第一種就不成立"})
+                               f"（{two['two']['path']}：第 1 段已走完、第 2 段{up_word}確認）；{'漲過' if d0 < 0 else '跌破'} {_fmt(o_['hard'])}（第 1 小段終點）第一種就不成立"})
+            if two.get("gates"):                             # B88 小 c／5-2 進行中：決戰關卡走到哪
+                gates.extend(g for g in two["gates"] if g["k"] == "決戰關卡")
         elif watershed:
             soft = next((v for v, t in watershed["lv"] if t != "硬規則"), watershed["far"])
             hard = next((v for v, t in watershed["lv"] if t == "硬規則"), None)
@@ -1125,6 +1214,8 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
                       "t": fail + f"{'跌破' if d0 < 0 else '漲過'} {_fmt(e_p)}（{'新低' if d0 < 0 else '新高'}）→ "
                            + (f"C 段主{dn_word[-1]}（她的 C-3）" if life else f"第 5 段{dn_word}")})
     else:
+        if two and two.get("gates"):                         # B88 她 11/2 晚上：反彈完回落時的決戰關卡、破底
+            gates.extend(two["gates"])
         tg = [t for t in (P or {}).get("targets", [])][-2:]
         if tg:
             gates.append({"k": "目標", "price": tg[0]["price"], "ok": False,
@@ -1155,24 +1246,16 @@ def build(an: dict, times: list, price: float, tfn: str = "60 分", daily_cnt: O
                 (f"下一個看 {_fmt(hard_)}（硬規則，{'漲過' if d0 < 0 else '跌破'}＝更大一級換數法）" if hard_ is not None else "")
             plan.insert(2, f"版本 2（級數轉浪{(' ' + ct['path']) if ct else ''}）：越過{'下降' if d0 < 0 else '上升'}趨勢線並站穩 {_fmt(watershed['far'])}"
                            + (f" → {tg}" if tg else ""))
-        elif two and not life:                           # B87 她 11/2 的兩種＋第二種的兩個走法
-            o_, t_ = two["one"], two["two"]
-            A_, B_ = t_["A"], t_["B"]
-            grp = lambda g: "～".join(_fmt(t["price"]) for t in o_["targets"] if t["grp"] == g)   # noqa: E731
-            plan.insert(1, f"版本 1（第一種 {o_['path']}＝她的 {o_['her']}）：{_fmt(o_['std'][0])}～{_fmt(o_['std'][1])}、最多 {_fmt(o_['ceil'])} 被"
-                           f"{'壓回' if d0 < 0 else '拉回'} → 第 5 小段破 {_fmt(e_p)}："
-                           + "；".join(x for x in (f"最可能 {grp('main')}" if grp("main") else "", f"標準 {grp('std')}" if grp("std") else "",
-                                                  f"失敗型（不破 {_fmt(e_p)}、雙{'底' if d0 < 0 else '頂'}）{grp('fail')}" if grp("fail") else "") if x))
-            c_next = [c for c in A_["c"] if not c["hit"]]
-            plan.insert(2, f"版本 2（第二種 2＝她的 {t_['her']}）：走法 A（標準 a-b-c）a＝{_fmt(A_['a'][0])}→{_fmt(A_['a'][1])}（到現在的{'高' if d0 < 0 else '低'}點），"
-                           f"b 守 {_fmt(A_['b_strict'])}（a 的 0.236）、極限 {_fmt(A_['b_ext'])}（0.382），c 依序"
-                           f"{'站上' if d0 < 0 else '跌破'} " + " → ".join(f"{_fmt(c['price'])}（{c['label']}）" for c in c_next)
-                           + f"；走法 B（時間型、偏弱）在 {_fmt(min(B_['lo'], B_['hi']))}～{_fmt(max(B_['lo'], B_['hi']))} 來回磨 2～3 天，之後照樣第 3 段{dn_word}")
+        elif two:                                        # B87／B88 她 11/2 的兩種（版本 1／2〔／3〕）
+            plan[1:1] = two["plan"]
     else:
         plan.append(f"順著大段{dn_word}中：{up_word}沒過前一個{'反彈高點' if d0 < 0 else '回檔低點'}就照原方向，別逆勢{'接多' if d0 < 0 else '放空'}")
+        if two:                                          # B88 反彈完回落：她 11/2 晚上的三個版本
+            plan[1:1] = two["plan"]
     if life:                                             # B85 她 10/29：B（C-2）走完第一段以後的兩個版本
         gates.insert(0, {"k": "生死線", "price": life["far"], "ok": life["broken"], "t": life["t"]})
-        plan[1:1] = life["plan"]
+        if not two:                                      # B88 有「兩種」時版本用她 11/2 的（生死線還是列在關卡）
+            plan[1:1] = life["plan"]
     if P and P["path"].endswith(("c", "C", "5")):
         st_ = next((r for r in P["rules"] if "這一小段的起點" in r["why"]), None)
         if st_:
