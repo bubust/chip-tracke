@@ -96,10 +96,17 @@ def test_service_fills_mid_support_into_pulses():
     assert round(pz["mid"]["price"]) == 41002
     assert any(g["k"] == "中線支撐" and round(g["price"]) == 41002 for g in out["gates"])
     sup = next(g for g in out["gates"] if g["k"] == "支撐")
-    assert "41,002" in sup["t"] or "41,003" in sup["t"]
+    assert "41,002" in sup["t"]
     assert any("日線中線支撐 41,00" in x for x in out["plan"])
     line, prices = PN._nest_line(snap), PN._nest_prices(snap)
     assert "三種細微脈動" in line and "分水嶺 44,052" in line and 44052 in prices
+
+
+def test_ma5_gate_marks_reclaimed():
+    """11/3 17:56 夜盤 43,476 已經站回 60 分 5 均：止跌那關要打勾，不是消失"""
+    out = _build(LOW, 43476.0, [43655, 43360, 43121, 43263])
+    g = out["gates"][0]
+    assert g["k"] == "止跌" and g["ok"] and "已經站回" in g["t"] and out["pulses"]["ma5_ok"]
 
 
 def test_not_triggered_before_breaking_the_first_low():
