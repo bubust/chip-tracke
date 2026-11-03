@@ -250,14 +250,22 @@
   #wv-ai .btn { padding: 6px 12px; font-size: .88rem; }
   .wv-adv summary { font-size: .92rem !important; font-weight: 600 !important; color: var(--muted); }
   .wv-adv .wv-seg button { padding: 6px 12px; font-size: .88rem; }
-  /* 過熱恐慌（籌碼分頁） */
-  .oh-mini { margin: 0; gap: 10px; }
-  .oh-mini .oh-card { padding: 8px 14px; border-radius: 12px; background: var(--card2); border-color: var(--border); }
-  .oh-mini .oh-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 5px; }
-  .oh-mini .label { font-size: .9rem; color: var(--muted); margin: 0; }
-  .oh-mini .value { font-size: 1.15rem; margin: 0; font-weight: 800; }
-  .oh-mini .oh-m { font-size: .8rem; color: var(--muted); margin-left: auto; }
-  .oh-mini .bar-wrap { height: 6px; margin: 0; }
+  /* 過熱／恐慌（B91：11-03 用戶「放在最上面、要看得到」→ 固定標題列右邊，捲下去也看得到） */
+  .oh-top { display: flex; align-items: stretch; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  .oh-pill { display: grid; grid-template-columns: auto auto; align-items: baseline; gap: 0 8px; min-width: 150px;
+             background: var(--card2); border: 1px solid var(--border); border-radius: 12px; padding: 5px 12px 6px; cursor: help; }
+  .oh-pill .k { font-size: .86rem; color: var(--muted); white-space: nowrap; }
+  .oh-pill .v { font-size: 1.2rem; font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
+  .oh-pill .st { grid-column: 1 / -1; font-size: .8rem; color: var(--muted); white-space: nowrap; }
+  .oh-pill .bar-wrap { grid-column: 1 / -1; position: relative; background: #0d1117; border-radius: 4px; height: 5px; margin-top: 3px; overflow: visible; }
+  .oh-pill .bar { height: 100%; border-radius: 4px; transition: width .5s; }
+  .oh-pill .bar-wrap i { position: absolute; top: -2px; width: 2px; height: 9px; background: #fb923c; border-radius: 1px; }
+  .oh-pill.alert { border-color: #fb923c; background: rgba(251,146,60,.10); }
+  .oh-pill.near { border-color: #fbbf24aa; }
+  .oh-date { align-self: center; font-size: .78rem; color: var(--muted); white-space: nowrap; }
+  .wv-sticky.stuck .oh-pill { padding: 2px 10px 3px; min-width: 0; }
+  .wv-sticky.stuck .oh-pill .v { font-size: 1rem; }
+  .wv-sticky.stuck .oh-pill .bar-wrap, .wv-sticky.stuck .oh-date { display: none; }
   .wv-spark { display: block; width: 100%; height: 70px; margin: 8px 0 2px; }
   .wv-m10 td, .wv-m10 th { padding: 4px 8px !important; }
   /* 總經分頁 */
@@ -278,7 +286,10 @@
     #wv-chart { height: 380px; }
     .wv-card { padding: 12px 12px; }
     .wv-tbl .wv-hide-m { display: none; }
-    .oh-mini .oh-m { display: none; }
+    .oh-top { margin-left: 0; width: 100%; flex-wrap: nowrap; }
+    .oh-pill { flex: 1 1 0; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; padding: 5px 10px 6px; }
+    .oh-pill .st { white-space: normal; font-size: .76rem; line-height: 1.35; }
+    .oh-date { display: none; }
     .wv-mode { max-width: 100%; overflow-x: auto; }
     .wv-mode button { padding: 5px 8px; min-width: 62px; }
     .wv-head { font-size: 1.15rem; } .wv-head .path { font-size: 1.35rem; }
@@ -302,6 +313,7 @@
     .wv-sticky { margin: 0 -8px; padding: 0 8px; }
     .wv-sticky.stuck { padding-top: 4px; }
     .wv-sticky.stuck .wv-mode button { padding: 3px 6px; min-width: 0; }
+    .wv-sticky.stuck .oh-pill .st { display: none; }
     .wv-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
     .wv-tiles.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .wv-tile { display: block; padding: 6px 7px; cursor: pointer; }
@@ -333,6 +345,19 @@
     <span class="wv-seg wv-sym"><button data-wv-sym="TWII">加權指數</button><button data-wv-sym="TX" title="台指期近月連續，日 K 含夜盤（15:00～05:00）">台指期</button></span>
     <div id="wv-price">—</div>
     <div id="wv-asof"></div>
+    <div class="oh-top" id="oh-top">
+      <div class="oh-pill" id="card-overheating" title="過熱指數＝收盤後 成交量 ÷ 委買量（證交所 MI_5MINS）。≥50% 買單被大量吃掉＝追漲風險高；<30% 委買多但觀望">
+        <span class="k">🔥 過熱</span><span class="v" id="oh-val">—</span>
+        <span class="st" id="oh-st">≥50% 追漲風險高</span>
+        <span class="bar-wrap"><span class="bar" id="oh-bar" style="width:0%;display:block"></span><i style="left:50%"></i></span>
+      </div>
+      <div class="oh-pill" id="card-panic" title="恐慌指數＝收盤後 成交量 ÷ 委賣量（證交所 MI_5MINS）。≥75% 賣單幾乎全成交＝恐慌殺盤；<50% 賣壓還沒爆發">
+        <span class="k">😱 恐慌</span><span class="v" id="pa-val">—</span>
+        <span class="st" id="pa-st">≥75% 恐慌殺盤</span>
+        <span class="bar-wrap"><span class="bar" id="pa-bar" style="width:0%;display:block"></span><i style="left:75%"></i></span>
+      </div>
+      <span class="oh-date" id="oh-date"></span>
+    </div>
   </div>
   <!-- 週期按鈕＝多週期一覽（每個按鈕直接顯示方向） -->
   <div class="wv-tfbar">
@@ -388,23 +413,11 @@
       <details class="wv-card" id="wv-margin" open></details>
       <details class="wv-card" id="wv-chips" open></details>
       <details class="wv-card" id="wv-global"></details>
-      <div class="wv-card">
-        <div class="wv-h3">🔥 過熱／😱 恐慌 <span class="wv-dim">收盤後證交所 MI_5MINS 算的</span></div>
-        <div class="oh-grid oh-mini">
-          <div class="oh-card" id="card-overheating" title="過熱指數＝成交量 ÷ 委買量（收盤後算）。>50% 買盤被大量消化、追漲風險高；<30% 委買多但觀望">
-            <div class="oh-row"><span class="label">🔥 過熱指數</span><span class="value" id="oh-val">—</span><span class="oh-m">&gt;50% 追漲風險高｜&lt;30% 觀望</span></div>
-            <div class="bar-wrap"><div class="bar" id="oh-bar" style="width:0%"></div></div>
-          </div>
-          <div class="oh-card" id="card-panic" title="恐慌指數＝成交量 ÷ 委賣量（收盤後算）。>75% 賣單幾乎全成交、恐慌殺盤；<50% 賣壓還沒爆發">
-            <div class="oh-row"><span class="label">😱 恐慌指數</span><span class="value" id="pa-val">—</span><span class="oh-m">&gt;75% 恐慌殺盤｜&lt;50% 賣壓未爆發</span></div>
-            <div class="bar-wrap"><div class="bar" id="pa-bar" style="width:0%"></div></div>
-          </div>
-        </div>
-      </div>
     </div>
     <details class="wv-card wv-help"><summary>ⓘ 籌碼怎麼看</summary>
       <div class="wv-what">紅＝買超／偏多、綠＝賣超／偏空。「偏多／偏空」是現在的數值落在歷史的哪一段。
-        回測（加權 26 年＋台指期 2017 年起）：<b>只有台指期夜盤、前一晚費半對「隔天」有效 ✅</b>；外資現貨／期貨／選擇權、散戶小台、融資對 1～4 週都沒有預測力 △，只當描述。</div>
+        回測（加權 26 年＋台指期 2017 年起）：<b>只有台指期夜盤、前一晚費半對「隔天」有效 ✅</b>；外資現貨／期貨／選擇權、散戶小台、融資對 1～4 週都沒有預測力 △，只當描述。
+        <br>🔥 <b>過熱</b>／😱 <b>恐慌</b>（最上面）：收盤後證交所算的。過熱＝成交量 ÷ 委買量，≥50% 代表買單被大量吃掉、追漲風險高，&lt;30% 委買多但觀望；恐慌＝成交量 ÷ 委賣量，≥75% 代表賣單幾乎全成交、恐慌殺盤，&lt;50% 賣壓還沒爆發。條上的橘色小線＝警示線。</div>
     </details>
   </div>
 
@@ -612,37 +625,33 @@ function renderSuggestion(data) {
   ).join('');
 }
 
-function renderOverheating(oh, pa) {
-  // 過熱指數
-  const ohEl = document.getElementById('oh-val');
-  const ohBar = document.getElementById('oh-bar');
-  if (oh != null) {
-    const ohPct = (oh * 100).toFixed(1);
-    const ohAlert = oh >= 0.5;
-    ohEl.textContent = ohPct + '%';
-    ohEl.style.color = ohAlert ? '#fb923c' : '#94a3b8';
-    ohBar.style.width = Math.min(100, oh * 100) + '%';
-    ohBar.style.background = ohAlert ? '#fb923c' : '#5b8cff';
-  } else {
-    ohEl.textContent = '—';
-    ohEl.style.color = '#8b949e';
-    ohBar.style.width = '0%';
+// 過熱／恐慌（B91 放到最上面）：數字＋一句狀態（≥警示線＝橘、差 5 點內＝接近、低於下限＝另一句）＋跟前一天比
+function _ohOne(prefix, cardId, v, prev, warn, low, txt) {
+  const el = document.getElementById(prefix + '-val'), bar = document.getElementById(prefix + '-bar');
+  const st = document.getElementById(prefix + '-st'), card = document.getElementById(cardId);
+  card.classList.remove('alert', 'near');
+  if (v == null) {
+    el.textContent = '—'; el.style.color = '#8b949e'; bar.style.width = '0%'; st.textContent = '還沒有資料';
+    return;
   }
-  // 恐慌指數
-  const paEl = document.getElementById('pa-val');
-  const paBar = document.getElementById('pa-bar');
-  if (pa != null) {
-    const paPct = (pa * 100).toFixed(1);
-    const paAlert = pa >= 0.75;
-    paEl.textContent = paPct + '%';
-    paEl.style.color = paAlert ? '#fb923c' : '#94a3b8';
-    paBar.style.width = Math.min(100, pa * 100) + '%';
-    paBar.style.background = paAlert ? '#fb923c' : '#5b8cff';
-  } else {
-    paEl.textContent = '—';
-    paEl.style.color = '#8b949e';
-    paBar.style.width = '0%';
-  }
+  const alert = v >= warn, near = !alert && v >= warn - 0.05;
+  el.textContent = (v * 100).toFixed(1) + '%';
+  el.style.color = alert ? '#fb923c' : near ? '#fbbf24' : 'var(--text)';
+  bar.style.width = Math.min(100, v * 100) + '%';
+  bar.style.background = alert ? '#fb923c' : near ? '#fbbf24' : '#5b8cff';
+  if (alert) card.classList.add('alert'); else if (near) card.classList.add('near');
+  const chg = prev != null ? `，比前一天${v >= prev ? '高' : '低'} ${Math.abs((v - prev) * 100).toFixed(1)} 點` : '';
+  st.textContent = (alert ? txt.alert : near ? txt.near : v < low ? txt.low : '正常') + chg;
+}
+
+function renderOverheating(oh, pa, d) {
+  d = d || {};
+  _ohOne('oh', 'card-overheating', oh, d.overheating_prev, 0.5, 0.3,
+         { alert: '⚠ 追漲風險高', near: '接近過熱（50%）', low: '偏冷、觀望' });
+  _ohOne('pa', 'card-panic', pa, d.panic_prev, 0.75, 0.5,
+         { alert: '⚠ 恐慌殺盤', near: '接近恐慌（75%）', low: '賣壓還沒爆發' });
+  const dt = d.overheating_date || d.panic_date;
+  document.getElementById('oh-date').textContent = dt ? `${String(dt).slice(5).replace('-', '/')} 收盤後` : '';
 }
 
 function renderToday(data) {
@@ -652,7 +661,7 @@ function renderToday(data) {
   const ex = data.exhaustion ?? 0;
 
   // 過熱/恐慌指數（從 today 回應中取得）
-  renderOverheating(data.overheating ?? null, data.panic ?? null);
+  renderOverheating(data.overheating ?? null, data.panic ?? null, data);
 
   const dEl = document.getElementById('dir-val');
   dEl.textContent = (dir >= 0 ? '+' : '') + dir;

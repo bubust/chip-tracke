@@ -131,7 +131,7 @@ def test_save_flows_skips_other_date_and_backfill_marks_holidays(tmp_path, monke
             ds = d.isoformat()
             tot = {"bal_lots": 100, "amt_k": 5000, "buy_lots": 10, "buy_amt_k": 500, "sell_amt_k": 0, "repay_amt_k": 0}
             flows.update(twse={"2409": ("友達", 10, 0, 0, 100, 110, 0)}, twse_date=ds, tpex={"3105": ("穩懋", 0, 5, 0, 50, 45, 0)},
-                         tpex_date=ds, twse_total=tot, tpex_total=tot)
+                         tpex_date=ds, twse_total=tot, tpex_total=tot, twse_lim={"2409": 1000})     # 櫃買故意沒限額：也不能一直重抓
         return {}, {}
     monkeypatch.setattr(F, "fetch_margin_day", fake)
     monkeypatch.setattr(MM.time, "sleep", lambda s: None)
@@ -142,6 +142,22 @@ def test_save_flows_skips_other_date_and_backfill_marks_holidays(tmp_path, monke
     assert calls and all(d.weekday() == 1 for d in calls)
     with sqlite3.connect(str(tmp_path / "course.db")) as c2:
         assert c2.execute("SELECT COUNT(*) FROM margin_total").fetchone()[0] > 0
+        assert c2.execute("SELECT COUNT(*) FROM margin_limit WHERE sid='2409' AND lim=1000").fetchone()[0] > 0   # B91 融資限額
+
+
+def test_limit_parsers_and_use_rate(tmp_path, monkeypatch):
+    """B91 融資使用率＝融資餘額 ÷ 融資限額（證交所「次一營業日限額」、櫃買「資限額」；櫃買自己的「資使用率」同一個定義）"""
+    from cb.parser import parse_tpex_margin_limit, parse_twse_margin_limit
+    assert parse_twse_margin_limit(TW) == {"2409": 1886774, "3481": 1997299}
+    assert parse_tpex_margin_limit(TP) == {"3105": 105985}
+    assert abs(41109 / 105985 * 100 - 38.78) < 0.01                # 櫃買公布的資使用率 38.78%（它無條件捨去）
+    assert parse_twse_margin_limit({"stat": "很抱歉"}) == {} and parse_tpex_margin_limit({}) == {}
+    e = {"bal": 41109, "avg": 50.0, "close": 60.0, "conf": 1.0, "chg5": None, "adj": 0, "mkt": "tpex", "lim": 105985}
+    v = MM._view(e, None, "2026-10-30")
+    assert v["use_rate"] == 38.79 and v["lim"] == 105985
+    assert MM._view({**e, "lim": None}, None, "2026-10-30")["use_rate"] is None
+    assert v["err_ref"] == 0.5                                       # B91 可信度 → 誤差參考
+    assert MM._view({**e, "conf": 0.6}, None, "x")["err_ref"] == 11.0 and MM._view({**e, "conf": 0.1}, None, "x")["err_ref"] == 20.0
 
 
 def test_screen_end_to_end(tmp_path, monkeypatch):

@@ -12,7 +12,7 @@ margin_maint.py — 個股融資維持率（估計）＋「融資維持率偏低
   - 回補第一天的餘額不知道成本 → 用那天的均價；「可信度」＝現在的餘額裡、回補期間買進的比例
   - 收盤一天變動超過 14%（漲跌幅 10%）＝減資／分割／大額除權 → 成本跟著股價等比例調整（維持率不因此跳動）
 資料：TWSE rwd MI_MARGN（selectType=ALL）＋櫃買 margin/balance → chip_data/course.db margin_flow（chip_course.refresh
-每天順便存、backfill 回補半年）；股價：price_daily（官方日行情，不還原）
+每天順便存、backfill 回補一年）；股價：price_daily（官方日行情，不還原）
 大盤融資維持率（不是估的）：官方融資金額總數（證交所「信用交易統計」、櫃買 summary「融資金(仟元)」）→ margin_total；
   維持率＝Σ（各檔融資餘額 × 收盤）÷ 官方融資金額
 """
@@ -24,12 +24,17 @@ from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-MAINT_DAYS = 130          # 用幾個交易日估（約半年）
+MAINT_DAYS = 260          # 用幾個交易日估（約一年；B91 從半年改：research/b91/margin_check.py——可信度 ≥90% 的股票從 65% 變 88%，
+                          # 半年版跟一年版的估計維持率，可信度 <50% 的差中位數 9.5 點、8 成在 20 點內，≥90% 的幾乎 0）
 KEEP_DAYS = 400           # margin_flow 留多久（日曆天）
 LEV = {"twse": 0.6, "tpex": 0.6}
 CALIB_RANGE = (0.7, 1.2)  # 校正倍數超出這個範圍（資料缺很多）就不校正
 MKT_NAME = {"twse": "上市", "tpex": "上櫃"}
 CALL = 130.0              # 追繳線（%）
+# 可信度 → 估計維持率的誤差參考（點，8 成股票在這個範圍內；research/b91/margin_check.json：期初成本不知道造成的，
+# 同一檔用半年 vs 一年估的差距 80 分位：≥90% 0.3、70～90% 4.9、50～70% 11.0、<50% 20.4）
+CONF_ERR = ((0.9, 0.5), (0.7, 5.0), (0.5, 11.0), (0.0, 20.0))
+LIM_DAYS = 60             # 融資限額（融資使用率）回補幾個交易日（B91；走勢圖畫 60 天）
 LIMIT = 0.10              # 漲跌幅；隔 n 天的收盤變動超過 (1±10%)^n 再多 3% ＝減資／分割／除權（中間缺價的日子也算進去）
 _TW = timezone(timedelta(hours=8))
 
@@ -54,6 +59,10 @@ def save_flows(c, ds: str, flows: dict) -> dict:
                           [(ds, sid, mk, *v) for sid, v in rows.items()])
             c.execute("INSERT OR REPLACE INTO fetch_log VALUES ('mflow',?,?,?)", (ds, mk, len(rows)))
         n[mk] = len(rows) if ok else 0
+        lim = flows.get(mk + "_lim") or {}
+        if (lim or ok) and flows.get(mk + "_date") == ds:   # 流量存到了、限額欄位卻沒有 → 也記「抓過」（0 筆），不會一直重抓
+            c.executemany("INSERT OR REPLACE INTO margin_limit VALUES (?,?,?)", [(ds, sid, v) for sid, v in lim.items()])
+            c.execute("INSERT OR REPLACE INTO fetch_log VALUES ('mlimit',?,?,?)", (ds, mk, len(lim)))
         tot = flows.get(mk + "_total")
         if tot and flows.get(mk + "_date") == ds:
             c.execute("INSERT OR REPLACE INTO margin_total VALUES (?,?,?,?,?,?,?,?)",
@@ -70,11 +79,15 @@ def backfill(n_days: int = MAINT_DAYS, budget_s: Optional[float] = None, progres
     from cb.fetcher import client, fetch_margin_day
     t0 = time.time()
     today = datetime.now(_TW).date()
-    days = [d for d in CC._weekdays_back(n_days + 15) if d < today]
+    days = [d for d in CC._weekdays_back(max(n_days, LIM_DAYS) + 15) if d < today]
+    lim_from = days[min(LIM_DAYS, len(days)) - 1] if days else today          # days 新→舊
     stat = {"fetched": 0, "closed": 0, "failed": 0, "left": 0}
     with closing(CC.get_conn()) as c:
-        got = {(k, d, m) for k, d, m in c.execute("SELECT kind, date, market FROM fetch_log WHERE kind IN ('mflow','mtotal')")}
-        todo = [d for d in days if any((k, d.isoformat(), m) not in got for k in ("mflow", "mtotal") for m in ("twse", "tpex"))]
+        got = {(k, d, m) for k, d, m in c.execute("SELECT kind, date, market FROM fetch_log WHERE kind IN ('mflow','mtotal','mlimit')")}
+
+        def kinds(d):                                       # 融資限額只補最近 LIM_DAYS 天（B91 加的，舊資料沒有）
+            return ("mflow", "mtotal", "mlimit") if d >= lim_from else ("mflow", "mtotal")
+        todo = [d for d in days if any((k, d.isoformat(), m) not in got for k in kinds(d) for m in ("twse", "tpex"))]
         if todo:
             with client() as cl:
                 for k, d in enumerate(todo, 1):
@@ -90,13 +103,15 @@ def backfill(n_days: int = MAINT_DAYS, budget_s: Optional[float] = None, progres
                         if n[mk]:
                             stat["fetched"] += 1
                         elif mk + "_date" in flows:            # 有回應、沒資料＝休市
-                            c.executemany("INSERT OR REPLACE INTO fetch_log VALUES (?,?,?,0)", [(k, ds, mk) for k in ("mflow", "mtotal")])
+                            c.executemany("INSERT OR REPLACE INTO fetch_log VALUES (?,?,?,0)",
+                                          [(k, ds, mk) for k in ("mflow", "mtotal", "mlimit")])
                             stat["closed"] += 1
                         else:
                             stat["failed"] += 1
                     c.commit()
                     time.sleep(pause)
         c.execute("DELETE FROM margin_flow WHERE date<?", ((today - timedelta(days=KEEP_DAYS)).isoformat(),))
+        c.execute("DELETE FROM margin_limit WHERE date<?", ((today - timedelta(days=KEEP_DAYS)).isoformat(),))
         c.commit()
         stat["days"] = c.execute("SELECT COUNT(DISTINCT date) FROM margin_flow").fetchone()[0]
     if stat["fetched"]:                                     # 補到舊日子（例：官方總數）→ 同一個資料日的估計／校正要重算
@@ -106,7 +121,7 @@ def backfill(n_days: int = MAINT_DAYS, budget_s: Optional[float] = None, progres
     return stat
 
 
-def need_backfill(min_days: int = 100) -> bool:
+def need_backfill(min_days: int = int(MAINT_DAYS * 0.9)) -> bool:
     import chip_course as CC
     try:
         with closing(CC.get_conn()) as c:
@@ -226,8 +241,10 @@ def _calib_from(est: dict, asof: str) -> dict:
 
 
 def _compute_all(n_days: int = MAINT_DAYS) -> tuple:
+    """全部股票估一次（B91：改成照代號串流、一檔算完就丟——一年資料整包放記憶體尖峰 156MB，正式站只有 512MB）"""
     import chip_course as CC
     import price_cache as PC
+    out = {}
     with closing(CC.get_conn()) as c:
         dates = [r[0] for r in c.execute("SELECT DISTINCT date FROM margin_flow ORDER BY date DESC LIMIT ?", (n_days,))]
         if not dates:
@@ -236,24 +253,26 @@ def _compute_all(n_days: int = MAINT_DAYS) -> tuple:
         v = _ALL.get("v")
         if v and v[0] == asof and v[1] == n_days:
             return asof, v[2]
-        keep = {r[0] for r in c.execute("SELECT sid FROM margin_flow WHERE date=? AND bal>0", (asof,))}
-        series: dict = {}
-        meta: dict = {}
-        for d, sid, mk, nm, b, s, r, pv, bl, off in c.execute(
-                "SELECT date, sid, mkt, name, buy, sell, repay, prev, bal, off FROM margin_flow WHERE date>=? ORDER BY sid, date", (lo,)):
-            if sid in keep:
-                series.setdefault(sid, []).append((d, b, s, r, pv, bl, off))
-                meta[sid] = (mk, nm)
-    out = {}
-    with closing(sqlite3.connect(str(PC.DB_PATH), timeout=10.0)) as pc:
         lo8 = (datetime.strptime(lo, "%Y-%m-%d") - timedelta(days=7)).strftime("%Y%m%d")
-        for sid, rows in series.items():
-            if rows[-1][0] != asof:
-                continue
-            e = estimate(rows, _price_rows(pc, sid, lo8))
-            if e:
-                e["mkt"], e["name"] = meta[sid]
-                out[sid] = e
+        with closing(sqlite3.connect(str(PC.DB_PATH), timeout=10.0)) as pc:
+            def flush(sid, rows, meta):
+                if rows and rows[-1][0] == asof:
+                    e = estimate(rows, _price_rows(pc, sid, lo8))
+                    if e:
+                        e["mkt"], e["name"] = meta
+                        out[sid] = e
+            cur, buf, meta = None, [], None
+            for d, sid, mk, nm, b, s, r, pv, bl, off in c.execute(
+                    "SELECT date, sid, mkt, name, buy, sell, repay, prev, bal, off FROM margin_flow "
+                    "WHERE date>=? AND sid IN (SELECT sid FROM margin_flow WHERE date=? AND bal>0) ORDER BY sid, date", (lo, asof)):
+                if sid != cur:
+                    if cur is not None:
+                        flush(cur, buf, meta)
+                    cur, buf = sid, []
+                buf.append((d, b, s, r, pv, bl, off))
+                meta = (mk, nm)
+            if cur is not None:
+                flush(cur, buf, meta)
     _ALL["v"] = (asof, n_days, out, _calib_from(out, asof))
     return asof, out
 
@@ -296,7 +315,7 @@ def screen(get_df, names: Optional[dict], p: dict) -> list:
 
 
 def backfill_and_publish(params: Optional[dict] = None) -> dict:
-    """啟動時融資流量不夠 → 回補半年，補完馬上算清單放進策略篩選（不用等 18:00 掃描）"""
+    """啟動時融資流量不夠 → 回補一年，補完馬上算清單放進策略篩選（不用等 18:00 掃描）"""
     stat = backfill()
     try:
         import chip_course as CC
@@ -343,8 +362,12 @@ def _load(sids: list) -> tuple:
             lo = dates[-1]
             series: dict = {}
             meta: dict = {}
+            lims: dict = {}
             for k in range(0, len(need), 400):
                 part = need[k:k + 400]
+                for d, sid, lim in c.execute(f"SELECT date, sid, lim FROM margin_limit WHERE date>=? AND sid IN ({','.join('?' * len(part))})",
+                                             (lo, *part)):
+                    lims.setdefault(sid, {})[d] = lim
                 for d, sid, mk, nm, b, s, r, pv, bl, off in c.execute(
                         "SELECT date, sid, mkt, name, buy, sell, repay, prev, bal, off FROM margin_flow "
                         f"WHERE date>=? AND sid IN ({','.join('?' * len(part))}) ORDER BY sid, date", (lo, *part)):
@@ -357,6 +380,8 @@ def _load(sids: list) -> tuple:
                 e = estimate(rows, _price_rows(pc, sid, lo8), track=True) if rows and rows[-1][0] == asof else None
                 if e:
                     e["mkt"], e["name"] = meta[sid]
+                    e["lims"] = lims.get(sid) or {}
+                    e["lim"] = e["lims"].get(asof)
                 _CACHE[(asof, sid)] = e
         if len(_CACHE) > 6000:                              # 換資料日後舊的清掉
             for k in [k for k in _CACHE if k[0] != asof]:
@@ -370,10 +395,13 @@ def _view(e: dict, close: Optional[float], asof: str, k: float = 1.0) -> dict:
     call = CALL / 100 * e["avg"] * lev * k
     m = maint_of(close, e["avg"], e["mkt"], k)
     level = "call" if m < CALL else "low" if m < 140 else "warn" if m < 150 else "ok"
+    lim = e.get("lim")
+    err = next(v for c_, v in CONF_ERR if e["conf"] >= c_)
+    use = round(e["bal"] / lim * 100, 2) if lim else None
     return {"maint": round(m, 1), "cost": round(e["avg"], 2), "call_price": round(call, 2), "to_call_pct": round((call / close - 1) * 100, 1),
             "bal": round(e["bal"]), "chg5": None if e["chg5"] is None else round(e["chg5"]), "conf": round(e["conf"] * 100),
             "market": MKT_NAME.get(e["mkt"], ""), "lev": lev, "calib": k, "date": asof, "close": round(close, 2), "level": level,
-            "adj": e["adj"]}
+            "adj": e["adj"], "lim": round(lim) if lim else None, "use_rate": use, "err_ref": err}
 
 
 def estimate_many(sids: list, closes: Optional[dict] = None) -> dict:
@@ -392,7 +420,9 @@ def estimate_one(sid: str, close: Optional[float] = None, n_hist: int = 60) -> O
     k = calib(asof).get(e["mkt"], 1.0)
     out = _view(e, close, asof, k)
     lev = LEV.get(e["mkt"], 0.6) * k                        # 走勢用今天的校正倍數（每天差不多，實測 0.85～0.89）
-    out["series"] = [{"date": d, "maint": round(cl / (avg * lev) * 100, 1), "cost": round(avg, 2), "close": cl, "bal": round(bl)}
+    lims = e.get("lims") or {}
+    out["series"] = [{"date": d, "maint": round(cl / (avg * lev) * 100, 1), "cost": round(avg, 2), "close": cl, "bal": round(bl),
+                      "use": round(bl / lims[d] * 100, 2) if lims.get(d) else None}
                      for d, avg, cl, bl in e.get("series", [])[-n_hist:] if avg and cl]
     return out
 

@@ -1,17 +1,24 @@
 """
 tail_track.py — 🎯 尾盤追蹤（2026-10-20）
 
-追蹤「13:10 假跌破：收盤前還成立」清單裡的股票之後的走勢（尾盤進場）：
-- 每天 13:10 清單出來時自動加入（fbd_live 呼叫 add_from_fbd）；也可以手動新增、貼上 Telegram 訊息匯入、編輯、刪除
-- 進場價＝13:10 的價格（可改）；停損＝進場價跌 8%（可調）：進場之後任一天盤中最低觸到就移到「停損區」，
+追蹤「13:15 假跌破還成立」清單裡的股票之後的走勢（尾盤進場；B91 從 13:10 改 13:15）：
+- 每天 13:15 清單出來時自動加入（fbd_live 呼叫 add_from_fbd）；也可以手動新增、貼上 Telegram 訊息匯入、編輯、刪除
+- B91：日線低不破低、高過高（tail_market.struct_check）才「計入」，不合格的也記錄（struct_ok=0，分頁收在「不計入」）；
+  13:15 算的結構＝當時的進場決定，存進去就固定；收盤後另算 struct_eod（全天日 K）只做對照
+- B91：每個進場日存 13:15 大盤盤面（tail_mkt：快照、特徵、研究判斷）；舊資料／13:15 抓不到的用證交所每 5 秒指數補算
+- 進場價＝13:15 的價格（可改）；停損＝進場價跌 8%（可調）：進場之後任一天盤中最低觸到就移到「停損區」，
   停損價＝停損線（那天開盤就跳空跌破 → 用開盤價），跟網站回測「盤中觸價 8%」同一套
 - 其他留在「觀察區」；手動移區之後不再自動移（zone_manual）
 資料：chip_data/tail_track.db；股價＝price_daily 快取＋盤中鉅亨／Yahoo 即時價
 """
 from __future__ import annotations
 
+import json
+import logging
 import re
 import sqlite3
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -20,6 +27,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 DB_PATH = Path(__file__).parent / "chip_data" / "tail_track.db"
 TW = timezone(timedelta(hours=8))
 DEFAULT_STOP = 8.0
@@ -61,7 +69,18 @@ def init_db(db_path=None, seed: bool = True):
             UNIQUE (stock_id, entry_date)
         );
         CREATE TABLE IF NOT EXISTS tail_meta (key TEXT PRIMARY KEY, value TEXT);
+        CREATE TABLE IF NOT EXISTS tail_mkt (
+            date TEXT PRIMARY KEY,             -- YYYY-MM-DD
+            snap TEXT, feats TEXT,             -- 13:15 快照／tail_market 特徵（JSON）
+            verdict TEXT,                      -- good／bad／neutral／nodata
+            src TEXT, checked_at TEXT,         -- live（13:15 當下）／補算
+            fails INTEGER DEFAULT 0            -- 補算失敗次數（同一天最多 MKT_MAX_FAILS 次）
+        );
     """)
+    have = {r[1] for r in c.execute("PRAGMA table_info(tail_track)")}
+    for col, typ in (("struct_ok", "INTEGER"), ("struct", "TEXT"), ("struct_eod", "INTEGER"), ("struct_eod_info", "TEXT")):
+        if col not in have:                                  # B91：舊表加欄位（SQLite ADD COLUMN 只改 schema）
+            c.execute(f"ALTER TABLE tail_track ADD COLUMN {col} {typ}")
     if seed and not c.execute("SELECT 1 FROM tail_meta WHERE key='seeded'").fetchone():
         for sid, name, px, ma10 in _SEED:
             c.execute("INSERT OR IGNORE INTO tail_track (stock_id, name, entry_date, entry_price, ma10, broke_date, source) "
@@ -89,25 +108,52 @@ def _iso(d: str) -> Optional[str]:
 
 
 def add(stock_id: str, entry_price: float, entry_date: str, name: str = "", ma10=None, broke_date=None,
-        source: str = "手動", note: str = "", db_path=None) -> bool:
+        source: str = "手動", note: str = "", db_path=None, struct: Optional[dict] = None) -> bool:
+    """struct：13:15 算好的日線結構（fbd_live）；沒給＝NULL，背景補算"""
     c = get_conn(db_path)
-    cur = c.execute("INSERT OR IGNORE INTO tail_track (stock_id, name, entry_date, entry_price, ma10, broke_date, source, note) "
-                    "VALUES (?,?,?,?,?,?,?,?)", (stock_id, name, entry_date, entry_price, ma10, broke_date, source, note or None))
+    sok = None if struct is None else int(bool(struct.get("ok")))
+    cur = c.execute("INSERT OR IGNORE INTO tail_track (stock_id, name, entry_date, entry_price, ma10, broke_date, source, note, "
+                    "struct_ok, struct) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (stock_id, name, entry_date, entry_price, ma10, broke_date, source, note or None, sok,
+                     None if struct is None else json.dumps(struct, ensure_ascii=False)))
     c.commit()
     c.close()
     return cur.rowcount > 0
 
 
-def add_from_fbd(day: str, items: list, db_path=None) -> int:
-    """fbd_live 13:10 清單 → 自動加入（day＝YYYYMMDD；同一天同一檔不重複）"""
+def save_mkt(date_iso: str, mkt: dict, src: str = "live", db_path=None, overwrite: bool = False) -> bool:
+    """13:15 大盤盤面存進 tail_mkt（快照或特徵沒有＝不存，之後補算）；live 的不會被補算蓋掉"""
+    if not mkt or not mkt.get("feats"):
+        return False
+    c = get_conn(db_path)
+    try:
+        old = c.execute("SELECT src, feats FROM tail_mkt WHERE date=?", (date_iso,)).fetchone()
+        if old and old["feats"] and not overwrite:
+            return False
+        c.execute("INSERT OR REPLACE INTO tail_mkt (date, snap, feats, verdict, src, checked_at, fails) VALUES (?,?,?,?,?,?,0)",
+                  (date_iso, json.dumps(mkt.get("snap"), ensure_ascii=False), json.dumps(mkt["feats"], ensure_ascii=False),
+                   ((mkt.get("verdict") or {}).get("label")), src, mkt.get("checked_at")))
+        c.commit()
+        return True
+    finally:
+        c.close()
+
+
+def add_from_fbd(day: str, items: list, db_path=None, mkt: Optional[dict] = None) -> int:
+    """fbd_live 13:15 清單 → 自動加入（day＝YYYYMMDD；同一天同一檔不重複）；items 每檔帶 struct（13:15 算的，存進去就固定）；
+    mkt＝fbd_live.market_snapshot 的結果（存 tail_mkt）"""
     n = 0
     for x in items or []:
         try:
             if add(x["stock_id"], float(x["price"]), _iso(day), x.get("name") or "", x.get("ma10"),
-                   _iso(x.get("broke_date")), "13:10 假跌破", db_path=db_path):
+                   _iso(x.get("broke_date")), "13:15 假跌破", db_path=db_path, struct=x.get("struct")):
                 n += 1
         except Exception:
             pass
+    try:
+        save_mkt(_iso(day), mkt, "live", db_path=db_path, overwrite=True)
+    except Exception as e:                                   # noqa: BLE001
+        log.warning(f"[tail] 存大盤失敗：{e}")
     return n
 
 
@@ -131,6 +177,180 @@ def parse_message(text: str) -> list:
                     "ma10": float(ma.group(1)) if ma else None,
                     "broke_md": (int(br.group(1)), int(br.group(2))) if br else None})
     return out
+
+
+# ── 補算（B91）：日線結構、收盤後結構、13:15 大盤 ─────────────────────────────────
+MKT_MAX_FAILS = 5
+EOD_AFTER = (14, 30)                                         # 收盤後結構：14:30 以後才算當天的
+_BF_LOCK = threading.Lock()
+_BF_STATE = {"running": False, "last": None, "result": None}
+
+
+def _hl_until(sid: str, date_iso: str, n: int = 260) -> tuple:
+    """price_daily 到 date_iso（含）的最近 n 根 → (日期[], 高[], 低[])（舊→新）"""
+    from chip_tracker_v2 import DB_PATH as PDB
+    with sqlite3.connect(str(PDB), timeout=5.0) as pc:
+        rows = pc.execute("SELECT date, high, low FROM price_daily WHERE stock_id=? AND date<=? AND close>0 "
+                          "ORDER BY date DESC LIMIT ?", (sid, date_iso.replace("-", ""), n)).fetchall()
+    rows = rows[::-1]
+    return [_iso(r[0]) for r in rows], [float(r[1] or 0) for r in rows], [float(r[2] or 0) for r in rows]
+
+
+def struct_at(sid: str, date_iso: str, live_bar: Optional[dict] = None) -> Optional[dict]:
+    """進場那天的日線結構：price_daily 有那天就用全天日 K；那天還沒進 price_daily 而且有 live_bar（今天盤中）→ 接在後面；都沒有＝None"""
+    import tail_market as TM
+    ds, hs, ls = _hl_until(sid, date_iso)
+    if ds and ds[-1] == date_iso:
+        return TM.struct_check(hs, ls)
+    if live_bar and live_bar.get("high") and live_bar.get("low") and len(ds) >= 20:
+        return TM.struct_check(hs + [float(live_bar["high"])], ls + [float(live_bar["low"])])
+    return None
+
+
+def mkt_backfill_one(date_iso: str, get=None) -> Optional[dict]:
+    """證交所 MI_5MINS_INDEX 那天 13:15 值＋idx_daily（昨天以前）＋費半 → {snap, feats, verdict}；抓不到回 None"""
+    import httpx
+    import tail_market as TM
+    from wave import data as WD
+    d8 = date_iso.replace("-", "")
+    if get is None:
+        def get(u, p):
+            return httpx.get(u, params=p, headers={"User-Agent": "Mozilla/5.0"}, timeout=40, verify=False).json()
+    j = get("https://www.twse.com.tw/rwd/zh/TAIEX/MI_5MINS_INDEX", {"date": d8, "response": "json"})
+    snap = TM.snap_from_5sec((j or {}).get("data") or [])
+    if not snap:
+        return None
+    tw = WD.load_idx("TWII")
+    tw = tw[tw["date"] < date_iso]
+    sox = WD.load_idx("SOX")
+    feats = TM.market_features(tw["h"].to_numpy(float), tw["l"].to_numpy(float), tw["c"].to_numpy(float), snap,
+                               TM.sox_change(sox["date"].tolist(), sox["c"].tolist(), date_iso))
+    if not feats:
+        return None
+    return {"snap": snap, "feats": feats, "verdict": TM.verdict(feats), "checked_at": "13:15"}
+
+
+def backfill(db_path=None, now: Optional[datetime] = None, mkt_fn=None, pause: float = 2.0, live_fn=None) -> dict:
+    """struct_ok 沒算的、收盤後結構（14:30 後）、tail_mkt 缺的日期 → 補；一次只跑一個（non-blocking 鎖）"""
+    if not _BF_LOCK.acquire(blocking=False):
+        return {"skipped": "running"}
+    _BF_STATE["running"] = True
+    now = now or datetime.now(TW)
+    today = now.date().isoformat()
+    out = {"struct": 0, "eod": 0, "mkt": 0, "mkt_fail": 0}
+    try:
+        c = get_conn(db_path)
+        rows = [dict(r) for r in c.execute("SELECT id, stock_id, entry_date, struct_ok, struct_eod FROM tail_track")]
+        for r in rows:
+            try:
+                if r["struct_ok"] is None:
+                    lb = live_fn(r["stock_id"]) if (live_fn and r["entry_date"] == today) else None
+                    st = struct_at(r["stock_id"], r["entry_date"], lb)
+                    if st is not None:
+                        c.execute("UPDATE tail_track SET struct_ok=?, struct=? WHERE id=?",
+                                  (int(bool(st["ok"])), json.dumps({**st, "src": "補算"}, ensure_ascii=False), r["id"]))
+                        out["struct"] += 1
+                eod_ready = r["entry_date"] < today or (now.hour, now.minute) >= EOD_AFTER
+                if r["struct_eod"] is None and eod_ready:
+                    ds, hs, ls = _hl_until(r["stock_id"], r["entry_date"])
+                    if ds and ds[-1] == r["entry_date"]:
+                        import tail_market as TM
+                        st = TM.struct_check(hs, ls)
+                        c.execute("UPDATE tail_track SET struct_eod=?, struct_eod_info=? WHERE id=?",
+                                  (int(bool(st["ok"])), json.dumps(st, ensure_ascii=False), r["id"]))
+                        out["eod"] += 1
+            except Exception as e:                           # noqa: BLE001
+                log.warning(f"[tail] 結構補算 {r['stock_id']} {r['entry_date']}：{e}")
+        c.commit()
+        have = {x["date"]: x for x in c.execute("SELECT date, feats, fails FROM tail_mkt")}
+        need = sorted({r["entry_date"] for r in rows
+                       if (r["entry_date"] < today or (now.hour, now.minute) >= (14, 0))
+                       and not (have.get(r["entry_date"]) and have[r["entry_date"]]["feats"])
+                       and (have.get(r["entry_date"]) or {"fails": 0})["fails"] < MKT_MAX_FAILS})
+        c.close()
+        for k, d in enumerate(need):
+            try:
+                m = (mkt_fn or mkt_backfill_one)(d)
+            except Exception as e:                           # noqa: BLE001
+                log.warning(f"[tail] 大盤補算 {d}：{type(e).__name__}: {e}")
+                m = None
+            if m and save_mkt(d, m, "補算", db_path=db_path):
+                out["mkt"] += 1
+            elif not m:
+                c2 = get_conn(db_path)
+                c2.execute("INSERT INTO tail_mkt (date, fails) VALUES (?, 1) ON CONFLICT(date) DO UPDATE SET fails=fails+1", (d,))
+                c2.commit()
+                c2.close()
+                out["mkt_fail"] += 1
+            if k < len(need) - 1:
+                time.sleep(pause)
+    finally:
+        _BF_STATE.update(running=False, last=datetime.now(TW).strftime("%m/%d %H:%M"), result=out)
+        _BF_LOCK.release()
+    return out
+
+
+def ensure_backfill(db_path=None) -> bool:
+    """有缺就開背景執行緒補（list 時呼叫；已經在跑就不重開）"""
+    if _BF_STATE["running"]:
+        return False
+    try:
+        c = get_conn(db_path)
+        today = datetime.now(TW).date().isoformat()
+        n1 = c.execute("SELECT COUNT(*) FROM tail_track WHERE struct_ok IS NULL OR (struct_eod IS NULL AND entry_date<?)",
+                       (today,)).fetchone()[0]
+        n2 = c.execute("SELECT COUNT(DISTINCT t.entry_date) FROM tail_track t LEFT JOIN tail_mkt m ON m.date=t.entry_date "
+                       "WHERE t.entry_date<? AND (m.feats IS NULL) AND COALESCE(m.fails, 0)<?", (today, MKT_MAX_FAILS)).fetchone()[0]
+        c.close()
+    except Exception:                                        # noqa: BLE001
+        return False
+    if not n1 and not n2:
+        return False
+
+    def run():
+        try:
+            from server import _rt_quote_sync
+
+            def lf(sid):                                     # 今天盤中手動加的：即時開高低（報價日期要是今天）
+                q = _rt_quote_sync(sid) or {}
+                ok = q.get("high") and q.get("low") and str(q.get("date") or "") == datetime.now(TW).strftime("%Y%m%d")
+                return {"high": q.get("high"), "low": q.get("low")} if ok else None
+        except Exception:                                    # noqa: BLE001
+            lf = None
+        try:
+            r = backfill(db_path, live_fn=lf)
+            log.info(f"[tail] 補算 {r}")
+        except Exception as e:                               # noqa: BLE001
+            log.warning(f"[tail] 補算失敗：{e}")
+    threading.Thread(target=run, daemon=True, name="tail-backfill").start()
+    return True
+
+
+def _mkt_view(r) -> dict:
+    import tail_market as TM
+    try:
+        f = json.loads(r["feats"]) if r["feats"] else None
+    except Exception:                                        # noqa: BLE001
+        f = None
+    lab = TM.verdict(f)["label"] if f else "nodata"          # 判斷用現在的研究結果重算（研究更新後舊資料跟著換）
+    return {"label": lab, "text": TM.LABEL_TEXT[lab], "desc": TM.describe(f) if f else "大盤資料缺",
+            "chg": f.get("chg") if f else None, "M2": f.get("M2") if f else None, "M4": f.get("M4") if f else None,
+            "M5": f.get("M5") if f else None, "src": r["src"], "feats": f}
+
+
+def research_summary() -> dict:
+    """前端「🔬 大盤盤勢研究」卡用的摘要（tail_research.json）"""
+    import tail_market as TM
+    r = TM.load_research()
+    if not r:
+        return {}
+    fams = {}
+    for fk, fv in (r.get("families") or {}).items():
+        fams[fk] = {"name": fv.get("name"), "pick": fv.get("pick"),
+                    "buckets": {b: {"oos": x.get("oos"), "is": x.get("is"), "rand_oos": x.get("rand_oos")} for b, x in (fv.get("buckets") or {}).items()}}
+    return {"generated": r.get("generated"), "is": r.get("is"), "oos": r.get("oos"), "base": r.get("base"), "q1": r.get("q1"),
+            "rules": r.get("rules"), "families": fams, "recent": r.get("recent"), "notes": r.get("notes"),
+            "conclusion": r.get("conclusion"), "eod_check": r.get("eod_check")}
 
 
 # ── 走勢計算 ─────────────────────────────────────────────────────────────────
@@ -208,7 +428,7 @@ def _auto_zone(c, r: dict) -> dict:
     return r
 
 
-async def build_list(db_path=None, live_fn=None) -> dict:
+async def build_list(db_path=None, live_fn=None, bf: bool = True) -> dict:
     c = get_conn(db_path)
     rows = [dict(x) for x in c.execute("SELECT * FROM tail_track ORDER BY entry_date DESC, stock_id")]
     pct = stop_pct(c)
@@ -227,6 +447,7 @@ async def build_list(db_path=None, live_fn=None) -> dict:
                 live = await live_fn(sids)
         except Exception:
             live = {}
+    mk = {x["date"]: _mkt_view(x) for x in c.execute("SELECT * FROM tail_mkt")}
     out = []
     for r in rows:
         q = live.get(r["stock_id"])
@@ -236,10 +457,19 @@ async def build_list(db_path=None, live_fn=None) -> dict:
         x["ma10_now"] = _ma10(r["stock_id"], x["price"], x["price_date"])
         x["above_ma10"] = (x["price"] >= x["ma10_now"]) if x["price"] and x["ma10_now"] else None
         x.pop("hit", None)
+        for k in ("struct", "struct_eod_info"):
+            try:
+                x[k] = json.loads(x[k]) if x.get(k) else None
+            except Exception:                                # noqa: BLE001
+                x[k] = None
+        m = mk.get(r["entry_date"])
+        x["mkt"] = {k: v for k, v in m.items() if k != "feats"} if m else {"label": "nodata", "text": "大盤資料缺", "desc": "大盤資料缺"}
         out.append(x)
     c.commit()
     c.close()
-    return {"rows": out, "stop_pct": pct}
+    if bf:
+        ensure_backfill(db_path)
+    return {"rows": out, "stop_pct": pct, "research": research_summary(), "backfill": dict(_BF_STATE)}
 
 
 # ── API ──────────────────────────────────────────────────────────────────────
@@ -331,6 +561,8 @@ def api_edit(tid: int, e: Edit):
         sets += ["zone=?", "zone_manual=1"]; vals += [e.zone]
         if e.zone == "watch":
             sets += ["stop_date=NULL", "stop_price=NULL"]
+    if e.entry_date:
+        sets += ["struct_ok=NULL", "struct=NULL", "struct_eod=NULL", "struct_eod_info=NULL"]   # 改進場日 → 結構重算
     if (e.entry_price is not None or e.entry_date) and e.zone is None:
         # 改了進場價／日期 → 重新判斷停損（清掉舊的自動停損）
         sets += ["zone=CASE WHEN zone_manual=1 THEN zone ELSE 'watch' END",

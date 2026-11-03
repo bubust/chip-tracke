@@ -79,6 +79,7 @@ def get_conn():
                                                PRIMARY KEY (date, sid));                                   -- 融資／融券餘額（張）
         CREATE TABLE IF NOT EXISTS margin_flow (date TEXT, sid TEXT, mkt TEXT, name TEXT, buy REAL, sell REAL, repay REAL,
                                                 prev REAL, bal REAL, off REAL, PRIMARY KEY (date, sid));   -- 融資買賣／餘額（張，維持率估計）
+        CREATE TABLE IF NOT EXISTS margin_limit (date TEXT, sid TEXT, lim REAL, PRIMARY KEY (date, sid));   -- 融資限額（張，融資使用率用，B91）
         CREATE TABLE IF NOT EXISTS margin_total (date TEXT, mkt TEXT, bal_lots REAL, amt_k REAL, buy_lots REAL, buy_amt_k REAL,
                                                  sell_amt_k REAL, repay_amt_k REAL, PRIMARY KEY (date, mkt));  -- 官方融資金額總數（仟元）
         CREATE TABLE IF NOT EXISTS fetch_log (kind TEXT, date TEXT, market TEXT, rows INTEGER,
@@ -301,10 +302,11 @@ def refresh(progress=None) -> dict:
                 msgs.append(f"集保 {dd}")
         except Exception as e:
             msgs.append(f"集保：{type(e).__name__}")
-    try:                                                    # 個股融資維持率：補漏掉的日子（第一次回補半年最多 5 分鐘，之後幾乎不用抓）
+    try:                                                    # 個股融資維持率：補漏掉的日子（第一次回補一年分幾次、每次最多 5 分鐘，之後幾乎不用抓）
         st = MM.backfill(budget_s=300, progress=progress)
         if st.get("failed") or st.get("left"):
             msgs.append(f"融資流量 缺{st.get('failed', 0)}／剩{st.get('left', 0)}天")
+        MM.calib()                                          # B91：先把全市場估計＋校正算好（一年資料約 20 秒），網頁打開不用等
     except Exception as e:      # noqa: BLE001
         msgs.append(f"融資流量：{type(e).__name__}")
     c.execute("INSERT OR REPLACE INTO course_status VALUES ('last_refresh', ?)",

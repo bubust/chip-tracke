@@ -66,10 +66,10 @@ def fetch_short_day(c: httpx.Client, d: date) -> dict:
 
 def fetch_margin_day(c: httpx.Client, d: date, flows: dict = None) -> tuple:
     """(上市 {sid: (融資, 融券)}, 上櫃 {sid: (融資, 融券)})（張），抓不到的市場回空 dict
-    flows：給 dict 就順便放 {"twse"／"tpex": parse_*_margin_flow 的結果, "*_date", "*_total": 官方融資金額總數}
+    flows：給 dict 就順便放 {"twse"／"tpex": parse_*_margin_flow 的結果, "*_date", "*_total": 官方融資金額總數, "*_lim": 融資限額}
     （個股／大盤融資維持率用，同一份回應不重抓）"""
     from .parser import (parse_twse_margin_both, parse_tpex_margin_both, parse_twse_margin_flow, parse_tpex_margin_flow,
-                         parse_twse_margin_total, parse_tpex_margin_total, ymd)
+                         parse_twse_margin_total, parse_tpex_margin_total, parse_twse_margin_limit, parse_tpex_margin_limit, ymd)
     tw, tp = {}, {}
     try:
         r = c.get("https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN",
@@ -79,6 +79,7 @@ def fetch_margin_day(c: httpx.Client, d: date, flows: dict = None) -> tuple:
         if flows is not None:
             flows["twse"], flows["twse_date"] = parse_twse_margin_flow(j), ymd(j.get("date"))
             flows["twse_total"] = parse_twse_margin_total(j)
+            flows["twse_lim"] = parse_twse_margin_limit(j)
     except Exception:
         pass
     try:
@@ -90,6 +91,7 @@ def fetch_margin_day(c: httpx.Client, d: date, flows: dict = None) -> tuple:
             flows["tpex"] = parse_tpex_margin_flow(j)
             flows["tpex_date"] = ymd(next((t.get("date") for t in j.get("tables") or [] if t.get("date")), None))
             flows["tpex_total"] = parse_tpex_margin_total(j)
+            flows["tpex_lim"] = parse_tpex_margin_limit(j)
     except Exception:
         pass
     return tw, tp

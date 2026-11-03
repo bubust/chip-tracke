@@ -1037,7 +1037,7 @@ async def lifespan(app: FastAPI):
         _POS_SCHED = _pos_watch
     except Exception as _pwe:
         import logging; logging.getLogger(__name__).warning(f"[positions_scheduler] {_pwe}")
-    # 🩸 個股融資維持率（margin_maint.py）：重開 3 分鐘後補齊半年的融資流量（第一次約 5～7 分鐘，之後幾秒），
+    # 🩸 個股融資維持率（margin_maint.py）：重開 3 分鐘後補齊一年的融資流量（第一次約 10～15 分鐘，之後幾秒；B91 從半年改一年），
     # 補完馬上算「融資維持率偏低」清單放進策略篩選（不用等 18:00 掃描）
     try:
         def _maint_init():

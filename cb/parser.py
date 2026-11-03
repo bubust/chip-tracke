@@ -208,6 +208,38 @@ def parse_tpex_margin_flow(j: dict) -> dict:
     return out
 
 
+def parse_twse_margin_limit(j: dict) -> dict:
+    """TWSE rwd MI_MARGN（selectType=ALL）→ {sid: 融資限額（張，「次一營業日限額」）}；融資使用率＝今日餘額 ÷ 限額（B91）"""
+    out = {}
+    for t in (j or {}).get("tables") or []:
+        f = t.get("fields") or []
+        if len(f) < 8 or "代號" not in f[0] or f[6] != "今日餘額" or "限額" not in str(f[7]):
+            continue
+        g = [(x.get("title"), x.get("span")) for x in (t.get("groups") or [])]
+        if g and g[:2] != [("股票", 2), ("融資", 6)]:
+            continue
+        for r in t.get("data") or []:
+            v = num(r[7]) if len(r) > 7 else None
+            if v is not None and v > 0:
+                out[str(r[0]).strip()] = v
+    return out
+
+
+def parse_tpex_margin_limit(j: dict) -> dict:
+    """櫃買 /www/zh-tw/margin/balance → {sid: 資限額（張）}（櫃買自己也有「資使用率(%)」＝資餘額 ÷ 資限額，同一個定義）"""
+    out = {}
+    for t in (j or {}).get("tables") or []:
+        f = t.get("fields") or []
+        if "資限額" not in f:
+            continue
+        i = f.index("資限額")
+        for r in t.get("data") or []:
+            v = num(r[i]) if len(r) > i else None
+            if v is not None and v > 0:
+                out[str(r[0]).strip()] = v
+    return out
+
+
 def parse_twse_margin_total(j: dict) -> Optional[dict]:
     """TWSE MI_MARGN 第一張「信用交易統計」→ {bal_lots, amt_k（融資金額今日餘額，仟元）, buy_lots, buy_amt_k, sell_amt_k, repay_amt_k}"""
     for t in (j or {}).get("tables") or []:

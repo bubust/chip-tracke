@@ -19,34 +19,24 @@ router = APIRouter()
 
 
 def _get_overheating_today() -> dict:
-    """取今日（或最近一筆）過熱/恐慌指數"""
-    today = date.today().strftime("%Y-%m-%d")
+    """取今日（或最近一筆）過熱/恐慌指數，附日期和前一筆（B91：放到總經頁最上面，要看得出是哪天、比前一天高還低）"""
+    out = {"overheating": None, "panic": None, "overheating_date": None, "panic_date": None,
+           "overheating_prev": None, "panic_prev": None}
     try:
         with db() as conn:
-            oh_row = conn.execute(
-                "SELECT value FROM market_daily WHERE series='OVERHEATING_INDEX' AND date=? LIMIT 1",
-                (today,)
-            ).fetchone()
-            pa_row = conn.execute(
-                "SELECT value FROM market_daily WHERE series='PANIC_INDEX' AND date=? LIMIT 1",
-                (today,)
-            ).fetchone()
-            # 若今日無資料，取最近一筆
-            if oh_row is None:
-                oh_row = conn.execute(
-                    "SELECT value FROM market_daily WHERE series='OVERHEATING_INDEX' ORDER BY date DESC LIMIT 1"
-                ).fetchone()
-            if pa_row is None:
-                pa_row = conn.execute(
-                    "SELECT value FROM market_daily WHERE series='PANIC_INDEX' ORDER BY date DESC LIMIT 1"
-                ).fetchone()
-        return {
-            "overheating": oh_row["value"] if oh_row else None,
-            "panic":       pa_row["value"] if pa_row else None,
-        }
+            for key, series in (("overheating", "OVERHEATING_INDEX"), ("panic", "PANIC_INDEX")):
+                rows = conn.execute(
+                    "SELECT date, value FROM market_daily WHERE series=? AND value IS NOT NULL ORDER BY date DESC LIMIT 2",
+                    (series,)
+                ).fetchall()
+                if rows:
+                    out[key], out[f"{key}_date"] = rows[0]["value"], rows[0]["date"]
+                if len(rows) > 1:
+                    out[f"{key}_prev"] = rows[1]["value"]
+        return out
     except Exception as e:
         log.warning(f"[regime] 取過熱指數失敗: {e}")
-        return {"overheating": None, "panic": None}
+        return out
 
 
 @router.get("/api/regime/status")
@@ -76,9 +66,7 @@ def regime_today():
         result = calculate_factors(today)
 
     # 附加過熱/恐慌指數
-    oh = _get_overheating_today()
-    result["overheating"] = oh["overheating"]
-    result["panic"]       = oh["panic"]
+    result.update(_get_overheating_today())     # overheating／panic＋日期、前一筆
     return result
 
 

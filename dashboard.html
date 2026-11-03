@@ -1194,7 +1194,7 @@ details.guide[open]>summary::before{content:'▾ ';}
   <div class="card">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
       <strong style="font-size:1.05rem">🎯 尾盤追蹤</strong>
-      <span style="font-size:.78rem;color:var(--muted)">13:10「假跌破：收盤前還成立」的股票，尾盤進場之後的走勢</span>
+      <span style="font-size:.78rem;color:var(--muted)">13:15「假跌破還成立＋日線低不破低、高過高」的股票，尾盤進場之後的走勢（每天標當時的大盤）</span>
       <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn sm" onclick="tailLoad(true)">🔄 更新報價</button>
         <button class="btn sm ghost" onclick="tailAdd()">＋ 新增</button>
@@ -1205,7 +1205,9 @@ details.guide[open]>summary::before{content:'▾ ';}
       <summary>📖 使用說明</summary>
       <div class="guide-body">
         <ul>
-          <li><b>自動加入：</b>每個交易日 13:10 Telegram 發「假跌破：收盤前還成立」時，那些股票自動加進來，進場價＝13:10 的價格（尾盤進場）。</li>
+          <li><b>自動加入：</b>每個交易日 13:15 檢查「假跌破」還成立的股票，自動加進來，進場價＝13:15 的價格（尾盤進場）；Telegram 同時發清單。</li>
+          <li><b>計入／不計入：</b>只有日線「低不破低、高過高」（最近的波段高點比前一個高，這次拉回的最低點沒跌破前一個波段低點）的才計入上面的統計和兩區；不合格的收在最下面「🚫 不計入」，可以拿來對照。13:15 判斷的就固定，收盤後低點又跌破的會標「收盤後跌破前低」。</li>
+          <li><b>大盤：</b>每檔股名下面是進場那天 13:15 的大盤（漲跌、當天走法，滑過去看日線、均線）；「盤勢」下拉可以只看某一種。✅／⚠ 只有在 5 年回測真的找到比較好／比較差的盤勢才會出現，細節看最下面「🔬 大盤盤勢研究」。</li>
           <li><b>停損區：</b>進場之後任何一天盤中最低價跌到「進場價 −8%」就自動移到停損區（跳空開更低就用開盤價），跟網站回測的停損 8% 同一套；停損 % 可以改。</li>
           <li><b>觀察區：</b>其他的都留在這裡，看現價報酬、進場後最高漲幅、最大回檔、還有沒有站在 MA10 上。</li>
           <li><b>編輯：</b>點 ✏️ 改進場價／日期／備註，或手動移到另一區（手動移過的不再自動移）；🗑 刪除。也可以「＋ 新增」任何一檔，或把 Telegram 訊息整段貼進「📋 貼上訊息匯入」。</li>
@@ -1217,10 +1219,15 @@ details.guide[open]>summary::before{content:'▾ ';}
       <label>停損 <input id="tail-stop" type="number" min="1" max="50" step="0.5" style="width:60px;font-size:16px" onchange="tailSetStop(this.value)"> %</label>
       <label>加入日
         <select id="tail-day" onchange="tailRender()" style="background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem"><option value="">全部</option></select></label>
+      <label>盤勢
+        <select id="tail-mkt" onchange="tailRender()" style="background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem">
+          <option value="">全部</option><option value="good">✅ 適合</option><option value="neutral">— 一般</option><option value="bad">⚠ 不適合</option>
+          <option value="bull">大盤日線多頭</option><option value="side">大盤日線盤整</option><option value="bear">大盤日線空頭</option><option value="nodata">大盤資料缺</option></select></label>
       <input id="tail-q" placeholder="代號／名稱" oninput="tailRender()" style="width:120px;background:#21262d;color:var(--text);border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:.82rem">
       <span id="tail-status"></span>
     </div>
     <div id="tail-summary" class="tail-sum"></div>
+    <div id="tail-bymkt" style="font-size:.8rem;margin-top:8px;line-height:1.7;display:flex;flex-wrap:wrap;gap:4px 8px"></div>
   </div>
   <div class="card">
     <div class="tail-h">👀 觀察區 <b id="tail-n-watch"></b></div>
@@ -1230,6 +1237,15 @@ details.guide[open]>summary::before{content:'▾ ';}
     <div class="tail-h" style="color:#22c55e">🛑 停損區 <b id="tail-n-stop"></b> <span class="muted" style="font-size:.75rem;font-weight:400">盤中跌到進場價 −<span id="tail-stop-lbl">8</span>% 移過來；也可以看停損後有沒有又漲回來</span></div>
     <div id="tail-stop-zone"></div>
   </div>
+  <details class="card" id="tail-ng" style="display:none">
+    <summary id="tail-ng-sum" style="cursor:pointer;font-weight:700;font-size:.92rem">🚫 不計入</summary>
+    <div class="muted" style="font-size:.76rem;margin:6px 0">13:15 假跌破有成立、但日線不是「低不破低、高過高」的。只記錄、不算進上面的統計，可以拿來看結構這條有沒有用。</div>
+    <div id="tail-ng-body"></div>
+  </details>
+  <details class="card" id="tail-research" style="display:none">
+    <summary id="tail-research-sum" style="cursor:pointer;font-weight:700;font-size:.92rem">🔬 大盤盤勢研究</summary>
+    <div id="tail-research-body"></div>
+  </details>
 </div>
 
 <!-- ═══════════════════════ 可轉債 ═══════════════════════ -->
@@ -2252,6 +2268,17 @@ function _dpTech(d) {
 }
 
 // 🩸 融資維持率（估計，margin_maint.py）
+// B91 融資使用率＝融資餘額 ÷ 融資限額（交易所公布的限額；櫃買自己也公布同一個數字）
+function _mtUseLv(u) { return u == null ? null : u >= 60 ? ['很高', '#f97316'] : u >= 30 ? ['偏高', '#eab308'] : u >= 10 ? ['一般', ''] : ['低', '']; }
+function _mtUse(mt) {
+  if (!mt || mt.use_rate == null) return '<span class="dp-mu">—　<span style="font-size:.74rem">融資限額還沒抓到（每天晚上 9 點多更新）</span></span>';
+  const [t, c] = _mtUseLv(mt.use_rate);
+  const ser = (mt.series || []).filter(x => x.use != null);
+  const d20 = ser.length > 20 ? ser[ser.length - 21].use : null;
+  return `<b style="color:${c || 'inherit'}">${Number(mt.use_rate).toFixed(1)}%</b>　<span class="dp-mu" style="font-size:.74rem">${t}${d20 != null ? `，20 天前 ${d20.toFixed(1)}%` : ''}・限額 ${_dpN(mt.lim)} 張</span>` +
+    `<div class="dp-mu" style="font-size:.72rem;line-height:1.5">融資餘額 ÷ 融資限額：越高＝散戶用融資買得越滿，跌下來追繳／斷頭的賣壓越大（10%／30%／60% 分段是常見說法，沒回測）</div>`;
+}
+
 function _dpMaint(mt) {
   if (!mt || mt.maint == null) return '';
   const col = { call: '#ef4444', low: '#f97316', warn: '#eab308' }[mt.level] || '';
@@ -2262,13 +2289,16 @@ function _dpMaint(mt) {
       ${_dpRow('融資平均成本（估）', `${_esc(mt.cost)}　<span class="dp-mu" style="font-size:.74rem">${_esc(mt.market)}融資 ${lv} 成（買進當下 166.7%）、官方總額校正 ×${_esc(mt.calib ?? 1)}</span>`)}
       ${_dpRow('追繳價（130%）', mt.to_call_pct >= 0 ? `<b style="color:#ef4444">${_esc(mt.call_price)}（已跌破）</b>` : `${_esc(mt.call_price)}　<span class="dp-mu" style="font-size:.74rem">再跌 ${(-mt.to_call_pct).toFixed(1)}%</span>`)}
       ${_dpRow('融資餘額', `${_dpN(mt.bal)} 張　<span class="${_dpC(mt.chg5)}" style="font-size:.74rem">5 日 ${_dpS(mt.chg5)}</span>`)}
-      ${_dpRow('可信度', `${_esc(mt.conf)}%　<span class="dp-mu" style="font-size:.74rem">現在的融資裡、回補半年內買進的比例</span>`)}
+      ${_dpRow('融資使用率', _mtUse(mt))}
+      ${_dpRow('可信度', `${_esc(mt.conf)}%　<span class="dp-mu" style="font-size:.74rem">現在的融資裡、回補一年內買進的比例${mt.err_ref != null ? `；誤差參考 ±${_esc(mt.err_ref)} 點` : ''}</span>`)}
       ${ser.length >= 5 ? `<div class="dp-cap"><span>估計維持率走勢（近 ${ser.length} 天）</span><span class="dp-mu">紅線 130% 追繳</span></div>` +
         _dpLine(ser.map(x => ({ x: String(x.date).slice(5), v: x.maint, tip: `${x.date} 維持率 ${x.maint}%・收盤 ${x.close}・平均成本 ${x.cost}・融資 ${_dpN(x.bal)} 張` })),
           { color: '#f97316', fmt: v => v.toFixed(0) + '%', label: '估計維持率', ref: 130 }) : ''}
       <div class="dp-note" style="margin-top:4px">交易所只公布整體融資金額、個股沒有 → 用每天融資買進張數 × 當天均價估平均成本（賣出、現償照平均成本扣），維持率＝股價 ÷（成本 × 6 成 × 校正）；
         校正＝證交所／櫃買公布的融資金額總數 ÷ 各檔估計加總，讓個股加起來等於官方。
-        跌破 130% 券商追繳；低於 130% 的多半已經有人被斷頭，實際會高一些。只提醒、不計分。融資資料 ${_esc(mt.date)}</div></div>`;
+        跌破 130% 券商追繳；低於 130% 的多半已經有人被斷頭，實際會高一些。只提醒、不計分。
+        驗算（2026-11，官方每天的融資買進／賣出／償還金額）：買價用 (高＋低＋收)÷3 最準（每天差約 1%），賣出照平均成本扣差 1～3%；
+        個股主要的誤差是一開始的成本不知道 → 看「可信度」，可信度 90% 以上的 8 成在 ±0.5 點內。融資資料 ${_esc(mt.date)}</div></div>`;
 }
 
 function _dpChip(d) {
@@ -3045,7 +3075,7 @@ function _maintCell(s) {
   if (!m || m.maint == null) return `<td class="muted" data-empty="1" title="沒有融資資料（不能融資，或融資資料還沒回補）">—</td>`;
   const col = _MT_COLOR[m.level] || 'var(--muted)';
   const sub = m.to_call_pct >= 0 ? '⚠ 已破追繳線' : `追繳 ${m.call_price}（再跌 ${(-m.to_call_pct).toFixed(1)}%）`;
-  const tip = `估計維持率 ${m.maint}%（${m.market}，融資 ${Math.round(m.lev * 10)} 成、官方總額校正 ×${m.calib ?? 1}）\n融資平均成本（估）${m.cost}\n追繳價（130%）${m.call_price}\n融資餘額 ${m.bal} 張（5 日 ${m.chg5 == null ? '—' : (m.chg5 > 0 ? '+' : '') + m.chg5}）\n可信度 ${m.conf}%（現在的融資裡回補期間買進的比例）\n融資資料 ${m.date}`;
+  const tip = `估計維持率 ${m.maint}%（${m.market}，融資 ${Math.round(m.lev * 10)} 成、官方總額校正 ×${m.calib ?? 1}）\n融資平均成本（估）${m.cost}\n追繳價（130%）${m.call_price}\n融資餘額 ${m.bal} 張（5 日 ${m.chg5 == null ? '—' : (m.chg5 > 0 ? '+' : '') + m.chg5}）\n可信度 ${m.conf}%（現在的融資裡回補期間買進的比例）\n融資使用率 ${m.use_rate == null ? '—' : Number(m.use_rate).toFixed(1) + '%'}（融資餘額 ÷ 融資限額）\n融資資料 ${m.date}`;
   return `<td style="color:${col};${m.level === 'ok' ? '' : 'font-weight:700'}" title="${_esc(tip)}">${m.maint}%<small style="display:block;font-weight:400;font-size:.7rem;opacity:.85">${_esc(sub)}</small></td>`;
 }
 
@@ -6730,7 +6760,7 @@ async function _renderBestNear(nToday) {
   </div>`;
 }
 
-// 🪤 盤中假跌破（PLAN-B72 D）：全市場 S_FBD 用即時價，09:10～13:10 每 5 分鐘 Telegram，13:10 收盤前清單
+// 🪤 盤中假跌破（PLAN-B72 D；B91 改 13:15＋日線結構）：全市場 S_FBD 用即時價，09:10～13:15 每 5 分鐘 Telegram，13:15 還成立的清單
 async function _renderFbdLive() {
   const el = document.getElementById('fbd-live');
   if (!el) return;
@@ -6746,8 +6776,8 @@ async function _renderFbdLive() {
   const gone = seen.filter(x => !hits.some(h => h.stock_id === x.stock_id));
   el.innerHTML = `<div class="card" style="border-color:#fbbf24">
     <div style="font-weight:800;margin-bottom:4px">📡 盤中假跌破（Telegram）</div>
-    <div class="muted" style="font-size:.8rem">全市場「🪤 假跌破買進」用即時價算：09:10～13:10 每 5 分鐘，新出現的推 Telegram（同一檔一天一次），13:10 再推「收盤前還成立」的清單。盤中量還沒滿，用前 20 日均量代替；收盤確認以 18:00 掃描（下面的表）為準。</div>
-    <div style="font-size:.85rem;margin-top:6px">${today ? `今天最後檢查 <b>${_esc(r.checked)}</b>（${_esc(r.sec ?? '—')} 秒）、候選 ${r.candidates} 檔、現在成立 <b>${hits.length}</b> 檔${r.final_sent ? '　✅ 13:10 清單已發' : ''}` : '今天盤中還沒檢查（交易日 09:10 開始）'}${r.error ? `　<span style="color:#f59e0b">⚠ ${_esc(r.error)}</span>` : ''}</div>
+    <div class="muted" style="font-size:.8rem">全市場「🪤 假跌破買進」用即時價算：09:10～13:15 每 5 分鐘，新出現而且日線低不破低、高過高的推 Telegram（同一檔一天一次），13:15 再推還成立的清單（含大盤盤面、不計入的另列），同時加進 🎯 尾盤追蹤。盤中量還沒滿，用前 20 日均量代替；收盤確認以 18:00 掃描（下面的表）為準。</div>
+    <div style="font-size:.85rem;margin-top:6px">${today ? `今天最後檢查 <b>${_esc(r.checked)}</b>（${_esc(r.sec ?? '—')} 秒）、候選 ${r.candidates} 檔、現在成立 <b>${hits.length}</b> 檔${r.final_sent ? '　✅ 13:15 清單已發' : ''}` : '今天盤中還沒檢查（交易日 09:10 開始）'}${r.error ? `　<span style="color:#f59e0b">⚠ ${_esc(r.error)}</span>` : ''}</div>
     ${hits.length || gone.length ? `<div class="tbl-wrap" style="margin-top:6px"><table class="lk-tbl" style="font-size:.82rem"><tbody>
       ${hits.map(x => row(x, seen.some(s => s.stock_id === x.stock_id) ? '已通知' : '🆕')).join('')}
       ${gone.map(x => row(x, '<span class="muted">盤中出現過、現在不成立</span>')).join('')}</tbody></table></div>` : ''}
@@ -7478,7 +7508,7 @@ function _rebuildChartMarkers() {
   _fbdNote(lastReclaim && lastReclaim.j >= n - 5 ? lastReclaim : null);
 }
 
-// ── 🪤 假跌破策略（S_FBD）：跟 scanner.screen_sfbd（13:10 清單、18:00 掃描）同一套條件，參數用策略篩選 ⚙️ 存的 ──
+// ── 🪤 假跌破策略（S_FBD）：跟 scanner.screen_sfbd（13:15 清單、18:00 掃描）同一套條件，參數用策略篩選 ⚙️ 存的 ──
 const FBD_DEFAULT = { min_price: 10, min_vol_lots: 300, break_window: 4, break_vol_ratio: 2.5, vol_ref_days: 20, macd_ref_days: 3 };
 let _fbdParams = null;
 async function _loadFbdParams() {
@@ -7525,7 +7555,7 @@ function _fbdNote(x) {
   const live = d.live && x.j === d.ohlcv.length - 1 ? '<span style="color:#9598a1">（盤中，收盤才算數）</span>' : '';
   let html;
   if (x.chk && x.chk.ok) {
-    html = `<b style="color:#f97316">🪤 ${day} 假跌破成立</b>：站回 MA10 ${(+ma).toFixed(2)}，策略條件全部通過（跟 13:10 清單、18:00 掃描同一套）${live}`;
+    html = `<b style="color:#f97316">🪤 ${day} 假跌破成立</b>：站回 MA10 ${(+ma).toFixed(2)}，策略條件全部通過（跟 13:15 清單、18:00 掃描同一套）${live}`;
   } else if (x.chk) {
     html = `<b style="color:#fbbf24">▲ ${day} 站回 MA10 ${(+ma).toFixed(2)}</b>，但 <b>🪤 假跌破策略不成立</b>：${x.chk.fails.map(_esc).join('、')}${live}`;
   } else {
@@ -8602,7 +8632,7 @@ async function saveAllStratParams() {
     <!-- 圖例說明列（手機預設收起，按「ℹ️ 圖例」展開）-->
     <div id="chart-legend" style="display:flex;align-items:center;padding:5px 16px;background:#0a0f1a;flex-shrink:0;flex-wrap:wrap;gap:12px;border-bottom:1px solid #1a1f2e">
       <span style="font-size:.8rem;color:#6b7280">圖例：</span>
-      <span style="font-size:.8rem;color:#f97316" title="日 K 站回 MA10，而且 🪤 假跌破策略全部條件成立（10 日線在季線上、MACD 綠柱縮短、收紅、跌破那天沒爆量…）＝跟 13:10 清單同一套">▲橘大 🪤 假跌破（策略成立）</span>
+      <span style="font-size:.8rem;color:#f97316" title="日 K 站回 MA10，而且 🪤 假跌破策略全部條件成立（10 日線在季線上、MACD 綠柱縮短、收紅、跌破那天沒爆量…）＝跟 13:15 清單同一套">▲橘大 🪤 假跌破（策略成立）</span>
       <span style="font-size:.8rem;color:#fbbf24" title="前一天收在 MAx 下、今天站回；只是站回，不等於假跌破策略成立（圖上方那行會寫哪個條件沒過）">▲黃 站回 MAx</span>
       <span style="font-size:.8rem;color:#22c55e" title="突破 MAx 次日跌回 → 假突破，看空訊號">▼綠 假突破（MAx）</span>
       <span style="font-size:.8rem;color:#38bdf8" title="收盤跌破前 10 天最低點，隔天收回">▲藍 破低收復</span>
@@ -8657,7 +8687,7 @@ async function saveAllStratParams() {
 <script src="/treasury/static/treasury.js?v=20261024b82b"></script>
 <script src="/mna/static/mna.js?v=20261024b82b"></script>
 <script src="/cb/static/cb.js?v=20261024b82b"></script>
-<script src="/tail/static/tail.js?v=20261024b82b"></script>
+<script src="/tail/static/tail.js?v=20261103b91"></script>
 <script src="/notes/static/notes.js?v=20261103b90"></script>
 <script src="/discuss/static/discuss.js?v=20261007a"></script>
 </body>
