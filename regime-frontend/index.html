@@ -250,22 +250,26 @@
   #wv-ai .btn { padding: 6px 12px; font-size: .88rem; }
   .wv-adv summary { font-size: .92rem !important; font-weight: 600 !important; color: var(--muted); }
   .wv-adv .wv-seg button { padding: 6px 12px; font-size: .88rem; }
-  /* 過熱／恐慌（B91：11-03 用戶「放在最上面、要看得到」→ 固定標題列右邊，捲下去也看得到） */
-  .oh-top { display: flex; align-items: stretch; gap: 8px; margin-left: auto; flex-wrap: wrap; }
-  .oh-pill { display: grid; grid-template-columns: auto auto; align-items: baseline; gap: 0 8px; min-width: 150px;
-             background: var(--card2); border: 1px solid var(--border); border-radius: 12px; padding: 5px 12px 6px; cursor: help; }
-  .oh-pill .k { font-size: .86rem; color: var(--muted); white-space: nowrap; }
-  .oh-pill .v { font-size: 1.2rem; font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
-  .oh-pill .st { grid-column: 1 / -1; font-size: .8rem; color: var(--muted); white-space: nowrap; }
-  .oh-pill .bar-wrap { grid-column: 1 / -1; position: relative; background: #0d1117; border-radius: 4px; height: 5px; margin-top: 3px; overflow: visible; }
-  .oh-pill .bar { height: 100%; border-radius: 4px; transition: width .5s; }
-  .oh-pill .bar-wrap i { position: absolute; top: -2px; width: 2px; height: 9px; background: #fb923c; border-radius: 1px; }
+  /* 過熱／恐慌（B91：11-03 用戶「放在最上面、要看得到」→ 固定標題列；11-03 晚「調整好版面」→ 單行小標籤、跟標題列一樣高，
+     固定在標題下面自己一行、靠左；手機兩格並排、兩行） */
+  .oh-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-basis: 100%; }   /* 固定自己一行、靠左（右邊擠會被擠到下一行又靠右，台指期說明更長） */
+  .oh-pill { position: relative; display: inline-flex; align-items: baseline; gap: 7px; white-space: nowrap; cursor: help;
+             background: var(--card2); border: 1px solid var(--border); border-radius: 10px; padding: 5px 12px 9px; }
+  .oh-pill .k { font-size: .86rem; color: var(--muted); }
+  .oh-pill .v { font-size: 1.12rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .oh-pill .st { font-size: .82rem; }
+  .oh-pill .d { font-size: .76rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .oh-pill .bar-wrap { position: absolute; left: 10px; right: 10px; bottom: 3px; height: 3px; background: #0d1117; border-radius: 2px; }
+  .oh-pill .bar { height: 100%; border-radius: 2px; transition: width .5s; }
+  .oh-pill .bar-wrap i { position: absolute; top: -2px; width: 2px; height: 7px; background: #fb923c; border-radius: 1px; }
   .oh-pill.alert { border-color: #fb923c; background: rgba(251,146,60,.10); }
+  .oh-pill.alert .st { color: #fb923c; font-weight: 700; }
   .oh-pill.near { border-color: #fbbf24aa; }
-  .oh-date { align-self: center; font-size: .78rem; color: var(--muted); white-space: nowrap; }
-  .wv-sticky.stuck .oh-pill { padding: 2px 10px 3px; min-width: 0; }
+  .oh-pill.near .st { color: #fbbf24; }
+  .oh-date { font-size: .76rem; color: var(--muted); white-space: nowrap; }
+  .wv-sticky.stuck .oh-pill { padding: 3px 10px 7px; }
   .wv-sticky.stuck .oh-pill .v { font-size: 1rem; }
-  .wv-sticky.stuck .oh-pill .bar-wrap, .wv-sticky.stuck .oh-date { display: none; }
+  .wv-sticky.stuck .oh-date { display: none; }
   .wv-spark { display: block; width: 100%; height: 70px; margin: 8px 0 2px; }
   .wv-m10 td, .wv-m10 th { padding: 4px 8px !important; }
   /* 總經分頁 */
@@ -286,10 +290,15 @@
     #wv-chart { height: 380px; }
     .wv-card { padding: 12px 12px; }
     .wv-tbl .wv-hide-m { display: none; }
-    .oh-top { margin-left: 0; width: 100%; flex-wrap: nowrap; }
-    .oh-pill { flex: 1 1 0; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; padding: 5px 10px 6px; }
-    .oh-pill .st { white-space: normal; font-size: .76rem; line-height: 1.35; }
+    .oh-top { flex-wrap: nowrap; gap: 6px; }
+    .oh-pill { flex: 1 1 0; min-width: 0; display: grid; grid-template-columns: auto 1fr auto; column-gap: 6px; row-gap: 0; padding: 4px 10px 8px; }
+    .oh-pill .k { grid-column: 1; }
+    .oh-pill .v { grid-column: 2 / 4; text-align: right; font-size: 1.05rem; }
+    .oh-pill .st { grid-column: 1 / 3; font-size: .76rem; overflow: hidden; text-overflow: ellipsis; }
+    .oh-pill .d { grid-column: 3; text-align: right; font-size: .72rem; }
     .oh-date { display: none; }
+    #wv-price { font-size: 1.2rem; white-space: nowrap; }
+    #wv-asof { font-size: .78rem; }
     .wv-mode { max-width: 100%; overflow-x: auto; }
     .wv-mode button { padding: 5px 8px; min-width: 62px; }
     .wv-head { font-size: 1.15rem; } .wv-head .path { font-size: 1.35rem; }
@@ -313,7 +322,7 @@
     .wv-sticky { margin: 0 -8px; padding: 0 8px; }
     .wv-sticky.stuck { padding-top: 4px; }
     .wv-sticky.stuck .wv-mode button { padding: 3px 6px; min-width: 0; }
-    .wv-sticky.stuck .oh-pill .st { display: none; }
+    .wv-sticky.stuck .oh-pill .st, .wv-sticky.stuck .oh-pill .d { display: none; }
     .wv-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
     .wv-tiles.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .wv-tile { display: block; padding: 6px 7px; cursor: pointer; }
@@ -348,12 +357,12 @@
     <div class="oh-top" id="oh-top">
       <div class="oh-pill" id="card-overheating" title="過熱指數＝收盤後 成交量 ÷ 委買量（證交所 MI_5MINS）。≥50% 買單被大量吃掉＝追漲風險高；<30% 委買多但觀望">
         <span class="k">🔥 過熱</span><span class="v" id="oh-val">—</span>
-        <span class="st" id="oh-st">≥50% 追漲風險高</span>
+        <span class="st" id="oh-st">≥50% 追漲風險高</span><span class="d" id="oh-d"></span>
         <span class="bar-wrap"><span class="bar" id="oh-bar" style="width:0%;display:block"></span><i style="left:50%"></i></span>
       </div>
       <div class="oh-pill" id="card-panic" title="恐慌指數＝收盤後 成交量 ÷ 委賣量（證交所 MI_5MINS）。≥75% 賣單幾乎全成交＝恐慌殺盤；<50% 賣壓還沒爆發">
         <span class="k">😱 恐慌</span><span class="v" id="pa-val">—</span>
-        <span class="st" id="pa-st">≥75% 恐慌殺盤</span>
+        <span class="st" id="pa-st">≥75% 恐慌殺盤</span><span class="d" id="pa-d"></span>
         <span class="bar-wrap"><span class="bar" id="pa-bar" style="width:0%;display:block"></span><i style="left:75%"></i></span>
       </div>
       <span class="oh-date" id="oh-date"></span>
@@ -632,6 +641,7 @@ function _ohOne(prefix, cardId, v, prev, warn, low, txt) {
   card.classList.remove('alert', 'near');
   if (v == null) {
     el.textContent = '—'; el.style.color = '#8b949e'; bar.style.width = '0%'; st.textContent = '還沒有資料';
+    document.getElementById(prefix + '-d').textContent = '';
     return;
   }
   const alert = v >= warn, near = !alert && v >= warn - 0.05;
@@ -640,16 +650,21 @@ function _ohOne(prefix, cardId, v, prev, warn, low, txt) {
   bar.style.width = Math.min(100, v * 100) + '%';
   bar.style.background = alert ? '#fb923c' : near ? '#fbbf24' : '#5b8cff';
   if (alert) card.classList.add('alert'); else if (near) card.classList.add('near');
-  const chg = prev != null ? `，比前一天${v >= prev ? '高' : '低'} ${Math.abs((v - prev) * 100).toFixed(1)} 點` : '';
-  st.textContent = (alert ? txt.alert : near ? txt.near : v < low ? txt.low : '正常') + chg;
+  st.textContent = alert ? txt.alert : near ? txt.near : v < low ? txt.low : '正常';
+  const dEl = document.getElementById(prefix + '-d');
+  if (prev != null) {
+    const pts = Math.abs((v - prev) * 100).toFixed(1);
+    dEl.textContent = `${v >= prev ? '↑' : '↓'}${pts}`;
+    dEl.title = `比前一天${v >= prev ? '高' : '低'} ${pts} 個百分點（前一天 ${(prev * 100).toFixed(1)}%）`;
+  } else { dEl.textContent = ''; dEl.title = ''; }
 }
 
 function renderOverheating(oh, pa, d) {
   d = d || {};
   _ohOne('oh', 'card-overheating', oh, d.overheating_prev, 0.5, 0.3,
-         { alert: '⚠ 追漲風險高', near: '接近過熱（50%）', low: '偏冷、觀望' });
+         { alert: '⚠ 追漲風險高', near: '快到 50%', low: '偏冷、觀望' });
   _ohOne('pa', 'card-panic', pa, d.panic_prev, 0.75, 0.5,
-         { alert: '⚠ 恐慌殺盤', near: '接近恐慌（75%）', low: '賣壓還沒爆發' });
+         { alert: '⚠ 恐慌殺盤', near: '快到 75%', low: '賣壓還沒爆發' });
   const dt = d.overheating_date || d.panic_date;
   document.getElementById('oh-date').textContent = dt ? `${String(dt).slice(5).replace('-', '/')} 收盤後` : '';
 }
