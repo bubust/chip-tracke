@@ -1,0 +1,30 @@
+# 暫時 workflow 範本：複製成 .github/workflows/<主題>-fetch.yml，改 <分支>、<主題>、腳本路徑、要 commit 的檔案。
+# push 分支（而且改到 paths 裡的腳本）就會跑；跑完把資料 commit 回分支。用完記得刪掉這個 workflow。
+name: <主題>-fetch
+on:
+  push:
+    branches: [<分支>]
+    paths: ["research/<主題>/fetch.py"]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q httpx pandas numpy
+      - run: python research/<主題>/fetch.py
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+      - if: always()            # 抓到一半逾時也把已經抓到的存回來
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -f research/<主題>/data/*.csv || true
+          git commit -m "chore: <主題> 回測資料" || exit 0
+          git pull --rebase origin <分支>
+          git push origin HEAD:<分支>

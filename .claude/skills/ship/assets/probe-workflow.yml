@@ -1,0 +1,28 @@
+# 暫時 workflow 範本（存正式站快照）：複製成 .github/workflows/<代號>-probe.yml，改 <分支>、<代號>。
+# 搭配 scratch_probe/<代號>_probe.py：用 httpx 打 https://qiangni-tactics.fly.dev/... 把 JSON 存到 scratch_probe/。
+# 用完把 workflow、probe 腳本、快照都刪掉。
+name: <代號>-probe
+on:
+  push:
+    branches: [<分支>]
+    paths: ["scratch_probe/<代號>_probe.py"]
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q httpx
+      - run: python scratch_probe/<代號>_probe.py
+      - run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -f scratch_probe/*.json
+          git commit -m "chore: 暫時資料（線上快照）" || exit 0
+          git pull --rebase origin <分支>
+          git push origin HEAD:<分支>
