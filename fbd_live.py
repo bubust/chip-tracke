@@ -8,6 +8,9 @@
 - 13:15（13:15～13:25 第一次跑到；B91 用戶從 13:10 改）：抓加權 13:15 盤面（MIS → 鉅亨）→ tail_market 特徵＋研究判斷，
   發「13:15 還成立」清單＝計入（結構合格）＋一行不計入（結構不合格）＋早上出現過、現在不成立的；
   全部（含不合格、帶 struct_ok）加進 🎯 尾盤追蹤，13:15 算的結構／大盤存進去就固定
+- B92（用戶：「這個時間，假跌破跟雙 MACD 多跟 W 底再攻擊一併通知，有重疊多策略的特別標注」）：13:15 那一次改抓全市場即時價，
+  另外跑 📈 雙MACD多（S1）、📈 W底再攻擊（S2）（scanner 同一份函式、使用者 ⚙️ 參數；歷史跟 18:00 掃描一樣每檔最近 520 根，
+  分批讀、算完就丟，避免 512MB 機器記憶體不夠），合併成同一則；同一檔中兩招以上＝⭐ 多策略重疊，放最上面、清單裡也標 ⭐
 收盤確認以 18:00 全市場掃描為準。"""
 import html
 import logging
@@ -25,8 +28,12 @@ START, FINAL, FINAL_END = 910, 1315, 1325
 HIST_BARS = 130
 MAX_LINES = 40
 MAX_NG = 30               # 不計入那一行最多列幾檔
+EXTRA = (("S1", "📈", "雙MACD多"), ("S2", "📈", "W底再攻擊"))   # B92 13:15 一併通知的策略（scanner.PRICE_STRATEGY_FNS）
+EXTRA_BARS = 520          # 跟 18:00 掃描一樣（get_stock_ohlcv days=520）：大 MACD(108,216,18) 才算得準
+EXTRA_CHUNK = 50          # 一次讀幾檔的歷史（512MB 機器：分批讀、算完就丟；全市場 1,900 檔×520 根實測 7 秒、多吃約 30MB）
+TG_MAX = 3800             # Telegram 一則最多 4096 字，留一點空間
 _STATE = {"day": None, "hist": {}, "names": {}, "cands": 0, "checked": None, "sec": None,
-          "hits": {}, "seen": {}, "final": False, "error": None, "mkt": None}
+          "hits": {}, "seen": {}, "final": False, "error": None, "mkt": None, "extra": None}
 _LOCK = threading.Lock()
 
 
@@ -77,6 +84,32 @@ def _params() -> dict:
         return {}
 
 
+def _params_all() -> dict:
+    try:
+        from server import _load_strategy_params
+        return _load_strategy_params() or {}
+    except Exception:
+        return {}
+
+
+def _send_long(send, text: str) -> bool:
+    """超過 Telegram 長度就照行切成幾則（每則都要成功才算成功）"""
+    if len(text) <= TG_MAX:
+        return bool(send(text))
+    parts, cur = [], ""
+    for ln in text.split("\n"):
+        if cur and len(cur) + len(ln) + 1 > TG_MAX:
+            parts.append(cur)
+            cur = ""
+        cur = f"{cur}\n{ln}" if cur else ln[:TG_MAX]
+    if cur:
+        parts.append(cur)
+    ok = True
+    for part in parts:
+        ok = bool(send(part)) and ok
+    return ok
+
+
 def _load_hist(day: str) -> tuple:
     """price_cache 全部股票最近 HIST_BARS 根（日期 < day）＋股名：一個 SQL"""
     from price_cache import DB_PATH
@@ -121,7 +154,7 @@ def _prepare(day: str, load_hist_fn=None, params=None) -> None:
     hist, names = (load_hist_fn or _load_hist)(day)
     cands = candidates(hist, params if params is not None else _params())
     _STATE.update(day=day, hist=cands, names=names, cands=len(cands), checked=None, sec=None,
-                  hits={}, seen={}, final=False, error=None, mkt=None)
+                  hits={}, seen={}, final=False, error=None, mkt=None, extra=None)
     log.info(f"[fbd-live] {day} 候選 {len(cands)} 檔（全部 {len(hist)} 檔）")
 
 
@@ -163,12 +196,12 @@ def _hit_info(sid: str, df: pd.DataFrame, name: str) -> dict:
             "ma10": round(float(ma10[-1]), 2), "broke_date": broke, "struct_ok": bool(st.get("ok")), "struct": st}
 
 
-def scan_now(day: str, quotes_fn=None, params=None) -> dict:
-    """用現在的即時價跑一次 S_FBD → {sid: info}"""
+def scan_now(day: str, quotes_fn=None, params=None, quotes: dict | None = None) -> dict:
+    """用現在的即時價跑一次 S_FBD → {sid: info}（quotes：13:15 已經抓好的全市場報價）"""
     from scanner import screen_sfbd
     p = dict(params if params is not None else _params())
     ids = list(_STATE["hist"])
-    q = _quotes(ids, day, quotes_fn)
+    q = quotes if quotes is not None else _quotes(ids, day, quotes_fn)
     if not q:
         return {}
     hits = {}
@@ -187,6 +220,73 @@ def scan_now(day: str, quotes_fn=None, params=None) -> dict:
         except Exception as e:
             log.warning(f"[fbd-live] {sid}: {e}")
     return hits
+
+
+# ── 13:15 一併通知：雙MACD多、W底再攻擊（B92）──────────────────────────────────
+def _iter_hist(day: str, sids: list, bars: int = EXTRA_BARS, chunk: int = EXTRA_CHUNK):
+    """price_cache 每檔最近 bars 根（日期 < day）；一次讀 chunk 檔、一檔一檔交出去（不一次全部放記憶體）"""
+    from price_cache import DB_PATH
+    since = (datetime.strptime(day, "%Y%m%d") - timedelta(days=int(bars * 1.55))).strftime("%Y%m%d")
+    c = sqlite3.connect(str(DB_PATH), timeout=30)
+    try:
+        for i in range(0, len(sids), chunk):
+            part = list(sids[i:i + chunk])
+            df = pd.read_sql_query("SELECT stock_id, date, open, high, low, close, volume FROM price_daily "
+                                   f"WHERE stock_id IN ({','.join('?' * len(part))}) AND date >= ? AND date < ? "
+                                   "ORDER BY stock_id, date", c, params=(*part, since, day))
+            df["stock_id"] = df["stock_id"].astype(str)
+            for k in ("open", "high", "low", "close", "volume"):
+                df[k] = pd.to_numeric(df[k], errors="coerce")
+            for sid, g in df.groupby("stock_id"):
+                yield sid, g.tail(bars).drop(columns="stock_id").reset_index(drop=True)
+            del df
+    finally:
+        c.close()
+
+
+def scan_extra(day: str, quotes: dict, names: dict, params_all: dict | None = None, hist_iter=None) -> dict:
+    """13:15 即時價跑 EXTRA 的策略 → {"S1": {sid: info}, "S2": {...}}；歷史 + 今天那根（量＝到 13:15 的累計量）"""
+    from scanner import PRICE_STRATEGY_FNS
+    pa = params_all if params_all is not None else _params_all()
+    out = {k: {} for k, _, _ in EXTRA}
+    ids = sorted(sid for sid in quotes if sid in names)
+    for sid, hist in (hist_iter or _iter_hist)(day, ids):
+        b = quotes.get(sid)
+        if not b or hist is None or len(hist) < 61:
+            continue
+        row = {"date": day, "open": b["open"], "high": b["high"], "low": b["low"], "close": b["close"],
+               "volume": float(b.get("volume") or 0)}
+        df = pd.concat([hist, pd.DataFrame([row])], ignore_index=True)
+        prev = float(hist["close"].iloc[-1])
+        for key, _, _ in EXTRA:
+            try:
+                r = PRICE_STRATEGY_FNS[key]({sid: df}, {sid: names.get(sid, "")}, params=pa.get(key) or {})
+            except Exception as e:                       # noqa: BLE001  單檔算不出來不影響別檔
+                log.warning(f"[fbd-live] {key} {sid}: {e}")
+                continue
+            if r:
+                x = r[0]
+                out[key][sid] = {"stock_id": sid, "name": names.get(sid, ""), "price": round(float(b["close"]), 2),
+                                 "chg": round(float(b["close"]) / prev - 1, 4) if prev and prev == prev else None,
+                                 "stop": x.get("stop"), "wave_high": x.get("wave_high"), "base_days": x.get("base_days")}
+    return out
+
+
+def overlaps(fbd_all: list, extra: dict) -> list:
+    """同一檔中兩招以上（假跌破含日線結構不合格的）→ [{stock_id, name, price, chg, tags}]，招數多的先"""
+    m = {}
+    for x in fbd_all:
+        m.setdefault(x["stock_id"], {**x, "tags": []})["tags"].append("🪤 假跌破" + ("" if x.get("struct_ok") else "（日線結構不合格）"))
+    for key, emo, nm in EXTRA:
+        for sid, x in sorted((extra or {}).get(key, {}).items()):
+            m.setdefault(sid, {**x, "tags": []})["tags"].append(f"{emo} {nm}")
+    return sorted((v for v in m.values() if len(v["tags"]) >= 2), key=lambda v: (-len(v["tags"]), v["stock_id"]))
+
+
+def _xline(x: dict, key: str, star: bool) -> str:
+    chg = f"（{x['chg'] * 100:+.1f}%）" if x.get("chg") is not None else ""
+    tail = f"，停損 {x['stop']}（盤整低點）" if key == "S2" and x.get("stop") is not None else ""
+    return f"• {x['stock_id']} {html.escape(x['name'] or '')} {x['price']}{chg}{tail}" + ("　⭐" if star else "")
 
 
 # ── 13:15 大盤盤面（B91）────────────────────────────────────────────────────
@@ -297,7 +397,7 @@ def _lines(items: list, tag_fn=lambda x: "") -> list:
 
 
 def tick(now: datetime | None = None, quotes_fn=None, load_hist_fn=None, params=None, send_fn=None,
-         push: bool = True, market_fn=None) -> dict:
+         push: bool = True, market_fn=None, extra_hist_fn=None, params_all=None) -> dict:
     """排程每 5 分鐘呼叫；回傳這次的 {new, final, hits}"""
     now = now or datetime.now(TW)
     hm = now.hour * 100 + now.minute
@@ -314,7 +414,10 @@ def tick(now: datetime | None = None, quotes_fn=None, load_hist_fn=None, params=
             _prepare(day, load_hist_fn, params)
         if hm >= FINAL and (_STATE["final"] or _sent(f"fbdlive:{day}:final")):
             return {"new": [], "final": None, "hits": len(_STATE["hits"])}
-        hits = scan_now(day, quotes_fn, params) if _STATE["hist"] else {}
+        q_all = None
+        if hm >= FINAL:                          # B92 13:15：全市場報價一次抓（假跌破＋雙MACD多＋W底再攻擊共用）
+            q_all = _quotes(sorted(_STATE["names"]), day, quotes_fn)
+        hits = scan_now(day, quotes_fn, params, quotes=q_all) if _STATE["hist"] else {}
         _STATE.update(checked=now.strftime("%H:%M"), hits=hits)
         new = [x for sid, x in sorted(hits.items())
                if x.get("struct_ok") and sid not in _STATE["seen"] and not _sent(f"fbdlive:{day}:{sid}")]
@@ -350,18 +453,48 @@ def tick(now: datetime | None = None, quotes_fn=None, load_hist_fn=None, params=
             tail_track.add_from_fbd(day, allx, mkt=mkt)
         except Exception as e:
             log.warning(f"[fbd-live] 尾盤追蹤加入失敗：{e}")
-        if push and (allx or gone):
-            body = [f"⏰ <b>假跌破＋日線多頭：13:15 還成立</b>　{now:%H:%M}（計入 {len(items)} 檔）"] + market_lines(mkt)
-            body += _lines(items, lambda x: "　（早上已通知）" if x["stock_id"] in _STATE["seen"] else "　🆕") or ["• 沒有（結構合格的）"]
+        extra = {k: {} for k, _, _ in EXTRA}
+        try:                                     # B92 雙MACD多、W底再攻擊（失敗也照發假跌破清單）
+            if q_all:
+                extra = scan_extra(day, q_all, _STATE["names"], params_all, extra_hist_fn)
+        except Exception as e:                   # noqa: BLE001
+            log.warning(f"[fbd-live] 13:15 雙MACD多／W底：{e}")
+            extra["error"] = f"{type(e).__name__}: {e}"[:200]
+        ov = overlaps(allx, extra)
+        star = {x["stock_id"] for x in ov}
+        _STATE["extra"] = {"checked": now.strftime("%H:%M"), "overlap": ov, "error": extra.get("error"),
+                           **{k: [x for _, x in sorted(extra.get(k, {}).items())] for k, _, _ in EXTRA}}
+        res["final"]["extra"] = _STATE["extra"]
+        n_extra = sum(len(extra.get(k, {})) for k, _, _ in EXTRA)
+        if push and (allx or gone or n_extra):
+            names3 = "＋".join(["假跌破"] + [nm for _, _, nm in EXTRA])
+            body = [f"⏰ <b>13:15 尾盤：{names3}</b>　{now:%H:%M}"] + market_lines(mkt)
+            if ov:
+                body.append(f"⭐ <b>多策略重疊</b>（{len(ov)} 檔）")
+                body += [f"• {x['stock_id']} {html.escape(x['name'] or '')} {x['price']}"
+                         + (f"（{x['chg'] * 100:+.1f}%）" if x.get("chg") is not None else "") + "：" + "＋".join(x["tags"])
+                         for x in ov[:MAX_LINES]]
+            body.append(f"🪤 <b>假跌破＋日線多頭：13:15 還成立</b>（計入 {len(items)} 檔）")
+            body += _lines(items, lambda x: ("　（早上已通知）" if x["stock_id"] in _STATE["seen"] else "　🆕")
+                           + ("　⭐" if x["stock_id"] in star else "")) or ["• 沒有（結構合格的）"]
             if ng:
                 more = f"…等 {len(ng)} 檔" if len(ng) > MAX_NG else ""
                 body.append("🚫 不計入（日線不是低不破低、高過高）：" + "、".join(
-                    f"{x['stock_id']} {html.escape(x['name'] or '')}" for x in ng[:MAX_NG]) + more)
+                    f"{x['stock_id']} {html.escape(x['name'] or '')}" + ("⭐" if x["stock_id"] in star else "") for x in ng[:MAX_NG]) + more)
             if gone:
                 body.append("⚠ 盤中出現過、現在不成立：" + "、".join(
                     f"{x['stock_id']} {html.escape(x['name'] or '')}" for x in gone[:MAX_LINES]))
-            body.append("現在買＝尾盤進場；13:15 的價格不是收盤價，收盤確認以 18:00 掃描為準。")
-            ok = send("\n".join(body))
+            for key, emo, nm in EXTRA:
+                xs = [x for _, x in sorted(extra.get(key, {}).items())]
+                body.append(f"{emo} <b>{nm}</b>（{len(xs)} 檔）")
+                if extra.get("error") and not xs:
+                    body.append("• 這次算不出來（之後看 18:00 掃描）")
+                    continue
+                body += [_xline(x, key, x["stock_id"] in star) for x in xs[:MAX_LINES]] or ["• 沒有"]
+                if len(xs) > MAX_LINES:
+                    body.append(f"…還有 {len(xs) - MAX_LINES} 檔（看網站策略篩選）")
+            body.append("現在買＝尾盤進場；13:15 的價格不是收盤價、量也還沒滿，收盤確認以 18:00 掃描為準。")
+            ok = _send_long(send, "\n".join(body))
             _log([f"fbdlive:{day}:final"] + [f"fbdlive:{day}:{x['stock_id']}" for x in items if x["stock_id"] not in _STATE["seen"]], ok)
             if ok:
                 _STATE["final"] = True
@@ -384,5 +517,5 @@ def live_status() -> dict:
     return {"day": _STATE["day"], "checked": _STATE["checked"], "sec": _STATE["sec"], "candidates": _STATE["cands"],
             "hits": [x for _, x in sorted(_STATE["hits"].items())],
             "seen": [x for _, x in sorted(_STATE["seen"].items())],
-            "final_sent": _STATE["final"], "error": _STATE["error"], "mkt": _STATE.get("mkt"),
-            "window": "09:10～13:15 每 5 分鐘；13:15 還成立的清單（日線結構合格才計入）"}
+            "final_sent": _STATE["final"], "error": _STATE["error"], "mkt": _STATE.get("mkt"), "extra": _STATE.get("extra"),
+            "window": "09:10～13:15 每 5 分鐘；13:15 還成立的清單（日線結構合格才計入）＋雙MACD多、W底再攻擊（重疊標 ⭐）"}

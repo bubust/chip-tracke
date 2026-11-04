@@ -45,10 +45,12 @@ def env(tmp_path, monkeypatch):
     c.commit(); c.close()
     monkeypatch.setattr(F, "_conn", conn)
     monkeypatch.setattr(F.time, "sleep", lambda s: None)
+    monkeypatch.setattr(F, "_iter_hist", lambda day, sids, **k: iter(()))   # B92：不讀真的 price_cache
     import tail_track
     monkeypatch.setattr(tail_track, "DB_PATH", tmp_path / "tail.db")
     tail_track.init_db(tmp_path / "tail.db", seed=False)
-    F._STATE.update(day=None, hist={}, names={}, cands=0, checked=None, sec=None, hits={}, seen={}, final=False, error=None, mkt=None)
+    F._STATE.update(day=None, hist={}, names={}, cands=0, checked=None, sec=None, hits={}, seen={}, final=False, error=None, mkt=None,
+                    extra=None)
     sent = []
     hist = {"1111": _hist(), "2222": _hist(), "3333": _hist(vol=100.0),          # 3333 量太小，不是候選
             "4444": _hist(depth=6.0, amp=1.5)}                                   # 4444 日線回檔跌破前低（結構不合格）
@@ -214,3 +216,125 @@ def test_telegram_failure_retried_next_tick(env):
     assert len(env["sent"]) == 1                                            # 上次失敗 → 這次再推
     st = F.live_status()
     assert st["checked"] == "09:35" and [x["stock_id"] for x in st["hits"]] == ["1111"]
+
+
+# ── B92：13:15 假跌破＋雙MACD多＋W底再攻擊一併通知、重疊標 ⭐ ─────────────────────────────
+def _mk(c, vol=1000.0):
+    a = np.array(c, float)
+    d = pd.bdate_range("2025-01-01", periods=len(a)).strftime("%Y%m%d")
+    return pd.DataFrame({"date": d, "open": a * 0.995, "high": a * 1.01, "low": a * 0.99, "close": a, "volume": vol})
+
+
+def _qbar(last, close, vol=1000.0):
+    return {"date": DAY, "open": last * 0.999, "high": close * 1.01, "low": last * 0.99, "close": close, "volume": vol}
+
+
+S1_H = _mk(list(np.linspace(20, 100, 320)) + [100 * (1 - 0.006 * (j + 1)) for j in range(4)])          # 長多頭＋回 4 天
+S2_H = _mk([100 + np.sin(i / 3) for i in range(70)] + list(np.linspace(100, 116, 10)) + [113, 112, 111.5, 112.5, 113.5])  # 碗底＋第一波＋盤整
+BOTH_H = _mk(list(np.linspace(20, 100, 300)) + list(np.linspace(100, 108, 8)[1:]) + [108 * (1 - 0.02 * (j + 1) / 6) for j in range(6)])
+
+
+def test_synthetic_s1_s2_really_trigger():
+    from scanner import screen_s1, screen_s2
+    for h, close, s1, s2 in ((S1_H, None, True, False), (S2_H, 117.0, False, True), (BOTH_H, None, True, True)):
+        last = float(h["close"].iloc[-1])
+        bump = {id(S1_H): 1.01, id(BOTH_H): 1.03}.get(id(h))
+        b = _qbar(last, close or last * bump)
+        df = pd.concat([h, pd.DataFrame([b])], ignore_index=True)
+        assert bool(screen_s1({"T": df}, {"T": ""})) is s1 and bool(screen_s2({"T": df}, {"T": ""})) is s2
+
+
+def _combo_env(env):
+    hist, names = env["load"](DAY)
+    names = {**names, "5555": "雙多", "6666": "碗底", "7777": "兩招"}
+    xh = {"5555": S1_H, "6666": S2_H, "7777": BOTH_H, "2222": env["hist"]["2222"]}
+    h, h4 = env["hist"]["2222"], env["hist"]["4444"]
+    q = {"2222": _bar(h, 1.06), "4444": _bar(h4, 1.06),
+         "5555": _qbar(float(S1_H["close"].iloc[-1]), float(S1_H["close"].iloc[-1]) * 1.01),
+         "6666": _qbar(float(S2_H["close"].iloc[-1]), 117.0),
+         "7777": _qbar(float(BOTH_H["close"].iloc[-1]), float(BOTH_H["close"].iloc[-1]) * 1.03)}
+    return (lambda day: (hist, names)), (lambda day, sids, **k: ((s, xh[s]) for s in sids if s in xh)), q
+
+
+def test_final_1315_combines_three_strategies_and_stars_overlap(env):
+    load, xh, q = _combo_env(env)
+    asked = []
+
+    def quotes(ids, d):
+        asked.append(len(ids))
+        return q
+    r = F.tick(datetime(2026, 10, 15, 13, 15), quotes_fn=quotes, load_hist_fn=load, params={}, send_fn=env["send"],
+               market_fn=env["mkt"], extra_hist_fn=xh, params_all={})
+    assert asked == [7]                                                      # 13:15 全市場報價只抓一次（三招共用）
+    assert len(env["sent"]) == 1
+    t = env["sent"][0]
+    assert "13:15 尾盤：假跌破＋雙MACD多＋W底再攻擊" in t and "大盤 13:15 43,210" in t
+    assert "13:15 還成立" in t and "2222 乙" in t and "🚫 不計入" in t
+    # 2222 的假歷史剛好也是 W 底再攻擊（上漲鋸齒＋回檔不破前低＋今天過盤整高）→ 假跌破＋W底 重疊
+    ov = t.split("⭐ <b>多策略重疊</b>（2 檔）")[1].split("🪤 <b>假跌破")[0]
+    assert "2222 乙" in ov and "🪤 假跌破＋📈 W底再攻擊" in ov and "7777 兩招" in ov and "📈 雙MACD多＋📈 W底再攻擊" in ov
+    fb = t.split("🪤 <b>假跌破")[1].split("🚫")[0]
+    assert "2222 乙" in fb and "⭐" in fb                                              # 假跌破清單裡也標 ⭐
+    assert "📈 <b>雙MACD多</b>（2 檔）" in t and "📈 <b>W底再攻擊</b>（3 檔）" in t
+    s1 = t.split("📈 <b>雙MACD多</b>")[1].split("📈 <b>W底再攻擊</b>")[0]
+    assert "5555 雙多" in s1 and "7777 兩招" in s1 and s1.count("⭐") == 1               # 只有重疊的那檔打 ⭐
+    s2 = t.split("📈 <b>W底再攻擊</b>")[1]
+    assert "6666 碗底 117.0" in s2 and "停損" in s2 and "7777 兩招" in s2 and s2.count("⭐") == 2
+    ex = r["final"]["extra"]
+    assert [x["stock_id"] for x in ex["S1"]] == ["5555", "7777"] and [x["stock_id"] for x in ex["S2"]] == ["2222", "6666", "7777"]
+    assert [x["stock_id"] for x in F.live_status()["extra"]["overlap"]] == ["2222", "7777"]
+
+
+def test_overlaps_include_fbd_and_struct_flag():
+    fbd = [{"stock_id": "2222", "name": "乙", "price": 50, "chg": 0.06, "struct_ok": True},
+           {"stock_id": "4444", "name": "丁", "price": 40, "chg": 0.06, "struct_ok": False}]
+    extra = {"S1": {"2222": {"stock_id": "2222", "name": "乙", "price": 50, "chg": 0.06}},
+             "S2": {"4444": {"stock_id": "4444", "name": "丁", "price": 40, "chg": 0.06},
+                    "2222": {"stock_id": "2222", "name": "乙", "price": 50, "chg": 0.06}}}
+    ov = F.overlaps(fbd, extra)
+    assert [x["stock_id"] for x in ov] == ["2222", "4444"]                     # 三招的排前面
+    assert ov[0]["tags"] == ["🪤 假跌破", "📈 雙MACD多", "📈 W底再攻擊"]
+    assert ov[1]["tags"] == ["🪤 假跌破（日線結構不合格）", "📈 W底再攻擊"]
+
+
+def test_extra_failure_still_sends_fbd(env):
+    load, _, q = _combo_env(env)
+
+    def boom(day, sids, **k):
+        raise RuntimeError("db locked")
+        yield
+    F.tick(datetime(2026, 10, 15, 13, 15), quotes_fn=lambda ids, d: q, load_hist_fn=load, params={}, send_fn=env["send"],
+           market_fn=env["mkt"], extra_hist_fn=boom, params_all={})
+    t = env["sent"][0]
+    assert "2222 乙" in t and "這次算不出來" in t and F.live_status()["extra"]["error"]
+
+
+def test_only_extra_hits_still_sends(env):
+    """假跌破一檔都沒有、只有雙MACD多 → 照發"""
+    load, xh, q = _combo_env(env)
+    q = {"5555": q["5555"]}
+    F.tick(datetime(2026, 10, 15, 13, 15), quotes_fn=lambda ids, d: q, load_hist_fn=load, params={}, send_fn=env["send"],
+           market_fn=env["mkt"], extra_hist_fn=xh, params_all={})
+    assert len(env["sent"]) == 1 and "5555 雙多" in env["sent"][0] and "沒有（結構合格的）" in env["sent"][0]
+
+
+def test_send_long_splits_under_telegram_limit():
+    out = []
+    text = "\n".join(f"• {i:04d} " + "股" * 60 for i in range(150))
+    assert F._send_long(lambda t: out.append(t) or True, text)
+    assert len(out) >= 2 and all(len(x) <= F.TG_MAX for x in out) and "\n".join(out) == text
+    assert not F._send_long(lambda t: False, text)
+
+
+def test_iter_hist_reads_in_chunks(tmp_path, monkeypatch):
+    import price_cache
+    db = tmp_path / "p.db"
+    with sqlite3.connect(str(db)) as c:
+        c.execute("CREATE TABLE price_daily (stock_id TEXT, date TEXT, open REAL, high REAL, low REAL, close REAL, volume REAL)")
+        for sid in ("1111", "2222", "3333"):
+            for d in pd.bdate_range("2026-09-01", "2026-10-16").strftime("%Y%m%d"):
+                c.execute("INSERT INTO price_daily VALUES (?,?,?,?,?,?,?)", (sid, d, 10, 11, 9, 10, 500))
+    monkeypatch.setattr(price_cache, "DB_PATH", db)
+    got = dict(F._iter_hist(DAY, ["1111", "2222", "3333"], bars=5, chunk=2))
+    assert sorted(got) == ["1111", "2222", "3333"]
+    assert all(len(g) == 5 and g["date"].iloc[-1] == "20261014" for g in got.values())   # 只到昨天
