@@ -618,6 +618,19 @@
           <div><b>走法 B（時間型、偏弱）</b>：<b>${fmt(Math.min(B.lo, B.hi))}～${fmt(Math.max(B.lo, B.hi))}</b> 來回磨 2～3 天，之後照樣第 3 段${up ? '下跌' : '上漲'}</div></div>
         ${judge}</div>`;
     };
+    // B93 她 11/4：日線＋60 分兩道關卡（大中小、第一道關＝60 分第 1 段終點＋0.382＋日線 5 均、第二道關＝日線第 1 段終點）
+    const tiersBox = tz => {
+      if (!tz || !tz.lines) return '';
+      const g1 = tz.gate1 || {}, g2 = tz.gate2;
+      const st = (ok, part) => ok ? '✅ 已過' : part ? '◐ 過了一部分' : '⬜ 還沒';
+      return `<div class="wv-src"><div class="t">🪜 兩道關卡（她 11/4：60 分 ${fmt(g1.lo)}～${fmt(g1.hi)}、日線 ${g2 ? fmt(g2.price) : '—'} 逐層驗證）</div>
+        <div><b>${esc(tz.status)}</b></div>
+        <div class="wv-srcv"><b>第一道關</b> ${fmt(g1.lo)}～${fmt(g1.hi)}　${st(g1.passed, g1.touched)}
+          <div>${(g1.lv || []).map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}</div></div>
+        ${g2 ? `<div class="wv-srcv"><b>第二道關</b> ${fmt(g2.price)}　${st(g2.passed)}
+          <div>${(g2.lv || []).map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}</div></div>` : ''}
+        <ul style="margin:6px 0 0 18px;padding:0">${tz.lines.slice(0, 2).concat(tz.lines.slice(3)).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`;
+    };
     // B89 她 11/3 下午：跌破第 1 段低點以後的三種細微脈動（圖 3／4／5）
     const pulseBox = pz => {
       if (!pz || !pz.views) return '';
@@ -648,7 +661,7 @@
           <div>${esc(b.replace(/^：/, ''))}</div>${withV && vlines.length && !nz.two && !nz.pulses ? `<ul>${vlines.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>`; };
       const wsBox = (life ? wsCard(life, 'life' + (life.ok ? ' broke' : ''), true, life.ok ? '（已跌破）' : '') : '')
         + (ws ? wsCard(ws, ws.ok ? 'ok' : '', !life, '') : '');
-      extra = `${srcBox(nz.source, nz)}${pulseBox(nz.pulses)}${wsBox}${twoBox(nz.two, nz)}<div style="margin-top:8px">起點：<b>${esc(nz.anchor.label)} ${fmt(nz.anchor.p)}</b>
+      extra = `${srcBox(nz.source, nz)}${tiersBox(nz.tiers)}${pulseBox(nz.pulses)}${wsBox}${twoBox(nz.two, nz)}<div style="margin-top:8px">起點：<b>${esc(nz.anchor.label)} ${fmt(nz.anchor.p)}</b>
           <span class="wv-dim">（${nz.anchor.how === 'parent' ? '60 分這一段的起點（她：15 分是在 60 分結構裡找短脈動）' : nz.anchor.how === 'daily' ? '日 K 這一浪的起點' : '這段時間最早的極值'}）</span>
           → ${nz.dir < 0 ? '最低' : '最高'} <b>${fmt(nz.extreme.p)}</b> <span class="wv-dim">${esc(nz.extreme.label)}</span></div>
         ${nz.merged ? `<div class="wv-dim" style="margin-top:4px">起點之後有 ${nz.n_seg + nz.merged} 段轉折，先把最小的 ${nz.merged} 段併掉、拆 ${nz.n_seg} 段（她的圖也只標大段＋子浪）</div>` : ''}

@@ -816,6 +816,47 @@ def _pulses_mid(snap: dict, big: Optional[dict], price: float) -> None:
                                            "t": f"日線中線支撐 {add} → 破底延伸的最後一腳看這裡（0.5 大關卡）"})
 
 
+def _tiers(snap: dict, waves: dict, closes, price: float) -> None:
+    """B93 她 11/4：日線（大級：50,265→45,523→47,607→42,050）＋60 分（小級：47,607 起的大、中、小）兩道關卡
+    → nest.60m.tiers；關卡加「日線關卡」、分水嶺補上匯聚的 0.382／日線 5 均、版本加進場（第二隻腳）"""
+    import stock_wave as SW
+    n60 = (snap.get("nest") or {}).get("60m") or {}
+    P = n60.get("primary") if n60.get("ok") else None
+    sm = waves.get("small") or {}
+    if not P or not sm.get("pivots"):
+        return
+    big = [{"p": float(q["p"]), "t": q["t"]} for q in sm["pivots"]]
+    if sm.get("tentative"):
+        big.append({"p": float(sm["tentative"]["p"]), "t": sm["tentative"]["t"]})
+    if len(big) < 4 or abs(big[-2]["p"] / float(n60["anchor"]["p"]) - 1) > 0.005:
+        return                                            # 60 分的起點要是日 K 這一段的起點，兩層才扣得起來
+    small = [{"p": float(n60["anchor"]["p"]), "t": big[-2]["t"]}] + [{"p": float(m["p"]), "t": m["t"]} for m in P.get("marks") or []]
+    c = [float(x) for x in closes]
+    ma5 = sum(c[-5:]) / 5 if len(c) >= 5 else None
+    ma10 = sum(c[-10:]) / 10 if len(c) >= 10 else None
+    t = SW.structure(big, small, price, ma5, ma10, {"big": "日線", "small": "60 分"})
+    if not t:
+        return
+    n60["tiers"] = t
+    gates = n60.setdefault("gates", [])
+    g1 = t["gate1"]
+    conf = [f"{lab} {SW._fmt(v)}" for v, lab in g1["lv"][1:]]
+    for g in gates:
+        if g.get("k") == "分水嶺" and conf and "匯聚" not in g.get("t", ""):
+            g["t"] = g["t"].replace("）→", f"；同時匯聚 {'、'.join(conf)}）→", 1)
+    if t.get("gate2"):
+        g2 = t["gate2"]
+        d = t["dir"]
+        gates.append({"k": "日線關卡", "price": g2["price"], "ok": g2["passed"],
+                      "t": f"日線第 (1) 段{'低' if d < 0 else '高'}點 {SW._fmt(g2['price'])}（日線第 4 段不能碰到）→ "
+                           f"{'站穩' if d < 0 else '跌破'}＝三段式告一段落，但先當大 B 波反彈震盪；在 "
+                           + "～".join(SW._fmt(v) for v in g2["zone"]) + " 受阻＝日線再殺第 (5) 段"})
+    plan = n60.setdefault("plan", [])
+    line = (t.get("entry") or {}).get("t") or t["lines"][-1]
+    if line not in plan:
+        plan.insert(min(len(plan), 3), line)
+
+
 def _nest(a: dict, tf: int, price: float, b: dict, parent: Optional[dict] = None) -> dict:
     """B79 多層浪名（學 @fanny55520）：分 K 轉折從「日 K 這一浪的起點」開始拆成 C-1-4-b 式浪名＋關卡＋操作紀律"""
     if not a.get("ok"):
@@ -1088,6 +1129,10 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
     except Exception as e:     # noqa: BLE001
         log.warning(f"[wave] 三種日線定位失敗：{e}")
         snap["big"] = None
+    try:                                                   # B93 她 11/4：日線＋60 分兩道關卡、大中小
+        _tiers(snap, waves, lv_c, price)
+    except Exception as e:     # noqa: BLE001
+        log.warning(f"[wave] 兩道關卡失敗：{e}")
     # B80 價位梯＋如果…就…＋三條路（每個週期一份）
     vres = _vol_research(st)
     snap["research"] = {**(snap.get("research") or {}), "volume": vres}

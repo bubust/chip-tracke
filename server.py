@@ -2308,6 +2308,13 @@ async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False, retu
     kws = deep_patterns.kbar_w_stat(full_w[-1]["type"], trow["pos52"]) if full_w else None
     if kws:
         kws["type"] = full_w[-1]["type"]
+    # ── B93 她 11/4 的方法：波段結構（大級＝日 K 中級、小級＝日 K 小級；大中小＋兩道關卡＋第二隻腳）──
+    try:
+        import stock_wave
+        wave_struct = stock_wave.analyze_daily(df, tc)
+    except Exception as _we:                                  # noqa: BLE001  算不出來不影響其他
+        print(f"[deep] 波段結構 {stock_id}: {_we}")
+        wave_struct = None
     patterns = {"kbars": kbars, "weekly": weekly, "kbar_w_stat": kws, "trend": trend, "period": deep_patterns.HONGYE_PERIOD,
                 "box_all": {k: v[1] for k, v in deep_patterns.BOX_STATS.items()},
                 "kbar_stat": deep_patterns.kbar_stat(kbars[-1]["type"], trow["pos52"]) if kbars else None}
@@ -2340,6 +2347,7 @@ async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False, retu
             "data_days": len(df),
         },
         "levels": levels,
+        "wave": wave_struct,
         "verdict": verdict,
         "chip": {**chip, "kpct": (kp or {}).get("current_pct"), "kpct_change": kpct_change,
                  "kpct_date": (kp or {}).get("date")},

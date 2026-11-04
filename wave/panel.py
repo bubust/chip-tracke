@@ -404,6 +404,9 @@ def _nest_line(snap: dict) -> str:
             s += (f"；走法 A：b 守 {t['A']['b_strict']:,.0f}、極限 {t['A']['b_ext']:,.0f}，c 依序 " + "→".join(f"{c['price']:,.0f}（{c['label']}）" for c in t["A"]["c"])
                   + f"；走法 B：{min(t['B']['lo'], t['B']['hi']):,.0f}～{max(t['B']['lo'], t['B']['hi']):,.0f} 來回 2～3 天（偏弱）")
         s += "；" + "；".join(tw.get("judge") or [])
+    tz = nz.get("tiers") or {}                                        # B93 她 11/4 的兩道關卡（日線＋60 分）
+    if tz.get("lines"):
+        s += "；兩道關卡：" + "；".join(tz["lines"])
     pz = nz.get("pulses") or {}                                       # B89 她 11/3 的三種細微脈動
     if pz.get("views"):
         s += (f"；三種細微脈動（分水嶺 {pz['end1']:,.0f}、0.382 {pz['f382']:,.0f}、低點 {pz['low']:,.0f}"
@@ -454,6 +457,10 @@ def _nest_prices(snap: dict) -> list:
             if o.get("gate"):                            # B88 決戰關卡、移動停利、小 c 目標、第二種第 3 段／平台 b
                 out += [o["gate"]["lo"], o["gate"]["hi"], o["gate"]["mid"]] + list(o["gate"]["stop"]) + list(o.get("b") or [])
                 out += [v for c in o.get("c") or [] for v in (c["lo"], c["hi"])] + list(t.get("down") or []) + list(t.get("flat") or [])
+        tz = nz.get("tiers") or {}                       # B93 兩道關卡
+        if tz.get("gate1"):
+            out += [v for v, _ in tz["gate1"]["lv"]] + [v for v, _ in ((tz.get("gate2") or {}).get("lv") or [])]
+            out += [float(v) for v in (tz.get("fib") or {}).values()] + list(((tz.get("entry") or {}).get("zone")) or [])
         pz = nz.get("pulses") or {}                      # B89 三種細微脈動
         if pz.get("views"):
             out += [pz["end1"], pz["h2"], pz["low"], pz["f382"]] + ([pz["ma5"]] if pz.get("ma5") is not None else [])

@@ -1049,7 +1049,16 @@ def three_pulses(c3: dict, seq: list, d0: int, price: float, fib: dict, src: Opt
     if (i1 is None or i2 is None) and k1 >= 3:
         i1, i2 = 1, 2
     done5 = None
-    if i1 is not None and i2 is not None and i1 < i2 < k1:
+    if ext_k - k2 >= 3:                                              # B93 她 11/4：第 2 段之後又有一低一高 → 大、中、小五段
+        kH4 = next(k for k in range(ext_k - 1, k2, -1) if seq[k]["t"] == seq[0]["t"])      # 小那段的起點＝(4)
+        H4 = seq[kH4]["p"]
+        L3 = max((seq[k]["p"] for k in range(k2 + 1, kH4) if seq[k]["t"] != seq[0]["t"]), key=lambda v: d0 * v)   # (3)＝中那段的最低
+        lg = [abs(a_p - end1), abs(h2 - L3), abs(H4 - low)]
+        done5 = {"marks": [{"p": end1, "text": "(1) 大"}, {"p": h2, "text": "(2)"}, {"p": L3, "text": "(3) 中"},
+                           {"p": H4, "text": "(4)"}, {"p": low, "text": "(5) 小"}],
+                 "legs": [round(x, 2) for x in lg], "contract": lg[0] > lg[1] > lg[2],
+                 "targets": [tg("小＝0.618 倍中", H4 + d0 * 0.618 * lg[1]), tg("小＝1 倍中", H4 + d0 * lg[1])]}
+    elif i1 is not None and i2 is not None and i1 < i2 < k1:
         w1, w3, w5 = abs(seq[i1]["p"] - a_p), abs(seq[i2]["p"] - end1), abs(h2 - low)
         if (h2 - seq[i1]["p"]) * d0 > 0 and not (w3 < w1 and w3 < w5):  # 第 4 段不碰第 1 段、第 3 段不是最短
             done5 = {"marks": [{"p": seq[i1]["p"], "text": "1"}, {"p": seq[i2]["p"], "text": "2"}, {"p": end1, "text": "3"},
@@ -1070,7 +1079,14 @@ def three_pulses(c3: dict, seq: list, d0: int, price: float, fib: dict, src: Opt
               "now": str(t3.get("path") or "C-3"),
               "next": f"C-4 弱勢整理（不能過 C-1 低點 {_fmt(end1)}）→ 還有 C-5 低點 → C 走完、整個修正結束",
               "targets": [tg("C-3＝1.618 倍 C-1", h2 + d0 * 1.618 * L1)] + [tg(t["label"], t["price"]) for t in t3.get("targets") or []]}]
-    if done5:
+    if done5 and done5.get("legs"):                                  # B93 她 11/4：大、中、小動能收斂
+        lg = done5["legs"]
+        views.append({"key": "3", "fig": "圖 5", "name": "大、中、小五段已走完" + ("（動能逐漸收斂）" if done5["contract"] else ""),
+                      "marks": done5["marks"], "now": "(5) 落底",
+                      "next": f"大 {_fmt(lg[0])}、中 {_fmt(lg[1])}、小 {_fmt(lg[2])}：{_fmt(a_p)} 下來這組在 {_fmt(low)} 走完五段 → 修正{up}"
+                              f"（日線第 (4) 段）；要先{v_up} {_fmt(end1)}～{_fmt(fib[0.382])}，日線第 (1) 段終點過了也先當大 B 波",
+                      "targets": done5["targets"]})
+    elif done5:
         views.append({"key": "3", "fig": "圖 5", "name": "三段式 C 已走完五小波", "marks": done5["marks"], "now": "C-5 落底",
                       "next": f"C 五小波已落底、整個修正結束 → 大級數{up}（要先{v_up} {_fmt(end1)}）", "targets": done5["targets"]})
     for v in views:
