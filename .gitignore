@@ -49,3 +49,6 @@ research/b80/data/
 research/b82/data/
 research/b82/fetch.log
 research/b91/data/
+
+# B94 回測資料（GitHub Actions 抓，research/b94/fetch.py 可重抓）
+research/b94/data/
