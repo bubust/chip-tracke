@@ -11,10 +11,45 @@ import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import run60c as C  # noqa: E402
+import run60d as W  # noqa: E402
 from wave import engine as E, intraday as I, levels as LV  # noqa: E402
 
 FROM_TRADE = "2026-08-04"      # 最近 3 個月（交易進場日）
-FROM_BAR = "2026-06-01"        # 圖上多放一段前面的 K 棒，數浪的起點才看得到
+FROM_BAR = "2023-12-01"        # 依波浪（B94d）的交易要看 3 年，K 棒從這裡開始
+
+
+def wave_text(p, x, close):
+    """依波浪那一筆：用白話寫出主要劇本怎麼決定進場價、停損、目標"""
+    f = lambda v: f"{v:,.0f}"  # noqa: E731
+    L = [q["p"] for q in p["labels"]]
+    side, kind, info = x["side"], x["kind"], x["info"]
+    up = side > 0
+    out = [f"主要劇本：{p['text']}。"]
+    if kind == "W2":
+        r = info["ratio"]
+        out.append(f"第 1 浪 {f(L[0])} → {f(L[1])}（{f(info['len'])} 點）。第 2 浪通常{'回' if up else '反彈'} 0.5～0.618："
+                   + "、".join(f"{rr:g}＝{f(v)}" for rr, v in info["lv"]) + "。")
+        out.append(f"這根收盤 {f(close)}，" + ("還沒到 0.5 → 掛 0.5。" if r == 0.5 else "已經過了 0.5 → 掛 0.618。"))
+        out.append(f"停損 {f(x['stop'])}：第 2 浪不能{'跌破' if up else '漲過'}第 1 浪起點，{'跌破' if up else '漲過'}就代表這個數法錯了。")
+        out.append(f"目標 {f(x['tg'])}：進場價 {'＋' if up else '－'} 1.618 × 第 1 浪（第 3 浪常是第 1 浪的 1.618 倍）。")
+    elif kind == "W4":
+        r = info["ratio"]
+        out.append(f"第 1 浪 {f(L[0])} → {f(L[1])}（{f(info['len'])} 點）；第 3 浪 {f(L[2])} → {f(L[3])}（{f(info['len3'])} 點）。"
+                   f"第 4 浪通常{'回' if up else '反彈'}第 3 浪的 0.382～0.5：" + "、".join(f"{rr:g}＝{f(v)}" for rr, v in info["lv"]) + "。")
+        out.append(f"這根收盤 {f(close)}，" + ("還沒到 0.382 → 掛 0.382。" if r == 0.382 else "已經過了 0.382 → 掛 0.5。"))
+        out.append(f"停損 {f(x['stop'])}＝第 1 浪{'高點' if up else '低點'}：第 4 浪不能{'跌進' if up else '漲進'}第 1 浪的範圍。")
+        out.append(f"目標 {f(x['tg'])}：進場價 {'＋' if up else '－'} 1 × 第 1 浪（第 5 浪常跟第 1 浪差不多長）。")
+    else:
+        if p["kind"] == "impulse":
+            a0, a1, b = L[5], L[6], L[7]
+        else:
+            a0, a1, b = L[0], L[1], L[2]
+        out.append(f"A 浪 {f(a0)} → {f(a1)}（{f(info['lenA'])} 點），B 浪到 {f(b)}，C 浪正在{'下跌' if up else '上漲'}。"
+                   f"C 浪常跟 A 浪等長：C＝A 在 {f(info['lv'][0][1])}，C＝1.618 倍 A 在 {f(info['lv'][1][1])}。")
+        out.append(f"這根收盤 {f(close)}，還沒到 C＝A → 掛 C＝A。")
+        out.append(f"停損 {f(x['stop'])}：C 浪走過 1.618 倍 A 還沒停，就不是這個數法。")
+        out.append(f"目標 {f(x['tg'])}：B 浪{'高點' if up else '低點'}（C 浪的起點）。")
+    return out
 
 
 def main(out_path):
@@ -30,7 +65,8 @@ def main(out_path):
     dd["ma20"] = dd.c.rolling(20).mean()
     ddate = dd.date.tolist()
     i0 = int(np.searchsorted(dates, FROM_BAR))
-    lab = lambda i: f"{dates[i][5:7]}/{dates[i][8:10]} {dates[i][11:16]}"  # noqa: E731
+    lab = lambda i: f"{dates[i][:4]}/{dates[i][5:7]}/{dates[i][8:10]} {dates[i][11:16]}"  # noqa: E731
+    lab_s = lambda i: f"{dates[i][5:7]}/{dates[i][8:10]} {dates[i][11:16]}"  # noqa: E731
     snaps = {}
 
     def snap(t):
@@ -41,7 +77,7 @@ def main(out_path):
         daily = {"prev_h": float(prev.h), "prev_l": float(prev.l), "prev_c": float(prev.c), "ma20": float(prev.ma20)}
         tr = 1 if c[t] > daily["ma20"] else -1
         an = E.analyze(o, h, l, c, "intra", t=t, trend=tr, piv=piv)
-        b = LV.build_ultra(h, l, c, t, an, float(atr[t]), float(c[t]), label=lab, daily=daily)
+        b = LV.build_ultra(h, l, c, t, an, float(atr[t]), float(c[t]), label=lab_s, daily=daily)
         zf = lambda z: {"lo": z["lo"], "hi": z["hi"], "src": [x["label"] for x in z["sources"]]}  # noqa: E731
 
         def cnt(x):
@@ -75,9 +111,25 @@ def main(out_path):
                              "near": round(float(Z["s_hi" if side > 0 else "r_lo"][x["t"], 0]), 0),
                              "far": round(float(Z["s_lo" if side > 0 else "r_hi"][x["t"], 0]), 0)})
             books[f"{sname}|{vk}"] = rows
+    prim, wtrend = W.counts(m, d)
+    for side, sname in ((1, "long"), (-1, "short")):
+        for vk, v in W.V.items():
+            rows = []
+            for x in W.book(o, h, l, c, prim, wtrend, dates, side, v):
+                if x["t"] < i0:
+                    continue
+                snap(x["t"])
+                rows.append({"t": x["t"] - i0, "e": x["e"] - i0, "k": x["k"] - i0, "side": side,
+                             "fill": round(x["fill"], 1), "exit": round(x["exit"], 1), "tg": round(x["tg"], 0),
+                             "stop": round(x["stop"], 1), "be_k": None, "why": x["why"], "both": x["both"],
+                             "pts": round(x["pts"], 0), "bars": x["bars"], "near": round(x["ent"], 0), "far": None,
+                             "wk": x["kind"], "lv": [[r, round(p_, 0)] for r, p_ in x["info"]["lv"]],
+                             "setup": wave_text(prim[x["t"]], x, c[x["t"]])})
+            books[f"{sname}|W{vk}"] = rows
     snap(len(c) - 1)                                                     # 最後一根的數法（圖的總覽用）
     res = {"bars": [[lab(i), round(o[i], 0), round(h[i], 0), round(l[i], 0), round(c[i], 0)] for i in range(i0, len(c))],
-           "from_trade": FROM_TRADE, "variants": {k: v["name"] for k, v in C.V.items()}, "books": books,
+           "from_trade": FROM_TRADE, "variants": {**{k: v["name"] for k, v in C.V.items()}, **{"W" + k: v["name"] for k, v in W.V.items()}},
+           "books": books,
            "snaps": {str(k - i0): v for k, v in snaps.items()}, "last": len(c) - 1 - i0,
            "stop_pts": C.STOP_PTS, "rr": C.RR, "buf_atr": C.BUF_ATR, "cost": C.COST}
     with open(out_path, "w") as f:
