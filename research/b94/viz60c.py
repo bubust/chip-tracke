@@ -52,6 +52,75 @@ def wave_text(p, x, close):
     return out
 
 
+def text15(p, x):
+    """15 分進出那一筆：60 分進場區怎麼來、15 分轉折怎麼確認"""
+    f = lambda v: f"{v:,.0f}"  # noqa: E731
+    L = [q["p"] for q in p["labels"]]
+    up = x["side"] > 0
+    lo, hi = sorted(x["zone"])
+    out = [f"60 分主要劇本：{p['text']}。"]
+    if x["kind"] == "W2":
+        out.append(f"第 1 浪 {f(L[0])} → {f(L[1])}（{f(abs(L[1] - L[0]))} 點）。進場區＝第 1 浪{'回' if up else '反彈'} 0.382 以後、"
+                   f"第 1 浪起點以前：{f(lo)}～{f(hi)}。")
+    elif x["kind"] == "W4":
+        out.append(f"第 1 浪 {f(L[0])} → {f(L[1])}；第 3 浪 {f(L[2])} → {f(L[3])}。進場區＝第 3 浪{'回' if up else '反彈'} 0.236 以後、"
+                   f"第 1 浪{'高點' if up else '低點'}以前：{f(lo)}～{f(hi)}。")
+    else:
+        a0, a1, bb = (L[5], L[6], L[7]) if p["kind"] == "impulse" else (L[0], L[1], L[2])
+        out.append(f"A 浪 {f(a0)} → {f(a1)}（{f(abs(a1 - a0))} 點），B 浪到 {f(bb)}。進場區＝C 浪走到 0.618 倍 A 以後、1.618 倍 A 以前：{f(lo)}～{f(hi)}。")
+    return out
+
+
+def export15(i0, dates60y):
+    """B94e：15 分進出的每一筆（run15.py 跑完才有 data/trades15.pkl）"""
+    import pickle
+    import run15 as R15
+    need = [os.path.join(C.DATA, x) for x in ("trades15.pkl", "twii_15m.csv", "twii_60m_twse.csv", "counts60_twse.pkl")]
+    if not all(os.path.exists(x) for x in need):
+        return {}
+    with open(need[0], "rb") as f:
+        keep = pickle.load(f)
+    m15, m60 = R15.load("twii_15m.csv"), R15.load("twii_60m_twse.csv")
+    with open(need[3], "rb") as f:
+        prim = pickle.load(f)["prim"]
+    ctx = R15.Ctx(m15, m60)
+    o, h, l, c = (m15[k].to_numpy(float) for k in ("o", "h", "l", "c"))
+    c60 = m60.c.to_numpy(float)
+    piv15 = E.zigzag(h, l, I.theta(h, l, c, E.INTRA15))
+    pi_ = np.array([q["i"] for q in piv15])
+    d15 = m15.date.astype(str).to_numpy()
+    j0 = int(np.searchsorted(d15, dates60y[i0][:10]))
+    hour_y = {x[:13]: k for k, x in enumerate(dates60y)}
+    to60 = lambda j: hour_y.get(d15[j][:13], -1) - i0  # noqa: E731
+    f15 = lambda i60: int(ctx.first15[i60]) - j0 if 0 <= i60 < len(ctx.first15) and ctx.first15[i60] >= 0 else None  # noqa: E731
+    books = {}
+    for key, trs in keep.items():
+        sname, vk = key.split("|")
+        rows = []
+        for x in trs:
+            if x["e"] < j0:
+                continue
+            p = prim[x["k60"]]
+            lab = [{"i": f15(q["i"]), "p": round(q["p"], 0), "s": q["s"], "tent": q["tent"]} for q in p["labels"]]
+            a = max(j0, min([x["e"] - 60] + [q["i"] + j0 for q in lab if q["i"] is not None]))
+            zz = [[int(q["i"]) - j0, round(q["p"], 0)] for q in piv15 if a <= q["i"] <= x["sig"] and q["ci"] <= x["sig"]]
+            r = {"e": x["e"] - j0, "k": x["k"] - j0, "sig": x["sig"] - j0, "side": x["side"], "fill": round(x["fill"], 1),
+                 "exit": round(x["exit"], 1), "tg": round(x["tg"], 0), "stop": round(x["stop"], 1), "why": x["why"], "both": x["both"],
+                 "pts": round(x["pts"], 0), "bars": x["bars"], "wk": x["kind"], "e60": to60(x["e"]), "k60": to60(x["k"]),
+                 "wave": {"text": p["text"], "labels": lab}, "zig": zz}
+            if vk == "A":
+                r.update(near=round(x["ent"], 0), lv=[[rr, round(v, 0)] for rr, v in x["info"]["lv"]],
+                         setup=wave_text(p, x, c60[x["k60"]]))
+            else:
+                r.update(L=round(x["L"], 0), Li=int(x["Li"]) - j0, Q=round(x["Qp"], 0), Qi=int(x["Qi"]) - j0,
+                         zone=[round(v, 0) for v in sorted(x["zone"])], inval=round(x["inval"], 0), setup=text15(p, x))
+            rows.append(r)
+        books[f"{sname}|15{vk}"] = rows
+    lab15 = lambda j: f"{d15[j][:4]}/{d15[j][5:7]}/{d15[j][8:10]} {d15[j][11:16]}"  # noqa: E731
+    return {"bars15": [[lab15(j), round(o[j], 0), round(h[j], 0), round(l[j], 0), round(c[j], 0)] for j in range(j0, len(c))],
+            "books15": books}
+
+
 def main(out_path):
     m = pd.read_csv(os.path.join(C.DATA, "twii_60m.csv")).dropna(subset=["o", "h", "l", "c"])
     m = m[(m.h >= m.l) & (m.c > 0)].reset_index(drop=True)
@@ -127,11 +196,12 @@ def main(out_path):
                              "setup": wave_text(prim[x["t"]], x, c[x["t"]])})
             books[f"{sname}|W{vk}"] = rows
     snap(len(c) - 1)                                                     # 最後一根的數法（圖的總覽用）
+    b15 = export15(i0, dates)
     res = {"bars": [[lab(i), round(o[i], 0), round(h[i], 0), round(l[i], 0), round(c[i], 0)] for i in range(i0, len(c))],
            "from_trade": FROM_TRADE, "variants": {**{k: v["name"] for k, v in C.V.items()}, **{"W" + k: v["name"] for k, v in W.V.items()}},
            "books": books,
            "snaps": {str(k - i0): v for k, v in snaps.items()}, "last": len(c) - 1 - i0,
-           "stop_pts": C.STOP_PTS, "rr": C.RR, "buf_atr": C.BUF_ATR, "cost": C.COST}
+           "stop_pts": C.STOP_PTS, "rr": C.RR, "buf_atr": C.BUF_ATR, "cost": C.COST, **b15}
     with open(out_path, "w") as f:
         json.dump(res, f, ensure_ascii=False, separators=(",", ":"), default=lambda x: x.item() if hasattr(x, "item") else str(x))
     print(out_path, os.path.getsize(out_path), {k: len(v) for k, v in books.items()})
