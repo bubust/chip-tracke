@@ -106,12 +106,13 @@ def trade(o, h, l, c, t, side, v, near, far, targets, A, rr_check=True):
         risk = risk_ref
     be_dist = risk
     last = min(n - 1, e + MAX_BARS)
-    st = {"be": False, "stop": stop}
+    st = {"be": False, "stop": stop, "be_k": None}
 
     def out(px, k, why, both=False):
         pts = side * (px - fill) - COST * fill
         return {"ret": side * (px / fill - 1) - COST, "pts": pts, "R": pts / risk, "why": why, "both": both,
-                "bars": k - e + 1, "e": e, "k": k, "fill": fill, "exit": px, "tg": tg, "risk": risk, "stop0": stop}
+                "bars": k - e + 1, "e": e, "k": k, "fill": fill, "exit": px, "tg": tg, "risk": risk, "stop0": stop,
+                "be_k": st["be_k"]}
 
     def hit(k, lv, toward):                                              # toward=+1：往有利方向碰到 lv
         return (h[k] >= lv) if side * toward > 0 else (l[k] <= lv)
@@ -123,7 +124,7 @@ def trade(o, h, l, c, t, side, v, near, far, targets, A, rr_check=True):
         if hit(e, tg, 1):
             return out(tg, e, "到目標")
         if v["be"] and hit(e, fill + side * be_dist, 1):
-            st["be"], st["stop"] = True, fill
+            st["be"], st["stop"], st["be_k"] = True, fill, e
     for k in range(e + 1, last + 1):
         if (o[k] - st["stop"]) * side <= 0:                              # 跳空越過停損
             return out(o[k], k, "保本" if st["be"] else "停損")
@@ -135,7 +136,7 @@ def trade(o, h, l, c, t, side, v, near, far, targets, A, rr_check=True):
         if ht:
             return out(tg, k, "到目標")
         if v["be"] and not st["be"] and hit(k, fill + side * be_dist, 1):
-            st["be"], st["stop"] = True, fill                            # 下一根起停損移到成本
+            st["be"], st["stop"], st["be_k"] = True, fill, k             # 下一根起停損移到成本
     return out(c[last], last, "時間到")
 
 
