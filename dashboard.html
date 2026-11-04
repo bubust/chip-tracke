@@ -2229,7 +2229,27 @@ function _dpTech(d) {
       ${ks && ks.claim ? `<div class="dp-note" style="margin-top:4px;color:#d29922">⚠️ 宏爺把${ks.band === 'hi' ? '高檔' : '低檔'}的這種 K 線當「${_esc(ks.claim)}」訊號，回測剛好相反（之後平均${ks.band === 'hi' ? '還是續漲' : '還是續跌'}），不要單靠它${ks.band === 'hi' ? '賣' : '買'}。</div>` : ''}
       <div class="dp-note" style="margin-top:4px">K 線型態主要反映位置：高檔的大紅K、倒T、墓碑線之後平均續漲；低檔的鎚子、T字之後平均續跌，跟一般「見頂／止跌」說法相反。只顯示、不計分。</div>
     </div>` : '';
+  // B93 她 11/4 的方法帶進個股：大中小＋兩道關卡＋第二隻腳（stock_wave.py）
+  const wv = d.wave;
+  const wvHtml = wv && wv.lines ? (() => {
+    const g1 = wv.gate1 || {}, g2 = wv.gate2, sm = wv.small || {}, up = wv.dir < 0;
+    const N = v => v == null ? '—' : Number(v).toLocaleString(undefined, { maximumFractionDigits: Math.abs(v) >= 1000 ? 0 : 2 });
+    const st = (ok, part) => ok ? '<span class="dp-up">✅ 已過</span>' : part ? '<span style="color:#d29922">◐ 過了一部分</span>' : '<span class="dp-mu">⬜ 還沒</span>';
+    const legs = (sm.legs || []).slice(0, 3).map((v, i) => `${['大', '中', '小'][i]} ${_esc(N(v))}`).join('、');
+    return `<div class="dp-sec">🌊 波段結構（大中小＋兩道關卡）</div>
+    <div class="dp-box">
+      <div style="font-size:.84rem;font-weight:600;margin-bottom:4px">${_esc(wv.status)}</div>
+      ${_dpRow(_esc(wv.labels.big), _esc(wv.lines[0].replace(/^[^：]*：/, '')))}
+      ${_dpRow(_esc(wv.labels.small), `${legs ? `${_esc(legs)}${sm.contract ? ' <span class="dp-up">收斂</span>' : ''}${sm.overlap ? ' <span class="dp-mu">（楔形）</span>' : ''}` : '—'}`)}
+      ${_dpRow('第一道關（安全門）', `${_esc(N(g1.lo))}～${_esc(N(g1.hi))}　${st(g1.passed, g1.touched)}
+        <div style="font-size:.72rem;color:#8b949e;font-weight:400">${(g1.lv || []).map(x => `${_esc(x[1])} ${_esc(N(x[0]))}`).join('、')}</div>`)}
+      ${g2 ? _dpRow('第二道關', `${_esc(N(g2.price))}　${st(g2.passed)}
+        <div style="font-size:.72rem;color:#8b949e;font-weight:400">${up ? '反彈' : '拉回'}在 ${g2.zone.map(v => _esc(N(v))).join('～')} 受阻＝還有第 (5) 段；過了也先當大 B 波</div>`) : ''}
+      <div class="dp-note" style="margin-top:4px">${_esc(wv.lines[wv.lines.length - 1])}</div>
+      <div class="dp-note" style="margin-top:4px">學 @fanny55520（11/4）：單根長影線只代表止跌反應，要一層一層過關卡才算；只描述結構和價位、沒有回測，不計分。</div>
+    </div>`; })() : '';
   return `
+    ${wvHtml}
     <div class="dp-box" style="font-size:.82rem">技術分類：<b>${_esc(bk.label || '—')}</b>
       ${t.tech_raw != null ? `<span class="dp-mu">（原始 ${_esc(t.tech_raw)} / 40；≥32 強勢、&lt;8 弱勢）</span>` : '<span class="dp-mu">（K 線不足，不分類）</span>'}
       <div class="dp-note" style="margin-top:4px">只用回測有效的「趨勢＋動能」：均線排列、60 日線方向、DIF、52 週位置、半年漲跌。</div></div>
@@ -8688,7 +8708,7 @@ async function saveAllStratParams() {
 <script src="/mna/static/mna.js?v=20261024b82b"></script>
 <script src="/cb/static/cb.js?v=20261024b82b"></script>
 <script src="/tail/static/tail.js?v=20261103b91"></script>
-<script src="/notes/static/notes.js?v=20261103b90"></script>
+<script src="/notes/static/notes.js?v=20261104b93"></script>
 <script src="/discuss/static/discuss.js?v=20261007a"></script>
 </body>
 </html>

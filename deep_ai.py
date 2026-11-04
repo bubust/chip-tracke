@@ -186,6 +186,11 @@ def _data_block(d: dict, rows: list) -> str:
                 line += f"；技術{(v.get('bucket') or {}).get('label', '')}又是{tr['box']}：{_s(bs['in_bucket']['x20'], 2)}%"
             L.append(line)
 
+    wv = d.get("wave") or {}
+    if wv.get("lines"):                                       # B93 波段結構（她的大中小＋兩道關卡；只描述、沒回測）
+        L.append("\n【波段結構（大級＝日 K 波段、小級＝日 K 短線；只描述結構與價位，沒有回測）】")
+        L += [f"- {x}" for x in wv["lines"]]
+
     ma, r = t.get("ma") or {}, t.get("ret") or {}
     m = t.get("macd") or {}
     L.append("\n【技術（系統，已回測）】")
