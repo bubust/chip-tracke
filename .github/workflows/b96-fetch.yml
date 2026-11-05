@@ -1,0 +1,28 @@
+name: b96-fetch
+on:
+  push:
+    branches: [claude/backtest-redesign-impl-516r4s]
+    paths: ["research/b96/fetch_vol.py"]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q httpx pandas numpy
+      - run: python research/b96/fetch_vol.py
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+      - if: always()            # 抓到一半逾時也把已經抓到的存回來
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -f research/b96/data/*.csv || true
+          git commit -m "chore: B96 回測資料（加權每 5 分鐘成交金額，證交所 MI_5MINS）" || exit 0
+          git pull --rebase origin claude/backtest-redesign-impl-516r4s
+          git push origin HEAD:claude/backtest-redesign-impl-516r4s
