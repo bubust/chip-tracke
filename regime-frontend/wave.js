@@ -633,7 +633,9 @@
         <div class="wv-srcv"><b>第一道關</b> ${fmt(g1.lo)}～${fmt(g1.hi)}　${st(g1.passed, g1.touched)}
           <div>${(g1.lv || []).map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}</div></div>
         ${g2 ? `<div class="wv-srcv"><b>第二道關</b> ${fmt(g2.price)}　${st(g2.passed)}
-          <div>${(g2.lv || []).map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}</div></div>` : ''}
+          <div>${(g2.lv || []).map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}</div>
+          ${g2.band ? `<div><b>匯聚區</b> ${fmt(g2.band.lo)}～${fmt(g2.band.hi)}　${st(g2.band.passed)}　${(g2.band.lv || []).map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}
+            <span class="wv-dim">站上就很有機會轉強（網友推敲、她回「推敲正確」），但先當大 B 波</span></div>` : ''}</div>` : ''}
         <ul style="margin:6px 0 0 18px;padding:0">${tz.lines.slice(0, 2).concat(tz.lines.slice(3)).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`;
     };
     // B89 她 11/3 下午：跌破第 1 段低點以後的三種細微脈動（圖 3／4／5）

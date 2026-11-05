@@ -46,11 +46,58 @@ def tentative(piv: list, h, l) -> Optional[dict]:
     return {"i": k, "p": float(h[k]), "t": "H"}
 
 
+def _fork(first_leg: Optional[list], T: dict, L1: dict, H2: dict, ext: float, d: int, lb: dict,
+          contract: Optional[bool]) -> Optional[dict]:
+    """B95 她 11/5：「46,107、45,523 不同的判斷落點，影響推敲日線定位」。
+    first_leg＝小級轉折從 T 到 L1（大級第一段）。併到五段以後：
+    ① 落在第 3 個轉折（46,107）＝小級 A-B-C（5-3-5）走完＝大級的 a，H2 是破底穿頭的 b，現在是 c（走完整段修正就結束）
+    ② 落在 L1（45,523）＝小級五段 (1)～(5)＝大級第 (1) 段（或 A），現在是第 (3) 段（主跌）或 C（5-3-5 收尾）"""
+    if not first_leg:
+        return None
+    F = [{"p": float(q["p"]), "t": q["t"]} for q in first_leg if q.get("p") is not None]
+    if len(F) < 6 or F[0]["t"] != T["t"] or abs(F[0]["p"] / T["p"] - 1) > 0.002 or abs(F[-1]["p"] / L1["p"] - 1) > 0.002:
+        return None
+    while len(F) > 6:
+        nxt = _drop_smallest(F)
+        if nxt is None:
+            break
+        F = nxt
+    a3 = F[3]["p"] if len(F) == 6 else None
+    if a3 is None or (a3 - L1["p"]) * d >= 0:                          # L1 要比第 3 個轉折更遠（第 5 段破了 a 的終點）
+        return None
+    s_dn = "跌" if d < 0 else "漲"
+    len3, len5 = abs(T["p"] - a3), abs(T["p"] - L1["p"])
+    hit = lambda v: (ext - v) * d >= 0                                 # noqa: E731  這段已經走到
+
+    def tg(label, v):
+        return {"label": label, "price": round(v, 2), "hit": hit(v)}
+    v3 = {"end": a3, "seq": [q["p"] for q in F[:4]],
+          "targets": [tg("c＝a 等幅", H2["p"] + d * len3), tg("c＝1.618 倍 a", H2["p"] + d * 1.618 * len3)]}
+    v5 = {"end": L1["p"], "seq": [q["p"] for q in F],
+          "targets": [tg("C＝A 等幅", H2["p"] + d * len5), tg("第 (3) 段＝1.618 倍第 (1) 段", H2["p"] + d * 1.618 * len5)]}
+    tt = lambda v: "、".join(f"{x['label']} {_fmt(x['price'])}" + ("（已到）" if x["hit"] else "") for x in v["targets"])  # noqa: E731
+    b_word = f"破底穿頭的 b（中間{s_dn}到 {_fmt(L1['p'])}）" if d < 0 else f"穿頭破底的 b（中間{s_dn}到 {_fmt(L1['p'])}）"
+    lines = [f"第一段落點兩種看法（她 11/5：{_fmt(a3)}、{_fmt(L1['p'])} 不同的判斷落點，會影響{lb['big']}定位）",
+             f"① 落在 {_fmt(a3)}：{_fmt(T['p'])}→{_fmt(F[1]['p'])}→{_fmt(F[2]['p'])}→{_fmt(a3)} 是{lb['small']} A-B-C（5-3-5）＝{lb['big']}的 a，"
+             f"{_fmt(a3)}→{_fmt(H2['p'])} 是{b_word}，{_fmt(H2['p'])} 起{s_dn}＝c：c 走完整段修正就結束（三段式）；{tt(v3)}",
+             f"② 落在 {_fmt(L1['p'])}：{_fmt(T['p'])}→{_fmt(L1['p'])} 是{lb['small']}五段 (1)～(5)＝{lb['big']}第 (1) 段（或 A），"
+             f"{_fmt(H2['p'])}＝(2)／B，{_fmt(H2['p'])} 起{s_dn}＝第 (3) 段（主{s_dn}，會很深）或 C（5-3-5 收尾）；{tt(v5)}"]
+    if contract is True:
+        lines.append(f"怎麼分：第 (3) 段通常比第 (1) 段更猛；現在{lb['small']}走成「大、中、小」動能遞減 → 比較像 C 浪五段收尾"
+                     f"（網友的見底劇本，她回「推敲正確」），但還是要過兩道關卡才算數")
+    elif contract is False:
+        lines.append(f"怎麼分：第 (3) 段通常比第 (1) 段更猛；現在{lb['small']}沒有一段比一段小 → 第 (3) 段主{s_dn}還不能排除")
+    else:
+        lines.append(f"怎麼分：等{lb['small']}這組走完五段，看動能有沒有一段比一段小（遞減＝像 C 浪收尾，越來越猛＝第 (3) 段）")
+    return {"a3": a3, "l1": L1["p"], "v3": v3, "v5": v5, "lines": lines}
+
+
 def structure(big: list, small: list, price: float, ma5: Optional[float] = None, ma10: Optional[float] = None,
-              labels: Optional[dict] = None) -> Optional[dict]:
+              labels: Optional[dict] = None, first_leg: Optional[list] = None) -> Optional[dict]:
     """big：大級轉折（舊→新，含最後還沒確認的那個），至少 [T, L1, H2, X]；small：小級轉折，從 H2 開始、到現在（含暫定）。
     price：現價；ma5／ma10：大級的 5、10 均（台指期＝日線）。labels：{"big": "日線", "small": "60 分"}（顯示用）。
-    回 {dir, case, big:{...}, small:{...}, gate1, gate2, entry, status, lines}；結構不夠回 None"""
+    first_leg：小級轉折從 T 到 L1（有給才算 B95 的第一段落點分歧）。
+    回 {dir, case, big:{...}, small:{...}, gate1, gate2, fork, entry, status, lines}；結構不夠回 None"""
     lb = {"big": "大級", "small": "小級", **(labels or {})}
     if len(big) < 4 or len(small) < 2:
         return None
@@ -103,6 +150,16 @@ def structure(big: list, small: list, price: float, ma5: Optional[float] = None,
         g2_lv.append((L1["p"], f"{lb['big']}第 (1) 段{lo_hi}點（4 不重疊 1）"))
         gate2 = {"price": L1["p"], "zone": [round(v, 2) for v, _ in g2_lv], "lv": [(round(v, 2), t) for v, t in g2_lv],
                  "passed": beyond(L1["p"])}
+        # B95 網友推敲（她回「推敲正確」）：0.618＋小級第 (2) 段＋大級第 (1) 段匯聚成一區（45,484～45,523），站上就很有機會轉強
+        bd = [(fib[0.618], f"{_fmt(H2['p'])}→{_fmt(ext)} 的 0.618")]
+        if k >= 3:
+            bd.append((S[2]["p"], f"{lb['small']}第 (2) 段{'高' if d < 0 else '低'}點"))
+        bd = [(v, t) for v, t in bd if abs(v / L1["p"] - 1) < 0.012]
+        if bd:
+            bd.append((L1["p"], f"{lb['big']}第 (1) 段{lo_hi}點"))
+            vs = sorted(v for v, _ in bd)
+            gate2["band"] = {"lo": round(vs[0], 2), "hi": round(vs[-1], 2), "lv": [(round(v, 2), t) for v, t in sorted(bd)],
+                             "passed": beyond(vs[-1] if d < 0 else vs[0])}
     # 進場（她：0.382 真過以後，壓回第二隻腳落在這段反彈的 0.382～0.5）
     reb = abs(R - ext)
     entry = None
@@ -147,9 +204,15 @@ def structure(big: list, small: list, price: float, ma5: Optional[float] = None,
                  + f" → {v_cross}＝{lb['small']}{s_dn}勢在 {_fmt(ext)} " + ("走完五段" if k >= 5 else "先告一段落")
                  + f"、轉入修正；遇壓折返＝還沒{s_dn}完")
     if gate2:
+        bd = gate2.get("band")
         lines.append(f"第二道關 {_fmt(L1['p'])}：{lb['big']}第 (4) 段在 " + "～".join(_fmt(v) for v in gate2["zone"])
                      + f" 受阻（4 不重疊 1）→ {lb['big']}再{s_dn}第 (5) 段破 {_fmt(ext)}（或至少回測）；"
-                     + f"就算{v_cross} {_fmt(L1['p'])}，也先當大 B 波{s_up}震盪")
+                     + (f"{_fmt(bd['lo'])}～{_fmt(bd['hi'])} 是" + "、".join(t for _, t in bd["lv"]) + f"匯聚，{v_cross}就很有機會轉強，但"
+                        if bd else f"就算{v_cross} {_fmt(L1['p'])}，也")
+                     + f"先當大 B 波{s_up}震盪")
+    fork = _fork(first_leg, T, L1, H2, ext, d, lb, small_out["contract"] if k >= 5 else None) if case == "3" else None
+    if fork:
+        lines += fork["lines"]
     if entry:
         lines.append(entry["t"])
     else:
@@ -158,7 +221,7 @@ def structure(big: list, small: list, price: float, ma5: Optional[float] = None,
     return {"dir": d, "case": case, "tag": tag, "labels": lb,
             "big": {"T": T["p"], "L1": L1["p"], "H2": H2["p"], "ext": ext},
             "small": small_out, "fib": {str(r): round(v, 2) for r, v in fib.items()}, "rebound": round(R, 2),
-            "gate1": gate1, "gate2": gate2, "entry": entry, "status": status, "lines": lines}
+            "gate1": gate1, "gate2": gate2, "fork": fork, "entry": entry, "status": status, "lines": lines}
 
 
 def analyze_daily(df, price: Optional[float] = None) -> Optional[dict]:
@@ -184,7 +247,9 @@ def analyze_daily(df, price: Optional[float] = None) -> Optional[dict]:
     small = [{"i": H2["i"], "p": H2["p"], "t": H2["t"]}] + small
     ma5 = float(np.mean(c[-5:])) if len(c) >= 5 else None
     ma10 = float(np.mean(c[-10:])) if len(c) >= 10 else None
-    out = structure(big, small, px, ma5, ma10, {"big": "中級（日 K 波段）", "small": "小級（日 K 短線）"})
+    T, L1 = big[-4], big[-3]
+    first = [q for q in sp if T["i"] <= q["i"] <= L1["i"]]
+    out = structure(big, small, px, ma5, ma10, {"big": "中級（日 K 波段）", "small": "小級（日 K 短線）"}, first_leg=first)
     if out:
         dates = [str(x) for x in df["date"].tolist()] if "date" in df.columns else None
         if dates:

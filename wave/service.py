@@ -816,9 +816,23 @@ def _pulses_mid(snap: dict, big: Optional[dict], price: float) -> None:
                                            "t": f"日線中線支撐 {add} → 破底延伸的最後一腳看這裡（0.5 大關卡）"})
 
 
-def _tiers(snap: dict, waves: dict, closes, price: float) -> None:
+def _first_leg(a60: Optional[dict], T: dict, L1: dict) -> Optional[list]:
+    """B95：60 分確認過的轉折裡，從日線這一段的起點 T 到第一段終點 L1（用價位對：同一份台指期 K 棒，高低點一樣）"""
+    if not a60 or not a60.get("ok"):
+        return None
+    pv = [{"p": float(q["p"]), "t": q["t"]} for q in (a60.get("an") or {}).get("pivots") or []]
+    same = lambda q, x: q["t"] == x["t"] and abs(q["p"] / float(x["p"]) - 1) < 0.001   # noqa: E731
+    iL = next((k for k in range(len(pv) - 1, -1, -1) if same(pv[k], L1)), None)
+    if iL is None:
+        return None
+    iT = next((k for k in range(iL - 1, -1, -1) if same(pv[k], T)), None)
+    return pv[iT:iL + 1] if iT is not None and iL - iT >= 5 else None
+
+
+def _tiers(snap: dict, waves: dict, closes, price: float, a60: Optional[dict] = None) -> None:
     """B93 她 11/4：日線（大級：50,265→45,523→47,607→42,050）＋60 分（小級：47,607 起的大、中、小）兩道關卡
-    → nest.60m.tiers；關卡加「日線關卡」、分水嶺補上匯聚的 0.382／日線 5 均、版本加進場（第二隻腳）"""
+    → nest.60m.tiers；關卡加「日線關卡」、分水嶺補上匯聚的 0.382／日線 5 均、版本加進場（第二隻腳）。
+    B95：a60＝60 分分析（拿 50,265→45,523 那段的 60 分轉折，算第一段落點 46,107／45,523 兩種看法）"""
     import stock_wave as SW
     n60 = (snap.get("nest") or {}).get("60m") or {}
     P = n60.get("primary") if n60.get("ok") else None
@@ -834,7 +848,8 @@ def _tiers(snap: dict, waves: dict, closes, price: float) -> None:
     c = [float(x) for x in closes]
     ma5 = sum(c[-5:]) / 5 if len(c) >= 5 else None
     ma10 = sum(c[-10:]) / 10 if len(c) >= 10 else None
-    t = SW.structure(big, small, price, ma5, ma10, {"big": "日線", "small": "60 分"})
+    first = _first_leg(a60, big[-4], big[-3]) if len(big) >= 4 else None
+    t = SW.structure(big, small, price, ma5, ma10, {"big": "日線", "small": "60 分"}, first_leg=first)
     if not t:
         return
     n60["tiers"] = t
@@ -1130,7 +1145,7 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
         log.warning(f"[wave] 三種日線定位失敗：{e}")
         snap["big"] = None
     try:                                                   # B93 她 11/4：日線＋60 分兩道關卡、大中小
-        _tiers(snap, waves, lv_c, price)
+        _tiers(snap, waves, lv_c, price, (intra.get("_tf") or {}).get("60m"))
     except Exception as e:     # noqa: BLE001
         log.warning(f"[wave] 兩道關卡失敗：{e}")
     # B80 價位梯＋如果…就…＋三條路（每個週期一份）
