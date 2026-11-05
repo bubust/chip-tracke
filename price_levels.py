@@ -357,9 +357,40 @@ def _zones(highs_idx, h, price, tol=0.02):
     return [{"low": _r(z["low"]), "high": _r(z["high"]), "touches": z["touches"]} for z in zones]
 
 
-def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
-    """回傳 {price, mode, pressure1, pressure2, target, target_method, target_kind, support, stop, atr, rr, downside_pct,
-    stops（參考：爆量低點／k=3 波段低點／前低／上漲模式出場）, thunder, measured, ma_near, notes}"""
+WAVE_FAR_ATR = 3.0     # B96：前低離現價超過 3 倍 ATR 才改看波浪價位（同「強勢延伸」的 3 ATR）
+
+
+def with_wave(sup: Optional[dict], zones: list, price: float, a: float) -> tuple:
+    """B96（2026-11-05 用戶看群創：38 元跌破所有前低，支撐跳到 22.95 −39.6%）：把波浪理論的價位帶進支撐。
+    zones＝stock_wave.support_zones（現價下面、近的在前）。回 (支撐, 支撐二)：
+    - 前低離現價超過 3 倍 ATR（或沒有前低），而且有比前低近的波浪價位 → 支撐＝波浪價位、支撐二＝前低
+    - 其他 → 支撐照舊是前低（10-06 用戶規則），支撐二＝最近、跟前低不重疊的波浪價位
+    跟前低 0.5 ATR 內重疊的波浪價位寫進前低的 wave（匯聚）。波浪只挑現價下面 30% 內的；個股沒回測過，畫面標 △"""
+    from stock_wave import SUP_WIN
+    tol = 0.5 * a
+    near = lambda z, p: z["lo"] - tol <= p <= z["hi"] + tol          # noqa: E731
+    if sup is not None:
+        conv = [s for z in zones if near(z, sup["price"]) for s in z["sources"]]
+        if conv:
+            sup = {**sup, "wave": conv}
+        zones = [z for z in zones if not near(z, sup["price"])]
+    zones = [z for z in zones if z["price"] >= price * (1 - SUP_WIN)]
+    if not zones:
+        return sup, None
+    z = zones[0]
+    w = {"price": z["price"], "lo": z["lo"], "hi": z["hi"], "kind": "wave", "sources": z["sources"],
+         "label": "波浪：" + "、".join(s["label"] + (f" {s['price']}" if len(z["sources"]) > 1 else "") for s in z["sources"])}
+    if (sup is None or price - sup["price"] > WAVE_FAR_ATR * a) and (sup is None or z["price"] > sup["price"]):
+        w["note"] = (f"{sup.get('label') or '前低'} {sup['price']} 離現價 {(sup['price'] / price - 1) * 100:.1f}%（超過 3 倍 ATR），先看波浪價位"
+                     if sup is not None else "近一年沒有低於現價的前低，看波浪價位")
+        return w, sup
+    return sup, w
+
+
+def compute_levels(df: pd.DataFrame, thunder_params: dict = None, wave: bool = True) -> dict:
+    """回傳 {price, mode, pressure1, pressure2, target, target_method, target_kind, support, support2, stop, atr, rr, downside_pct,
+    stops（參考：爆量低點／k=3 波段低點／前低／上漲模式出場）, thunder, measured, ma_near, notes}
+    wave=False 不算波浪支撐（只要停損／目標的「前一根」那次用，省時間）"""
     df = df.dropna(subset=["close"]).reset_index(drop=True)
     n = len(df)
     if n < 30:
@@ -495,6 +526,20 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
         stop = {"price": _r(es["price"]), "basis": "atr",
                 "label": "近一年沒有離現價 1 倍 ATR 以上的結構低點，停損用現價 − 2.5×ATR，收盤跌破出場"}
 
+    # B96 波浪支撐（停損上面已經用前低算好，不受影響）；強勢延伸（撐＝10 日線）不動
+    support2 = None
+    if wave and es["basis"] != "trail":
+        try:
+            from stock_wave import support_zones
+            wz = support_zones(h, l, c, price, a)
+        except Exception as e:                       # noqa: BLE001  算不出來就照舊只有前低
+            print(f"[levels] 波浪支撐失敗: {e}")
+            wz = []
+        low_sup = support
+        support, support2 = with_wave(support, wz, price, a)
+        if low_sup is not None and (support or {}).get("kind") == "wave" and stop and stop["label"].startswith("收盤跌破支撐"):
+            stop = {**stop, "label": stop["label"].replace("收盤跌破支撐", "收盤跌破前低", 1)}
+
     # 附近均線（±3% 內）
     ma_near = []
     for k, name in ((20, "20 日線"), (60, "60 日線")):
@@ -527,7 +572,7 @@ def compute_levels(df: pd.DataFrame, thunder_params: dict = None) -> dict:
         "pressure1": p1, "pressure2": p2, "zones": zones[:4],
         "target": _r(target), "target_method": method, "target_kind": target_kind,
         "upside_pct": _r((target / price - 1) * 100, 1) if target else None,
-        "support": support, "stop": stop, "struct_support": struct_support, "atr": _r(a, 3), "rr": rr,
+        "support": support, "support2": support2, "stop": stop, "struct_support": struct_support, "atr": _r(a, 3), "rr": rr,
         "ma5": _r(m5) if not np.isnan(m5) else None,
         "downside_pct": _r((stop["price"] / price - 1) * 100, 1) if stop else None,
         "measured": {k: (_r(x, 3) if isinstance(x, float) else x) for k, x in mm.items()} if mm else None,
