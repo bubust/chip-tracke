@@ -2193,7 +2193,7 @@ async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False, retu
     """return_df=True → (資料, 日 K DataFrame)；AI 解盤要用同一份日 K 做近 30 日表"""
     import math
     import pandas as pd
-    from scanner import calc_macd, calc_bb_score, classify_stage, _change_pct
+    from scanner import calc_macd, calc_bb_score, calc_bb_bands, classify_stage, _change_pct
     from yahoo_price import get_stock_list
     import deep_data
     import deep_patterns
@@ -2332,6 +2332,7 @@ async def _api_stock_deep_analysis_impl(stock_id: str, fresh: bool = False, retu
             "vol_vs_5d": _f(vol_today / vol_5d, 2) if vol_5d > 0 else None,
             "vol20": _f(trow["vol20"], 0),
             "bb_score": _safe_num(calc_bb_score(df)),
+            "bb": calc_bb_bands(df),
             "stage": classify_stage(df),
             "macd": {"dif": _f(dif_v), "dea": _f(dea_v), "osc": _f(osc_v), "signal": macd_signal},
             "macd_big": macd_big,
@@ -3992,7 +3993,7 @@ def _levels_for(sid: str, fresh: bool = False) -> dict:
             pass
         res = {"stock_id": sid, "name": name, **compute_levels(df, tp)}
         if len(df) >= 31 and not res.get("error"):
-            pv = compute_levels(df.iloc[:-1], tp)
+            pv = compute_levels(df.iloc[:-1], tp, wave=False)
             if not pv.get("error"):
                 res["prev"] = {"date": pv.get("date"), "stop": (pv.get("stop") or {}).get("price"), "target": pv.get("target")}
     _levels_cache[sid] = (_t.time(), res)

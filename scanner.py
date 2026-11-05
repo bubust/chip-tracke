@@ -121,7 +121,7 @@ def calc_ma(series: pd.Series, period: int) -> pd.Series:
 def calc_bb_score(df: pd.DataFrame, period: int = 20) -> float:
     """
     布林軌道分級：上軌~中軌 +10~0，中軌~下軌 0~-10
-    score = (close - MA20) / (2σ) × 10，夾在 [-10, 10]
+    score = (close - MA20) / (2σ) × 10，不夾上下限：超過 +10＝收在上軌外面、低於 −10＝跌破下軌（例：−11.8＝在下軌下面）
     """
     if len(df) < period:
         return 0.0
@@ -132,6 +132,16 @@ def calc_bb_score(df: pd.DataFrame, period: int = 20) -> float:
         return 0.0
     score = (float(closes.iloc[-1]) - float(ma)) / (2 * float(std)) * 10
     return round(score, 1)
+
+def calc_bb_bands(df: pd.DataFrame, period: int = 20) -> "dict | None":
+    """B96 布林三條線（跟 calc_bb_score 同一套：20 日、2 倍標準差 ddof=0）：{mid, upper, lower}，不夠 20 根回 None"""
+    if len(df) < period:
+        return None
+    w = df['close'].astype(float).iloc[-period:]
+    m, sd = float(w.mean()), float(w.std(ddof=0))
+    if not (sd == sd) or sd == 0:
+        return None
+    return {"mid": round(m, 2), "upper": round(m + 2 * sd, 2), "lower": round(m - 2 * sd, 2)}
 
 def find_local_minima(arr, window: int = 3) -> list:
     mins = []
