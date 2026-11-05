@@ -137,7 +137,7 @@ def run(D, tfc, maps_fn, rng, log_every=1000):
                        "p": C.p_first(entry, s["t1"], stop, s["side"], mu, sd_), "price": price, "atr": atr,
                        "dS": abs(price - s["level"]) / atr, "dT": abs(s["t1"] - price) / atr,
                        "year": int(D["years"][k]), "entry": entry, "risk": risk, "tg": abs(s["t1"] - entry),
-                       "pts": R * risk - COST * entry})
+                       "pts": R * risk - COST * entry, "rr_card": s.get("rr")})
         if log_every and t % log_every == 0:
             print(f"  {tfc} t={t}/{n} 事件 {len(ev)}（{time.time() - t0:.0f}s）", flush=True)
     return ev
@@ -193,7 +193,9 @@ def summarize(ev, rc, tfc, D2, rng):
                           "tg_med": round(float(np.median([e["tg"] for e in xs])), 1),
                           "pts_mean": round(float(np.mean([e["pts"] for e in xs])), 1),
                           "pts_sum": round(float(np.sum([e["pts"] for e in xs])), 0),
-                          "cost_med": round(float(np.median([COST * e["entry"] for e in xs])), 1)}
+                          "cost_med": round(float(np.median([COST * e["entry"] for e in xs])), 1),
+                          "rr_med": round(float(np.median([e["tg"] / e["risk"] for e in xs if e["risk"] > 0])), 2),
+                          "rr_card": round(float(np.median([e["rr_card"] for e in xs if e.get("rr_card")])), 2)}
     return rows
 
 
@@ -244,7 +246,7 @@ def main(data_dir=B94, vol_path=None, out_dir=OUT, which=("intra15", "intra15w")
         res["b81_60m"] = None
     with open(os.path.join(out_dir, "setups15.json"), "w", encoding="utf-8") as f:
         json.dump(res, f, ensure_ascii=False, indent=1, default=lambda x: x.item() if hasattr(x, "item") else str(x))
-    report(res, out_dir)
+    report(res, HERE if out_dir == OUT else out_dir)
     print("done", f"{time.time() - t0:.0f}s")
     return res
 
@@ -263,19 +265,19 @@ def report(res, out_dir=HERE):
             continue
         cfg = res["cfg"][tfc]
         L += [f"## {'主要' if tfc == 'intra15' else '敏感度'}：觸發 {cfg['W']} 根內、結果看 {cfg['H']} 根（事件 {x['n_events']}）", "",
-              "| 劇本 | 順逆 | 筆數（有結果／全部） | 先到目標 | 隨機漫步 | 差 | 95% 區間 | q | 隨機價位 | 平均 R | 停損／目標（點，中位數） | 每筆點數（扣成本） | 2023–24／2025–26 | 60 分（B81）先到目標／隨機 | 判定 |",
-              "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+              "| 劇本 | 順逆 | 筆數（有結果／全部） | 先到目標 | 隨機漫步 | 差 | 95% 區間 | q | 隨機價位 | 平均 R | 停損／目標（點，中位數） | 賠率：卡片／實際 | 每筆點數（扣成本） | 2023–24／2025–26 | 60 分（B81）先到目標／隨機 | 判定 |",
+              "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
         for nm, r in x["rows"].items():
             _, sid, tr = nm.split(":")
             b = ((res.get("b81_60m") or {}).get(f"{sid}:{tr}") or {})
             if not r.get("n"):
-                L.append(f"| {NAME[sid]} | {tr} | 0／{r.get('n_all', 0)} | | | | | | | | | | | | |")
+                L.append(f"| {NAME[sid]} | {tr} | 0／{r.get('n_all', 0)} | | | | | | | | | | | | | |")
                 continue
             per = "／".join(f"{v:+.1f}" for v in (r.get("periods") or {}).values())
             verdict = "✅" if r["pass"] else ("✗ 比隨機差" if r["worse"] else "△")
             L.append(f"| {NAME[sid]} | {tr} | {r['n']}／{r['n_all']} | {pc(r['win'])} | {pc(r['rw'])} | {r['edge'] * 100:+.1f} | "
                      f"[{r['ci'][0] * 100:+.1f}, {r['ci'][1] * 100:+.1f}] | {r['q']:.3f} | {pc(r['rand_win'])} | {r['avgR']:+.2f} | "
-                     f"{r['risk_med']:.0f}／{r['tg_med']:.0f} | {r['pts_mean']:+.1f}（成本約 {r['cost_med']:.0f}） | {per} | "
+                     f"{r['risk_med']:.0f}／{r['tg_med']:.0f} | 1：{r['rr_card']:.1f}／1：{r['rr_med']:.1f} | {r['pts_mean']:+.1f}（成本約 {r['cost_med']:.0f}） | {per} | "
                      f"{pc(b.get('win'))}／{pc(b.get('rw'))}（{b.get('n', '—')} 筆） | {verdict} |")
         L.append("")
     with open(os.path.join(out_dir, "REPORT.md"), "w", encoding="utf-8") as f:

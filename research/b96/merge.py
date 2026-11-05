@@ -21,7 +21,8 @@ def main():
             if not r.get("n"):
                 continue
             out[sid][tr] = {"n": r["n"], "win": r["win"], "rw": r["rw"], "edge": r["edge"], "avgR": r["avgR"],
-                            "pass": bool(r.get("pass")), "worse": bool(r.get("worse")), "pts": r.get("pts_mean")}
+                            "pass": bool(r.get("pass")), "worse": bool(r.get("worse")), "pts": r.get("pts_mean"),
+                            "rr_real": r.get("rr_med")}
     su = st.setdefault("setups", {})
     su["intra15"] = out
     su["note"] = ("日 K／週 K＝加權 2001 年起逐日重算當時的價位梯；60 分＝加權 60 分近 3 年（30 分沿用 60 分的結果）；"
