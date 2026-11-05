@@ -11,6 +11,7 @@
 方向對稱：跌勢看反彈的關卡；漲勢（大級第 3 段創高）看拉回的關卡。只描述結構與價位，不是買賣建議。"""
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 import numpy as np
@@ -258,3 +259,84 @@ def analyze_daily(df, price: Optional[float] = None) -> Optional[dict]:
                     q["date"] = dates[q["i"]]
             out["big"]["dates"] = {k: dates[q["i"]] for k, q in zip(("T", "L1", "H2", "X"), big[-4:]) if 0 <= q["i"] < len(dates)}
     return out
+
+
+# ── B96 個股支撐補波浪價位：前低跌破、下一個前低太遠（群創 38 元、前低 22.95 −39.6%）時看波浪理論 ──
+SUP_FIB = (0.382, 0.5, 0.618, 0.786)    # 0.236 太淺、不當支撐
+SUP_WIN = 0.30                          # 只挑現價下面 30% 內的波浪價位
+DEG_NAME = {"mid": "中波段", "big": "大波段"}
+
+
+def _turns(h, l, c, deg: str) -> list:
+    """日 K 這個級數到今天收盤看得到的轉折（確認過的＋進行中的極值），舊→新"""
+    from wave import engine as E
+    piv = E.zigzag(h, l, E.thresholds(h, l, c, deg))
+    conf, tent = E.state_at(piv, h, l, len(c) - 1)
+    return conf + ([tent] if tent else [])
+
+
+def _up_leg(pts: list):
+    """最近一段漲勢（低→高）：最後一點是高點＝正在漲的這段；最後一點是低點＝前一段漲勢"""
+    if len(pts) >= 2 and pts[-1]["t"] == "H" and pts[-2]["t"] == "L":
+        return pts[-2], pts[-1]
+    if len(pts) >= 3 and pts[-1]["t"] == "L" and pts[-2]["t"] == "H" and pts[-3]["t"] == "L":
+        return pts[-3], pts[-2]
+    return None
+
+
+def support_candidates(h, l, c) -> list:
+    """波浪理論的支撐候選（不分在現價上下）：[{price, label}]
+    - 中波段、大波段最近一段漲勢的 0.382／0.5／0.618／0.786 回檔
+    - 中波段正在跌、前面是「高→低→較低的高」：這段跌勢＝前一段跌幅等幅（第 (3) 段＝第 (1) 段、或 C＝A）"""
+    h = np.asarray(h, dtype=float)
+    l = np.asarray(l, dtype=float)
+    c = np.asarray(c, dtype=float)
+    if len(c) < 60 or np.isnan(h[-60:]).any() or np.isnan(l[-60:]).any():
+        return []
+    out, seen = [], set()
+
+    def fib(deg, A, B):
+        if (round(A, 2), round(B, 2)) in seen:
+            return
+        seen.add((round(A, 2), round(B, 2)))
+        for r in SUP_FIB:
+            out.append({"price": round(B - r * (B - A), 2), "label": f"{DEG_NAME[deg]} {_fmt(A)}→{_fmt(B)} 回檔 {r:g}"})
+    for deg in ("mid", "big"):
+        pts = _turns(h, l, c, deg)
+        leg = _up_leg(pts)
+        if leg:
+            fib(deg, leg[0]["p"], leg[1]["p"])
+        if deg == "big" and pts:
+            # 整段大漲（資料裡最高點、跟它之前的最低點）：大級門檻在波動小的股票會把一段大漲切成好幾段，這段要另外列
+            k = max(range(len(pts)), key=lambda j: pts[j]["p"] if pts[j]["t"] == "H" else -1e18)
+            lows = [q for q in pts[:k] if q["t"] == "L"]
+            if pts[k]["t"] == "H" and lows:
+                fib(deg, min(q["p"] for q in lows), pts[k]["p"])
+        if deg == "mid" and len(pts) >= 4 and [q["t"] for q in pts[-4:]] == ["H", "L", "H", "L"] and pts[-2]["p"] < pts[-4]["p"]:
+            T, L1, H2 = pts[-4]["p"], pts[-3]["p"], pts[-2]["p"]
+            v = H2 - (T - L1)
+            if v > 0:
+                out.append({"price": round(v, 2), "label": f"中波段 {_fmt(H2)} 起跌＝前一段跌幅（{_fmt(T)}→{_fmt(L1)}）等幅"})
+    return [x for x in out if x["price"] > 0]
+
+
+def support_zones(h, l, c, price: float, atr_v: float) -> list:
+    """support_candidates 在 0.5 ATR 內合併成一區（整區不超過 1 ATR，同 wave.levels.make_zones），只留整區都在現價下面的；
+    近的在前。回 [{price（區中間）, lo, hi, sources:[{price, label}]}]"""
+    if not atr_v or not math.isfinite(atr_v) or not price:
+        return []
+    cs = sorted((x for x in support_candidates(h, l, c) if x["price"] < price), key=lambda x: x["price"])
+    if not cs:
+        return []
+    tol = 0.5 * atr_v
+    groups, cur = [], [cs[0]]
+    for x in cs[1:]:
+        if x["price"] - cur[-1]["price"] <= tol and x["price"] - cur[0]["price"] <= 2 * tol:
+            cur.append(x)
+        else:
+            groups.append(cur)
+            cur = [x]
+    groups.append(cur)
+    zones = [{"price": round(float(np.mean([x["price"] for x in g])), 2), "lo": g[0]["price"], "hi": g[-1]["price"],
+              "sources": g[::-1]} for g in groups]
+    return sorted(zones, key=lambda z: -z["hi"])

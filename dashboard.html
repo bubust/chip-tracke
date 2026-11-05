@@ -2113,6 +2113,17 @@ function _dpRenderScoreCard(d) {
     </div>`;
 }
 
+// B96 支撐的說明：前低（日期）／波浪價位＋跟前低重疊的波浪價位（匯聚）＋為什麼改看波浪；波浪價位個股沒回測過 → △
+function _supNote(s) {
+  if (!s) return '';
+  const md = String(s.date || '').length === 8 ? ` ${String(s.date).slice(4, 6)}/${String(s.date).slice(6)}` : '';
+  let t = s.kind === 'wave' ? s.label : `${s.label || ''}${s.kind === 'ma5' || s.kind === 'ma10' ? '' : md}`;
+  if ((s.wave || []).length) t += `（跟波浪 ${s.wave.map(x => `${x.label} ${x.price}`).join('、')} 匯聚）`;
+  if (s.note) t += `；${s.note}`;
+  if (s.kind === 'wave') t += '；△ 波浪價位個股沒回測過，只當參考';
+  return t;
+}
+
 function _dpSum(d) {
   const v = d.verdict || {}, lv = d.levels || {}, tech = d.technical || {};
   if (!v.ok) return _dpMsg('📭', _esc(v.reason || '資料不足'));
@@ -2125,7 +2136,8 @@ function _dpSum(d) {
   if (p2 && p2 !== lv.target) add('壓力二', p2, '前面的高點區', 'up');
   if (p1 && p1 !== lv.target) add('壓力一', p1, '最近的前高', 'up');
   add('● 現價', price, '', 'now');
-  if ((lv.support || {}).price) add('支撐', lv.support.price, lv.support.label, 'dn');
+  if ((lv.support || {}).price) add(lv.support.kind === 'wave' ? '支撐（波浪）' : '支撐', lv.support.price, _supNote(lv.support), 'dn');
+  if ((lv.support2 || {}).price) add(lv.support2.kind === 'wave' ? '波浪支撐' : '支撐二', lv.support2.price, _supNote(lv.support2), 'dn');
   if ((lv.stop || {}).price) add('⛔ 停損', lv.stop.price, lv.stop.label, 'dn');
   pts.sort((a, b) => b.p - a.p);
   const ladder = pts.map(x => {
@@ -2185,6 +2197,15 @@ function _dpSum(d) {
     <div>${strat}</div>
     <div class="dp-sec">注意</div>
     <div class="dp-note">${(v.notes || []).map(x => `• ${_esc(x)}`).join('<br>')}</div>`;
+}
+
+// B96 BB 位置下面的說明：上軌 +10、下軌 −10 不是上下限，超過就是收在軌道外面（例：−11.8＝跌破下軌）
+function _dpBbSub(bb, b, px) {
+  if (bb == null) return '上軌 +10／下軌 −10';
+  const gap = (v) => px && v ? `${_dpS((px / v - 1) * 100, 1)}%` : '';
+  if (b && bb < -10) return `<span class="dp-dn">跌破下軌 ${_esc(b.lower)}</span>（${gap(b.lower)}）<br>超過 ±10＝收在軌道外`;
+  if (b && bb > 10) return `<span class="dp-up">突破上軌 ${_esc(b.upper)}</span>（${gap(b.upper)}）<br>超過 ±10＝收在軌道外`;
+  return b ? `上軌 ${_esc(b.upper)}／中 ${_esc(b.mid)}／下軌 ${_esc(b.lower)}` : '上軌 +10／下軌 −10';
 }
 
 function _dpTech(d) {
@@ -2267,7 +2288,7 @@ function _dpTech(d) {
       ${_dpCell('近 20 日', _dpS(r['20'], 1) + '%', '', _dpC(r['20']))}
       ${_dpCell('近 60 日', _dpS(r['60'], 1) + '%', '', _dpC(r['60']))}
       ${_dpCell('近 120 日', _dpS(r['120'], 1) + '%', '', _dpC(r['120']))}
-      ${_dpCell('BB 位置', t.bb_score != null ? _dpS(t.bb_score, 1) : '—', '上軌 +10／下軌 −10')}
+      ${_dpCell('BB 位置', t.bb_score != null ? _dpS(t.bb_score, 1) : '—', _dpBbSub(t.bb_score, t.bb, t.close))}
     </div>
     <div class="dp-sec">量能</div>
     <div class="dp-box">
@@ -3123,7 +3144,7 @@ function _levelsCell(s) {
         return `<span style="font-size:.74rem;line-height:1.45;display:inline-block;white-space:nowrap">
           ${held ? `<span title="持有中：成本 ${lv.entry.price}（${lv.entry.pnl_pct > 0 ? '+' : ''}${lv.entry.pnl_pct}%）">💼</span>` : ''}${lv.target != null ? `<span style="color:#ef4444;font-weight:700">標 ${lv.target}</span>` : '<span class="muted">標 —</span>'}${icon}
           <br>${p1 != null ? `<span style="color:#f59e0b">壓 ${p1}${p2 != null ? ' · ' + p2 : ''}</span>` : '<span class="muted">無前高</span>'}
-          <br><span style="color:#4ade80">撐 ${sup ?? '—'}</span> · <span style="color:#22c55e;font-weight:700">損 ${stop ? stop.price : '—'}</span>${lv.stop && lv.stop.basis === 'roll' ? `<span style="font-size:.72rem;color:#38bdf8" title="${_esc(lv.stop.label || '')}"> 滾動</span>`
+          <br><span style="color:#4ade80"${lv.support && lv.support.kind === 'wave' ? ` title="${_esc(_supNote(lv.support))}"` : ''}>撐 ${sup ?? '—'}${lv.support && lv.support.kind === 'wave' ? '<span style="font-size:.68rem;color:#38bdf8">浪</span>' : ''}</span> · <span style="color:#22c55e;font-weight:700">損 ${stop ? stop.price : '—'}</span>${lv.stop && lv.stop.basis === 'roll' ? `<span style="font-size:.72rem;color:#38bdf8" title="${_esc(lv.stop.label || '')}"> 滾動</span>`
             : lv.stop && lv.stop.basis === 'trail' ? '<span style="font-size:.72rem;color:#a78bfa" title="強勢股離前低太遠：撐看 10 日線，停損＝20 日線 − 1 ATR，跟著月線上移"> 移動</span>'
             : lv.stop && lv.stop.basis === 'risk' ? '<span class="muted" style="font-size:.72rem" title="前低太遠、又不是強勢：附近沒有可靠支撐，停損用現價 − 3.5 ATR"> 風險上限</span>'
             : lv.stop && lv.stop.basis === 'entry10' ? `<span style="font-size:.72rem;color:#f472b6" title="停損不低於${held ? '成本' : '加入價'} ${lv.entry.price} 的 −10%"> ${held ? '成本' : '加入'}−10%</span>` : ''}${flag}</span>`;
@@ -3156,7 +3177,7 @@ async function showLevels(sid) {
   const zone = z => z ? (z.low === z.high ? `${z.low}` : `${z.low}～${z.high}`) + (z.touches > 1 ? `（碰過 ${z.touches} 次）` : '') : '—';
   const st = lv.stops || {};
   const refRows = ['volume_low', 'swing_low', 'prev_low'].filter(k => st[k] && !(lv.struct_support && st[k].price === lv.struct_support.price)
-    && !(lv.support && st[k].price === lv.support.price)).map(k =>   // 跟支撐、前低同價的不重複列
+    && !(lv.support && st[k].price === lv.support.price) && !(lv.support2 && st[k].price === lv.support2.price)).map(k =>   // 跟支撐、前低同價的不重複列
     `<div>· <b>${st[k].price}</b> <span class="muted">${_esc(st[k].label)} ${fmtD(st[k].date)}</span></div>`).join('');
   const sup = lv.support, stp = _levelsPrimaryStop(lv);
   const item = (dot, label, val, color, note) => `<div style="margin-top:4px">${dot} ${label} <b style="color:${color}">${val}</b></div>`
@@ -3164,8 +3185,9 @@ async function showLevels(sid) {
   const fivesHtml = item('🔴', '目標價', `${lv.target ?? '—'}${lv.upside_pct != null ? ` <span class="muted" style="font-weight:400">（還有 ${lv.upside_pct}%）</span>` : ''}`, '#ef4444', _esc(lv.target_method || ''))
     + item('🟠', '壓力區一', zone(lv.pressure1), '#f59e0b', lv.pressure1 ? '現價上方最近的前高' : '上方沒有前高')
     + item('🟠', '壓力區二', zone(lv.pressure2), '#f59e0b', lv.pressure2 ? '再上去的前高' : '')
-    + item('🟢', '支撐價', sup ? sup.price : '—', '#4ade80', sup ? `${_esc(sup.label)}${sup.kind === 'ma5' || sup.kind === 'ma10' ? '' : ' ' + fmtD(sup.date)}`
+    + item('🟢', sup && sup.kind === 'wave' ? '支撐價（波浪）' : '支撐價', sup ? sup.price : '—', '#4ade80', sup ? _esc(_supNote(sup))
         : lv.struct_support ? '前低離現價超過 3 倍 ATR、又不是強勢，附近沒有可靠支撐（前低見下方參考）' : '近一年找不到低於現價的低點')
+    + (lv.support2 ? item('🟢', lv.support2.kind === 'wave' ? '波浪支撐' : '支撐二', lv.support2.price, '#4ade80', _esc(_supNote(lv.support2))) : '')
     + item('🛑', '停損價', stp ? stp.price : '—', '#22c55e', stp ? _esc(stp.label || '') : '')
     + (lv.stop_today && lv.stop_today.price != null && stp && lv.stop_today.price !== stp.price
         ? `<div class="muted" style="font-size:.74rem;margin-left:22px;line-height:1.5">如果今天才買：停損 <b style="color:var(--text)">${lv.stop_today.price}</b>（${_esc(lv.stop_today.label || '')}）</div>` : '')
