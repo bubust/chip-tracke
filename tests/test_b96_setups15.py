@@ -6,7 +6,6 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, "research", "b96"))
 from wave import service as S  # noqa: E402
 
 
@@ -29,7 +28,10 @@ def test_stats_has_15m_setups():
 
 
 def test_load15_sums_three_5min_slots(tmp_path):
-    import run as R
+    import importlib.util                                                   # research 底下很多 run.py，用唯一的名字載入
+    spec = importlib.util.spec_from_file_location("b96_run", os.path.join(ROOT, "research", "b96", "run.py"))
+    R = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(R)
     (tmp_path / "twii_15m.csv").write_text("date,o,h,l,c\n2026-11-04 09:00,1,2,0.5,1.5\n2026-11-04 13:15,1,2,0.5,1.5\n", encoding="utf-8")
     (tmp_path / "amt.csv").write_text("date,slot,amt\n2026-11-04,09:00,10\n2026-11-04,09:05,20\n2026-11-04,09:10,30\n2026-11-04,09:15,99\n"
                                       "2026-11-04,13:15,1\n2026-11-04,13:20,2\n2026-11-04,13:25,4\n", encoding="utf-8")
