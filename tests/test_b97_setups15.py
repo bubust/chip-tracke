@@ -1,5 +1,5 @@
-"""B96 用 15 分 K 回測 15 分週期的劇本（research/b96）：網站 15 分的劇本卡改用 15 分自己的回測，30／60 分照舊用 60 分（B81）
-python -m pytest tests/test_b96_setups15.py -q（不連網）"""
+"""B97 用 15 分 K 回測 15 分週期的劇本（research/b97）：網站 15 分的劇本卡改用 15 分自己的回測，30／60 分照舊用 60 分（B81）
+python -m pytest tests/test_b97_setups15.py -q（不連網）"""
 import json
 import os
 import sys
@@ -29,7 +29,7 @@ def test_stats_has_15m_setups():
 
 def test_load15_sums_three_5min_slots(tmp_path):
     import importlib.util                                                   # research 底下很多 run.py，用唯一的名字載入
-    spec = importlib.util.spec_from_file_location("b96_run", os.path.join(ROOT, "research", "b96", "run.py"))
+    spec = importlib.util.spec_from_file_location("b97_run", os.path.join(ROOT, "research", "b97", "run.py"))
     R = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(R)
     (tmp_path / "twii_15m.csv").write_text("date,o,h,l,c\n2026-11-04 09:00,1,2,0.5,1.5\n2026-11-04 13:15,1,2,0.5,1.5\n", encoding="utf-8")
