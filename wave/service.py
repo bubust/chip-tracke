@@ -829,6 +829,13 @@ def _first_leg(a60: Optional[dict], T: dict, L1: dict) -> Optional[list]:
     return pv[iT:iL + 1] if iT is not None and iL - iT >= 5 else None
 
 
+def _setup_tfc(tf: str, sres: dict) -> str:
+    """試單回測用哪一組：日 K／週 K 自己的；15 分有 B97 的 15 分 K 回測就用 15 分的，其他分 K 用 60 分（B81）"""
+    if tf not in ("15m", "30m", "60m"):
+        return tf
+    return "intra15" if tf == "15m" and (sres or {}).get("intra15") else "intra"
+
+
 def _tiers(snap: dict, waves: dict, closes, price: float, a60: Optional[dict] = None) -> None:
     """B93 她 11/4：日線（大級：50,265→45,523→47,607→42,050）＋60 分（小級：47,607 起的大、中、小）兩道關卡
     → nest.60m.tiers；關卡加「日線關卡」、分水嶺補上匯聚的 0.382／日線 5 均、版本加進場（第二隻腳）。
@@ -1176,7 +1183,7 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
                 lm[tf]["mother_note"] = "母尺跟日 K 同一段（防守區、鐵律底線看日 K）"
             # B81 試單地圖：ATR＝該週期（週 K 用日 K 的 ATR，跟回測一樣）；順逆勢看週期按鈕的方向
             atr_tf = (a_tf.get("atr") if a_tf and a_tf.get("ok") else None) if intra_tf else b["atr"]
-            tfc = "intra" if intra_tf else tf
+            tfc = _setup_tfc(tf, sres)
             res = {sid: {tr: {**r, "tfc": tfc} for tr, r in (x or {}).items()} for sid, x in (sres.get(tfc) or {}).items()
                    if sid in ("L", "S", "B")}
             su = LM.setups(lm[tf].get("items") or [], price, atr_tf, ldir.get(tf, 0), sym, res)

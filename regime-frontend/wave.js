@@ -290,9 +290,10 @@
   function setupCard(x, su) {
     const col = isShortTW(x) ? 'var(--warn)' : x.side > 0 ? 'var(--up)' : 'var(--down)';
     const r = x.res;
-    const src = !r ? '' : r.tfc === 'intra' ? '60 分 K 3 年資料' : r.tfc === '1wk' ? '週 K 價位、2001 年起' : '日 K 2001 年起';
+    const src = !r ? '' : r.tfc === 'intra15' ? '15 分 K 3 年資料' : r.tfc === 'intra' ? '60 分 K 3 年資料' : r.tfc === '1wk' ? '週 K 價位、2001 年起' : '日 K 2001 年起';
     const resTxt = r ? `回測（${src}、${esc(x.trend || '')}）：先到目標 ${rateS(r.win)}，隨機 ${rateS(r.rw)}（${esc(r.n)} 筆）→ ${r.pass ? '✅' : '△'}` +
-      (r.worse ? ' <b style="color:var(--warn)">比隨機差，這個週期不建議這樣做</b>' : r.pass ? '' : '，當紀律參考：停損明確、賠率夠才做') : '回測：這個組合沒有足夠資料';
+      (r.worse ? ' <b style="color:var(--warn)">比隨機差，這個週期不建議這樣做</b>' : r.pass ? '' : '，當紀律參考：停損明確、賠率夠才做') +
+      (r.rr_real != null ? `；照「收盤確認」進場，實際賠率中位數只有 1：${Number(r.rr_real).toFixed(1)}（上面的賠率用進場區中間算）` : '') : '回測：這個組合沒有足夠資料';
     const body = isShortTW(x)
       ? `<div>彈到這裡：<b>減碼</b>（${esc(x.cond)}）</div><div>站回 ${fmt(x.stop)} 以上 → 這個壓力被突破，減掉的買回</div>`
       : `<div>進場：${esc(x.cond)}</div>
