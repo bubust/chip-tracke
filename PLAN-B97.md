@@ -1,11 +1,13 @@
-# PLAN-B96：用 15 分 K 回測 15 分週期的劇本
+# PLAN-B97：用 15 分 K 回測 15 分週期的劇本
+
+（原本編 B96，跟同一天另一個工作「個股支撐補波浪價位（B96）」撞號，改成 B97；早期幾個 commit 訊息寫的 B96 指的是這個。）
 
 用戶看網站 15 分的「回測支撐試多（逆勢）／反彈壓力試空（順勢、主要）」：「用 15 分 K 的劇本去做回測」。
 以前 15／30／60 分的劇本卡都借用 B81 的 60 分 K 回測（截圖那行「60 分 K 3 年資料、逆勢：先到目標 51%，隨機 44%（140 筆）」）。
 
-規則：research/b96/PLAN.md（跑之前 commit）；程式 research/b96/run.py（觸發、結果、對照沿用 research/b81/run_setups.py）；
-結果 research/b96/REPORT.md、results/setups15.json → wave/stats.json 的 setups.intra15。
-資料：證交所每 5 秒指數組成的加權 15 分 K（B94e）＋證交所 MI_5MINS 每 5 秒成交金額（research/b96/fetch_vol.py）算 15 分的量；
+規則：research/b97/PLAN.md（跑之前 commit）；程式 research/b97/run.py（觸發、結果、對照沿用 research/b81/run_setups.py）；
+結果 research/b97/REPORT.md、results/setups15.json → wave/stats.json 的 setups.intra15。
+資料：證交所每 5 秒指數組成的加權 15 分 K（B94e）＋證交所 MI_5MINS 每 5 秒成交金額（research/b97/fetch_vol.py）算 15 分的量；
 2023-10～2026-11，13,482 根。每根用最近 1,080 根（約 60 天）算網站同一套 15 分價位梯、劇本。
 
 ## 結果（觸發 15 根內、結果看 30 根）

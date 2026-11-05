@@ -1,5 +1,5 @@
-"""B96：用 15 分 K 回測 15 分週期的劇本（規則見 PLAN.md；觸發、結果、對照沿用 research/b81/run_setups.py）
-python research/b96/run.py → results/setups15.json、REPORT.md"""
+"""B97：用 15 分 K 回測 15 分週期的劇本（規則見 PLAN.md；觸發、結果、對照沿用 research/b81/run_setups.py）
+python research/b97/run.py → results/setups15.json、REPORT.md"""
 import bisect
 import csv
 import json
@@ -257,7 +257,7 @@ def pc(x, d=1):
 
 def report(res, out_dir=HERE):
     NAME = {"L": "回測支撐試多", "S": "反彈壓力試空", "B": "站上回測追多"}
-    L = ["# B96：15 分 K 的劇本回測", "",
+    L = ["# B97：15 分 K 的劇本回測", "",
          f"資料：加權 15 分 K（證交所每 5 秒指數）{res['period']}；成交量 {'有（MI_5MINS）' if res['has_vol'] else '沒有'}；每根用最近 {res['win_n']} 根算價位梯。規則見 PLAN.md。", ""]
     for tfc in ("intra15", "intra15w"):
         x = res.get(tfc)

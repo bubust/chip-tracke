@@ -53,5 +53,5 @@ research/b91/data/
 # B94 回測資料（GitHub Actions 抓，research/b94/fetch.py 可重抓）
 research/b94/data/
 
-# B96 回測資料（GitHub Actions 抓，research/b96/fetch_vol.py 可重抓）
-research/b96/data/
+# B97 回測資料（GitHub Actions 抓，research/b97/fetch_vol.py 可重抓）
+research/b97/data/

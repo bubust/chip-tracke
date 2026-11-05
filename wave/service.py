@@ -830,7 +830,7 @@ def _first_leg(a60: Optional[dict], T: dict, L1: dict) -> Optional[list]:
 
 
 def _setup_tfc(tf: str, sres: dict) -> str:
-    """試單回測用哪一組：日 K／週 K 自己的；15 分有 B96 的 15 分 K 回測就用 15 分的，其他分 K 用 60 分（B81）"""
+    """試單回測用哪一組：日 K／週 K 自己的；15 分有 B97 的 15 分 K 回測就用 15 分的，其他分 K 用 60 分（B81）"""
     if tf not in ("15m", "30m", "60m"):
         return tf
     return "intra15" if tf == "15m" and (sres or {}).get("intra15") else "intra"

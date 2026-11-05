@@ -1,4 +1,4 @@
-"""B96 15 分 K 成交量（GitHub Actions 抓；雲端 session 連不到證交所）：
+"""B97 15 分 K 成交量（GitHub Actions 抓；雲端 session 連不到證交所）：
 證交所 MI_5MINS（每 5 秒累計成交金額，百萬元）每天一次 → 每 5 分鐘的成交金額（9:00～13:30，一天 54 格；13:30 收盤撮合併進 13:25 那格）
 → data/twii_5m_amt.csv（date, slot, amt）。15 分 K 的量＝三格相加（跟 research/b80 一樣的切法）"""
 import csv
