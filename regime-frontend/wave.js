@@ -290,7 +290,7 @@
   function setupCard(x, su) {
     const col = isShortTW(x) ? 'var(--warn)' : x.side > 0 ? 'var(--up)' : 'var(--down)';
     const r = x.res;
-    const src = !r ? '' : r.tfc === 'intra' ? '60 分 K 3 年資料' : r.tfc === '1wk' ? '週 K 價位、2001 年起' : '日 K 2001 年起';
+    const src = !r ? '' : r.tfc === 'intra15' ? '15 分 K 3 年資料' : r.tfc === 'intra' ? '60 分 K 3 年資料' : r.tfc === '1wk' ? '週 K 價位、2001 年起' : '日 K 2001 年起';
     const resTxt = r ? `回測（${src}、${esc(x.trend || '')}）：先到目標 ${rateS(r.win)}，隨機 ${rateS(r.rw)}（${esc(r.n)} 筆）→ ${r.pass ? '✅' : '△'}` +
       (r.worse ? ' <b style="color:var(--warn)">比隨機差，這個週期不建議這樣做</b>' : r.pass ? '' : '，當紀律參考：停損明確、賠率夠才做') : '回測：這個組合沒有足夠資料';
     const body = isShortTW(x)
