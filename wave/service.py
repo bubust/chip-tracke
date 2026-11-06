@@ -836,6 +836,19 @@ def _setup_tfc(tf: str, sres: dict) -> str:
     return "intra15" if tf == "15m" and (sres or {}).get("intra15") else "intra"
 
 
+def _full_from(waves: dict, sm: dict, big: list) -> Optional[float]:
+    """B98 她 11/6 的「全波段」：日線這段高點 T 之前，大級（背景）最後一個反向轉折（台指期＝2025/4/10 的 17,015）"""
+    piv = sm.get("pivots") or []
+    if len(big) < 4 or len(piv) < 3:
+        return None
+    T = big[-4]
+    td = next((str(q.get("date")) for q in reversed(piv) if abs(float(q["p"]) / T["p"] - 1) < 1e-6 and q["t"] == T["t"]), None)
+    if td is None:
+        return None
+    bp = list((waves.get("big") or {}).get("pivots") or [])
+    return next((float(q["p"]) for q in reversed(bp) if str(q.get("date")) < td and q["t"] != T["t"]), None)
+
+
 def _tiers(snap: dict, waves: dict, closes, price: float, a60: Optional[dict] = None) -> None:
     """B93 她 11/4：日線（大級：50,265→45,523→47,607→42,050）＋60 分（小級：47,607 起的大、中、小）兩道關卡
     → nest.60m.tiers；關卡加「日線關卡」、分水嶺補上匯聚的 0.382／日線 5 均、版本加進場（第二隻腳）。
@@ -856,7 +869,7 @@ def _tiers(snap: dict, waves: dict, closes, price: float, a60: Optional[dict] = 
     ma5 = sum(c[-5:]) / 5 if len(c) >= 5 else None
     ma10 = sum(c[-10:]) / 10 if len(c) >= 10 else None
     first = _first_leg(a60, big[-4], big[-3]) if len(big) >= 4 else None
-    t = SW.structure(big, small, price, ma5, ma10, {"big": "日線", "small": "60 分"}, first_leg=first)
+    t = SW.structure(big, small, price, ma5, ma10, {"big": "日線", "small": "60 分"}, first_leg=first, full=_full_from(waves, sm, big))
     if not t:
         return
     n60["tiers"] = t
@@ -877,6 +890,9 @@ def _tiers(snap: dict, waves: dict, closes, price: float, a60: Optional[dict] = 
     line = (t.get("entry") or {}).get("t") or t["lines"][-1]
     if line not in plan:
         plan.insert(min(len(plan), 3), line)
+    e3 = t.get("ext3")                                                 # B98 她 11/6：點位只是空間到達，止穩訊號＋分批
+    if e3 and e3["lines"][-1] not in plan:
+        plan.insert(min(len(plan), 4), e3["lines"][-1])
 
 
 def _nest(a: dict, tf: int, price: float, b: dict, parent: Optional[dict] = None) -> dict:
