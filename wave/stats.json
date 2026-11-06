@@ -1932,5 +1932,49 @@
     "pass_d2": false
    }
   }
+ },
+ "entry_b99": {
+  "generated": "2026-11-06 12:45",
+  "span": [
+   "2023-10-02",
+   "2026-11-04"
+  ],
+  "n_events": 76,
+  "knife": -0.275,
+  "knife_x": -1.191,
+  "knife_win": 19,
+  "v1": -0.045,
+  "v2": 0.273,
+  "v4_rate": 7,
+  "v2_vs_knife": {
+   "mean": 0.548,
+   "q": 0.0,
+   "verdict": "✅"
+  },
+  "v2_vs_rand": {
+   "mean": -0.013,
+   "q": 0.567,
+   "verdict": "△"
+  },
+  "v1_vs_knife": {
+   "mean": 0.229,
+   "q": 0.135,
+   "verdict": "△"
+  },
+  "e2_vs_e1": {
+   "mean": 0.014,
+   "q": 0.634,
+   "verdict": "△"
+  },
+  "v1_vs_v5": {
+   "mean": -0.105,
+   "q": 0.932,
+   "verdict": "△"
+  },
+  "v1_vs_rand": {
+   "mean": -0.144,
+   "q": 0.932,
+   "verdict": "△"
+  }
  }
 }

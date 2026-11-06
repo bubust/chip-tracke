@@ -639,6 +639,15 @@
             <span class="wv-dim">站上就很有機會轉強（網友推敲、她回「推敲正確」），但先當大 B 波</span></div>` : ''}</div>` : ''}
         <ul style="margin:6px 0 0 18px;padding:0">${tz.lines.slice(0, 2).concat(tz.lines.slice(3)).map(x => `<li>${esc(x)}</li>`).join('')}</ul>${ext3Box(tz.ext3)}</div>`;
     };
+    // B99 她的進單規矩回測：接刀 vs 等止穩（wave/stats.json entry_b99）
+    const b99Line = () => {
+      const x = ((S && S.research) || {}).entry;
+      if (!x) return '';
+      const p = v => `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}%`;
+      return `<div class="wv-dim" style="margin-top:4px">📊 回測（B99，加權 ${esc(x.span[0])}～${esc(x.span[1])}、${x.n_events} 個波浪區）：碰到區就掛單＝接刀每區平均 <b>${p(x.knife)}</b>（煞車區接刀 ${p(x.knife_x)}）；
+        等止穩、停損放在低點下方比較好（站回 5 均 ${p(x.v2)}，比接刀多 ${p(x.v2_vs_knife.mean)} ${esc(x.v2_vs_knife.verdict)}），但跟同一區隨便挑時間進場差不多 ${esc(x.v2_vs_rand.verdict)}——
+        重點是「不要在區裡先掛單、等低點出來再進、停損放低點下方」，用哪一種止穩訊號差別不大；走一口留一口跟一次出差不多 ${esc(x.e2_vs_e1.verdict)}</div>`;
+    };
     // B98 她 11/6：4 不重疊 1 → 延伸第 3 段（3-1、3-2、3-3 運行中）：3-3 兩個煞車區、3-4 反抽還是轉浪、第 5 段下修
     const ext3Box = e => {
       if (!e || !e.brakes) return '';
@@ -650,7 +659,7 @@
         ${e.brakes.map(z => `<div><b>${esc(z.name)}</b> ${fmt(z.lv[0][0])}～${fmt(z.lv[z.lv.length - 1][0])}　${zs[z.state] || ''}${z.state === 'ahead' ? `（還差 ${fmt(z.gap)} 點）` : ''}<div>${chips(z.lv)}</div></div>`).join('')}
         <div><b>3-4 反抽還是轉浪</b>：受阻在 <b>${fmt(r.f382)}～${fmt(r.f5)}</b>（3-3 的 0.382～0.5）或收不回 <b>${fmt(r.hard)}</b>，壓回又破 <b>${fmt(r.from)}</b> → 只是 3-4，後面還有 3-5 和第 5 段。現在：${esc(r.now)}</div>
         ${f ? `<div><b>第 5 段走完</b>：淺 5 <b>${fmt(f.shallow.lv[0][0])}～${fmt(f.shallow.lv[1][0])}</b>、深 5 <b>${fmt(f.deep.lv[0][0])}～${fmt(f.deep.lv[f.deep.lv.length - 1][0])}</b><div>${chips(f.shallow.lv.slice(0, 1).concat(f.deep.lv))}</div></div>` : ''}
-        <div class="wv-dim">${esc(e.lines[e.lines.length - 1])}（波浪價位沒有回測過，△ 只當參考）</div></div>`;
+        <div class="wv-dim">${esc(e.lines[e.lines.length - 1])}（波浪價位沒有回測過，△ 只當參考）</div>${b99Line()}</div>`;
     };
     // B89 她 11/3 下午：跌破第 1 段低點以後的三種細微脈動（圖 3／4／5）
     const pulseBox = pz => {

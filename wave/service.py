@@ -339,7 +339,18 @@ def _research(st: dict) -> dict:
                 "籌碼（外資現貨、期貨、融資）：對之後 5／20 天加權沒有預測力 △",
                 "國際：只有「前一晚費半 → 加權隔天」有效（樣本外 R² 約 0.2）✅",
                 "過去相似狀態：比直接看全部歷史還略差 → 預測區間改用全部歷史 △",
-            ] + _research_b75(st) + _research_b80(st)}
+            ] + _research_b75(st) + _research_b80(st) + _research_b99(st), "entry": st.get("entry_b99")}
+
+
+def _research_b99(st: dict) -> list:
+    """B99 她的進單規矩（research/b99）：空間到達以後接刀 vs 等止穩訊號，一句話結論"""
+    x = st.get("entry_b99") or {}
+    if not x:
+        return []
+    return [f"她的進單規矩（{x['n_events']} 個 60 分波浪區、15 分 K 進出）：碰到區就掛單＝接刀，每區平均 {x['knife']:+.2f}%"
+            f"（勝率 {x['knife_win']}%，煞車區接刀 {x['knife_x']:+.2f}%）；等止穩、停損放在低點下方比較好"
+            f"（站回 5 均 {x['v2']:+.2f}%，比接刀多 {x['v2_vs_knife']['mean']:+.2f}% {x['v2_vs_knife']['verdict']}），"
+            f"但跟同一區隨便挑時間進場差不多 {x['v2_vs_rand']['verdict']}；走一口留一口跟一次出差不多 {x['e2_vs_e1']['verdict']}"]
 
 
 def _research_b80(st: dict) -> list:
