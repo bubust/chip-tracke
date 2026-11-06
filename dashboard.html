@@ -2266,6 +2266,10 @@ function _dpTech(d) {
         <div style="font-size:.72rem;color:#8b949e;font-weight:400">${(g1.lv || []).map(x => `${_esc(x[1])} ${_esc(N(x[0]))}`).join('、')}</div>`)}
       ${g2 ? _dpRow('第二道關', `${_esc(N(g2.price))}　${st(g2.passed)}
         <div style="font-size:.72rem;color:#8b949e;font-weight:400">${up ? '反彈' : '拉回'}在 ${g2.zone.map(v => _esc(N(v))).join('～')} 受阻＝還有第 (5) 段；過了也先當大 B 波</div>`) : ''}
+      ${wv.ext3 ? (() => { const e = wv.ext3, zs = { in: '◐ 已進入', through: '✅ 已穿過', ahead: '⬜ 還沒到' };
+        return _dpRow('另一種數法（她 11/6）', `${_esc(N(e.x))} 只是 3-1、${_esc(N(e.y))} 是 3-2，3-3 運行中
+          <div style="font-size:.72rem;color:#8b949e;font-weight:400">${e.brakes.map(z => `${_esc(z.name)} ${_esc(N(z.lv[0][0]))}～${_esc(N(z.lv[z.lv.length - 1][0]))} ${zs[z.state] || ''}`).join('；')}；
+          ${up ? '反彈' : '拉回'}受阻在 ${_esc(N(e.reb.f382))}～${_esc(N(e.reb.f5))} 或收不回 ${_esc(N(e.reb.hard))}＝只是 3-4${e.five ? `；第 5 段走完 淺 ${_esc(N(e.five.shallow.lv[0][0]))}～${_esc(N(e.five.shallow.lv[1][0]))}、深 ～${_esc(N(e.five.deep.lv[e.five.deep.lv.length - 1][0]))}` : ''}。點位只是空間到達，止穩訊號＋分批</div>`); })() : ''}
       <div class="dp-note" style="margin-top:4px">${_esc(wv.lines[wv.lines.length - 1])}</div>
       <div class="dp-note" style="margin-top:4px">學 @fanny55520（11/4）：單根長影線只代表止跌反應，要一層一層過關卡才算；只描述結構和價位、沒有回測，不計分。</div>
     </div>`; })() : '';
@@ -8730,7 +8734,7 @@ async function saveAllStratParams() {
 <script src="/mna/static/mna.js?v=20261024b82b"></script>
 <script src="/cb/static/cb.js?v=20261024b82b"></script>
 <script src="/tail/static/tail.js?v=20261103b91"></script>
-<script src="/notes/static/notes.js?v=20261105b95"></script>
+<script src="/notes/static/notes.js?v=20261106b98"></script>
 <script src="/discuss/static/discuss.js?v=20261007a"></script>
 </body>
 </html>

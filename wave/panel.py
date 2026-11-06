@@ -408,6 +408,8 @@ def _nest_line(snap: dict) -> str:
     tz = nz.get("tiers") or {}                                        # B93 她 11/4 的兩道關卡（日線＋60 分）
     if tz.get("lines"):
         s += "；兩道關卡：" + "；".join(tz["lines"])
+        if (tz.get("ext3") or {}).get("lines"):                       # B98 她 11/6 的延伸第 3 段（煞車區、3-4、第 5 段）
+            s += "；" + "；".join(tz["ext3"]["lines"])
     pz = nz.get("pulses") or {}                                       # B89 她 11/3 的三種細微脈動
     if pz.get("views"):
         s += (f"；三種細微脈動（分水嶺 {pz['end1']:,.0f}、0.382 {pz['f382']:,.0f}、低點 {pz['low']:,.0f}"
@@ -462,6 +464,11 @@ def _nest_prices(snap: dict) -> list:
         if tz.get("gate1"):
             out += [v for v, _ in tz["gate1"]["lv"]] + [v for v, _ in ((tz.get("gate2") or {}).get("lv") or [])]
             out += [float(v) for v in (tz.get("fib") or {}).values()] + list(((tz.get("entry") or {}).get("zone")) or [])
+            e3 = tz.get("ext3") or {}                    # B98 延伸第 3 段
+            if e3:
+                out += [e3["y"], e3["x"]] + [v for z in e3["brakes"] for v, _ in z["lv"]] + [float(v) for v in e3["ffib"].values()]
+                out += [e3["reb"][k] for k in ("R", "f382", "f5", "hard", "from")]
+                out += [v for z in (e3.get("five") or {}).values() for v, _ in z["lv"]]
         pz = nz.get("pulses") or {}                      # B89 三種細微脈動
         if pz.get("views"):
             out += [pz["end1"], pz["h2"], pz["low"], pz["f382"]] + ([pz["ma5"]] if pz.get("ma5") is not None else [])
