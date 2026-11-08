@@ -639,6 +639,18 @@
             <span class="wv-dim">站上就很有機會轉強（網友推敲、她回「推敲正確」），但先當大 B 波</span></div>` : ''}</div>` : ''}
         <ul style="margin:6px 0 0 18px;padding:0">${tz.lines.slice(0, 2).concat(tz.lines.slice(3)).map(x => `<li>${esc(x)}</li>`).join('')}</ul>${ext3Box(tz.ext3)}</div>`;
     };
+    // B100 她 11/8：低點的級數身分＝三條路徑（A 日線三段式完成、B 60 分 3-4-c、C 日線 C-4）＋三條共用的三層驗證
+    const pathsBox = pz => {
+      if (!pz || !pz.paths) return '';
+      const L = pz.layers || [], st = v => v.ok ? '✅ 已過' : v.part ? '◐ 過了一部分' : '⬜ 還沒';
+      const nm = ['第一層（短線推進權）', '第二層（3-4-c 滿足警戒）', '第三層（級數升權分水嶺）'];
+      return `<div style="margin-top:8px;border-top:1px dashed var(--line, #444);padding-top:6px"><b>${fmt(pz.a[0])} 的級數身分：三條路徑（她 11/8）</b>
+        <div class="wv-dim">反彈內部：a ${fmt(pz.a[0])}→${fmt(pz.a[1])}、b ${fmt(pz.b)}、c 走到 ${fmt(pz.c1)}、壓回 ${fmt(pz.c2)}；c 的目標
+          <span class="wv-chip">c＝0.618 倍 a <b>${fmt(pz.c['0.618'])}</b></span><span class="wv-chip">c＝a <b>${fmt(pz.c['1.0'])}</b></span><span class="wv-chip">c＝1.618 倍 a <b>${fmt(pz.c['1.618'])}</b></span></div>
+        ${pz.paths.map(p => `<div><b>路徑 ${esc(p.k)}</b>（${esc(p.name)}）：${esc(p.t)}</div>`).join('')}
+        <div style="margin-top:4px"><b>三條路徑共用的短線考驗</b></div>
+        ${pz.lines.slice(1).map((x, i) => `<div>${esc(nm[i] || '')}　${L[i] ? st(L[i]) : ''}<div class="wv-dim">${esc(x.replace(/^[^：]*：/, ''))}</div></div>`).join('')}</div>`;
+    };
     // B99 她的進單規矩回測：接刀 vs 等止穩（wave/stats.json entry_b99）
     const b99Line = () => {
       const x = ((S && S.research) || {}).entry;
@@ -659,6 +671,7 @@
         ${e.brakes.map(z => `<div><b>${esc(z.name)}</b> ${fmt(z.lv[0][0])}～${fmt(z.lv[z.lv.length - 1][0])}　${zs[z.state] || ''}${z.state === 'ahead' ? `（還差 ${fmt(z.gap)} 點）` : ''}<div>${chips(z.lv)}</div></div>`).join('')}
         <div><b>3-4 反抽還是轉浪</b>：受阻在 <b>${fmt(r.f382)}～${fmt(r.f5)}</b>（3-3 的 0.382～0.5）或收不回 <b>${fmt(r.hard)}</b>，壓回又破 <b>${fmt(r.from)}</b> → 只是 3-4，後面還有 3-5 和第 5 段。現在：${esc(r.now)}</div>
         ${f ? `<div><b>第 5 段走完</b>：淺 5 <b>${fmt(f.shallow.lv[0][0])}～${fmt(f.shallow.lv[1][0])}</b>、深 5 <b>${fmt(f.deep.lv[0][0])}～${fmt(f.deep.lv[f.deep.lv.length - 1][0])}</b><div>${chips(f.shallow.lv.slice(0, 1).concat(f.deep.lv))}</div></div>` : ''}
+        ${pathsBox(e.paths)}
         <div class="wv-dim">${esc(e.lines[e.lines.length - 1])}（波浪價位沒有回測過，△ 只當參考）</div>${b99Line()}</div>`;
     };
     // B89 她 11/3 下午：跌破第 1 段低點以後的三種細微脈動（圖 3／4／5）

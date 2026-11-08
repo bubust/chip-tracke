@@ -410,6 +410,8 @@ def _nest_line(snap: dict) -> str:
         s += "；兩道關卡：" + "；".join(tz["lines"])
         if (tz.get("ext3") or {}).get("lines"):                       # B98 她 11/6 的延伸第 3 段（煞車區、3-4、第 5 段）
             s += "；" + "；".join(tz["ext3"]["lines"])
+            if (tz["ext3"].get("paths") or {}).get("lines"):          # B100 她 11/8 三條路徑＋三層驗證
+                s += "；" + "；".join(tz["ext3"]["paths"]["lines"])
     pz = nz.get("pulses") or {}                                       # B89 她 11/3 的三種細微脈動
     if pz.get("views"):
         s += (f"；三種細微脈動（分水嶺 {pz['end1']:,.0f}、0.382 {pz['f382']:,.0f}、低點 {pz['low']:,.0f}"
@@ -469,6 +471,12 @@ def _nest_prices(snap: dict) -> list:
                 out += [e3["y"], e3["x"]] + [v for z in e3["brakes"] for v, _ in z["lv"]] + [float(v) for v in e3["ffib"].values()]
                 out += [e3["reb"][k] for k in ("R", "f382", "f5", "hard", "from")]
                 out += [v for z in (e3.get("five") or {}).values() for v, _ in z["lv"]]
+                pz = e3.get("paths") or {}                   # B100 三條路徑、三層驗證
+                if pz:
+                    L1, L2, L3 = pz["layers"]
+                    out += list(pz["a"]) + [pz["b"], pz["c1"], pz["c2"]] + [float(v) for v in pz["c"].values()]
+                    out += [L1["defend"]] + list(L1["zone"]) + list(L2["prev"]) + [L2["c618"], L2["f5"], L3["gate"], L3["hard"]]
+                    out += [v for v, _ in L3["chal"]]
         pz = nz.get("pulses") or {}                      # B89 三種細微脈動
         if pz.get("views"):
             out += [pz["end1"], pz["h2"], pz["low"], pz["f382"]] + ([pz["ma5"]] if pz.get("ma5") is not None else [])

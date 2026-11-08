@@ -93,8 +93,66 @@ def _fork(first_leg: Optional[list], T: dict, L1: dict, H2: dict, ext: float, d:
     return {"a3": a3, "l1": L1["p"], "v3": v3, "v5": v5, "lines": lines}
 
 
+def _paths(after: list, d: int, ext: float, price: float, y: float, x: float, T: dict, L1: dict, H2: dict,
+           ffib: dict, fib382: float, ma5: Optional[float], lb: dict, case: str) -> Optional[dict]:
+    """B100 她 11/8：37,694 的級數身分＝三條路徑（A 日線三段式已完成、B 60 分 3-4-c、C 日線五段式 C-4）＋三層驗證。
+    after：極值之後的小級轉折（a 終點、b、c-1、c-2…）。她的數字：a 37,694→40,690、b 39,129 →
+    第一層 守住壓回低點（39,977；她 39,944～40,000）且實體站回 40,690→39,977 的 0.5～0.618（40,334～40,418；她 40,335～40,419）；
+    第二層 前高 40,690～40,745 與 40,981（c＝0.618 倍 a，也是 3-3 的 0.5）；她再往 41,335～41,557（沒說怎麼算）；
+    第三層 41,481（47,607→37,694 的 0.382）收盤接受 → 挑戰 41,677～42,125（日線 5T、c＝a）；站穩 42,050（3-1 低點）＝升級日線級反彈"""
+    if len(after) < 2:
+        return None
+    a_end, b = after[0]["p"], after[1]["p"]
+    if (a_end - ext) * -d <= 0 or (b - ext) * d >= 0 or (a_end - b) * -d <= 0:
+        return None                                                   # b 破了起點＝不是 a-b-c
+    la = abs(a_end - ext)
+    lows = [q["p"] for q in after[1:] if q["t"] != after[0]["t"]]
+    last_lo = lows[-1]
+    top = max([q["p"] * -d for q in after if q["t"] == after[0]["t"]]) * -d   # 反彈到現在最遠的轉折（c-1）
+    c = {r: b - d * r * la for r in (0.618, 1.0, 1.618)}
+    sp3 = abs(y - ext)
+    f5 = ext - d * 0.5 * sp3
+    rc = sorted([last_lo - d * 0.5 * abs(a_end - last_lo), last_lo - d * 0.618 * abs(a_end - last_lo)], key=lambda v: -d * v)
+    beyond = lambda v: (price - v) * -d > 0                            # noqa: E731
+    up, dn = ("上", "下") if d < 0 else ("下", "上")
+    s_up = "反彈" if d < 0 else "拉回"
+    L1v = {"defend": last_lo, "zone": [round(v, 2) for v in rc], "ok": beyond(rc[-1]) and beyond(last_lo), "part": beyond(last_lo)}
+    hi2 = sorted([a_end, top], key=lambda v: -d * v)
+    g2 = max([hi2[-1], c[0.618], f5], key=lambda v: -d * v)
+    L2v = {"prev": [round(v, 2) for v in hi2], "c618": round(c[0.618], 2), "f5": round(f5, 2), "ok": beyond(g2), "part": beyond(hi2[0])}
+    l3 = [(fib382, f"{_fmt(H2['p'])}→{_fmt(ext)} 的 0.382")]
+    chal = [(c[1.0], "c＝a 等幅")] + ([(ma5, f"{lb['big']} 5 均")] if ma5 and (ma5 - fib382) * -d > 0 else [])
+    L3v = {"gate": round(fib382, 2), "chal": [(round(v, 2), t) for v, t in sorted(chal, key=lambda q: -d * q[0])], "hard": x,
+           "ok": beyond(x), "part": beyond(fib382)}
+    gap = round(abs(ext - ffib[0.382]), 0) if 0.382 in ffib else None
+    st = lambda v: "✅" if v["ok"] else "◐" if v["part"] else "⬜"                    # noqa: E731
+    paths = [
+        {"k": "A", "name": f"{lb['big']}三段式修正已完成",
+         "t": (f"{_fmt(ext)} 離全波段 0.382 {_fmt(ffib[0.382])} 只差 {_fmt(gap)} 點；" if gap is not None else "")
+              + f"若 {_fmt(H2['p'])}→{_fmt(ext)} 的五段已經把{lb['big']} C 浪走完，{_fmt(ext)} 起{'漲' if d < 0 else '跌'}＝{lb['big']}大 B 浪{s_up}（B-a）"},
+        {"k": "B", "name": f"{lb['small']}原切組：3-4-c 運行中",
+         "t": f"a {_fmt(ext)}→{_fmt(a_end)}、b {_fmt(b)}、c 從 {_fmt(b)} 起；仍只是 3-4 的 c，走完還有 3-5 破{'底' if d < 0 else '頂'}或雙{'底' if d < 0 else '頂'}測試"},
+        {"k": "C", "name": f"{lb['big']}五段式：{_fmt(ext)}＝{lb['big']} C-3 終點、現在走 C-4",
+         "t": f"只要不重疊 C-1 {'低' if d < 0 else '高'}點 {_fmt(L1['p'])}，後面還有{lb['big']} C-5 破{'底' if d < 0 else '頂'}"},
+    ]
+    if case != "3":
+        paths = paths[1:2]
+    lines = [f"{_fmt(ext)} 的級數身分（她 11/8）：" + "；".join(f"路徑 {p['k']}（{p['name']}）{p['t']}" for p in paths),
+             f"三條路徑共用的短線考驗——{st(L1v)} 第一層：回測守住 {_fmt(last_lo)}（這次壓回的{'低' if d < 0 else '高'}點）、實體站回 "
+             f"{_fmt(rc[0])}～{_fmt(rc[1])}（{_fmt(a_end)}→{_fmt(last_lo)} 的 0.5～0.618）＝壓回換手結束、多方拿回短線推進權" if d < 0 else
+             f"三條路徑共用的短線考驗——{st(L1v)} 第一層：回測守住 {_fmt(last_lo)}、實體跌回 {_fmt(rc[0])}～{_fmt(rc[1])}",
+             f"{st(L2v)} 第二層：突破站穩前高 {_fmt(hi2[0])}～{_fmt(hi2[1])} 和 {_fmt(c[0.618])}（c＝0.618 倍 a；3-3 的 0.5 {_fmt(f5)}）；"
+             f"只是路徑 B 的話，會在這裡失速、反抽失敗、跌破控制線 → 結束{s_up}轉入 3-5",
+             f"{st(L3v)} 第三層（級數升權分水嶺）：{_fmt(fib382)}（{_fmt(H2['p'])}→{_fmt(ext)} 的 0.382）收盤接受、回測不破、放量推升，才有資格挑戰 "
+             + "～".join(_fmt(v) for v, _ in L3v["chal"]) + "（" + "、".join(t for _, t in L3v["chal"]) + "）；"
+             f"{'站穩' if d < 0 else '跌破'} {_fmt(x)}（重疊 3-1）＝淘汰單純的{lb['small']} 3-4，升級{lb['big']}級{s_up}（路徑 A 或 C）"]
+    return {"a": [ext, a_end], "b": b, "c1": top, "c2": last_lo, "c": {str(r): round(v, 2) for r, v in c.items()},
+            "paths": paths, "layers": [L1v, L2v, L3v], "lines": lines}
+
+
 def _ext3(S: list, k: int, d: int, ext: float, R: float, price: float, T: dict, L1: dict, H2: dict,
-          full: Optional[float], lb: dict, case: str) -> Optional[dict]:
+          full: Optional[float], lb: dict, case: str, after: Optional[list] = None, fib382: Optional[float] = None,
+          ma5: Optional[float] = None) -> Optional[dict]:
     """B98 她 11/6：小級五段、但第 (4) 段碰到第 (1) 段的領地 → 4 不重疊 1，所以它不是第 4 段：
     S[3] 只是 3-1、S[4] 是 3-2，S[4] 起是 3-3（延伸的主跌段）。算 3-3 兩個煞車區、3-4 反抽還是轉浪、第 5 段走完的下修。
     她的數字：煞車區 38,713～38,522＝44,274 往下 1.618 倍 3-1（3,437）、1.618 倍第 (1) 段（3,555）；
@@ -169,8 +227,9 @@ def _ext3(S: list, k: int, d: int, ext: float, R: float, price: float, T: dict, 
                      + "、".join(t for _, t in five["shallow"]["lv"][:1] + five["deep"]["lv"]) + "）")
     lines.append(f"以上點位只是空間到達：沒有止{s_dn}訊號（第一根壓{dn}來收盤不破前{lo_hi}、站回 5 均、帶量實體{'紅' if d < 0 else '黑'} K 站穩，"
                  f"或跨級數雙重{'底' if d < 0 else '頂'}背離）就衝進去＝{'接刀' if d < 0 else '摸頂'}；止{s_dn}訊號＋分批試水溫")
+    pz = _paths(after or [], d, ext, price, y, x, T, L1, H2, ffib, fib382, ma5, lb, case) if fib382 is not None else None
     return {"y": y, "x": x, "legs": [round(l1, 2), round(l31, 2)], "full": full, "ffib": {str(r): round(v, 2) for r, v in ffib.items()},
-            "brakes": brakes, "reb": reb, "five": five, "lines": lines}
+            "brakes": brakes, "reb": reb, "five": five, "paths": pz, "lines": lines}
 
 
 def structure(big: list, small: list, price: float, ma5: Optional[float] = None, ma10: Optional[float] = None,
@@ -295,7 +354,7 @@ def structure(big: list, small: list, price: float, ma5: Optional[float] = None,
     fork = _fork(first_leg, T, L1, H2, ext, d, lb, small_out["contract"] if k >= 5 else None) if case == "3" else None
     if fork:
         lines += fork["lines"]
-    ext3 = _ext3(S, k, d, ext, R, float(price), T, L1, H2, full, lb, case)
+    ext3 = _ext3(S, k, d, ext, R, float(price), T, L1, H2, full, lb, case, after=after, fib382=fib[0.382], ma5=ma5)
     if entry:
         lines.append(entry["t"])
     else:
