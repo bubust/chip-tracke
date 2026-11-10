@@ -103,24 +103,48 @@ def _push(after: list, d: int, ext: float, price: float, fib382: Optional[float]
     hs = [j for j, q in enumerate(after) if q["t"] == (after[0]["t"] if after else None)]
     if len(after) < 5 or not hs:
         return None
-    jt = max(hs, key=lambda j: u * after[j]["p"])                     # 這一腳最遠的點（初推終點）
-    seq = [{"p": ext, "t": "L" if u > 0 else "H"}] + [dict(q) for q in after[:jt + 1]]
-    while len(seq) > 6:
-        nxt = _drop_smallest(seq)
-        if nxt is None or len(nxt) >= len(seq):
+    def five(j):                                                      # 起點到 after[j] 併成五段、符合推動規則 → 那五段；不然 None
+        sq = [{"p": ext, "t": "L" if u > 0 else "H"}] + [dict(q) for q in after[:j + 1]]
+        while len(sq) > 6:
+            nx = _drop_smallest(sq)
+            if nx is None or len(nx) >= len(sq):
+                break
+            sq = nx
+        if len(sq) != 6:
+            return None
+        yv = [u * q["p"] for q in sq]
+        l1, l3, l5 = yv[1] - yv[0], yv[3] - yv[2], yv[5] - yv[4]
+        ok = yv[2] > yv[0] and yv[3] > yv[1] and yv[4] > yv[1] and yv[5] > yv[3] and l3 > min(l1, l5)
+        return sq if ok else None                                     # 不是五段推動（只有三段＝弱勢反彈）
+    # B104：初推終點＝第一個「五段成立、之後壓回 ≥ 0.2 倍」的高點（她 11/10：43,108 走完、41,873 是 (2)）；
+    # 之後再創高（43,147）算第 (3) 浪／小 c 啟動，不再把 (2) 併進第 5 段
+    jt = None
+    for j in hs:
+        sq = five(j)
+        if not sq:
+            continue
+        sp_j = abs(after[j]["p"] - ext)
+        lo_after = []
+        for q in after[j + 1:]:
+            if q["t"] == after[0]["t"] and (q["p"] - after[j]["p"]) * u > 0:
+                break
+            if q["t"] != after[0]["t"]:
+                lo_after.append(q["p"])
+        if lo_after and abs(after[j]["p"] - min(lo_after, key=lambda v: u * v)) >= 0.2 * sp_j:
+            jt = j
             break
-        seq = nxt
-    if len(seq) != 6:
+    if jt is None:
+        jt = max(hs, key=lambda j: u * after[j]["p"])                 # 還沒有像樣的壓回：這一腳最遠的點
+    seq = five(jt)
+    if not seq:
         return None
-    yv = [u * q["p"] for q in seq]
-    l1, l3, l5 = yv[1] - yv[0], yv[3] - yv[2], yv[5] - yv[4]
-    if not (yv[2] > yv[0] and yv[3] > yv[1] and yv[4] > yv[1] and yv[5] > yv[3] and l3 > min(l1, l5)):
-        return None                                                   # 不是五段推動（只有三段＝弱勢反彈）
     p0, p5 = seq[0]["p"], seq[5]["p"]
     sp = abs(p5 - p0)
     fb = {r: p5 - u * r * sp for r in (0.236, 0.382, 0.5, 0.618)}
     rest = [q["p"] for q in after[jt + 1:] if q["t"] != after[0]["t"]]     # 初推終點之後出現的壓回低點（轉折）
     pull = min(rest + [float(price)], key=lambda v: u * v) if rest else None   # 還沒有壓回轉折＝初推可能還在走
+    new_hi = max([q["p"] * u for q in after[jt + 1:] if q["t"] == after[0]["t"]] + [float(price) * u]) * u
+    third = pull is not None and (new_hi - p5) * u > 0                # 壓回之後又過初推高點＝第 (3) 浪／小 c 啟動
     z1 = [(fb[0.236], "初推 0.236")] + ([(fib382, f382_lab)]
                                         if fib382 is not None and (fb[0.236] - fib382) * u > 0 and (fib382 - fb[0.382]) * u > 0 else [])
     if pull is not None and (pull - fb[0.236]) * u > 0 and abs(p5 - pull) >= 0.146 * sp:
@@ -137,7 +161,11 @@ def _push(after: list, d: int, ext: float, price: float, fib382: Optional[float]
         if (pull - zones[0]["hi"]) * u > 0:
             where = 0                                                 # 還沒回到第一區
     up_w, dn_w = ("漲", "跌") if u > 0 else ("跌", "漲")
-    st = ("初推還在走" if pull is None else
+    tg = [(pull + u * r * sp, nm) for r, nm in ((0.618, "c＝0.618 倍 a"), (1.0, "c＝a／(3)＝(1)"), (1.618, "(3)＝1.618 倍 (1)"))] if pull is not None else []
+    st = (f"第 (3) 浪（或小 c）已啟動：{_fmt(pull)} 起{up_w}、過了初推高點 {_fmt(p5)}（最高 {_fmt(new_hi)}），守住 {_fmt(pull)} 推升結構就還在"
+          + (f"；現在拉回到 {_fmt(price)}" if abs(new_hi - price) >= 0.1 * sp else "")
+          if third else
+          "初推還在走" if pull is None else
           f"壓回到 {_fmt(pull)}：" + ({0: "還沒回到第一區（很強）", 4: f"跌破 0.618，看起點 {_fmt(p0)} 守不守"}.get(where)
                                      or f"在第 {where} 區（{zones[where - 1]['name'].split('（')[0]}）"))
     lines = [f"初推小 5 段（她 11/10）：{'→'.join(_fmt(q['p']) for q in seq)}（2 不破起點、3 不是最短、4 不碰 1）＝第五大波 (1) 浪或大 B／C-4 的小 a；"
@@ -145,8 +173,12 @@ def _push(after: list, d: int, ext: float, price: float, fib382: Optional[float]
              "壓回三種：" + "；".join(f"{'①②③'[z['k'] - 1]} {z['name'].split('（')[0]} {_fmt(z['hi'])}～{_fmt(z['lo'])}（" + "、".join(t for _, t in z["lv"]) + "）"
                                       for z in zones) + f"；實體{'跌破' if u > 0 else '漲過'}小 1 {_fmt(seq[1]['p'])} 才往第 3 區，{'跌破' if u > 0 else '漲過'}起點 {_fmt(p0)} 才算失敗",
              f"現在：{st}"]
+    if third:
+        lines.append("(3) 浪／小 c 的量度：" + "、".join(f"{t} {_fmt(v)}" for v, t in tg)
+                     + "；C-4 版本的小 c 不能重疊 C-1 低點，越過 C-1 低點、頸線＝真推升")
     return {"seq": [q["p"] for q in seq], "fib": {str(r): round(v, 2) for r, v in fb.items()}, "zones": zones, "pull": pull,
-            "where": where, "state": st, "lines": lines}
+            "where": where, "state": st, "third": third, "new_hi": new_hi if third else None,
+            "targets": [(round(v, 2), t) for v, t in tg] if third else [], "lines": lines}
 
 
 def _paths(after: list, d: int, ext: float, price: float, y: float, x: float, T: dict, L1: dict, H2: dict,
