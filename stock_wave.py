@@ -326,11 +326,14 @@ def structure(big: list, small: list, price: float, ma5: Optional[float] = None,
     # 進場（她：0.382 真過以後，壓回第二隻腳落在這段反彈的 0.382～0.5）
     reb = abs(R - ext)
     entry = None
-    if gate1["passed"] and reb > 0:
+    if (gate1["passed"] or beyond(fib[0.382])) and reb > 0:          # B102：0.382 已經過了（還沒過第一道關）也一樣等第二隻腳
         z = sorted([R + d * 0.382 * reb, R + d * 0.5 * reb])
-        entry = {"zone": [round(z[0], 2), round(z[1], 2)], "from": [ext, round(R, 2)], "target": round(fib[0.5], 2),
+        # B102：目標＝還沒到的下一個價位（0.5 → 0.618 → 大級第 1 段終點），不要給已經過了的
+        tg = next(((v, nm) for v, nm in ((fib[0.5], "0.5"), (fib[0.618], "0.618"), (L1["p"], f"{lb['big']}第 (1) 段{lo_hi}點"))
+                   if (v - R) * -d > 0), (fib[0.5], "0.5"))
+        entry = {"zone": [round(z[0], 2), round(z[1], 2)], "from": [ext, round(R, 2)], "target": round(tg[0], 2),
                  "t": f"等{s_up}的第二隻腳：壓回到這段{s_up}（{_fmt(ext)}→{_fmt(R)}）的 0.382～0.5＝{_fmt(z[0])}～{_fmt(z[1])}，"
-                      f"技術面確認止{s_dn}才進場，目標 0.5 {_fmt(fib[0.5])}；追{'高' if d < 0 else '低'}沒有肉"}
+                      f"技術面確認止{s_dn}才進場，目標 {tg[1]} {_fmt(tg[0])}；追{'高' if d < 0 else '低'}沒有肉"}
     # 結構文字
     leg_t = "、".join(f"{names[j]} {_fmt(legs[j])}" for j in range(min(3, len(legs))))
     if k >= 5:
@@ -387,6 +390,16 @@ def structure(big: list, small: list, price: float, ma5: Optional[float] = None,
         if plat:
             neck.append((min(plat, key=lambda v: abs(v - edge)), f"{lb['small']}前波平台{lo_hi}點"))
     ext3 = _ext3(S, k, d, ext, R, float(price), T, L1, H2, full, lb, case, after=after, fib382=fib[0.382], ma5=ma5, neck=neck)
+    pz = (ext3 or {}).get("paths")
+    if pz and pz["layers"][2]["ok"] and tag in ("below1", "at1"):
+        # B102：站穩 3-1 低點以後，「還沒跌完、隨時再破低」跟三層驗證矛盾 → 狀態改成升級後的說法（下一關＝頸線、第一道關上緣）
+        nx = pz.get("next") or {}
+        nk = nx.get("neck") or []
+        status = (f"已{v_cross} 3-1 {lo_hi}點 {_fmt(ext3['x'])}：單純的{lb['small']} 3-4 淘汰，升級{lb['big']}級{s_up}（路徑 A 或 C）；"
+                  + (f"撐壓互換頸線 {_fmt(nk[0][0])}～{_fmt(nk[-1][0])} {nx['neck_state'].split('：')[0]}，" if nk else "")
+                  + f"再上去是第一道關上緣 {_fmt(gate1['far'])}")
+        tag = "up3"
+        lines[2] = status
     if entry:
         lines.append(entry["t"])
     else:
