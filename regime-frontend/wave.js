@@ -613,7 +613,12 @@
     }
     if (pz) {
       add(pz.c['0.618'], 'c＝0.618 倍 a'); add(pz.c['1.0'], 'c＝a 等幅'); add(pz.c['1.618'], 'c＝1.618 倍 a');
-      if (pz.push) pz.push.zones.forEach(z => z.lv.forEach(x => add(x[0], `壓回${'①②③'[z.k - 1]}：${x[1]}`, z.k === (pz.push.where || 1))));
+      if (pz.push && !pz.push.third) pz.push.zones.forEach(z => z.lv.forEach(x => add(x[0], `壓回${'①②③'[z.k - 1]}：${x[1]}`, z.k === (pz.push.where || 1))));
+      if (pz.push && pz.push.third) {                                  // B104 第 (3) 浪啟動：守 (2) 低點、(3)／小 c 的量度
+        add(pz.push.pull, '(2)／小 b 低點（要守）', true);
+        add(pz.push.seq[5], '初推高點', true);
+        pz.push.targets.forEach(x => add(x[0], `(3)／小 c：${x[1]}`));
+      }
       if (pz.next) {
         add(pz.next.proj, '新脈動小 (3) 目標', true);
         add(pz.next.from, '新脈動起點（最後壓回低點）', true);
@@ -688,9 +693,14 @@
     const head = `<div class="wv-now-card"><b>現在</b>：${esc(nowTxt)}
       ${nx && nx.proj != null ? `<div>新脈動目標 <b>${fmt(nx.proj)}</b>（小 (3)），起點 <b>${fmt(nx.from)}</b> 要守</div>` : ''}</div>`;
     const pu = pz && pz.push;
-    const pushBox = pu ? `<div class="wv-sec">📉 接下來的壓回 <span class="wv-dim">她 11/10：${fmt(pu.seq[0])}→${fmt(pu.seq[5])} 是清楚的小 5 段（初推），壓回是三波整理、不會回到 ${fmt(pu.seq[0])}，整理完還有一段上攻</span></div>
-      <ul class="wv-chk">${pu.zones.map(z => `<li class="${pu.where === z.k ? 'part' : ''}">${pu.where === z.k ? '◀ ' : ''}${'①②③'[z.k - 1]} <b>${esc(z.name.split('（')[0])}</b> ${fmt(z.hi)}～${fmt(z.lo)}<span class="wv-dim">（${z.lv.map(x => esc(x[1])).join('、')}）</span></li>`).join('')}</ul>
-      <div class="wv-dim">現在：${esc(pu.state)}；實體跌破小 1 ${fmt(pu.seq[1])} 才往 ③，跌破起點 ${fmt(pu.seq[0])} 才算失敗</div>` : '';
+    const zl = pu ? `<ul class="wv-chk">${pu.zones.map(z => `<li class="${pu.where === z.k ? (pu.third ? 'ok' : 'part') : ''}">${pu.where === z.k ? (pu.third ? '✅ ' : '◀ ') : ''}${'①②③'[z.k - 1]} <b>${esc(z.name.split('（')[0])}</b> ${fmt(z.hi)}～${fmt(z.lo)}<span class="wv-dim">（${z.lv.map(x => esc(x[1])).join('、')}）</span></li>`).join('')}</ul>` : '';
+    const pushBox = !pu ? '' : pu.third
+      ? `<div class="wv-sec">🚀 第 (3) 浪（或小 c）已啟動 <span class="wv-dim">初推 ${fmt(pu.seq[0])}→${fmt(pu.seq[5])} 小 5 段、壓回到 ${fmt(pu.pull)}（第 ${pu.where} 區）後再過高</span></div>
+        <div>守住 <b>${fmt(pu.pull)}</b>（(2)／小 b 低點）推升結構就還在；量度：${pu.targets.map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}</div>
+        <div class="wv-dim">C-4 版本的小 c 不能重疊 C-1 低點；越過 C-1 低點、頸線＝真推升（看驗證清單）</div>
+        <details class="wv-who"><summary>壓回三種區（她 11/10 傍晚）</summary>${zl}</details>`
+      : `<div class="wv-sec">📉 接下來的壓回 <span class="wv-dim">她 11/10：${fmt(pu.seq[0])}→${fmt(pu.seq[5])} 是清楚的小 5 段（初推），壓回是三波整理、不會回到 ${fmt(pu.seq[0])}，整理完還有一段上攻</span></div>
+        ${zl}<div class="wv-dim">現在：${esc(pu.state)}；實體跌破小 1 ${fmt(pu.seq[1])} 才往 ③，跌破起點 ${fmt(pu.seq[0])} 才算失敗</div>`;
     // 2. 價位梯
     const lad = ladderHtml(planLevels(ok ? nz : null, lm), price);
     // 3. 版本

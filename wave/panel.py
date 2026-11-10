@@ -483,6 +483,7 @@ def _nest_prices(snap: dict) -> list:
                     pu = pz.get("push") or {}                # B103 初推小 5 段、壓回三種區
                     if pu:
                         out += list(pu["seq"]) + [float(v) for v in pu["fib"].values()] + [v for z in pu["zones"] for v, _ in z["lv"]]
+                        out += [v for v, _ in pu.get("targets") or []] + [v for v in (pu.get("pull"), pu.get("new_hi")) if v is not None]
         pz = nz.get("pulses") or {}                      # B89 三種細微脈動
         if pz.get("views"):
             out += [pz["end1"], pz["h2"], pz["low"], pz["f382"]] + ([pz["ma5"]] if pz.get("ma5") is not None else [])

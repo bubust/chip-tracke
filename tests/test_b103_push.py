@@ -51,3 +51,14 @@ def test_morning_case_keeps_new_pulse_target():
     """11/10 早上（43,108 之後還沒出現壓回轉折）：新脈動目標 43,307 照舊"""
     nx = W.structure(T.BIG, T.SMALL, 42844.0, 41834.0, 43000.0, T.LB, first_leg=T.FIRST, full=17015.0)["ext3"]["paths"]["next"]
     assert round(nx["proj"]) == 43307
+
+
+def test_tx_1110_night_third_wave():
+    """B104 她 11/10 夜盤：42,777 多單 4 口、「半夜發動三浪推升」——41,873 壓回之後創高 43,147＝第 (3) 浪／小 c 啟動；
+    初推高點固定在 43,108（41,873 的壓回 0.228 倍 ≥ 0.2），不能把 (2) 併進第 5 段變成「初推還在走」"""
+    sm = T.SMALL + [{"p": 41873, "t": "L"}, {"p": 43147, "t": "H"}]
+    pu = _p(42527.0, sm)["ext3"]["paths"]["push"]
+    assert pu["seq"][-1] == 43108 and pu["pull"] == 41873 and pu["third"] and pu["where"] == 1
+    assert "第 (3) 浪" in pu["state"] and "43,147" in pu["state"]
+    assert [round(v) for v, _ in pu["targets"]] == [45219, 47287, 50633]
+    assert "第 (3) 浪" in _p(42527.0, sm)["status"]
