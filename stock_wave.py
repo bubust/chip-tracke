@@ -93,6 +93,62 @@ def _fork(first_leg: Optional[list], T: dict, L1: dict, H2: dict, ext: float, d:
     return {"a3": a3, "l1": L1["p"], "v3": v3, "v5": v5, "lines": lines}
 
 
+def _push(after: list, d: int, ext: float, price: float, fib382: Optional[float], f382_lab: str) -> Optional[dict]:
+    """B103 她 11/10 傍晚：極值之後這一腳如果是清楚的「小 5 段」（2 不破起點、3 不是最短、4 不碰 1）＝初推（第五大波的 (1) 浪或大 B／C-4 的小 a），
+    接下來的壓回（(2) 或小 b）是三波整理、不會回到起點，整理完還有一段（(3) 或小 c）。壓回落在哪三種區：
+    ① 時間換空間（強勢橫盤）：初推 0.236＋大級 0.382（41,830／41,481，她：守住日盤低點 41,873）
+    ② 標準對稱：初推 0.382＋小 4 低點＋小 1 高點（41,040、40,715、40,690）
+    ③ 深層 1 轉 2：初推 0.5～0.618（40,401～39,762）；實體跌破小 1 高點才往這裡，不破起點 37,694 結構都還在"""
+    u = -d                                                            # 這一腳的方向（d＝-1 時往上）
+    hs = [j for j, q in enumerate(after) if q["t"] == (after[0]["t"] if after else None)]
+    if len(after) < 5 or not hs:
+        return None
+    jt = max(hs, key=lambda j: u * after[j]["p"])                     # 這一腳最遠的點（初推終點）
+    seq = [{"p": ext, "t": "L" if u > 0 else "H"}] + [dict(q) for q in after[:jt + 1]]
+    while len(seq) > 6:
+        nxt = _drop_smallest(seq)
+        if nxt is None or len(nxt) >= len(seq):
+            break
+        seq = nxt
+    if len(seq) != 6:
+        return None
+    yv = [u * q["p"] for q in seq]
+    l1, l3, l5 = yv[1] - yv[0], yv[3] - yv[2], yv[5] - yv[4]
+    if not (yv[2] > yv[0] and yv[3] > yv[1] and yv[4] > yv[1] and yv[5] > yv[3] and l3 > min(l1, l5)):
+        return None                                                   # 不是五段推動（只有三段＝弱勢反彈）
+    p0, p5 = seq[0]["p"], seq[5]["p"]
+    sp = abs(p5 - p0)
+    fb = {r: p5 - u * r * sp for r in (0.236, 0.382, 0.5, 0.618)}
+    rest = [q["p"] for q in after[jt + 1:] if q["t"] != after[0]["t"]]     # 初推終點之後出現的壓回低點（轉折）
+    pull = min(rest + [float(price)], key=lambda v: u * v) if rest else None   # 還沒有壓回轉折＝初推可能還在走
+    z1 = [(fb[0.236], "初推 0.236")] + ([(fib382, f382_lab)]
+                                        if fib382 is not None and (fb[0.236] - fib382) * u > 0 and (fib382 - fb[0.382]) * u > 0 else [])
+    if pull is not None and (pull - fb[0.236]) * u > 0 and abs(p5 - pull) >= 0.146 * sp:
+        z1.append((pull, "目前壓回低點"))                              # 她：守住日盤低點 41,873（初推 0.236 為 41,830）至 41,481
+    z2 = [(fb[0.382], "初推 0.382"), (seq[4]["p"], "小 4 低點" if u > 0 else "小 4 高點"), (seq[1]["p"], "小 1 高點" if u > 0 else "小 1 低點")]
+    z3 = [(fb[0.5], "初推 0.5"), (fb[0.618], "初推 0.618")]
+    zones = []
+    for k, (nm, lv) in enumerate((("強勢橫盤換手（以時間換空間）", z1), ("標準對稱回測（健康 2 浪／b 浪共振）", z2), ("深層 1 轉 2 洗盤", z3)), 1):
+        lv = sorted(lv, key=lambda q: -u * q[0])                      # 近的（高的）在前
+        zones.append({"k": k, "name": nm, "hi": round(lv[0][0], 2), "lo": round(lv[-1][0], 2), "lv": [(round(v, 2), t) for v, t in lv]})
+    where = None
+    if pull is not None:
+        where = next((z["k"] for z in zones if (pull - z["lo"]) * u >= 0), 4)
+        if (pull - zones[0]["hi"]) * u > 0:
+            where = 0                                                 # 還沒回到第一區
+    up_w, dn_w = ("漲", "跌") if u > 0 else ("跌", "漲")
+    st = ("初推還在走" if pull is None else
+          f"壓回到 {_fmt(pull)}：" + ({0: "還沒回到第一區（很強）", 4: f"跌破 0.618，看起點 {_fmt(p0)} 守不守"}.get(where)
+                                     or f"在第 {where} 區（{zones[where - 1]['name'].split('（')[0]}）"))
+    lines = [f"初推小 5 段（她 11/10）：{'→'.join(_fmt(q['p']) for q in seq)}（2 不破起點、3 不是最短、4 不碰 1）＝第五大波 (1) 浪或大 B／C-4 的小 a；"
+             f"接下來的壓回是三波整理、不會回測 {_fmt(p0)}，整理完還有一段向上（(3) 浪或小 c）",
+             "壓回三種：" + "；".join(f"{'①②③'[z['k'] - 1]} {z['name'].split('（')[0]} {_fmt(z['hi'])}～{_fmt(z['lo'])}（" + "、".join(t for _, t in z["lv"]) + "）"
+                                      for z in zones) + f"；實體{'跌破' if u > 0 else '漲過'}小 1 {_fmt(seq[1]['p'])} 才往第 3 區，{'跌破' if u > 0 else '漲過'}起點 {_fmt(p0)} 才算失敗",
+             f"現在：{st}"]
+    return {"seq": [q["p"] for q in seq], "fib": {str(r): round(v, 2) for r, v in fb.items()}, "zones": zones, "pull": pull,
+            "where": where, "state": st, "lines": lines}
+
+
 def _paths(after: list, d: int, ext: float, price: float, y: float, x: float, T: dict, L1: dict, H2: dict,
            ffib: dict, fib382: float, ma5: Optional[float], lb: dict, case: str, neck: Optional[list] = None) -> Optional[dict]:
     """B100 她 11/8：37,694 的級數身分＝三條路徑（A 日線三段式已完成、B 60 分 3-4-c、C 日線五段式 C-4）＋三層驗證。
@@ -151,6 +207,9 @@ def _paths(after: list, d: int, ext: float, price: float, y: float, x: float, T:
              f"{st(L3v)} 第三層（級數升權分水嶺）：{_fmt(fib382)}（{_fmt(H2['p'])}→{_fmt(ext)} 的 0.382）收盤接受、回測不破、放量推升，才有資格挑戰 "
              + "～".join(_fmt(v) for v, _ in L3v["chal"]) + "（" + "、".join(t for _, t in L3v["chal"]) + "）；"
              f"{'站穩' if d < 0 else '跌破'} {_fmt(x)}（重疊 3-1）＝淘汰單純的{lb['small']} 3-4，升級{lb['big']}級{s_up}（路徑 A 或 C）"]
+    push = _push(after, d, ext, price, fib382, f"{_fmt(H2['p'])}→{_fmt(ext)} 的 0.382")      # B103 她 11/10 傍晚
+    if L3v["ok"]:
+        L1v["ok"] = L2v["ok"] = True                                  # B103：升級（站穩 3-1 低點）以後，第一、二層已經走過
     nxt = None
     if L3v["ok"]:
         # B101 她 11/10：升級以後＝新脈動（最後一次壓回低點起）跟舊脈動做撐壓交換。
@@ -164,11 +223,17 @@ def _paths(after: list, d: int, ext: float, price: float, y: float, x: float, T:
                    "還在頸線下：舊脈動的壓力還在，先看能不能站上")
         nxt = {"from": last_lo, "prev_hi": prev_hi, "proj": round(proj, 2), "neck": [(round(v, 2), t) for v, t in nk],
                "neck_state": nst if nk else None}
-        lines.append(f"升級以後（她 11/10）：新脈動（{_fmt(last_lo)} 起{'漲' if d < 0 else '跌'}）跟舊脈動（{_fmt(H2['p'])}→{_fmt(ext)}）做撐壓交換；"
-                     f"新脈動小 (3) 目標 {_fmt(proj)}（{_fmt(prev_hi)}→{_fmt(last_lo)} 壓回段的 1.618 倍外部投射），到了容易短線調節、小 (4) 換氣"
+        if push and push["pull"] is not None:                         # B103：初推走完、壓回還在走 → 新脈動目標要等壓回結束才算
+            nxt["proj"] = None
+            nxt["from"] = None
+        lines.append(f"升級以後（她 11/10）：新脈動跟舊脈動（{_fmt(H2['p'])}→{_fmt(ext)}）做撐壓交換"
+                     + (f"；新脈動小 (3) 目標 {_fmt(proj)}（{_fmt(prev_hi)}→{_fmt(last_lo)} 壓回段的 1.618 倍外部投射），到了容易短線調節、小 (4) 換氣"
+                        if nxt["proj"] is not None else "")
                      + (f"；上方撐壓互換頸線 {_fmt(nk[0][0])}～{_fmt(nk[-1][0])}（" + "、".join(t for _, t in nk) + f"）：{nst}" if nk else ""))
+    if push:
+        lines += push["lines"]
     return {"a": [ext, a_end], "b": b, "c1": top, "c2": last_lo, "c": {str(r): round(v, 2) for r, v in c.items()},
-            "paths": paths, "layers": [L1v, L2v, L3v], "next": nxt, "lines": lines}
+            "paths": paths, "layers": [L1v, L2v, L3v], "next": nxt, "push": push, "lines": lines}
 
 
 def _ext3(S: list, k: int, d: int, ext: float, R: float, price: float, T: dict, L1: dict, H2: dict,
@@ -395,7 +460,9 @@ def structure(big: list, small: list, price: float, ma5: Optional[float] = None,
         # B102：站穩 3-1 低點以後，「還沒跌完、隨時再破低」跟三層驗證矛盾 → 狀態改成升級後的說法（下一關＝頸線、第一道關上緣）
         nx = pz.get("next") or {}
         nk = nx.get("neck") or []
+        pu = pz.get("push")
         status = (f"已{v_cross} 3-1 {lo_hi}點 {_fmt(ext3['x'])}：單純的{lb['small']} 3-4 淘汰，升級{lb['big']}級{s_up}（路徑 A 或 C）；"
+                  + (f"初推小 5 段走完，{pu['state']}；" if pu and pu["pull"] is not None else "")
                   + (f"撐壓互換頸線 {_fmt(nk[0][0])}～{_fmt(nk[-1][0])} {nx['neck_state'].split('：')[0]}，" if nk else "")
                   + f"再上去是第一道關上緣 {_fmt(gate1['far'])}")
         tag = "up3"

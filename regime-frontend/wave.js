@@ -589,7 +589,13 @@
 
   function planLevels(nz, lm) {
     const out = [];
-    const add = (p, label, key) => { if (num(p) != null) out.push({ p: Number(p), label, key: !!key }); };
+    const core = t => String(t).replace(/^[^：]{1,8}：/, '');            // 去掉「壓回①：」「頸線：」這種前綴再比
+    const add = (p, label, key) => {
+      if (num(p) == null) return;
+      const same = out.find(x => Math.abs(x.p - p) < 1 && core(x.label) === core(label));
+      if (same) { same.key = same.key || !!key; return; }              // 同一價位、同一個意思只留一個
+      out.push({ p: Number(p), label, key: !!key });
+    };
     const tz = nz && nz.tiers, e3 = tz && tz.ext3, pz = e3 && e3.paths;
     const up3 = pz && pz.layers[2].ok;
     if (tz) {
@@ -607,6 +613,7 @@
     }
     if (pz) {
       add(pz.c['0.618'], 'c＝0.618 倍 a'); add(pz.c['1.0'], 'c＝a 等幅'); add(pz.c['1.618'], 'c＝1.618 倍 a');
+      if (pz.push) pz.push.zones.forEach(z => z.lv.forEach(x => add(x[0], `壓回${'①②③'[z.k - 1]}：${x[1]}`, z.k === (pz.push.where || 1))));
       if (pz.next) {
         add(pz.next.proj, '新脈動小 (3) 目標', true);
         add(pz.next.from, '新脈動起點（最後壓回低點）', true);
@@ -627,11 +634,15 @@
     if (!tz) return [];
     const e3 = tz.ext3, pz = e3 && e3.paths, d = tz.dir, sv = d < 0 ? '站穩' : '跌破';
     const out = [];
+    let n = 0;
     if (pz) {
       const [L1, L2, L3] = pz.layers;
-      out.push({ p: L1.zone[1], ok: L1.ok, part: L1.part, t: `守住 ${fmt(L1.defend)}、${d < 0 ? '站回' : '跌回'} ${fmt(L1.zone[0])}～${fmt(L1.zone[1])}`, why: '壓回換手結束、拿回短線推進權' });
-      out.push({ p: Math.max(L2.prev[1], L2.c618), ok: L2.ok, part: L2.part, t: `${sv}前高 ${fmt(L2.prev[1])} 和 ${fmt(L2.c618)}（c＝0.618 倍 a）`, why: '只是 3-4-c 的話會在這裡失速' });
+      if (!L3.ok) {                                                   // B103：升級以後第一、二層已經走過，不再列
+        out.push({ p: L1.zone[1], ok: L1.ok, part: L1.part, t: `守住 ${fmt(L1.defend)}、${d < 0 ? '站回' : '跌回'} ${fmt(L1.zone[0])}～${fmt(L1.zone[1])}`, why: '壓回換手結束、拿回短線推進權' });
+        out.push({ p: Math.max(L2.prev[1], L2.c618), ok: L2.ok, part: L2.part, t: `${sv}前高 ${fmt(L2.prev[1])} 和 ${fmt(L2.c618)}（c＝0.618 倍 a）`, why: '只是 3-4-c 的話會在這裡失速' });
+      }
       out.push({ p: L3.hard, ok: L3.ok, part: L3.part, t: `${fmt(L3.gate)} 收盤接受、${sv} ${fmt(L3.hard)}（3-1 低點）`, why: '淘汰單純的 60 分 3-4、升級日線級反彈' });
+      n = out.length;
       const nx = pz.next, nk = (nx && nx.neck) || [];
       if (nk.length) {
         const st = nx.neck_state || '';
@@ -642,9 +653,13 @@
     out.push({ p: g1.far, ok: g1.passed, part: g1.touched, t: `${sv} ${fmt(g1.far)}（60 分第 (1) 段${d < 0 ? '低' : '高'}點，1、4 不重疊）`, why: `60 分這組在 ${fmt(tz.big.ext)} 走完五段` });
     if (tz.gate2) {
       const b = tz.gate2.band;
-      out.push({ p: tz.gate2.price, ok: tz.gate2.passed, part: b && b.passed, t: `${sv} ${b ? `${fmt(b.lo)}～${fmt(b.hi)}` : fmt(tz.gate2.price)}（日線第 (1) 段${d < 0 ? '低' : '高'}點）`, why: '三段式告一段落，先當大 B 波；受阻＝日線再走第 (5) 段' });
+      out.push({ p: tz.gate2.price, ok: tz.gate2.passed, part: b && b.passed, t: `${sv} ${b ? `${fmt(b.lo)}～${fmt(b.hi)}` : fmt(tz.gate2.price)}（日線 C-1 ${d < 0 ? '低' : '高'}點）`, why: 'C-4 重疊 C-1＝沒有 C-5 破底，三段式修正完成；受阻轉弱＝提防 C-5' });
     }
-    const n = pz ? 3 : 0;
+    const a3 = (tz.fork || {}).a3;
+    if (num(a3) != null && (a3 - tz.big.L1) * -d > 0) {               // B103 她 11/10：頸線 46,107（三段式大 A 的落點）
+      const ok3 = (S.price - a3) * -d > 0;
+      out.push({ p: a3, ok: ok3, part: false, t: `${sv} ${fmt(a3)}（三段式大 A 落點、頸線）`, why: '推翻 C-4 劇本，確立日線級新推升（或大 B 浪）' });
+    }
     return out.slice(0, n).concat(out.slice(n).sort((a, b) => (a.p - b.p) * (d < 0 ? 1 : -1)));
   }
 
@@ -671,7 +686,11 @@
     const nowTxt = tz ? tz.status : ok ? `${P.path}：${lastSeg(P.text)}` : (plain(w.primary) || {}).title || '結構不清楚';
     const nx = pz && pz.next;
     const head = `<div class="wv-now-card"><b>現在</b>：${esc(nowTxt)}
-      ${nx ? `<div>新脈動目標 <b>${fmt(nx.proj)}</b>（小 (3)），起點 <b>${fmt(nx.from)}</b> 要守</div>` : ''}</div>`;
+      ${nx && nx.proj != null ? `<div>新脈動目標 <b>${fmt(nx.proj)}</b>（小 (3)），起點 <b>${fmt(nx.from)}</b> 要守</div>` : ''}</div>`;
+    const pu = pz && pz.push;
+    const pushBox = pu ? `<div class="wv-sec">📉 接下來的壓回 <span class="wv-dim">她 11/10：${fmt(pu.seq[0])}→${fmt(pu.seq[5])} 是清楚的小 5 段（初推），壓回是三波整理、不會回到 ${fmt(pu.seq[0])}，整理完還有一段上攻</span></div>
+      <ul class="wv-chk">${pu.zones.map(z => `<li class="${pu.where === z.k ? 'part' : ''}">${pu.where === z.k ? '◀ ' : ''}${'①②③'[z.k - 1]} <b>${esc(z.name.split('（')[0])}</b> ${fmt(z.hi)}～${fmt(z.lo)}<span class="wv-dim">（${z.lv.map(x => esc(x[1])).join('、')}）</span></li>`).join('')}</ul>
+      <div class="wv-dim">現在：${esc(pu.state)}；實體跌破小 1 ${fmt(pu.seq[1])} 才往 ③，跌破起點 ${fmt(pu.seq[0])} 才算失敗</div>` : '';
     // 2. 價位梯
     const lad = ladderHtml(planLevels(ok ? nz : null, lm), price);
     // 3. 版本
@@ -701,6 +720,7 @@
     el.innerHTML = `${setupBlock(tf)}
       <div class="wv-h3" style="margin-top:16px">🧭 劇本 <span class="wv-dim">${S.sym === 'TX' ? '台指期・' : ''}${esc(T.name)}；學 @fanny55520：先定母級、再列版本、用價位裁決</span></div>
       ${head}
+      ${pushBox}
       ${lad ? `<div class="wv-sec">📍 關鍵價位 <span class="wv-dim">同一個價位只列一次；粗體列＝現在最該看的</span></div>${lad}` : ''}
       <div class="wv-sec">🔢 版本</div><ul class="wv-ver">${ver}${her}</ul>
       ${chk ? `<div class="wv-sec">✅ 驗證清單 <span class="wv-dim">一層一層過關（她的三層驗證＋兩道關卡）</span></div>${chk}` : ''}
@@ -729,7 +749,7 @@
       if (pz) parts.push(`<div class="wv-src"><div class="t">${fmt(pz.a[0])} 的級數身分：三條路徑（她 11/8）</div>
         <div class="wv-dim">反彈內部 a ${fmt(pz.a[0])}→${fmt(pz.a[1])}、b ${fmt(pz.b)}、c 走到 ${fmt(pz.c1)}、壓回 ${fmt(pz.c2)}</div>
         ${pz.paths.map(p => `<div${p.out ? ' class="out"' : ''}><b>路徑 ${esc(p.k)}</b>（${esc(p.name)}）：${esc(p.t)}</div>`).join('')}
-        ${pz.next ? `<div class="wv-dim" style="margin-top:4px">${esc(pz.lines[pz.lines.length - 1])}</div>` : ''}</div>`);
+        ${pz.lines.filter(x => /^升級以後|^初推|^壓回三種/.test(x)).map(x => `<div class="wv-dim" style="margin-top:4px">${esc(x)}</div>`).join('')}</div>`);
       if (e3) parts.push(`<div class="wv-src"><div class="t">延伸第 3 段（她 11/6）：${fmt(e3.x)} 只是 3-1、${fmt(e3.y)} 是 3-2</div>
         ${e3.brakes.map(z => `<div><b>${esc(z.name)}</b> ${fmt(z.lv[0][0])}～${fmt(z.lv[z.lv.length - 1][0])} ${({ in: '◐ 已進入', through: '✅ 已穿過', ahead: `⬜ 還差 ${fmt(z.gap)} 點` })[z.state] || ''}<div>${chipsOf(z.lv)}</div></div>`).join('')}
         <div>3-4 還是轉浪：${esc(e3.reb.now)}</div>
