@@ -860,6 +860,27 @@ def _full_from(waves: dict, sm: dict, big: list) -> Optional[float]:
     return next((float(q["p"]) for q in reversed(bp) if str(q.get("date")) < td and q["t"] != T["t"]), None)
 
 
+def _tiers_inputs(big: list, n60: dict, P: dict, sm: dict, a60: Optional[dict]):
+    """兩道關卡用哪一組（日線轉折, 60 分轉折）：
+    ① 原本（B93）：60 分的起點＝日線這一段的起點（日線倒數第 2 個轉折），60 分轉折用多層浪名的 marks；
+    ② B101：日線這一段已經走完（極值變成確認轉折、後面又有反向的暫定轉折，例：37,694 之後的 42,317）→ 拿掉最後那個暫定轉折，
+       60 分轉折改用 60 分分析確認過的轉折，從日線 H2（47,607）接到現在——她 11/6～11/10 都還是用 47,607 起跌那組在看 37,694 之後的反彈"""
+    anchor = float(n60["anchor"]["p"])
+    if len(big) >= 4 and abs(big[-2]["p"] / anchor - 1) <= 0.005:
+        yield big, [{"p": anchor, "t": big[-2]["t"]}] + [{"p": float(m["p"]), "t": m["t"]} for m in P.get("marks") or []]
+    if not sm.get("tentative") or len(big) < 5 or not a60 or not a60.get("ok"):
+        return
+    bg = big[:-1]
+    an = a60.get("an") or {}
+    pv = [{"p": float(q["p"]), "t": q["t"]} for q in an.get("pivots") or []]
+    if an.get("tentative"):
+        pv.append({"p": float(an["tentative"]["p"]), "t": an["tentative"]["t"]})
+    H2 = bg[-2]
+    k = next((j for j in range(len(pv) - 1, -1, -1) if pv[j]["t"] == H2["t"] and abs(pv[j]["p"] / H2["p"] - 1) < 0.001), None)
+    if k is not None and len(pv) - k >= 6:
+        yield bg, pv[k:]
+
+
 def _tiers(snap: dict, waves: dict, closes, price: float, a60: Optional[dict] = None) -> None:
     """B93 她 11/4：日線（大級：50,265→45,523→47,607→42,050）＋60 分（小級：47,607 起的大、中、小）兩道關卡
     → nest.60m.tiers；關卡加「日線關卡」、分水嶺補上匯聚的 0.382／日線 5 均、版本加進場（第二隻腳）。
@@ -873,14 +894,15 @@ def _tiers(snap: dict, waves: dict, closes, price: float, a60: Optional[dict] = 
     big = [{"p": float(q["p"]), "t": q["t"]} for q in sm["pivots"]]
     if sm.get("tentative"):
         big.append({"p": float(sm["tentative"]["p"]), "t": sm["tentative"]["t"]})
-    if len(big) < 4 or abs(big[-2]["p"] / float(n60["anchor"]["p"]) - 1) > 0.005:
-        return                                            # 60 分的起點要是日 K 這一段的起點，兩層才扣得起來
-    small = [{"p": float(n60["anchor"]["p"]), "t": big[-2]["t"]}] + [{"p": float(m["p"]), "t": m["t"]} for m in P.get("marks") or []]
     c = [float(x) for x in closes]
     ma5 = sum(c[-5:]) / 5 if len(c) >= 5 else None
     ma10 = sum(c[-10:]) / 10 if len(c) >= 10 else None
-    first = _first_leg(a60, big[-4], big[-3]) if len(big) >= 4 else None
-    t = SW.structure(big, small, price, ma5, ma10, {"big": "日線", "small": "60 分"}, first_leg=first, full=_full_from(waves, sm, big))
+    t = None
+    for bg, small in _tiers_inputs(big, n60, P, sm, a60):
+        first = _first_leg(a60, bg[-4], bg[-3])
+        t = SW.structure(bg, small, price, ma5, ma10, {"big": "日線", "small": "60 分"}, first_leg=first, full=_full_from(waves, sm, bg))
+        if t:
+            break
     if not t:
         return
     n60["tiers"] = t
