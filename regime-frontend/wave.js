@@ -291,9 +291,10 @@
     const col = isShortTW(x) ? 'var(--warn)' : x.side > 0 ? 'var(--up)' : 'var(--down)';
     const r = x.res;
     const src = !r ? '' : r.tfc === 'intra15' ? '15 分 K 3 年資料' : r.tfc === 'intra' ? '60 分 K 3 年資料' : r.tfc === '1wk' ? '週 K 價位、2001 年起' : '日 K 2001 年起';
-    const resTxt = r ? `回測（${src}、${esc(x.trend || '')}）：先到目標 ${rateS(r.win)}，隨機 ${rateS(r.rw)}（${esc(r.n)} 筆）→ ${r.pass ? '✅' : '△'}` +
-      (r.worse ? ' <b style="color:var(--warn)">比隨機差，這個週期不建議這樣做</b>' : r.pass ? '' : '，當紀律參考：停損明確、賠率夠才做') +
-      (r.rr_real != null ? `；照「收盤確認」進場，實際賠率中位數只有 1：${Number(r.rr_real).toFixed(1)}（上面的賠率用進場區中間算）` : '') : '回測：這個組合沒有足夠資料';
+    // B102 精簡：回測只留數字和判定，共同的說明放在試單區最下面一次
+    const resTxt = r ? `回測 ${r.pass ? '✅' : '△'}：先到目標 ${rateS(r.win)}、隨機 ${rateS(r.rw)}（${esc(r.n)} 筆，${src}）` +
+      (r.worse ? ' <b style="color:var(--warn)">比隨機差，不建議</b>' : '') +
+      (r.rr_real != null ? `；實際賠率約 1：${Number(r.rr_real).toFixed(1)}` : '') : '回測：資料不夠';
     const body = isShortTW(x)
       ? `<div>彈到這裡：<b>減碼</b>（${esc(x.cond)}）</div><div>站回 ${fmt(x.stop)} 以上 → 這個壓力被突破，減掉的買回</div>`
       : `<div>進場：${esc(x.cond)}</div>
@@ -332,9 +333,10 @@
       <div class="wv-near">${near}</div>
       ${su.note ? `<div class="wv-note">${esc(su.note)}</div>` : ''}
       <div class="wv-setups">${su.list.map(x => setupCard(x, su)).join('')}</div>
-      <div class="wv-in"><b>進場三種（她）</b>：① 回測支撐，第一根壓下來不破前低再上車　② 彈到壓力壓回 → ${S.sym === 'TWII' ? '減碼（台指期才試空）' : '試空'}　③ 站上壓力、回測不破再追（三條路的「轉強依序」）</div>
-      ${exitSteps(su)}
-      <div class="wv-dim" style="margin-top:6px">系統照她的規則找出來的位置，不是她的實際下單；波浪標記皆為候選，部位照關卡分批。</div>`;
+      <div class="wv-dim" style="margin-top:6px">△＝回測跟隨機差不多，只當紀律參考（停損明確、賠率夠才做）；系統照她的規則找的位置，不是她的實際下單。</div>
+      <details class="wv-who"><summary>進場三種、出場步驟（她的寫法）</summary>
+        <div class="wv-in">① 回測支撐，第一根壓下來不破前低再上車　② 彈到壓力壓回 → ${S.sym === 'TWII' ? '減碼（台指期才試空）' : '試空'}　③ 站上壓力、回測不破再追</div>
+        ${exitSteps(su)}</details>`;
   }
 
   function renderSummary() {
@@ -347,8 +349,9 @@
     const sub = [];
     if (nz && nz.ok && nz.primary) {
       head = `${pre}${esc(T.name)}：<span class="path">${esc(nz.primary.path)}</span> <span class="wv-dim">${esc(trendTxt(nz.primary, nz))}</span>`;
-      if (nz.primary.text) sub.push(esc(nz.primary.text));
+      if (nz.primary.text) sub.push(esc(lastSeg(nz.primary.text)));
       if (nz.alternate) sub.push(`備選 <b>${esc(nz.alternate.path)}</b>（${esc(trendTxt(nz.alternate, nz))}）`);
+      if (nz.tiers && nz.tiers.status) sub.push(`她的數法：${esc(nz.tiers.status.split('；')[0])} <a data-goto-tab="plan">看劇本 →</a>`);   // B102
     } else {
       head = `${pre}${esc(T.name)}：${p ? esc(p.title) : '結構不清楚，看價位梯就好'}`;
       if (p) sub.push(esc(p.meaning));
@@ -556,202 +559,218 @@
       ${num(cnt.invalid) != null ? `<div class="wv-why" style="margin-top:6px;color:var(--warn)">${cnt.invalid_side === 'below' ? '跌破' : '漲過'} ${fmt(cnt.invalid)} 這個劇本作廢</div>` : ''}</div>`;
   }
 
+  // ── B102 劇本分頁精簡：一句話 → 關鍵價位梯（同價位合併）→ 版本 → 驗證清單 → 如果…就… → 紀律 → 細節（收合）──
+  // 她每天的拆法（11/1 源頭兩種切組、11/2 兩種、11/3 細微脈動、11/4 兩道關卡、11/5 第一段落點、11/6 煞車區…）都還在，只是收進「細節」，
+  // 同一個價位只在價位梯出現一次。
+  const stTag = (ok, part) => ok ? '✅' : part ? '◐' : '⬜';
+  const chipsOf = lv => (lv || []).map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('');
+  const lastSeg = t => { const s = String(t || '').split('→'); return s[s.length - 1].trim(); };
+  const cutT = t => { const k = Math.min(...['（', '：', '→'].map(ch => String(t).indexOf(ch)).filter(x => x > 0)); return isFinite(k) ? String(t).slice(0, k) : String(t); };
+
+  // 價位梯：把各區塊的價位收在一起，距離 ≤ max(30 點, 0.08%) 的併成一列（標籤合併），現價上下各列最近 6 個
+  function ladderHtml(items, price) {
+    const xs = items.filter(x => num(x.p) != null && Math.abs(x.p / price - 1) <= 0.06).sort((a, b) => b.p - a.p);
+    if (!xs.length) return '';
+    const tol = Math.max(30, price * 0.0008);
+    const grp = [];
+    xs.forEach(x => {
+      const g = grp[grp.length - 1];
+      if (g && g.hi - x.p <= tol) { g.lo = x.p; if (!g.labels.includes(x.label)) g.labels.push(x.label); g.key = g.key || x.key; }
+      else grp.push({ hi: x.p, lo: x.p, labels: [x.label], key: !!x.key });
+    });
+    const up = grp.filter(g => g.lo > price), dn = grp.filter(g => g.hi <= price);
+    const row = g => `<tr${g.key ? ' class="key"' : ''}><td class="p">${fmt(g.hi)}${g.hi - g.lo >= 1 ? `<span class="wv-dim">～${fmt(g.lo)}</span>` : ''}</td>
+      <td>${g.labels.map(esc).join('、')}</td><td class="d">${pctS((g.hi + g.lo) / 2 / price * 100 - 100, 1)}</td></tr>`;
+    const near = up.slice(-6).concat([null]).concat(dn.slice(0, 6));
+    const far = up.slice(0, -6).concat(dn.slice(6));
+    return `<table class="wv-tbl wv-lad">${near.map(g => g ? row(g) : `<tr class="wv-now"><td colspan="3">▶ 現在 ${fmt(price)}</td></tr>`).join('')}</table>
+      ${far.length ? `<details class="wv-who"><summary>更遠的 ${far.length} 個價位</summary><table class="wv-tbl wv-lad">${far.map(row).join('')}</table></details>` : ''}`;
+  }
+
+  function planLevels(nz, lm) {
+    const out = [];
+    const add = (p, label, key) => { if (num(p) != null) out.push({ p: Number(p), label, key: !!key }); };
+    const tz = nz && nz.tiers, e3 = tz && tz.ext3, pz = e3 && e3.paths;
+    const up3 = pz && pz.layers[2].ok;
+    if (tz) {
+      (tz.gate1.lv || []).forEach(x => add(x[0], x[1]));
+      ((tz.gate2 || {}).lv || []).forEach(x => add(x[0], x[1]));
+      (((tz.gate2 || {}).band || {}).lv || []).forEach(x => add(x[0], x[1]));
+    }
+    if (e3) {
+      add(e3.x, '3-1 低點（收復＝轉浪）', true);
+      if (!up3) {
+        e3.brakes.forEach(z => z.lv.forEach(x => add(x[0], `${z.name}：${x[1]}`)));
+        add(e3.reb.f382, '3-3 的 0.382'); add(e3.reb.f5, '3-3 的 0.5');
+      }
+      if (e3.five) e3.five.shallow.lv.slice(0, 1).concat(e3.five.deep.lv).forEach(x => add(x[0], `第 5 段：${x[1]}`));
+    }
+    if (pz) {
+      add(pz.c['0.618'], 'c＝0.618 倍 a'); add(pz.c['1.0'], 'c＝a 等幅'); add(pz.c['1.618'], 'c＝1.618 倍 a');
+      if (pz.next) {
+        add(pz.next.proj, '新脈動小 (3) 目標', true);
+        add(pz.next.from, '新脈動起點（最後壓回低點）', true);
+        (pz.next.neck || []).forEach(x => add(x[0], `頸線：${x[1]}`, true));
+      } else {
+        add(pz.layers[0].defend, '這次壓回低點（要守）', true);
+        pz.layers[0].zone.forEach(v => add(v, '站回區（前高→壓回低點 0.5～0.618）'));
+      }
+    }
+    const GK = { 趨勢線: '60 分趨勢線', 轉強: '60 分前一個反彈高點', 轉弱: '60 分前一個回檔低點', 目標: '60 分第 3 段目標', 日線關卡: '日線第 (1) 段低點',
+      分水嶺: '分水嶺', 生死線: '生死線', 前提: '60 分趨勢線', 第一關: '整段 0.382', 第二關: '整段 0.5～0.618', 失敗: '前低／前高' };
+    ((nz && nz.gates) || []).forEach(g => add(g.price, GK[g.k] || g.k));
+    return out;
+  }
+
+  function planChecks(nz) {
+    const tz = nz && nz.tiers;
+    if (!tz) return [];
+    const e3 = tz.ext3, pz = e3 && e3.paths, d = tz.dir, sv = d < 0 ? '站穩' : '跌破';
+    const out = [];
+    if (pz) {
+      const [L1, L2, L3] = pz.layers;
+      out.push({ p: L1.zone[1], ok: L1.ok, part: L1.part, t: `守住 ${fmt(L1.defend)}、${d < 0 ? '站回' : '跌回'} ${fmt(L1.zone[0])}～${fmt(L1.zone[1])}`, why: '壓回換手結束、拿回短線推進權' });
+      out.push({ p: Math.max(L2.prev[1], L2.c618), ok: L2.ok, part: L2.part, t: `${sv}前高 ${fmt(L2.prev[1])} 和 ${fmt(L2.c618)}（c＝0.618 倍 a）`, why: '只是 3-4-c 的話會在這裡失速' });
+      out.push({ p: L3.hard, ok: L3.ok, part: L3.part, t: `${fmt(L3.gate)} 收盤接受、${sv} ${fmt(L3.hard)}（3-1 低點）`, why: '淘汰單純的 60 分 3-4、升級日線級反彈' });
+      const nx = pz.next, nk = (nx && nx.neck) || [];
+      if (nk.length) {
+        const st = nx.neck_state || '';
+        out.push({ p: nk[nk.length - 1][0], ok: /^站上/.test(st), part: /^在頸線區/.test(st), t: `${sv}撐壓互換頸線 ${fmt(nk[0][0])}～${fmt(nk[nk.length - 1][0])}`, why: '新脈動贏、頸線轉支撐' });
+      }
+    }
+    const g1 = tz.gate1;
+    out.push({ p: g1.far, ok: g1.passed, part: g1.touched, t: `${sv} ${fmt(g1.far)}（60 分第 (1) 段${d < 0 ? '低' : '高'}點，1、4 不重疊）`, why: `60 分這組在 ${fmt(tz.big.ext)} 走完五段` });
+    if (tz.gate2) {
+      const b = tz.gate2.band;
+      out.push({ p: tz.gate2.price, ok: tz.gate2.passed, part: b && b.passed, t: `${sv} ${b ? `${fmt(b.lo)}～${fmt(b.hi)}` : fmt(tz.gate2.price)}（日線第 (1) 段${d < 0 ? '低' : '高'}點）`, why: '三段式告一段落，先當大 B 波；受阻＝日線再走第 (5) 段' });
+    }
+    const n = pz ? 3 : 0;
+    return out.slice(0, n).concat(out.slice(n).sort((a, b) => (a.p - b.p) * (d < 0 ? 1 : -1)));
+  }
+
+  function planRules(nz) {
+    const skip = /^版本 [12]|^進場等第一根回測/;
+    const seen = new Set();
+    const xs = ((nz && nz.plan) || []).filter(x => !skip.test(x) && !seen.has(x) && seen.add(x)).slice(0, 5);
+    const x = ((S && S.research) || {}).entry;
+    if (x) xs.push(`回測（B99）：碰到區就掛單＝接刀，每區平均 ${pctS(x.knife)}；等低點出來、停損放低點下方比較好，但用哪種止穩訊號差不多 ${x.v2_vs_rand.verdict}`);
+    return xs;
+  }
+
   function renderPlan() {
     const el = $('wv-plan');
     const T = T_(), tf = st.tf;
     const nz = T.intra ? nestOf(tf) : null;
+    const ok = nz && nz.ok;
     const lm = lmOf(tf) || {};
-    const P1 = (S.positioning || {})['1wk'], P2 = (S.positioning || {})['1d'];
-    const same = P1 && P2 && JSON.stringify(P1.ruler) === JSON.stringify(P2.ruler);
-    const pos = (same ? [{ ...P2, tf: '日 K／週 K（同一把母尺）' }] : [P1, P2]).filter(Boolean).map(x =>
-      `<div><b>${esc(x.tf)}</b>：${x.lines.map(esc).join('<br>')}</div>`).join('');
-    // B86 她 11/1「50265 起的下跌三種日線定位」（週 K 轉折）
-    const big = S.big;
-    const bigBox = big ? `<div class="wv-pos"><div class="wv-dim" style="margin-bottom:4px">🗺️ ${fmt(big.pts.h.p)} 起的下跌：三種日線定位（她 11/1；${esc(big.note)}）</div>
-      ${big.scenarios.map((x, i) => `<div class="wv-big${big.favored === x.key ? ' fav' : ''}"><b>${i + 1}. ${esc(x.title)}</b>${big.favored === x.key ? ' <span class="wv-badge">週 K 主要數法＝這個</span>' : ''}
-        <div>${x.levels.map(v => `<span class="wv-lv${v.hit ? ' hit' : ''}">${v.hit ? '✅ ' : ''}${esc(v.label)} <b>${fmt(v.price)}</b></span>`).join('')}</div>
-        <div class="wv-dim">→ ${esc(x.after)}</div></div>`).join('')}
-      ${big.mid ? `<div class="wv-big"><b>日線黃金切割</b>（第 (3) 浪起點 ${fmt(big.mid.from)} → 最高 ${fmt(big.mid.to)}；她 11/3：0.5 是日線層級最重要的中線支撐）
-        <div>${big.mid.levels.map(v => `<span class="wv-lv${v.hit ? ' hit' : ''}">${v.hit ? '✅ ' : ''}${esc(String(v.r))} <b>${fmt(v.price)}</b>${v.r === 0.5 ? ' 中線支撐大關卡' : ''}</span>`).join('')}</div></div>` : ''}</div>` : '';
-    // B86 她 11/1 的源頭兩種切組（60 分從日 K 修正的起點整段拆）
-    const srcBox = (src, nzx) => {
-      if (!src || (!src.three && !src.five)) return '';
-      const chips = v => (v.marks || []).map(m => `<span class="wv-chip">${esc(m.text)} ${fmt(m.p)}</span>`).join('');
-      const tg = v => (v.targets || []).map(t => `${esc(t.label)} <b>${fmt(t.price)}</b>`).join('；');
-      const t3 = src.three, t5 = src.five;
-      const Pp = (nzx && nzx.primary) || {}, Aa = (nzx && nzx.alternate) || {};
-      return `<div class="wv-src"><div class="t">🧭 源頭兩種切組（從 ${fmt(src.from.p)} 整段看；她 11/1：要把日線怎麼扣住 60 分脈絡看清楚）</div>
-        ${t3 ? `<div class="wv-srcv"><b>第一種切組（三段式）</b>：${esc(t3.desc)}<div>${chips(t3)}</div><div>目標：${tg(t3)}</div>
-          <div class="wv-dim">C 段五波走完（日線大 A 走完或第四大波結束）→ 要有切開日線斜率的大反彈。分數 ${t3.cost}</div></div>` : ''}
-        ${t5 ? `<div class="wv-srcv threat"><b>第二種切組（五段式・威脅）</b>：${esc(t5.desc)}<div>${chips(t5)}</div><div>目標：${tg(t5)}</div>
-          ${t5.rebound ? `<div>3-1 走完的話：3-2 只是弱勢反彈（常見回 0.5＝<b>${fmt(t5.rebound.p50)}</b>～0.618＝<b>${fmt(t5.rebound.p618)}</b>），接著 3-3 主跌；漲過 <b>${fmt(t5.rebound.kill)}</b> 這個版本作廢</div>` : ''}
-          <div class="wv-dim">殺盤深度差很多，要密切分辨（她：看台積電與費半落底的方向）。分數 ${t5.cost}</div></div>` : ''}
-        ${nzx && nzx.ok && nzx.anchor ? `<div class="wv-dim" style="margin-top:4px">下面是從 ${fmt(nzx.anchor.p)}（日 K 這一浪的起點）細拆：主要 ${esc(Pp.path || '')}${Aa.path ? `、備選 ${esc(Aa.path)}` : ''}
-          ——「第 5 段／C 的五波還沒走完」對應第一種；「第 1 段已走完、現在第 2 段反彈」對應第二種的 3-1 走完、3-2 反彈</div>` : ''}</div>`;
-    };
-    // B87 她 11/2 的「兩種」：第一種（第 1 段還沒走完、這段＝第 4 小段）vs 第二種（第 1 段走完、第 2 段反彈：走法 A／B）
-    const twoBox = (tw, nzx) => {
-      if (!tw || !tw.one || !tw.two) return '';
-      const o = tw.one, t = tw.two, up = nzx.dir < 0;
-      const her = h => h ? `（她的 ${esc(h)}）` : '';
-      const txt = x => esc(String(x || '').replace(/^[^：]*：/, ''));
-      const GN = { main: '最可能', std: '標準', fail: `失敗型（不破 ${fmt(tw.low)}）` };
-      const grp = ['main', 'std', 'fail'].map(g => { const xs = (o.targets || []).filter(x => x.grp === g); return xs.length
-        ? `<div>${GN[g]}：${xs.map(x => `<span class="wv-chip">${esc(x.label)} <b>${fmt(x.price)}</b></span>`).join('')}</div>` : ''; }).join('');
-      const judge = `<ul style="margin:6px 0 0 18px;padding:0">${(tw.judge || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
-      if (tw.phase && tw.phase !== 'up1' && o.gate) {         // B88 她 11/2 晚上：反彈完回落（4-b 或 5 啟動）、再反彈（小 c 或 5-2）
-        const g = o.gate;
-        return `<div class="wv-src"><div class="t">🔀 ${tw.phase === 'pull' ? `${up ? '反彈' : '回檔'}完${up ? '回落' : '反彈'}` : `回落後再${up ? '反彈' : '回檔'}`}：兩種怎麼分辨（她 11/2 晚上的做法；b＝${fmt(o.b[0])}→${fmt(o.b[1])}）</div>
-          <div class="wv-srcv"><b>第一種甲＝${esc(o.path)}${her(o.her)}：4-b 落底、還有小 c</b>
-            <div>🎯 決戰關卡 <b>${fmt(g.lo)}～${fmt(g.hi)}</b>${g.hit ? ' ✅ 已站上' : ''}（b 的 0.5 附近，帶量實體${up ? '紅' : '黑'} K 站穩才是真 c）；防守 ${fmt(o.b[1])} ${up ? '下方' : '上方'}；
-              移動停利 <b>${fmt(g.stop[0])}</b>（0.382）→ <b>${fmt(g.lo)}～${fmt(g.stop[1])}</b>（0.5）</div>
-            <div>小 c 目標：${(o.c || []).map(c => `<span class="wv-chip">${c.hit ? '✅ ' : ''}${esc(c.t)} <b>${fmt(c.lo)}～${fmt(c.hi)}</b> ${esc(c.label)}</span>`).join('')}</div></div>
-          <div class="wv-srcv threat"><b>第一種乙：${fmt(tw.R)} 已是第 4 小段終點、第 5 小段啟動</b>：5-2 反抽到 <b>${fmt(g.lo)}～${fmt(g.hi)}</b> 就卡住（死貓跳）
-            <div>第 5 小段目標（從 ${fmt(tw.R)} 量）：</div>${grp}</div>
-          <div class="wv-srcv threat"><b>第二種＝${esc(t.path)}${her(t.her)}</b>：${txt(t.text)}
-            <div>第 3 段主${up ? '跌' : '漲'}：<span class="wv-chip">1 倍第 1 段 <b>${fmt(t.down[0])}</b></span><span class="wv-chip">1.618 倍 <b>${fmt(t.down[1])}</b></span>
-              ；平台 b 先回 <b>${fmt(t.flat[0])}～${fmt(t.flat[1])}</b></div></div>
-          ${judge}</div>`;
-      }
-      const A = t.A, B = t.B;
-      if (!A || !B) return '';
-      return `<div class="wv-src"><div class="t">🔀 這段${up ? '反彈' : '回檔'}的兩種（她 11/2：${fmt(tw.low)} 之後怎麼分辨）</div>
-        <div class="wv-srcv threat"><b>第一種＝${esc(o.path)}${her(o.her)}</b>：${txt(o.text)}
-          <div>第 5 小段目標（以${up ? '反彈高點' : '回檔低點'} ${fmt(tw.R)} 估，盤中會跟著變）：</div>${grp}</div>
-        <div class="wv-srcv"><b>第二種＝${esc(t.path)}${her(t.her)}</b>：${txt(t.text)}
-          <div><b>走法 A（標準 a-b-c）</b>：a＝${fmt(A.a[0])}→${fmt(A.a[1])}（到現在）；b 守 <b>${fmt(A.b_strict)}</b>（a 的 0.236）、極限 <b>${fmt(A.b_ext)}</b>（0.382）；c 依序：
-            ${A.c.map(c => `<span class="wv-chip">${c.hit ? '✅ ' : ''}${esc(c.label)} <b>${fmt(c.price)}</b></span>`).join('')}</div>
-          <div><b>走法 B（時間型、偏弱）</b>：<b>${fmt(Math.min(B.lo, B.hi))}～${fmt(Math.max(B.lo, B.hi))}</b> 來回磨 2～3 天，之後照樣第 3 段${up ? '下跌' : '上漲'}</div></div>
-        ${judge}</div>`;
-    };
-    // B93 她 11/4：日線＋60 分兩道關卡（大中小、第一道關＝60 分第 1 段終點＋0.382＋日線 5 均、第二道關＝日線第 1 段終點）
-    const tiersBox = tz => {
-      if (!tz || !tz.lines) return '';
-      const g1 = tz.gate1 || {}, g2 = tz.gate2;
-      const st = (ok, part) => ok ? '✅ 已過' : part ? '◐ 過了一部分' : '⬜ 還沒';
-      return `<div class="wv-src"><div class="t">🪜 兩道關卡（她 11/4：60 分 ${fmt(g1.lo)}～${fmt(g1.hi)}、日線 ${g2 ? fmt(g2.price) : '—'} 逐層驗證）</div>
-        <div><b>${esc(tz.status)}</b></div>
-        <div class="wv-srcv"><b>第一道關</b> ${fmt(g1.lo)}～${fmt(g1.hi)}　${st(g1.passed, g1.touched)}
-          <div>${(g1.lv || []).map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}</div></div>
-        ${g2 ? `<div class="wv-srcv"><b>第二道關</b> ${fmt(g2.price)}　${st(g2.passed)}
-          <div>${(g2.lv || []).map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}</div>
-          ${g2.band ? `<div><b>匯聚區</b> ${fmt(g2.band.lo)}～${fmt(g2.band.hi)}　${st(g2.band.passed)}　${(g2.band.lv || []).map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}
-            <span class="wv-dim">站上就很有機會轉強（網友推敲、她回「推敲正確」），但先當大 B 波</span></div>` : ''}</div>` : ''}
-        <ul style="margin:6px 0 0 18px;padding:0">${tz.lines.slice(0, 2).concat(tz.lines.slice(3)).map(x => `<li>${esc(x)}</li>`).join('')}</ul>${ext3Box(tz.ext3)}</div>`;
-    };
-    // B100 她 11/8：低點的級數身分＝三條路徑（A 日線三段式完成、B 60 分 3-4-c、C 日線 C-4）＋三條共用的三層驗證
-    const pathsBox = pz => {
-      if (!pz || !pz.paths) return '';
-      const L = pz.layers || [], st = v => v.ok ? '✅ 已過' : v.part ? '◐ 過了一部分' : '⬜ 還沒';
-      const nm = ['第一層（短線推進權）', '第二層（3-4-c 滿足警戒）', '第三層（級數升權分水嶺）'];
-      return `<div style="margin-top:8px;border-top:1px dashed var(--line, #444);padding-top:6px"><b>${fmt(pz.a[0])} 的級數身分：三條路徑（她 11/8）</b>
-        <div class="wv-dim">反彈內部：a ${fmt(pz.a[0])}→${fmt(pz.a[1])}、b ${fmt(pz.b)}、c 走到 ${fmt(pz.c1)}、壓回 ${fmt(pz.c2)}；c 的目標
-          <span class="wv-chip">c＝0.618 倍 a <b>${fmt(pz.c['0.618'])}</b></span><span class="wv-chip">c＝a <b>${fmt(pz.c['1.0'])}</b></span><span class="wv-chip">c＝1.618 倍 a <b>${fmt(pz.c['1.618'])}</b></span></div>
-        ${pz.paths.map(p => `<div${p.out ? ' style="opacity:.55;text-decoration:line-through"' : ''}><b>路徑 ${esc(p.k)}</b>（${esc(p.name)}）：${esc(p.t)}</div>`).join('')}
-        <div style="margin-top:4px"><b>三條路徑共用的短線考驗</b></div>
-        ${pz.lines.slice(1, 4).map((x, i) => `<div>${esc(nm[i] || '')}　${L[i] ? st(L[i]) : ''}<div class="wv-dim">${esc(x.replace(/^[^：]*：/, ''))}</div></div>`).join('')}
-        ${nextBox(pz.next, pz)}</div>`;
-    };
-    // B101 她 11/10：升級以後＝新脈動跟舊脈動做撐壓交換（新脈動小 (3) 目標、撐壓互換頸線）
-    const nextBox = (n, pz) => {
-      if (!n) return '';
-      return `<div style="margin-top:6px"><b>升級以後：新脈動 vs 舊脈動（她 11/10）</b>
-        <div class="wv-dim">${fmt(n.from)} 起的新脈動跟跌到 ${fmt(pz.a[0])} 的舊脈動做撐壓交換，誰贏誰輸看回測</div>
-        <div><span class="wv-chip">新脈動小 (3) 目標 <b>${fmt(n.proj)}</b></span><span class="wv-dim">（${fmt(n.prev_hi)}→${fmt(n.from)} 壓回段的 1.618 倍外部投射；到了容易短線調節、小 (4) 換氣）</span></div>
-        ${(n.neck || []).length ? `<div><b>撐壓互換頸線</b> ${fmt(n.neck[0][0])}～${fmt(n.neck[n.neck.length - 1][0])}：${esc(n.neck_state || '')}
-          <div>${n.neck.map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}</div></div>` : ''}</div>`;
-    };
-    // B99 她的進單規矩回測：接刀 vs 等止穩（wave/stats.json entry_b99）
-    const b99Line = () => {
-      const x = ((S && S.research) || {}).entry;
-      if (!x) return '';
-      const p = v => `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}%`;
-      return `<div class="wv-dim" style="margin-top:4px">📊 回測（B99，加權 ${esc(x.span[0])}～${esc(x.span[1])}、${x.n_events} 個波浪區）：碰到區就掛單＝接刀每區平均 <b>${p(x.knife)}</b>（煞車區接刀 ${p(x.knife_x)}）；
-        等止穩、停損放在低點下方比較好（站回 5 均 ${p(x.v2)}，比接刀多 ${p(x.v2_vs_knife.mean)} ${esc(x.v2_vs_knife.verdict)}），但跟同一區隨便挑時間進場差不多 ${esc(x.v2_vs_rand.verdict)}——
-        重點是「不要在區裡先掛單、等低點出來再進、停損放低點下方」，用哪一種止穩訊號差別不大；走一口留一口跟一次出差不多 ${esc(x.e2_vs_e1.verdict)}</div>`;
-    };
-    // B98 她 11/6：4 不重疊 1 → 延伸第 3 段（3-1、3-2、3-3 運行中）：3-3 兩個煞車區、3-4 反抽還是轉浪、第 5 段下修
-    const ext3Box = e => {
-      if (!e || !e.brakes) return '';
-      const zs = { in: '◐ 已進入', through: '✅ 已穿過', ahead: '⬜ 還沒到' };
-      const chips = lv => (lv || []).map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('');
-      const r = e.reb || {}, f = e.five;
-      return `<div class="wv-srcv threat" style="margin-top:8px"><b>另一種數法（她 11/6）：${fmt(e.x)} 只是 3-1、${fmt(e.y)} 是 3-2，3-3 運行中</b>
-        <div class="wv-dim">${esc(e.lines[0])}</div>
-        ${e.brakes.map(z => `<div><b>${esc(z.name)}</b> ${fmt(z.lv[0][0])}～${fmt(z.lv[z.lv.length - 1][0])}　${zs[z.state] || ''}${z.state === 'ahead' ? `（還差 ${fmt(z.gap)} 點）` : ''}<div>${chips(z.lv)}</div></div>`).join('')}
-        <div><b>3-4 反抽還是轉浪</b>：受阻在 <b>${fmt(r.f382)}～${fmt(r.f5)}</b>（3-3 的 0.382～0.5）或收不回 <b>${fmt(r.hard)}</b>，壓回又破 <b>${fmt(r.from)}</b> → 只是 3-4，後面還有 3-5 和第 5 段。現在：${esc(r.now)}</div>
-        ${f ? `<div><b>第 5 段走完</b>：淺 5 <b>${fmt(f.shallow.lv[0][0])}～${fmt(f.shallow.lv[1][0])}</b>、深 5 <b>${fmt(f.deep.lv[0][0])}～${fmt(f.deep.lv[f.deep.lv.length - 1][0])}</b><div>${chips(f.shallow.lv.slice(0, 1).concat(f.deep.lv))}</div></div>` : ''}
-        ${pathsBox(e.paths)}
-        <div class="wv-dim">${esc(e.lines[e.lines.length - 1])}（波浪價位沒有回測過，△ 只當參考）</div>${b99Line()}</div>`;
-    };
-    // B89 她 11/3 下午：跌破第 1 段低點以後的三種細微脈動（圖 3／4／5）
-    const pulseBox = pz => {
-      if (!pz || !pz.views) return '';
-      const up = (nz && nz.dir) < 0;
-      const chips = v => (v.marks || []).map(m => `<span class="wv-chip">${esc(m.text)} ${fmt(m.p)}</span>`).join('');
-      const tgs = v => (v.targets || []).map(t => `<span class="wv-lv${t.hit ? ' hit' : ''}">${t.hit ? '✅ ' : ''}${esc(t.label)} <b>${fmt(t.price)}</b></span>`).join('');
-      const nm = ['①', '②', '③'];
-      return `<div class="wv-src"><div class="t">🧩 三種細微脈動（她 11/3：${fmt(pz.end1)}、${fmt(pz.h2)} 兩個轉折分辨；都要先走完當下的 C／C-3）</div>
-        <div class="wv-dim">${pz.ma5 != null ? `先看 60 分 5 均 <b>${fmt(pz.ma5)}</b>${pz.ma5_ok ? ' ✅ 已站回' : ''}（這筆下殺停了沒）；` : ''}上方最重要分水嶺 <b>${fmt(pz.end1)}</b>，再看 <b>${fmt(pz.f382)}</b>（0.382）；
-          下方 <b>${fmt(pz.low)}</b>${pz.mid ? `、日線中線支撐 <b>${fmt(pz.mid.price)}</b>（${esc(pz.mid.label)}）` : ''}</div>
-        ${pz.views.map((v, i) => `<div class="wv-srcv${v.key === '3' ? '' : ' threat'}"><b>${nm[i] || ''} ${esc(v.name)}</b>（她的${esc(v.fig)}）：現在 <b>${esc(v.now)}</b>
-          <div>${chips(v)}</div><div>${esc(v.next)}</div><div>${tgs(v)}</div></div>`).join('')}
-        <ul style="margin:6px 0 0 18px;padding:0">${(pz.judge || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`;
-    };
-    let trees, extra = '';
-    if (nz && nz.ok) {
-      trees = nestTreeBox(nz.primary, '版本一（主要）', nz, false) + nestTreeBox(nz.alternate, '版本二（備選）', nz, true);
-      const ev = nz.evidence || {};
-      const P = nz.primary || {}, A = nz.alternate;
-      const kill = c => (c.rules || []).filter(r => !/這一小段的起點/.test(r.why)).slice(0, 1).map(r => `${r.side === 'below' ? '跌破' : '漲過'} <b>${fmt(r.price)}</b> → ${esc(c.path)} 作廢`).join('');
-      // B83 關鍵分水嶺＋她的兩個版本怎麼確認（nest.plan 裡「版本 1／版本 2」那兩行）
-      // B85 她 10/29：B（C-2）走完第一段以後的「生死臨界線」優先放最上面，兩個版本跟著它
-      const ws = (nz.gates || []).find(g => g.k === '分水嶺');
-      const life = (nz.gates || []).find(g => g.k === '生死線');
-      const vlines = (nz.plan || []).filter(x => /^版本 [12]/.test(x));
-      const cut = t => { const k = Math.min(...['（', '：'].map(ch => t.indexOf(ch)).filter(x => x > 0)); return [t.slice(0, k), t.slice(k)]; };
-      const wsCard = (g, cls, withV, tag) => { const [h, b] = cut(g.t); return `<div class="wv-ws ${cls}"><div class="t">🚦 ${esc(h)}${tag}</div>
-          <div>${esc(b.replace(/^：/, ''))}</div>${withV && vlines.length && !nz.two && !nz.pulses ? `<ul>${vlines.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>`; };
-      const wsBox = (life ? wsCard(life, 'life' + (life.ok ? ' broke' : ''), true, life.ok ? '（已跌破）' : '') : '')
-        + (ws ? wsCard(ws, ws.ok ? 'ok' : '', !life, '') : '');
-      extra = `${srcBox(nz.source, nz)}${tiersBox(nz.tiers)}${pulseBox(nz.pulses)}${wsBox}${twoBox(nz.two, nz)}<div style="margin-top:8px">起點：<b>${esc(nz.anchor.label)} ${fmt(nz.anchor.p)}</b>
-          <span class="wv-dim">（${nz.anchor.how === 'parent' ? '60 分這一段的起點（她：15 分是在 60 分結構裡找短脈動）' : nz.anchor.how === 'daily' ? '日 K 這一浪的起點' : '這段時間最早的極值'}）</span>
-          → ${nz.dir < 0 ? '最低' : '最高'} <b>${fmt(nz.extreme.p)}</b> <span class="wv-dim">${esc(nz.extreme.label)}</span></div>
-        ${nz.merged ? `<div class="wv-dim" style="margin-top:4px">起點之後有 ${nz.n_seg + nz.merged} 段轉折，先把最小的 ${nz.merged} 段併掉、拆 ${nz.n_seg} 段（她的圖也只標大段＋子浪）</div>` : ''}
-        <div style="margin-top:6px">盤面證據：<span class="wv-ev${ev.trend ? ' on' : ''}">${ev.trend ? '✅' : '⬜'} 越過${nz.dir < 0 ? '下降' : '上升'}趨勢線</span><span class="wv-ev${ev.f382 ? ' on' : ''}">${ev.f382 ? '✅' : '⬜'} ${nz.dir < 0 ? '站上' : '跌破'} 0.382</span>
-          <span class="wv-dim">（她：沒越過趨勢線前「維持原架構」優先；越過並站穩分水嶺才「級數轉浪」）</span></div>
-        ${A ? `<div class="wv-what"><b>共同事實</b>：${fmt(nz.anchor.p)} 起${nz.dir < 0 ? '下跌' : '上漲'}，現在這一小段${nz.cur_dir < 0 ? '往下' : '往上'}。
-          <b>真正分歧</b>：${nz.two ? [P, A].map(x => `${esc(x.path)}（${x.path === nz.two.one.path ? '第 1 段還沒走完＝第一種' : '第 1 段已走完＝第二種'}）`).join(' vs ')
-            : `${esc(P.path)}（${P.with_trend ? '大段還沒走完' : '大段已走完'}）vs ${esc(A.path)}（${A.with_trend ? '大段還沒走完' : '大段已走完'}）`}。
-          <b>市場裁決</b>：${[kill(P), kill(A)].filter(Boolean).join('；') || '看下面的如果…就…'}</div>` : ''}
-        ${nz.third ? `<details class="wv-who"><summary>第三個候選：${esc(nz.third.path)}（分數很接近）</summary>${nestTreeBox(nz.third, '版本三', nz, true)}</details>` : ''}`;
-    } else {
-      const w = wv(deg());
-      trees = waveTreeBox(w.primary, '主要劇本', false) + waveTreeBox(w.alternate, '替代劇本', true);
-      if (T.intra && nz && !nz.ok) extra = `<div class="wv-note">${esc(nz.note || '多層浪名算不出來')}</div>`;
-    }
+    const price = S.price;
+    const tz = ok ? nz.tiers : null, e3 = tz && tz.ext3, pz = e3 && e3.paths;
+    // 1. 一句話
+    const w = wv(deg());
+    const P = ok ? (nz.primary || {}) : null, A = ok ? nz.alternate : null;
+    const nowTxt = tz ? tz.status : ok ? `${P.path}：${lastSeg(P.text)}` : (plain(w.primary) || {}).title || '結構不清楚';
+    const nx = pz && pz.next;
+    const head = `<div class="wv-now-card"><b>現在</b>：${esc(nowTxt)}
+      ${nx ? `<div>新脈動目標 <b>${fmt(nx.proj)}</b>（小 (3)），起點 <b>${fmt(nx.from)}</b> 要守</div>` : ''}</div>`;
+    // 2. 價位梯
+    const lad = ladderHtml(planLevels(ok ? nz : null, lm), price);
+    // 3. 版本
+    const kill = c => (c.rules || []).filter(r => !/這一小段的起點/.test(r.why)).slice(0, 1).map(r => `${r.side === 'below' ? '跌破' : '漲過'} ${fmt(r.price)} 作廢`).join('');
+    const ver = ok
+      ? [[P, '系統版本一'], [A, '系統版本二']].filter(x => x[0]).map(([c, nm]) => `<li><b>${nm} ${esc(c.path)}</b>：${esc(lastSeg(c.text))}${kill(c) ? `<span class="wv-dim">（${esc(kill(c))}）</span>` : ''}</li>`).join('')
+      : [[w.primary, '主要劇本'], [w.alternate, '替代劇本']].filter(x => x[0]).map(([c, nm]) => `<li><b>${nm}</b>：${esc((plain(c) || {}).title || '')}${num(c.invalid) != null ? `<span class="wv-dim">（${c.invalid_side === 'below' ? '跌破' : '漲過'} ${fmt(c.invalid)} 作廢）</span>` : ''}</li>`).join('');
+    const her = pz ? pz.paths.map(p => `<li${p.out ? ' class="out"' : ''}><b>她的路徑 ${esc(p.k)}</b>（${esc(p.name)}）</li>`).join('') : '';
+    // 4. 驗證清單
+    const checks = planChecks(ok ? nz : null);
+    const chk = checks.length ? `<ul class="wv-chk">${checks.map(c => `<li class="${c.ok ? 'ok' : c.part ? 'part' : ''}">${stTag(c.ok, c.part)} ${esc(c.t)}<span class="wv-dim"> → ${esc(c.why)}</span></li>`).join('')}</ul>` : '';
+    // 5. 如果…就…／三條路
     const dec = (lm.decision || []).map(d => `<li class="${d.side === 'up' ? 'up' : 'down'}"><b class="if">${esc(d.if)}</b> → ${esc(d.then)}</li>`).join('');
     const stp = lm.steps || {};
     const road = (arr, cls, title) => {
       if (!arr || !arr.length) return `<div class="wv-road ${cls}"><div class="t">${title}</div><div class="wv-dim">附近沒有系統價位</div></div>`;
-      return `<div class="wv-road ${cls}${arr[0].ok ? ' cur' : ''}"><div class="t">${title}</div>${arr.map(s => `<div>${s.ok ? '✅' : '⬜'} ${esc(s.t)}${s.note ? ` <span class="wv-dim">（${esc(s.note)}）</span>` : ''}</div>`).join('')}</div>`;
+      return `<div class="wv-road ${cls}${arr[0].ok ? ' cur' : ''}"><div class="t">${title}</div>${arr.map(s => `<div>${s.ok ? '✅' : '⬜'} ${esc(s.t)}</div>`).join('')}</div>`;
     };
     const rg = stp.range;
+    const roads = `<div class="wv-roads">${road(stp.up, 'up', '📈 轉強（依序）')}
+      <div class="wv-road${rg && rg.ok ? ' cur' : ''}"><div class="t">↔️ 繼續震盪</div>${rg ? `<div>${rg.ok ? '✅' : '⬜'} ${esc(rg.t)}</div>` : '<div class="wv-dim">—</div>'}</div>
+      ${road(stp.down, 'down', '📉 轉弱（依序）')}</div>`;
+    // 6. 紀律
+    const rules = planRules(ok ? nz : null);
+    // 7. 細節（收合）
+    const det = planDetails(nz, w);
     el.innerHTML = `${setupBlock(tf)}
       <div class="wv-h3" style="margin-top:16px">🧭 劇本 <span class="wv-dim">${S.sym === 'TX' ? '台指期・' : ''}${esc(T.name)}；學 @fanny55520：先定母級、再列版本、用價位裁決</span></div>
-      ${lm.mother_note ? `<div class="wv-dim" style="margin-bottom:6px">ℹ️ ${esc(lm.mother_note)}</div>` : ''}
-      ${pos ? `<div class="wv-pos"><div class="wv-dim" style="margin-bottom:2px">🗺️ 母級定位（她的日線定位：母尺、防守區、鐵律、威脅版本）</div>${pos}</div>` : ''}
-      ${bigBox}
-      <div class="wv-trees">${trees || '<div class="wv-dim">這個週期還沒有劇本</div>'}</div>
-      ${extra}
-      <div class="wv-h3" style="margin-top:14px">⚖️ 如果…就…</div>
+      ${head}
+      ${lad ? `<div class="wv-sec">📍 關鍵價位 <span class="wv-dim">同一個價位只列一次；粗體列＝現在最該看的</span></div>${lad}` : ''}
+      <div class="wv-sec">🔢 版本</div><ul class="wv-ver">${ver}${her}</ul>
+      ${chk ? `<div class="wv-sec">✅ 驗證清單 <span class="wv-dim">一層一層過關（她的三層驗證＋兩道關卡）</span></div>${chk}` : ''}
+      <div class="wv-sec">⚖️ 如果…就…</div>
       ${dec ? `<ul class="wv-dec">${dec}</ul>` : '<div class="wv-dim">附近沒有會讓數法改變的價位</div>'}
-      <div class="wv-h3" style="margin-top:14px">🛣️ 三條路 <span class="wv-dim">她的寫法：轉強要依序過關、轉弱要依序跌破；✅＝已經做到</span></div>
-      <div class="wv-roads">
-        ${road(stp.up, 'up', '📈 轉強（依序）')}
-        <div class="wv-road${rg && rg.ok ? ' cur' : ''}"><div class="t">↔️ 繼續震盪</div>${rg ? `<div>${rg.ok ? '✅' : '⬜'} ${esc(rg.t)}</div><div class="wv-why">多空在區間裡消耗，反覆長出 5 分、15 分的短波段</div>` : '<div class="wv-dim">—</div>'}</div>
-        ${road(stp.down, 'down', '📉 轉弱（依序）')}
-      </div>`;
+      ${chk ? `<details class="wv-who"><summary>🛣️ 三條路（轉強／震盪／轉弱的順序）</summary>${roads}</details>` : `<div class="wv-sec">🛣️ 三條路 <span class="wv-dim">轉強要依序過關、轉弱要依序跌破</span></div>${roads}`}
+      ${rules.length ? `<div class="wv-sec">📌 操作紀律</div><ul class="wv-rules">${rules.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+      ${det ? `<details class="wv-who wv-det"><summary>📚 細節：她每天的拆法、母級定位、樹狀浪名（點開看）</summary>${det}</details>` : ''}`;
+  }
+
+  // 細節：原本一路加上去的方塊，收在一起（同樣的價位不再重複列 chip）
+  function planDetails(nz, w) {
+    const ok = nz && nz.ok;
+    const parts = [];
+    const P1 = (S.positioning || {})['1wk'], P2 = (S.positioning || {})['1d'];
+    const same = P1 && P2 && JSON.stringify(P1.ruler) === JSON.stringify(P2.ruler);
+    const pos = (same ? [{ ...P2, tf: '日 K／週 K（同一把母尺）' }] : [P1, P2]).filter(Boolean).map(x => `<div><b>${esc(x.tf)}</b>：${x.lines.map(esc).join('<br>')}</div>`).join('');
+    if (pos) parts.push(`<div class="wv-pos"><div class="wv-dim">🗺️ 母級定位（她的日線定位：母尺、防守區、鐵律、威脅版本）</div>${pos}</div>`);
+    const big = S.big;                                                // B86 三種日線定位、B89 日線黃金切割
+    if (big) parts.push(`<div class="wv-pos"><div class="wv-dim">🗺️ ${fmt(big.pts.h.p)} 起的下跌：三種日線定位（她 11/1）</div>
+      ${big.scenarios.map((x, i) => `<div class="wv-big${big.favored === x.key ? ' fav' : ''}"><b>${i + 1}. ${esc(x.title)}</b>${big.favored === x.key ? ' <span class="wv-badge">週 K 主要</span>' : ''}
+        <div>${x.levels.map(v => `<span class="wv-lv${v.hit ? ' hit' : ''}">${v.hit ? '✅ ' : ''}${esc(v.label)} <b>${fmt(v.price)}</b></span>`).join('')}</div><div class="wv-dim">→ ${esc(x.after)}</div></div>`).join('')}
+      ${big.mid ? `<div class="wv-big"><b>日線黃金切割</b>（${fmt(big.mid.from)}→${fmt(big.mid.to)}；0.5＝中線支撐）${big.mid.levels.map(v => `<span class="wv-lv${v.hit ? ' hit' : ''}">${esc(String(v.r))} <b>${fmt(v.price)}</b></span>`).join('')}</div>` : ''}</div>`);
+    if (ok) {
+      const tz = nz.tiers, e3 = tz && tz.ext3, pz = e3 && e3.paths;
+      if (pz) parts.push(`<div class="wv-src"><div class="t">${fmt(pz.a[0])} 的級數身分：三條路徑（她 11/8）</div>
+        <div class="wv-dim">反彈內部 a ${fmt(pz.a[0])}→${fmt(pz.a[1])}、b ${fmt(pz.b)}、c 走到 ${fmt(pz.c1)}、壓回 ${fmt(pz.c2)}</div>
+        ${pz.paths.map(p => `<div${p.out ? ' class="out"' : ''}><b>路徑 ${esc(p.k)}</b>（${esc(p.name)}）：${esc(p.t)}</div>`).join('')}
+        ${pz.next ? `<div class="wv-dim" style="margin-top:4px">${esc(pz.lines[pz.lines.length - 1])}</div>` : ''}</div>`);
+      if (e3) parts.push(`<div class="wv-src"><div class="t">延伸第 3 段（她 11/6）：${fmt(e3.x)} 只是 3-1、${fmt(e3.y)} 是 3-2</div>
+        ${e3.brakes.map(z => `<div><b>${esc(z.name)}</b> ${fmt(z.lv[0][0])}～${fmt(z.lv[z.lv.length - 1][0])} ${({ in: '◐ 已進入', through: '✅ 已穿過', ahead: `⬜ 還差 ${fmt(z.gap)} 點` })[z.state] || ''}<div>${chipsOf(z.lv)}</div></div>`).join('')}
+        <div>3-4 還是轉浪：${esc(e3.reb.now)}</div>
+        ${e3.five ? `<div>第 5 段走完：淺 5 ${fmt(e3.five.shallow.lv[0][0])}～${fmt(e3.five.shallow.lv[1][0])}、深 5 ～${fmt(e3.five.deep.lv[e3.five.deep.lv.length - 1][0])}</div>` : ''}</div>`);
+      if (tz) parts.push(`<div class="wv-src"><div class="t">兩道關卡（她 11/4）、第一段落點兩種看法（她 11/5）</div>
+        <ul style="margin:4px 0 0 18px;padding:0">${tz.lines.filter((x, i) => i === 1 || /^第一段落點|^①|^②|^怎麼分/.test(x)).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`);
+      parts.push(srcDetail(nz.source), pulseDetail(nz.pulses, nz), twoDetail(nz.two, nz), gateDetail(nz));
+      parts.push(`<div class="wv-trees">${nestTreeBox(nz.primary, '版本一（主要）', nz, false)}${nestTreeBox(nz.alternate, '版本二（備選）', nz, true)}</div>
+        <div class="wv-dim" style="margin-top:6px">起點 ${esc(nz.anchor.label)} ${fmt(nz.anchor.p)} → ${nz.dir < 0 ? '最低' : '最高'} ${fmt(nz.extreme.p)}（${esc(nz.extreme.label)}）；
+          證據：${(nz.evidence || {}).trend ? '✅' : '⬜'} 越過趨勢線、${(nz.evidence || {}).f382 ? '✅' : '⬜'} 過 0.382${nz.merged ? `；併掉最小的 ${nz.merged} 段` : ''}</div>
+        ${nz.third ? `<details class="wv-who"><summary>第三個候選：${esc(nz.third.path)}</summary>${nestTreeBox(nz.third, '版本三', nz, true)}</details>` : ''}`);
+    } else {
+      parts.push(`<div class="wv-trees">${waveTreeBox(w.primary, '主要劇本', false)}${waveTreeBox(w.alternate, '替代劇本', true)}</div>`);
+      if (T_().intra && nz && !nz.ok) parts.push(`<div class="wv-note">${esc(nz.note || '多層浪名算不出來')}</div>`);
+    }
+    return parts.filter(Boolean).join('');
+  }
+
+  function srcDetail(src) {                                           // B86 她 11/1 源頭兩種切組
+    if (!src || (!src.three && !src.five)) return '';
+    const v = (x, nm) => x ? `<div><b>${nm}</b>：${esc(x.desc)}；目標 ${(x.targets || []).map(t => `${esc(t.label)} ${fmt(t.price)}`).join('、')}</div>` : '';
+    return `<div class="wv-src"><div class="t">源頭兩種切組（她 11/1，從 ${fmt(src.from.p)} 整段看）</div>${v(src.three, '三段式')}${v(src.five, '五段式（威脅）')}</div>`;
+  }
+  function pulseDetail(pz, nz) {                                      // B89 她 11/3 三種細微脈動
+    if (!pz || !pz.views) return '';
+    return `<div class="wv-src"><div class="t">三種細微脈動（她 11/3；分水嶺 ${fmt(pz.end1)}、0.382 ${fmt(pz.f382)}）</div>
+      ${pz.views.map(v => `<div><b>${esc(v.name)}</b>（${esc(v.fig)}）：${esc(v.now)} → ${esc(v.next)}</div>`).join('')}</div>`;
+  }
+  function twoDetail(tw, nz) {                                        // B87／B88 她 11/2 兩種
+    if (!tw || !tw.one || !tw.two) return '';
+    return `<div class="wv-src"><div class="t">這段的兩種（她 11/2）</div>
+      <div><b>第一種 ${esc(tw.one.path)}</b>：${esc(String(tw.one.text || '').replace(/^[^：]*：/, ''))}</div>
+      <div><b>第二種 ${esc(tw.two.path)}</b>：${esc(String(tw.two.text || '').replace(/^[^：]*：/, ''))}</div>
+      ${(tw.judge || []).length ? `<ul style="margin:4px 0 0 18px;padding:0">${tw.judge.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>`;
+  }
+  function gateDetail(nz) {                                           // B83／B85 分水嶺、生死線、版本 1／2 怎麼確認
+    const gs = (nz.gates || []).filter(g => g.k === '分水嶺' || g.k === '生死線');
+    const vl = (nz.plan || []).filter(x => /^版本 [12]/.test(x));
+    if (!gs.length && !vl.length) return '';
+    return `<div class="wv-src"><div class="t">分水嶺／生死線</div>${gs.map(g => `<div>🚦 ${esc(g.t)}</div>`).join('')}
+      ${vl.length ? `<ul style="margin:4px 0 0 18px;padding:0">${vl.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>`;
   }
 
   function renderTimeline() {

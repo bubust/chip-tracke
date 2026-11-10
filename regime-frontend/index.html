@@ -314,6 +314,22 @@
   .wv-tag.ok { background: rgba(240,72,72,.12); } .wv-tag.ng { background: rgba(148,163,184,.18); } .wv-tag.main { background: rgba(91,140,255,.2); }
   .wv-in { font-size: .9rem; margin-top: 10px; line-height: 1.6; }
   .wv-exit { margin-top: 8px; font-size: .92rem; } .wv-exit .t { font-weight: 700; } .wv-exit ol { margin: 4px 0 0 22px; line-height: 1.65; }
+  /* B102 劇本分頁精簡 */
+  .wv-now-card { margin: 4px 0 10px; padding: 9px 12px; border-radius: 11px; border: 1px solid rgba(91,140,255,.45); background: rgba(91,140,255,.07); font-size: .95rem; line-height: 1.65; }
+  .wv-sec { font-weight: 800; margin: 14px 0 6px; font-size: 1rem; }
+  .wv-lad td { padding: 4px 8px; font-size: .9rem; line-height: 1.45; }
+  .wv-lad td.p { white-space: nowrap; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .wv-lad td.d { white-space: nowrap; color: var(--muted); font-size: .82rem; text-align: right; }
+  .wv-lad tr.key td { background: rgba(250,204,21,.07); }
+  .wv-lad tr.key td.p { color: #facc15; }
+  .wv-ver, .wv-chk, .wv-rules { margin: 0; padding-left: 18px; font-size: .93rem; line-height: 1.65; }
+  .wv-chk { list-style: none; padding-left: 0; }
+  .wv-chk li { padding: 3px 0; border-bottom: 1px dashed rgba(148,163,184,.18); }
+  .wv-chk li.ok { color: #86efac; } .wv-chk li.ok .wv-dim { color: #86efac99; }
+  .wv-ver li.out, .wv-src .out { opacity: .5; text-decoration: line-through; }
+  .wv-det > summary { font-weight: 700; margin-top: 12px; }
+  .wv-det .wv-src, .wv-det .wv-pos { font-size: .9rem; }
+  .wv-setup .wv-why { font-size: .82rem; }
   .wv-tiles.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   @media (max-width: 760px) { .wv-setups { grid-template-columns: 1fr; } }
   .wv-more-btn { display: none; }
@@ -1118,6 +1134,6 @@ setInterval(() => { if (_regimeVisible() && Date.now() - _lastLoad >= 300000) { 
 // 視窗 resize 時重繪圖表
 window.addEventListener('resize', () => { window.__regimeRedraw(); });
 </script>
-<script src="/regime/static/wave.js?v=20261110b101"></script>
+<script src="/regime/static/wave.js?v=20261110b102"></script>
 </body>
 </html>
