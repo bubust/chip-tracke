@@ -647,9 +647,19 @@
       return `<div style="margin-top:8px;border-top:1px dashed var(--line, #444);padding-top:6px"><b>${fmt(pz.a[0])} 的級數身分：三條路徑（她 11/8）</b>
         <div class="wv-dim">反彈內部：a ${fmt(pz.a[0])}→${fmt(pz.a[1])}、b ${fmt(pz.b)}、c 走到 ${fmt(pz.c1)}、壓回 ${fmt(pz.c2)}；c 的目標
           <span class="wv-chip">c＝0.618 倍 a <b>${fmt(pz.c['0.618'])}</b></span><span class="wv-chip">c＝a <b>${fmt(pz.c['1.0'])}</b></span><span class="wv-chip">c＝1.618 倍 a <b>${fmt(pz.c['1.618'])}</b></span></div>
-        ${pz.paths.map(p => `<div><b>路徑 ${esc(p.k)}</b>（${esc(p.name)}）：${esc(p.t)}</div>`).join('')}
+        ${pz.paths.map(p => `<div${p.out ? ' style="opacity:.55;text-decoration:line-through"' : ''}><b>路徑 ${esc(p.k)}</b>（${esc(p.name)}）：${esc(p.t)}</div>`).join('')}
         <div style="margin-top:4px"><b>三條路徑共用的短線考驗</b></div>
-        ${pz.lines.slice(1).map((x, i) => `<div>${esc(nm[i] || '')}　${L[i] ? st(L[i]) : ''}<div class="wv-dim">${esc(x.replace(/^[^：]*：/, ''))}</div></div>`).join('')}</div>`;
+        ${pz.lines.slice(1, 4).map((x, i) => `<div>${esc(nm[i] || '')}　${L[i] ? st(L[i]) : ''}<div class="wv-dim">${esc(x.replace(/^[^：]*：/, ''))}</div></div>`).join('')}
+        ${nextBox(pz.next, pz)}</div>`;
+    };
+    // B101 她 11/10：升級以後＝新脈動跟舊脈動做撐壓交換（新脈動小 (3) 目標、撐壓互換頸線）
+    const nextBox = (n, pz) => {
+      if (!n) return '';
+      return `<div style="margin-top:6px"><b>升級以後：新脈動 vs 舊脈動（她 11/10）</b>
+        <div class="wv-dim">${fmt(n.from)} 起的新脈動跟跌到 ${fmt(pz.a[0])} 的舊脈動做撐壓交換，誰贏誰輸看回測</div>
+        <div><span class="wv-chip">新脈動小 (3) 目標 <b>${fmt(n.proj)}</b></span><span class="wv-dim">（${fmt(n.prev_hi)}→${fmt(n.from)} 壓回段的 1.618 倍外部投射；到了容易短線調節、小 (4) 換氣）</span></div>
+        ${(n.neck || []).length ? `<div><b>撐壓互換頸線</b> ${fmt(n.neck[0][0])}～${fmt(n.neck[n.neck.length - 1][0])}：${esc(n.neck_state || '')}
+          <div>${n.neck.map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}</div></div>` : ''}</div>`;
     };
     // B99 她的進單規矩回測：接刀 vs 等止穩（wave/stats.json entry_b99）
     const b99Line = () => {

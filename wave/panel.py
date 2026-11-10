@@ -477,6 +477,9 @@ def _nest_prices(snap: dict) -> list:
                     out += list(pz["a"]) + [pz["b"], pz["c1"], pz["c2"]] + [float(v) for v in pz["c"].values()]
                     out += [L1["defend"]] + list(L1["zone"]) + list(L2["prev"]) + [L2["c618"], L2["f5"], L3["gate"], L3["hard"]]
                     out += [v for v, _ in L3["chal"]]
+                    nx = pz.get("next") or {}                # B101 升級以後：新脈動目標、撐壓互換頸線
+                    if nx:
+                        out += [nx["from"], nx["prev_hi"], nx["proj"]] + [v for v, _ in nx.get("neck") or []]
         pz = nz.get("pulses") or {}                      # B89 三種細微脈動
         if pz.get("views"):
             out += [pz["end1"], pz["h2"], pz["low"], pz["f382"]] + ([pz["ma5"]] if pz.get("ma5") is not None else [])
