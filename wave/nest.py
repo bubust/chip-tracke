@@ -1517,7 +1517,7 @@ def positioning(prim: Optional[dict], alt: Optional[dict], price: float, tfn: st
 
 
 # ── B86 她 11/1「50265 起的下跌三種日線定位」：用週 K 轉折找全波段起點、第 (3) 浪、第 (4) 浪 ──────────────────────
-def big_picture(piv: list, price: float, mid_primary: Optional[dict] = None) -> Optional[dict]:
+def big_picture(piv: list, price: float, mid_primary: Optional[dict] = None, low_after: Optional[float] = None) -> Optional[dict]:
     """piv：週 K 轉折（舊→新，{p, t, date}）。最新高點 H（50,265）之後在回檔時，列她的三種定位：
     1. 全波段（G0→H，17,016→50,265）走完、進行更上層大 A 浪：全波段 0.382（37,564）是總修正目標
     2. 第四大波還沒走完（只修正第 (3) 浪 31,740→49,240）：4-C／Y 浪看第 (3) 浪的 0.382～0.5（42,555～40,490），守住第 (4) 浪低點（39,442）
@@ -1565,8 +1565,21 @@ def big_picture(piv: list, price: float, mid_primary: Optional[dict] = None) -> 
                     {"label": "全波段 0.382", "price": f(0.382)}, {"label": "全波段 0.5", "price": f(0.5)}],
          "after": "大 C 浪五波主跌，最深往全波段 0.382～0.5"},
     ]
+    her = None
+    if low_after is not None and low_after < W4["p"]:
+        # B105 她 11/11：第四大波＝擴張平台（C 浪可以破 A 浪低點）：(4)-A 49,240→39,442、(4)-B 39,442→50,265（穿頭）、
+        # (4)-C 50,265→37,694（破 A）＝第四大波三段式完成、啟動第 5 大波 5-1
+        cl = H["p"] - low_after
+        sc[1] = {"key": "4", "title": f"第四大波擴張平台完成：(4)-A {_fmt(H3['p'])}→{_fmt(W4['p'])}、(4)-B →{_fmt(H['p'])}（穿頭）、"
+                                      f"(4)-C →{_fmt(low_after)}（破 A 低）＝第四大波落底，啟動第 5 大波 5-1",
+                 "levels": [{"label": "(4)-C 的 0.5 回升", "price": round(low_after + 0.5 * cl, 2)},
+                            {"label": "5-1 共振：(4)-C 的 0.618 回升", "price": round(low_after + 0.618 * cl, 2)},
+                            {"label": "(4)-C 低點（跌破＝這個定位作廢）", "price": low_after}],
+                 "after": "5-1 走完以後走日線 5-2 壓回（個股、0050 上車的位置），之後 5-3 創高"}
+        her = "4"
     for x in sc:
-        x["levels"] = [dict(v, hit=bool(price <= v["price"])) for v in x["levels"]]
+        x["levels"] = [dict(v, hit=bool(price <= v["price"]) if x["key"] != "4" or her is None else bool(price >= v["price"] and "回升" in v["label"]))
+                       for v in x["levels"]]
     mk, cur = (mid_primary or {}).get("kind"), str((mid_primary or {}).get("current") or "")
     labs = [round(float(q.get("p") or 0)) for q in (mid_primary or {}).get("labels") or []]
     favored = "C" if (mk == "correction" and cur == "C" and round(H3["p"]) in labs and round(H["p"]) in labs) else None
@@ -1577,6 +1590,6 @@ def big_picture(piv: list, price: float, mid_primary: Optional[dict] = None) -> 
                        "price": round(H["p"] - r * mspan, 2), "hit": bool(price <= H["p"] - r * mspan)} for r in (0.382, 0.5, 0.618)]}
     return {"pts": {"g0": {"p": G0["p"], "date": d(G0)}, "s3": {"p": S3["p"], "date": d(S3)}, "h3": {"p": H3["p"], "date": d(H3)},
                     "w4": {"p": W4["p"], "date": d(W4)}, "h": {"p": H["p"], "date": d(H)}},
-            "scenarios": sc, "favored": favored, "price": price, "mid": mid,
+            "scenarios": sc, "favored": favored, "her": her, "price": price, "mid": mid,
             "note": f"週 K 轉折：{_fmt(G0['p'])}（{d(G0)}）→ 第 (3) 浪 {_fmt(S3['p'])}→{_fmt(H3['p'])}、第 (4) 浪 {_fmt(W4['p'])}、"
                     f"{_fmt(H['p'])}（{d(H)}）；三種定位的分界：守不守得住 {_fmt(W4['p'])}、反彈能不能切開日線斜率"}
