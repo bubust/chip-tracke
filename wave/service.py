@@ -1186,7 +1186,11 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
                            for tf, dg, nm in (("1d", "small", "日 K"), ("1wk", "mid", "週 K"))}
     # B86 她 11/1「50265 起的下跌三種日線定位」（週 K 轉折）＋60 分源頭三段式的 C＝A 等幅
     try:
-        big = NE.big_picture((waves.get("mid") or {}).get("pivots") or [], price, (waves.get("mid") or {}).get("primary"))
+        mp = (waves.get("mid") or {})
+        hi_d = max((q for q in mp.get("pivots") or [] if q.get("t") == "H"), key=lambda q: q["p"], default=None)
+        lows_d = [float(q["p"]) for q in ((waves.get("small") or {}).get("pivots") or []) + [(waves.get("small") or {}).get("tentative") or {}]
+                  if q and q.get("t") == "L" and hi_d and str(q.get("date")) > str(hi_d.get("date"))]
+        big = NE.big_picture(mp.get("pivots") or [], price, mp.get("primary"), low_after=min(lows_d) if lows_d else None)   # B105
         src3 = (((snap.get("nest") or {}).get("60m") or {}).get("source") or {}).get("three")
         if big and src3 and src3.get("targets"):
             t0 = src3["targets"][0]

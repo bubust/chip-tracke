@@ -589,7 +589,7 @@
 
   function planLevels(nz, lm) {
     const out = [];
-    const core = t => String(t).replace(/^[^：]{1,8}：/, '');            // 去掉「壓回①：」「頸線：」這種前綴再比
+    const core = t => String(t).replace(/^[^：]{1,8}：/, '').replace(/（[^）]*）/g, '').trim();   // 去掉前綴、括號說明再比
     const add = (p, label, key) => {
       if (num(p) == null) return;
       const same = out.find(x => Math.abs(x.p - p) < 1 && core(x.label) === core(label));
@@ -617,7 +617,12 @@
       if (pz.push && pz.push.third) {                                  // B104 第 (3) 浪啟動：守 (2) 低點、(3)／小 c 的量度
         add(pz.push.pull, '(2)／小 b 低點（要守）', true);
         add(pz.push.seq[5], '初推高點', true);
-        pz.push.targets.forEach(x => add(x[0], `(3)／小 c：${x[1]}`));
+        const sb = pz.push.sub;
+        if (sb) {                                                       // B105 大中小：(4) 回測區、(5) 目標
+          add(sb.top3, '(3) 高點（候選結束點）', true);
+          add(sb.z4['0.236'], '(4) 淺回 0.236', true); add(sb.z4['0.382'], '(4) 標準 0.382', true);
+          sb.t5.forEach(x => add(x[0], `(5)：${x[1]}`, true));
+        } else pz.push.targets.forEach(x => add(x[0], `(3)／小 c：${x[1]}`));
       }
       if (pz.next) {
         add(pz.next.proj, '新脈動小 (3) 目標', true);
@@ -694,10 +699,17 @@
       ${nx && nx.proj != null ? `<div>新脈動目標 <b>${fmt(nx.proj)}</b>（小 (3)），起點 <b>${fmt(nx.from)}</b> 要守</div>` : ''}</div>`;
     const pu = pz && pz.push;
     const zl = pu ? `<ul class="wv-chk">${pu.zones.map(z => `<li class="${pu.where === z.k ? (pu.third ? 'ok' : 'part') : ''}">${pu.where === z.k ? (pu.third ? '✅ ' : '◀ ') : ''}${'①②③'[z.k - 1]} <b>${esc(z.name.split('（')[0])}</b> ${fmt(z.hi)}～${fmt(z.lo)}<span class="wv-dim">（${z.lv.map(x => esc(x[1])).join('、')}）</span></li>`).join('')}</ul>` : '';
+    const sb = pu && pu.sub;
+    const subBox = !sb ? '' : `<ul class="wv-chk">
+        <li class="ok">✅ (1) ${fmt(pu.seq[0])}→${fmt(pu.seq[5])}、(2) 橫台 ${fmt(sb.plat[0])}～${fmt(sb.plat[1])}</li>
+        <li class="${sb.pb == null ? 'part' : 'ok'}">${sb.pb == null ? '◀' : '✅'} (3) ${fmt(sb.launch)}→${fmt(sb.top3)}<span class="wv-dim">（候選結束點）</span></li>
+        <li class="${sb.pb != null ? 'part' : ''}">${sb.pb != null ? '◀' : '⬜'} (4) 淺回 <b>${fmt(sb.z4['0.236'])}</b>（0.236）、標準 <b>${fmt(sb.z4['0.382'])}</b>（0.382）<span class="wv-dim">；不能碰 (1) 高點區 ${fmt(sb.limit[0])}～${fmt(sb.limit[1])}</span></li>
+        <li>⬜ (5) 最後一推：${sb.t5.map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}</li></ul>
+      ${(sb.d52 || []).length ? `<div class="wv-dim">之後日線 5-2 壓回推敲（僅參考）：${sb.d52.map(x => `${x[0]} ${fmt(x[1])}～${fmt(x[2])}`).join('、')}</div>` : ''}`;
     const pushBox = !pu ? '' : pu.third
-      ? `<div class="wv-sec">🚀 第 (3) 浪（或小 c）已啟動 <span class="wv-dim">初推 ${fmt(pu.seq[0])}→${fmt(pu.seq[5])} 小 5 段、壓回到 ${fmt(pu.pull)}（第 ${pu.where} 區）後再過高</span></div>
-        <div>守住 <b>${fmt(pu.pull)}</b>（(2)／小 b 低點）推升結構就還在；量度：${pu.targets.map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}</div>
-        <div class="wv-dim">C-4 版本的小 c 不能重疊 C-1 低點；越過 C-1 低點、頸線＝真推升（看驗證清單）</div>
+      ? `<div class="wv-sec">🚀 ${sb ? '推升的大中小' : '第 (3) 浪（或小 c）已啟動'} <span class="wv-dim">初推 ${fmt(pu.seq[0])}→${fmt(pu.seq[5])} 小 5 段、壓回到 ${fmt(pu.pull)}（第 ${pu.where} 區）後再過高${sb ? '；她 11/11：第四大波完成、這是 5-1' : ''}</span></div>
+        ${subBox || `<div>守住 <b>${fmt(pu.pull)}</b>（(2)／小 b 低點）推升結構就還在；量度：${pu.targets.map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}</div>`}
+        <div class="wv-dim">守住 ${fmt(pu.pull)} 推升結構就還在；C-4 版本的小 c 不能重疊 C-1 低點，越過 C-1 低點、頸線＝真推升（看驗證清單）</div>
         <details class="wv-who"><summary>壓回三種區（她 11/10 傍晚）</summary>${zl}</details>`
       : `<div class="wv-sec">📉 接下來的壓回 <span class="wv-dim">她 11/10：${fmt(pu.seq[0])}→${fmt(pu.seq[5])} 是清楚的小 5 段（初推），壓回是三波整理、不會回到 ${fmt(pu.seq[0])}，整理完還有一段上攻</span></div>
         ${zl}<div class="wv-dim">現在：${esc(pu.state)}；實體跌破小 1 ${fmt(pu.seq[1])} 才往 ③，跌破起點 ${fmt(pu.seq[0])} 才算失敗</div>`;
@@ -751,7 +763,7 @@
     if (pos) parts.push(`<div class="wv-pos"><div class="wv-dim">🗺️ 母級定位（她的日線定位：母尺、防守區、鐵律、威脅版本）</div>${pos}</div>`);
     const big = S.big;                                                // B86 三種日線定位、B89 日線黃金切割
     if (big) parts.push(`<div class="wv-pos"><div class="wv-dim">🗺️ ${fmt(big.pts.h.p)} 起的下跌：三種日線定位（她 11/1）</div>
-      ${big.scenarios.map((x, i) => `<div class="wv-big${big.favored === x.key ? ' fav' : ''}"><b>${i + 1}. ${esc(x.title)}</b>${big.favored === x.key ? ' <span class="wv-badge">週 K 主要</span>' : ''}
+      ${big.scenarios.map((x, i) => `<div class="wv-big${big.favored === x.key || big.her === x.key ? ' fav' : ''}"><b>${i + 1}. ${esc(x.title)}</b>${big.favored === x.key ? ' <span class="wv-badge">週 K 主要</span>' : ''}${big.her === x.key ? ' <span class="wv-badge">她 11/11 看這個</span>' : ''}
         <div>${x.levels.map(v => `<span class="wv-lv${v.hit ? ' hit' : ''}">${v.hit ? '✅ ' : ''}${esc(v.label)} <b>${fmt(v.price)}</b></span>`).join('')}</div><div class="wv-dim">→ ${esc(x.after)}</div></div>`).join('')}
       ${big.mid ? `<div class="wv-big"><b>日線黃金切割</b>（${fmt(big.mid.from)}→${fmt(big.mid.to)}；0.5＝中線支撐）${big.mid.levels.map(v => `<span class="wv-lv${v.hit ? ' hit' : ''}">${esc(String(v.r))} <b>${fmt(v.price)}</b></span>`).join('')}</div>` : ''}</div>`);
     if (ok) {
