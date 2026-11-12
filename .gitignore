@@ -55,3 +55,6 @@ research/b94/data/
 
 # B97 回測資料（GitHub Actions 抓，research/b97/fetch_vol.py 可重抓）
 research/b97/data/
+
+# B106 參考資料（網站快照存的台指期分 K）
+research/b106/data/
