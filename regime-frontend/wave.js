@@ -618,7 +618,12 @@
         add(pz.push.pull, '(2)／小 b 低點（要守）', true);
         add(pz.push.seq[5], '初推高點', true);
         const sb = pz.push.sub;
-        if (sb) {                                                       // B105 大中小：(4) 回測區、(5) 目標
+        if (sb && sb.done) {                                            // B107 她 11/12：5-1 結束、日線 5-2
+          add(sb.top, '5-1 高點（5-2 起點）', true);
+          add(sb.a_low, '5-2-A 低點', true);
+          sb.b52.forEach(x => add(x[0], x[1]));
+          sb.z52.forEach(z => { add(z.v, `5-2 大買點 ${z.r}`, true); if (z.near != null) add(z.near, `5-2 大買點 ${z.r}：前低`, true); });
+        } else if (sb) {                                                // B105 大中小：(4) 回測區、(5) 目標
           add(sb.top3, '(3) 高點（候選結束點）', true);
           add(sb.z4['0.236'], '(4) 淺回 0.236', true); add(sb.z4['0.382'], '(4) 標準 0.382', true);
           sb.t5.forEach(x => add(x[0], `(5)：${x[1]}`, true));
@@ -702,16 +707,22 @@
     const pu = pz && pz.push;
     const zl = pu ? `<ul class="wv-chk">${pu.zones.map(z => `<li class="${pu.where === z.k ? (pu.third ? 'ok' : 'part') : ''}">${pu.where === z.k ? (pu.third ? '✅ ' : '◀ ') : ''}${'①②③'[z.k - 1]} <b>${esc(z.name.split('（')[0])}</b> ${fmt(z.hi)}～${fmt(z.lo)}<span class="wv-dim">（${z.lv.map(x => esc(x[1])).join('、')}）</span></li>`).join('')}</ul>` : '';
     const sb = pu && pu.sub;
-    const subBox = !sb ? '' : `<ul class="wv-chk">
+    const z52t = z => `<span class="wv-chip">${z.r} <b>${fmt(z.v)}</b>${z.near != null ? `～<b>${fmt(z.near)}</b>` : ''}</span>`;
+    const subBox = !sb ? '' : sb.done ? `<ul class="wv-chk">
+        <li class="ok">✅ 5-1：(1) ${fmt(pu.seq[0])}→${fmt(pu.seq[5])}、(2) 橫台 ${fmt(sb.plat[0])}～${fmt(sb.plat[1])}、(3)(4)(5) 走到 <b>${fmt(sb.top)}</b><span class="wv-dim">（壓回跌破 (1) 高點 ${fmt(sb.limit[0])}：4 不能碰 1 → ${fmt(sb.top)} 就是 5-1 終點）</span></li>
+        <li class="${sb.b_hi == null ? 'part' : 'ok'}">${sb.b_hi == null ? '◀' : '✅'} 5-2-A ${fmt(sb.top)}→<b>${fmt(sb.a_low)}</b>${sb.b_hi == null ? '<span class="wv-dim">（還在走）</span>' : ''}</li>
+        <li class="${sb.b_hi != null ? 'part' : ''}">${sb.b_hi != null ? '◀' : '⬜'} 5-2-B 反彈${sb.b_hi != null ? `（到 ${fmt(sb.b_hi)}）` : ''}：${sb.b52.length ? sb.b52.map(x => `<span class="wv-chip">${esc(x[1].split(' ').pop())} <b>${fmt(x[0])}</b></span>`).join('') : '<span class="wv-dim">A 走完才算</span>'}<span class="wv-dim">；最高多半壓在 0.618、不會過 ${fmt(sb.top)}</span></li>
+        <li>⬜ 5-2-C：往下面三個大買點</li></ul>
+      <div>5-2 三個大買點<span class="wv-dim">（${fmt(pu.seq[0])}→${fmt(sb.top)} 的 0.382／0.5／0.618；個股、0050 分批，到了也要等止跌）</span>：${sb.z52.map(z52t).join('')}</div>` : `<ul class="wv-chk">
         <li class="ok">✅ (1) ${fmt(pu.seq[0])}→${fmt(pu.seq[5])}、(2) 橫台 ${fmt(sb.plat[0])}～${fmt(sb.plat[1])}</li>
         <li class="${sb.pb == null ? 'part' : 'ok'}">${sb.pb == null ? '◀' : '✅'} (3) ${fmt(sb.launch)}→${fmt(sb.top3)}<span class="wv-dim">（候選結束點）</span></li>
         <li class="${sb.pb != null ? 'part' : ''}">${sb.pb != null ? '◀' : '⬜'} (4) 淺回 <b>${fmt(sb.z4['0.236'])}</b>（0.236）、標準 <b>${fmt(sb.z4['0.382'])}</b>（0.382）<span class="wv-dim">；不能碰 (1) 高點區 ${fmt(sb.limit[0])}～${fmt(sb.limit[1])}</span></li>
         <li>⬜ (5) 最後一推：${sb.t5.map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}</li></ul>
       ${(sb.d52 || []).length ? `<div class="wv-dim">之後日線 5-2 壓回推敲（僅參考）：${sb.d52.map(x => `${x[0]} ${fmt(x[1])}～${fmt(x[2])}`).join('、')}</div>` : ''}`;
     const pushBox = !pu ? '' : pu.third
-      ? `<div class="wv-sec">🚀 ${sb ? '推升的大中小' : '第 (3) 浪（或小 c）已啟動'} <span class="wv-dim">初推 ${fmt(pu.seq[0])}→${fmt(pu.seq[5])} 小 5 段、壓回到 ${fmt(pu.pull)}（第 ${pu.where} 區）後再過高${sb ? '；她 11/11：第四大波完成、這是 5-1' : ''}</span></div>
+      ? `<div class="wv-sec">${sb && sb.done ? '📉 5-1 結束、日線 5-2 修正' : `🚀 ${sb ? '推升的大中小' : '第 (3) 浪（或小 c）已啟動'}`} <span class="wv-dim">${sb && sb.done ? `她 11/12：${fmt(sb.top)} 是 5-1 終點；5-2-A／B 拿來觀察，大買點分批` : `初推 ${fmt(pu.seq[0])}→${fmt(pu.seq[5])} 小 5 段、壓回到 ${fmt(pu.pull)}（第 ${pu.where} 區）後再過高${sb ? '；她 11/11：第四大波完成、這是 5-1' : ''}`}</span></div>
         ${subBox || `<div>守住 <b>${fmt(pu.pull)}</b>（(2)／小 b 低點）推升結構就還在；量度：${pu.targets.map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}</div>`}
-        <div class="wv-dim">守住 ${fmt(pu.pull)} 推升結構就還在；C-4 版本的小 c 不能重疊 C-1 低點，越過 C-1 低點、頸線＝真推升（看驗證清單）</div>
+        ${sb && sb.done ? '' : `<div class="wv-dim">守住 ${fmt(pu.pull)} 推升結構就還在；C-4 版本的小 c 不能重疊 C-1 低點，越過 C-1 低點、頸線＝真推升（看驗證清單）</div>`}
         <details class="wv-who"><summary>壓回三種區（她 11/10 傍晚）</summary>${zl}</details>`
       : `<div class="wv-sec">📉 接下來的壓回 <span class="wv-dim">她 11/10：${fmt(pu.seq[0])}→${fmt(pu.seq[5])} 是清楚的小 5 段（初推），壓回是三波整理、不會回到 ${fmt(pu.seq[0])}，整理完還有一段上攻</span></div>
         ${zl}<div class="wv-dim">現在：${esc(pu.state)}；實體跌破小 1 ${fmt(pu.seq[1])} 才往 ③，跌破起點 ${fmt(pu.seq[0])} 才算失敗</div>`;
