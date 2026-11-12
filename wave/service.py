@@ -910,9 +910,11 @@ def _tiers(snap: dict, waves: dict, closes, price: float, a60: Optional[dict] = 
     ma5 = sum(c[-5:]) / 5 if len(c) >= 5 else None
     ma10 = sum(c[-10:]) / 10 if len(c) >= 10 else None
     t = None
+    fine = [{"p": float(q["p"]), "t": q["t"]} for q in ((waves.get("intra30") or {}).get("pivots") or [])]   # B107：30 分前低（5-2 大買點旁邊）
     for bg, small in _tiers_inputs(big, n60, P, sm, a60):
         first = _first_leg(a60, bg[-4], bg[-3])
-        t = SW.structure(bg, small, price, ma5, ma10, {"big": "日線", "small": "60 分"}, first_leg=first, full=_full_from(waves, sm, bg))
+        t = SW.structure(bg, small, price, ma5, ma10, {"big": "日線", "small": "60 分"}, first_leg=first, full=_full_from(waves, sm, bg),
+                         fine=fine)
         if t:
             break
     if not t:

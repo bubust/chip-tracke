@@ -488,6 +488,9 @@ def _nest_prices(snap: dict) -> list:
                         if sb:
                             out += [sb["launch"], sb["top3"]] + list(sb["plat"]) + list(sb["limit"]) + [float(v) for v in sb["z4"].values()]
                             out += [v for v, _ in sb["t5"]] + [v for _, a, b in sb["d52"] for v in (a, b)] + ([sb["pb"]] if sb.get("pb") else [])
+                            if sb.get("done"):                 # B107 5-1 結束、5-2：A 低點、B 反彈、三個大買點
+                                out += [sb["top"]] + [v for v, _ in sb["b52"]] + [z["v"] for z in sb["z52"]] + [z["near"] for z in sb["z52"] if z["near"] is not None]
+                                out += [sb["b_hi"]] if sb.get("b_hi") else []
         pz = nz.get("pulses") or {}                      # B89 三種細微脈動
         if pz.get("views"):
             out += [pz["end1"], pz["h2"], pz["low"], pz["f382"]] + ([pz["ma5"]] if pz.get("ma5") is not None else [])

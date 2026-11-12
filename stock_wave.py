@@ -94,7 +94,8 @@ def _fork(first_leg: Optional[list], T: dict, L1: dict, H2: dict, ext: float, d:
 
 
 def _push(after: list, d: int, ext: float, price: float, fib382: Optional[float], f382_lab: str,
-          big_hi: Optional[float] = None, c1_low: Optional[float] = None, neck: Optional[float] = None) -> Optional[dict]:
+          big_hi: Optional[float] = None, c1_low: Optional[float] = None, neck: Optional[float] = None,
+          fine: Optional[list] = None) -> Optional[dict]:
     """B103 她 11/10 傍晚：極值之後這一腳如果是清楚的「小 5 段」（2 不破起點、3 不是最短、4 不碰 1）＝初推（第五大波的 (1) 浪或大 B／C-4 的小 a），
     接下來的壓回（(2) 或小 b）是三波整理、不會回到起點，整理完還有一段（(3) 或小 c）。壓回落在哪三種區：
     ① 時間換空間（強勢橫盤）：初推 0.236＋大級 0.382（41,830／41,481，她：守住日盤低點 41,873）
@@ -169,16 +170,21 @@ def _push(after: list, d: int, ext: float, price: float, fib382: Optional[float]
           "初推還在走" if pull is None else
           f"壓回到 {_fmt(pull)}：" + ({0: "還沒回到第一區（很強）", 4: f"跌破 0.618，看起點 {_fmt(p0)} 守不守"}.get(where)
                                      or f"在第 {where} 區（{zones[where - 1]['name'].split('（')[0]}）"))
+    sub = None
+    if third:
+        sub = _sub5(after[jt + 1:], after[0]["t"], u, p0, p5, sp, pull, price, big_hi, c1_low, neck,
+                    lows=[q["p"] for q in seq if q["t"] != after[0]["t"]], fine=fine)
+        if sub and sub.get("done"):
+            st = sub["state"]                                         # B107：5-1 已結束、日線 5-2
     lines = [f"初推小 5 段（她 11/10）：{'→'.join(_fmt(q['p']) for q in seq)}（2 不破起點、3 不是最短、4 不碰 1）＝第五大波 (1) 浪或大 B／C-4 的小 a；"
              f"接下來的壓回是三波整理、不會回測 {_fmt(p0)}，整理完還有一段向上（(3) 浪或小 c）",
              "壓回三種：" + "；".join(f"{'①②③'[z['k'] - 1]} {z['name'].split('（')[0]} {_fmt(z['hi'])}～{_fmt(z['lo'])}（" + "、".join(t for _, t in z["lv"]) + "）"
                                       for z in zones) + f"；實體{'跌破' if u > 0 else '漲過'}小 1 {_fmt(seq[1]['p'])} 才往第 3 區，{'跌破' if u > 0 else '漲過'}起點 {_fmt(p0)} 才算失敗",
              f"現在：{st}"]
-    sub = None
     if third:
-        lines.append("(3) 浪／小 c 的量度：" + "、".join(f"{t} {_fmt(v)}" for v, t in tg)
-                     + "；C-4 版本的小 c 不能重疊 C-1 低點，越過 C-1 低點、頸線＝真推升")
-        sub = _sub5(after[jt + 1:], after[0]["t"], u, p0, p5, sp, pull, price, big_hi, c1_low, neck)
+        if not (sub and sub.get("done")):
+            lines.append("(3) 浪／小 c 的量度：" + "、".join(f"{t} {_fmt(v)}" for v, t in tg)
+                         + "；C-4 版本的小 c 不能重疊 C-1 低點，越過 C-1 低點、頸線＝真推升")
         if sub:
             lines += sub["lines"]
     return {"seq": [q["p"] for q in seq], "fib": {str(r): round(v, 2) for r, v in fb.items()}, "zones": zones, "pull": pull,
@@ -187,12 +193,17 @@ def _push(after: list, d: int, ext: float, price: float, fib382: Optional[float]
 
 
 def _sub5(rest: list, top_t: str, u: int, p0: float, p5: float, sp: float, pull: float, price: float,
-          big_hi: Optional[float], c1_low: Optional[float], neck: Optional[float]) -> Optional[dict]:
+          big_hi: Optional[float], c1_low: Optional[float], neck: Optional[float],
+          lows: Optional[list] = None, fine: Optional[list] = None) -> Optional[dict]:
     """B105 她 11/11：第四大波完成、啟動 5-1，60 分「大中小」——(1)＝初推 37,694→43,108（5,414 點）、(2)＝很短的橫台
     （41,873～43,147，最後一個低點 42,165 起漲），(3)＝42,165→44,680（中結構，候選結束點）；
     (4) 淺回 0.236（44,086）、標準 0.382（43,719），不能碰 (1) 高點區 43,108～43,147；(5) 最後一推完成 5-1：
     (4)-C 的 0.618 回升 45,463、從淺回位再走 0.618 倍 (3)＝45,640（她：共振 45,460～45,650）；
-    日線 5-2 推敲＝5-1 停在 C-1 低點 45,523～頸線 46,107 時的 0.382／0.5／0.618（她：42,520～42,884、41,604～41,893、40,680～40,902）"""
+    日線 5-2 推敲＝5-1 停在 C-1 低點 45,523～頸線 46,107 時的 0.382／0.5／0.618（她：42,520～42,884、41,604～41,893、40,680～40,902）
+    B107 她 11/12：壓回跌破 (1) 高點（4 不能碰 1）→ 不是 (4)，5-1 在最高點 44,911 結束（時間壓縮或失敗第 5 波）、進日線 5-2：
+    三個大買點＝37,694→44,911 的 0.382／0.5／0.618，有前低在上面 0.7% 內就併成一區（她：42,165、41,303、40,451～40,715）；
+    5-2-A／B 拿來觀察：A＝最高點到之後的低點，B 反彈 0.382／0.5／0.618，最高多半壓在 0.618 附近。
+    lows：初推小 5 段的低點；fine：更細一級（30 分）的轉折（找 42,165 這種前低）"""
     margin = 0.1 * sp                                                 # 過初推高點不到 0.1 倍＝還在 (2) 橫台裡（例：43,147 只多 39 點）
     k3 = next((k for k, q in enumerate(rest) if q["t"] == top_t and (q["p"] - p5) * u > margin), None)
     if k3 is None:
@@ -213,6 +224,8 @@ def _sub5(rest: list, top_t: str, u: int, p0: float, p5: float, sp: float, pull:
     t5 = [(z4[0.236] + u * 0.618 * l3, "(5)＝0.618 倍 (3)（從淺回位）")]
     if big_hi is not None and (big_hi - p0) * u > 0:
         t5.insert(0, (p0 + u * 0.618 * abs(big_hi - p0), f"{_fmt(big_hi)}→{_fmt(p0)} 的 0.618 回升"))
+    if in4 and (pb - lim[0]) * u < 0:
+        return _done52(rest, top_t, u, p0, p5, sp, pull, price, launch, plat_hi, top3, lim, pb, lows, fine)
     d52 = []
     ends = [v for v in (c1_low, neck) if v is not None and (v - p0) * u > 0]
     if ends:
@@ -232,9 +245,47 @@ def _sub5(rest: list, top_t: str, u: int, p0: float, p5: float, sp: float, pull:
             "limit": lim, "pb": pb if in4 else None, "t5": [(round(v, 2), t) for v, t in t5], "d52": d52, "state": st, "lines": lines}
 
 
+def _done52(rest: list, top_t: str, u: int, p0: float, p5: float, sp: float, pull: float, price: float, launch: float,
+            plat_hi: float, top: float, lim: list, pb: float, lows: Optional[list], fine: Optional[list]) -> dict:
+    """B107 她 11/12：5-1 結束、日線 5-2 修正（見 _sub5）"""
+    big = abs(top - p0)
+    k_top = next((k for k, q in enumerate(rest) if q["t"] == top_t and q["p"] == top), len(rest))
+    fn = list(fine or [])
+    f_top = max((k for k, q in enumerate(fn) if q.get("t") == top_t and abs(q["p"] - top) < 1e-6), default=len(fn))
+    f_st = max((k for k, q in enumerate(fn[:f_top]) if q.get("t") != top_t and (q["p"] - p0) * u <= 0), default=-1) + 1
+    cand = [v for v in [pull, launch] + list(lows or []) + [q["p"] for q in rest[:k_top] if q["t"] != top_t]   # 只用 5-1 裡面的前低
+            + [q["p"] for q in fn[f_st:f_top] if q.get("t") != top_t] if v is not None and (v - p0) * u > 0 and (top - v) * u > 0]
+    z52 = []
+    for r in (0.382, 0.5, 0.618):
+        f = top - u * r * big
+        near = [v for v in cand if 0 < (v - f) * u <= 0.007 * abs(f)]          # 上面 0.7% 內的前低一起算（她 40,451～40,715）
+        nv = max(near, key=lambda v: u * v) if near else None
+        z52.append({"r": r, "v": round(f, 2), "near": nv, "lo": round(min(f, nv if nv is not None else f), 2),
+                    "hi": round(max(f, nv if nv is not None else f), 2)})
+    # 5-2-A：最高點之後的低點；之後反彈超過 A 的 0.236＝A 先走完、5-2-B 反彈中
+    k_pb = next((k for k in range(len(rest) - 1, -1, -1) if rest[k]["t"] != top_t and rest[k]["p"] == pb), None)
+    b_hi = max([q["p"] * u for q in rest[k_pb + 1:] if q["t"] == top_t] + [float(price) * u]) * u if k_pb is not None else float(price)
+    a_len = abs(top - pb)
+    in_b = a_len > 0 and (b_hi - pb) * u >= 0.236 * a_len
+    b52 = [(round(pb + u * r * a_len, 2), f"5-2-B 反彈 {r:g}") for r in (0.382, 0.5, 0.618)]
+    zt = lambda z: f"{z['r']:g} {_fmt(z['v'])}" + (f"～{_fmt(z['near'])}（前低）" if z["near"] is not None else "")   # noqa: E731
+    st = (f"5-1 在 {_fmt(top)} 結束（壓回到 {_fmt(pb)}，跌破 (1) 高點 {_fmt(lim[0])}：4 不能碰 1，所以不是 (4)）；日線 5-2 修正中："
+          + (f"5-2-A {_fmt(top)}→{_fmt(pb)}、5-2-B 反彈中（到 {_fmt(b_hi)}）" if in_b else f"5-2-A 進行中（到 {_fmt(pb)}）"))
+    lines = [f"大中小（她 11/11）：(1) {_fmt(p0)}→{_fmt(p5)}（{_fmt(sp)} 點）、(2) 橫台 {_fmt(pull)}～{_fmt(plat_hi)}、(3) {_fmt(launch)} 起；"
+             f"她 11/12：{_fmt(top)} 是 5-1 終點（(3)(4)(5) 時間壓縮走完，或失敗第 5 波），{_fmt(p0)}→{_fmt(top)} 漲了 {_fmt(big)} 點",
+             f"現在：{st}",
+             f"5-2 三個大買點（{_fmt(p0)}→{_fmt(top)} 的回檔；個股、0050 分批介入，到了也要等止跌）：" + "、".join(zt(z) for z in z52),
+             "5-2-A／B 拿來觀察：" + (f"A {_fmt(top)}→{_fmt(pb)}（{_fmt(a_len)} 點）；B 反彈 " + "、".join(f"{t.split()[-1]} {_fmt(v)}" for v, t in b52)
+                                   + f"，最高多半壓在 0.618 附近、不會過 {_fmt(top)}；B 走完再看 5-2-C 往上面三區" if in_b else
+                                   f"A 還在走（到 {_fmt(pb)}），先看 0.382 {_fmt(z52[0]['v'])}；A 走完才有 5-2-B 反彈")]
+    return {"done": True, "launch": launch, "plat": [pull, plat_hi], "top3": top, "top": top, "limit": lim, "pb": pb,
+            "a_low": pb, "b_hi": round(b_hi, 2) if in_b else None, "b52": b52 if in_b else [], "z52": z52,
+            "z4": {}, "t5": [], "d52": [(z["r"], z["lo"], z["hi"]) for z in z52], "state": st, "lines": lines}
+
+
 def _paths(after: list, d: int, ext: float, price: float, y: float, x: float, T: dict, L1: dict, H2: dict,
            ffib: dict, fib382: float, ma5: Optional[float], lb: dict, case: str, neck: Optional[list] = None,
-           neck_p: Optional[float] = None) -> Optional[dict]:
+           neck_p: Optional[float] = None, fine: Optional[list] = None) -> Optional[dict]:
     """B100 她 11/8：37,694 的級數身分＝三條路徑（A 日線三段式已完成、B 60 分 3-4-c、C 日線五段式 C-4）＋三層驗證。
     after：極值之後的小級轉折（a 終點、b、c-1、c-2…）。她的數字：a 37,694→40,690、b 39,129 →
     第一層 守住壓回低點（39,977；她 39,944～40,000）且實體站回 40,690→39,977 的 0.5～0.618（40,334～40,418；她 40,335～40,419）；
@@ -292,7 +343,7 @@ def _paths(after: list, d: int, ext: float, price: float, y: float, x: float, T:
              + "～".join(_fmt(v) for v, _ in L3v["chal"]) + "（" + "、".join(t for _, t in L3v["chal"]) + "）；"
              f"{'站穩' if d < 0 else '跌破'} {_fmt(x)}（重疊 3-1）＝淘汰單純的{lb['small']} 3-4，升級{lb['big']}級{s_up}（路徑 A 或 C）"]
     push = _push(after, d, ext, price, fib382, f"{_fmt(H2['p'])}→{_fmt(ext)} 的 0.382",       # B103 她 11/10 傍晚
-                 big_hi=T["p"], c1_low=L1["p"], neck=neck_p)
+                 big_hi=T["p"], c1_low=L1["p"], neck=neck_p, fine=fine)
     if L3v["ok"]:
         L1v["ok"] = L2v["ok"] = True                                  # B103：升級（站穩 3-1 低點）以後，第一、二層已經走過
     nxt = None
@@ -323,7 +374,8 @@ def _paths(after: list, d: int, ext: float, price: float, y: float, x: float, T:
 
 def _ext3(S: list, k: int, d: int, ext: float, R: float, price: float, T: dict, L1: dict, H2: dict,
           full: Optional[float], lb: dict, case: str, after: Optional[list] = None, fib382: Optional[float] = None,
-          ma5: Optional[float] = None, neck: Optional[list] = None, neck_p: Optional[float] = None) -> Optional[dict]:
+          ma5: Optional[float] = None, neck: Optional[list] = None, neck_p: Optional[float] = None,
+          fine: Optional[list] = None) -> Optional[dict]:
     """B98 她 11/6：小級五段、但第 (4) 段碰到第 (1) 段的領地 → 4 不重疊 1，所以它不是第 4 段：
     S[3] 只是 3-1、S[4] 是 3-2，S[4] 起是 3-3（延伸的主跌段）。算 3-3 兩個煞車區、3-4 反抽還是轉浪、第 5 段走完的下修。
     她的數字：煞車區 38,713～38,522＝44,274 往下 1.618 倍 3-1（3,437）、1.618 倍第 (1) 段（3,555）；
@@ -398,16 +450,18 @@ def _ext3(S: list, k: int, d: int, ext: float, R: float, price: float, T: dict, 
                      + "、".join(t for _, t in five["shallow"]["lv"][:1] + five["deep"]["lv"]) + "）")
     lines.append(f"以上點位只是空間到達：沒有止{s_dn}訊號（第一根壓{dn}來收盤不破前{lo_hi}、站回 5 均、帶量實體{'紅' if d < 0 else '黑'} K 站穩，"
                  f"或跨級數雙重{'底' if d < 0 else '頂'}背離）就衝進去＝{'接刀' if d < 0 else '摸頂'}；止{s_dn}訊號＋分批試水溫")
-    pz = _paths(after or [], d, ext, price, y, x, T, L1, H2, ffib, fib382, ma5, lb, case, neck, neck_p) if fib382 is not None else None
+    pz = _paths(after or [], d, ext, price, y, x, T, L1, H2, ffib, fib382, ma5, lb, case, neck, neck_p, fine=fine) if fib382 is not None else None
     return {"y": y, "x": x, "legs": [round(l1, 2), round(l31, 2)], "full": full, "ffib": {str(r): round(v, 2) for r, v in ffib.items()},
             "brakes": brakes, "reb": reb, "five": five, "paths": pz, "lines": lines}
 
 
 def structure(big: list, small: list, price: float, ma5: Optional[float] = None, ma10: Optional[float] = None,
-              labels: Optional[dict] = None, first_leg: Optional[list] = None, full: Optional[float] = None) -> Optional[dict]:
+              labels: Optional[dict] = None, first_leg: Optional[list] = None, full: Optional[float] = None,
+              fine: Optional[list] = None) -> Optional[dict]:
     """big：大級轉折（舊→新，含最後還沒確認的那個），至少 [T, L1, H2, X]；small：小級轉折，從 H2 開始、到現在（含暫定）。
     price：現價；ma5／ma10：大級的 5、10 均（台指期＝日線）。labels：{"big": "日線", "small": "60 分"}（顯示用）。
     first_leg：小級轉折從 T 到 L1（有給才算 B95 的第一段落點分歧）。full：全波段起點（B98，T 之前更大一級的轉折）。
+    fine：更細一級的轉折（台指期＝30 分；B107 找 5-2 大買點旁邊的前低）。
     回 {dir, case, big:{...}, small:{...}, gate1, gate2, fork, ext3, entry, status, lines}；結構不夠回 None"""
     lb = {"big": "大級", "small": "小級", **(labels or {})}
     if len(big) < 4 or len(small) < 2:
@@ -540,7 +594,7 @@ def structure(big: list, small: list, price: float, ma5: Optional[float] = None,
         if plat:
             neck.append((min(plat, key=lambda v: abs(v - edge)), f"{lb['small']}前波平台{lo_hi}點"))
     ext3 = _ext3(S, k, d, ext, R, float(price), T, L1, H2, full, lb, case, after=after, fib382=fib[0.382], ma5=ma5, neck=neck,
-                 neck_p=(fork or {}).get("a3"))
+                 neck_p=(fork or {}).get("a3"), fine=fine)
     pz = (ext3 or {}).get("paths")
     sub = ((pz or {}).get("push") or {}).get("sub")
     if pz and pz["layers"][2]["ok"] and tag == "4" and sub:
@@ -566,6 +620,19 @@ def structure(big: list, small: list, price: float, ma5: Optional[float] = None,
                   + f"再上去是第一道關上緣 {_fmt(gate1['far'])}")
         tag = "up3"
         lines[2] = status
+    if sub and sub.get("done"):
+        # B107 她 11/12：壓回跌破 (1) 高點 → 5-1 在最高點結束、日線 5-2 修正；5-2-A／B 拿來觀察，三個大買點分批
+        zs = "、".join(f"{z['r']:g} {_fmt(z['v'])}" + (f"～{_fmt(z['near'])}" if z["near"] is not None else "") for z in sub["z52"])
+        status = f"{sub['state']}；5-2 大買點 {zs}（分批、等止{s_dn}）"
+        tag = "52"
+        lines[2] = status
+        et = (f"進場：5-2 是個股、0050 上車的位置——分批 {zs}，到了也要等止{s_dn}訊號；"
+              + (f"5-2-B 反彈（{'、'.join(_fmt(v) for v, _ in sub['b52'])}）只拿來觀察、不追" if sub["b52"] else "5-2-A 還在走，先不急"))
+        if entry:
+            entry["t"] = et
+        else:
+            z0 = sub["z52"][0]
+            entry = {"zone": [z0["lo"], z0["hi"]], "from": [sub["top"], sub["pb"]], "target": sub["top"], "t": et}
     if entry:
         lines.append(entry["t"])
     else:
