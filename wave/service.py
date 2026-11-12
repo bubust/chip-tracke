@@ -339,7 +339,19 @@ def _research(st: dict) -> dict:
                 "籌碼（外資現貨、期貨、融資）：對之後 5／20 天加權沒有預測力 △",
                 "國際：只有「前一晚費半 → 加權隔天」有效（樣本外 R² 約 0.2）✅",
                 "過去相似狀態：比直接看全部歷史還略差 → 預測區間改用全部歷史 △",
-            ] + _research_b75(st) + _research_b80(st) + _research_b99(st), "entry": st.get("entry_b99")}
+            ] + _research_b75(st) + _research_b80(st) + _research_b99(st) + _research_b106(st),
+            "entry": st.get("entry_b99"), "pierce": st.get("entry_b106")}
+
+
+def _research_b106(st: dict) -> list:
+    """B106 她的進場做法（research/b106）：刺穿再收回才進、停損放尖端外、三口分批，一句話結論"""
+    x = st.get("entry_b106") or {}
+    if not x:
+        return []
+    return [f"她的進場做法（事先畫好的價位被刺穿、收回才進，停損放尖端外，三口分批；網站 60 分價位、加權 15 分 K {x['n']} 筆）："
+            f"勝率 {x['win']}%、每口平均 {x['pts_mean']:+.1f} 點（扣成本後每筆 {x['r_mean']:+.3f}%），"
+            f"跟同樣距離的假價位 {x['vs_fake']['verdict']}、跟隨便挑時間進場 {x['vs_rand']['verdict']} 差不多；"
+            f"三口分批跟一次出 2R 差不多 {x['e3_vs_e1']['verdict']}"]
 
 
 def _research_b99(st: dict) -> list:

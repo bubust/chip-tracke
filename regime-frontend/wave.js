@@ -679,6 +679,8 @@
     const xs = ((nz && nz.plan) || []).filter(x => !skip.test(x) && !seen.has(x) && seen.add(x)).slice(0, 5);
     const x = ((S && S.research) || {}).entry;
     if (x) xs.push(`回測（B99）：碰到區就掛單＝接刀，每區平均 ${pctS(x.knife)}；等低點出來、停損放低點下方比較好，但用哪種止穩訊號差不多 ${x.v2_vs_rand.verdict}`);
+    const pc = ((S && S.research) || {}).pierce;
+    if (pc) xs.push(`回測（B106）：她的「價位被刺穿、收回才進，停損放尖端外，三口分批」用網站 60 分價位做 ${pc.n} 筆，勝率 ${pc.win}%、每口 ${pc.pts_mean > 0 ? '+' : ''}${pc.pts_mean} 點（扣成本小賠），跟隨便畫線、隨便進場差不多 ${pc.vs_rand.verdict}；她挑哪條線、挑哪一次才是關鍵，程式學不到`);
     return xs;
   }
 
