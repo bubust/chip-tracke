@@ -23,11 +23,12 @@ from . import data as D
 log = logging.getLogger(__name__)
 GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 GROQ_BASE = "https://api.groq.com/openai/v1"
-TIMEOUT = 75
-MANUAL_LIMIT = 3
-MANUAL_TRIES = 8             # 一天最多按幾次（失敗的不算在 3 次裡，但總共不超過 8 次）
+TIMEOUT = 45                 # 一次呼叫最多等幾秒（正常 2～25 秒；等不到就換下一個模型）
+NEWS_TIMEOUT = 90
+MANUAL_LIMIT = 5
+MANUAL_TRIES = 8             # 一天最多按幾次（沒回應的不算在手動次數裡，但總共不超過 8 次）
 MAX_WAIT = 30                # 被限流時最多等幾秒再試
-ROUND2_BUDGET = 240          # 第一輪開始後超過這麼多秒，第二輪就跳過
+ROUND2_BUDGET = 200          # 第一輪花超過這麼多秒，第二輪就跳過
 NEWS_TTL = 12 * 3600
 DISCLAIMER = "劇本＝規則數浪＋歷史條件推估，不是投資建議；AI 看法不是系統計算"
 _jobs: dict = {}
@@ -112,17 +113,17 @@ def extract_json(txt: str) -> dict:
         raise
 
 
-def call_gemini(model: str, prompt: str, search: bool = False, json_mode: bool = True, post=None) -> dict:
+def call_gemini(model: str, prompt: str, search: bool = False, json_mode: bool = True, post=None, timeout: Optional[float] = None) -> dict:
     post = post or httpx.post
     body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.3}}
     if search:
         body["tools"] = [{"google_search": {}}]
     elif json_mode:
         body["generationConfig"]["response_mime_type"] = "application/json"
-    r = post(GEMINI_API.format(model=model), params={"key": gemini_key()}, json=body, timeout=TIMEOUT)
+    r = post(GEMINI_API.format(model=model), params={"key": gemini_key()}, json=body, timeout=timeout or TIMEOUT)
     d = r.json()
     if r.status_code != 200 or "error" in d:
-        raise RuntimeError(f"{r.status_code} {str((d.get('error') or {}).get('message', ''))[:120]}")
+        raise RuntimeError(f"{r.status_code} {str((d.get('error') or {}).get('message', ''))[:300]}")
     cand = (d.get("candidates") or [{}])[0]
     txt = "".join(p.get("text", "") for p in (cand.get("content") or {}).get("parts", []) if not p.get("thought"))
     if not txt.strip():
@@ -138,7 +139,7 @@ def call_openai(p: dict, model: str, prompt: str, post=None) -> dict:
     r = post(f"{p['base']}/chat/completions", headers={"Authorization": f"Bearer {p['key']}"}, json=body, timeout=TIMEOUT)
     d = r.json()
     if r.status_code != 200:
-        raise RuntimeError(f"{r.status_code} {str((d.get('error') or {}).get('message', ''))[:120]}")
+        raise RuntimeError(f"{r.status_code} {str((d.get('error') or {}).get('message', ''))[:300]}")
     return {"text": d["choices"][0]["message"]["content"] or "", "tokens": int((d.get("usage") or {}).get("total_tokens") or 0)}
 
 
@@ -150,7 +151,7 @@ def call_anthropic(p: dict, model: str, prompt: str, post=None) -> dict:
              timeout=TIMEOUT)
     d = r.json()
     if r.status_code != 200:
-        raise RuntimeError(f"{r.status_code} {str((d.get('error') or {}).get('message', ''))[:120]}")
+        raise RuntimeError(f"{r.status_code} {str((d.get('error') or {}).get('message', ''))[:300]}")
     u = d.get("usage") or {}
     return {"text": "".join(b.get("text", "") for b in d.get("content") or [] if b.get("type") == "text"),
             "tokens": int(u.get("input_tokens", 0)) + int(u.get("output_tokens", 0))}
@@ -194,7 +195,8 @@ def ask(p: dict, prompt: str, post=None, alt: Optional[str] = None, sleep=time.s
         if used_today(model) >= daily_cap():
             errors.append(f"{model} 今日額度已達上限")
             continue
-        variants = [(alt, "（精簡版）")] if alt and small else [(prompt, "")] + ([(alt, "（精簡版）")] if alt else [])
+        alts = [(t, "（精簡版）" if k == 0 else "（最短版）") for k, t in enumerate([alt] if isinstance(alt, str) else list(alt or []))]
+        variants = alts if alts and small else [(prompt, "")] + alts
         vi, waited = 0, False
         while vi < len(variants):
             text, tag = variants[vi]
@@ -208,7 +210,7 @@ def ask(p: dict, prompt: str, post=None, alt: Optional[str] = None, sleep=time.s
                 add_usage(model, out.get("tokens", 0))
                 return {"model": model, "json": extract_json(out["text"]), "tokens": out.get("tokens", 0), "small": bool(tag), "errors": errors}
             except Exception as e:     # noqa: BLE001  429／413／逾時／JSON 壞掉
-                msg = _clean(e)[:160] or type(e).__name__
+                msg = _clean(e)[:300] or type(e).__name__
                 errors.append(f"{model}{tag}: {msg}")
                 w = _wait_hint(msg)
                 if _is_timeout(msg):
@@ -250,7 +252,7 @@ def news(post=None, force: bool = False) -> dict:
         if used_today(model) >= daily_cap():
             continue
         try:
-            r = call_gemini(model, NEWS_PROMPT.format(today=day), search=True, json_mode=False, post=post)
+            r = call_gemini(model, NEWS_PROMPT.format(today=day), search=True, json_mode=False, post=post, timeout=NEWS_TIMEOUT)
             add_usage(model, r.get("tokens", 0))
             gm = r.get("grounding") or {}
             srcs = []
@@ -434,6 +436,28 @@ def facts_small(snap: dict, nw: Optional[dict] = None) -> str:
     L.append("【研究結論】只有前一晚費半、台指期夜盤對隔天有效 ✅；波浪、費波那契、支撐壓力、轉折點、籌碼回測都跟隨機差不多 △")
     if nw and nw.get("items"):
         L.append("【近 7 天新聞】" + "；".join(f"{x.get('date', '')} {_cut(x['title'], 40)}" for x in nw["items"][:4]))
+    return "\n".join(L)
+
+
+def facts_tiny(snap: dict) -> str:
+    """B109 最短版（約 700 字）：連精簡版都被說太大時的最後一招"""
+    L = [f"資料日期 {snap['asof']['date']}；加權 {snap['price']:,.0f}（{snap.get('chg_pct')}%）"]
+    if snap["scenario"]["lines"]:
+        L.append("【規則數浪】" + _cut(snap["scenario"]["lines"][0], 140))
+    px = lambda zs: "、".join(f"{z['price']:,.0f}" for z in zs[:2]) or "無"       # noqa: E731
+    lv = snap["levels"]["short"]
+    L.append(f"【短線】支撐 {px(lv['support'])}／壓力 {px(lv['resistance'])}（△）")
+    orf = snap.get("open_ref")
+    if orf:
+        L.append(f"【夜盤 → 加權】夜盤 {orf['night_ret']}% → 加權收盤參考 {orf['r1']}%（回測有效 ✅）")
+    if snap.get("ladder_text"):
+        L.append(f"【多週期】{snap['ladder_text']}")
+    tx = snap.get("tx") or {}
+    src = tx if tx.get("ok") else snap
+    card = (((((src.get("nest") or {}).get("60m")) or {}).get("tiers")) or {}).get("card") or {}
+    if card.get("shape") and card.get("pos"):
+        L.append("【照 @fanny55520 的拆法】" + _cut("；".join(card["pos"]) + f"；波形：{card['shape']}", 330))
+    L.append("【研究】只有前一晚費半、台指期夜盤對隔天有效 ✅；其他都跟隨機差不多 △")
     return "\n".join(L)
 
 
@@ -689,8 +713,8 @@ def run(snap: dict, trigger: str = "auto", post=None, news_fn=None) -> dict:
         log.warning(f"[panel] 新聞失敗：{e}")
         nw = {"items": [], "searched": False}
     res["news"] = nw
-    fx, fxs = facts(snap, nw), facts_small(snap, nw)
-    res["prompt_chars"] = {"full": len(fx), "small": len(fxs)}
+    fx, fxs, fxt = facts(snap, nw), facts_small(snap, nw), facts_tiny(snap)
+    res["prompt_chars"] = {"full": len(fx), "small": len(fxs), "tiny": len(fxt)}
 
     res["log"] = []
     t_run = time.time()
@@ -699,34 +723,50 @@ def run(snap: dict, trigger: str = "auto", post=None, news_fn=None) -> dict:
         """B109：每分鐘字數額度小的（Groq）直接用精簡版；其他先用完整版，太大／逾時再換精簡版。每次呼叫記一筆（哪個模型、幾秒、中間的錯）"""
         t0 = time.time()
         try:
-            a = ask(p, build(fxs), post=post) if p.get("small") else ask(p, build(fx), post=post, alt=build(fxs))
+            a = (ask(p, build(fxs), post=post, alt=[build(fxt)]) if p.get("small")
+                 else ask(p, build(fx), post=post, alt=[build(fxs), build(fxt)]))
             res["log"].append({"id": p["id"], "round": rd, "model": a.get("model"), "small": bool(a.get("small") or p.get("small")),
                                "sec": round(time.time() - t0), "retries": [_clean(x)[:200] for x in a.get("errors") or []]})
             return a
         except Exception:
             res["log"].append({"id": p["id"], "round": rd, "model": None, "sec": round(time.time() - t0)})
             raise
+    def _all(jobs):
+        """幾位 AI 同時問（各家的額度分開算；一場從各家加總變成最慢的那一家）→ [(p, 回答或例外)]，順序照 jobs"""
+        if len(jobs) <= 1:
+            out = []
+            for p, build, rd in jobs:
+                try:
+                    out.append((p, _ask(p, build, rd)))
+                except Exception as e:     # noqa: BLE001
+                    out.append((p, e))
+            return out
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=len(jobs)) as ex:
+            futs = [(p, ex.submit(_ask, p, build, rd)) for p, build, rd in jobs]
+            return [(p, f.exception() or f.result()) for p, f in futs]
     ok_ps = []
-    for p in ps:
-        try:
-            a = _ask(p, lambda f, p=p: p_round1(p["name"], f), 1)
+    for p, a in _all([(p, (lambda f, p=p: p_round1(p["name"], f)), 1) for p in ps]):
+        if isinstance(a, Exception):
+            res["failed"].append({"id": p["id"], "name": p["name"], "round": 1, "error": _clean(a)[:400]})
+        else:
             res["round1"][p["id"]] = {"name": p["name"], "model": a["model"], **a["json"]}
             ok_ps.append(p)
-        except Exception as e:     # noqa: BLE001
-            res["failed"].append({"id": p["id"], "name": p["name"], "round": 1, "error": _clean(e)[:300]})
     if len(ok_ps) >= 2:
-        for p in ok_ps:
-            if time.time() - t_run > ROUND2_BUDGET:                    # 已經花太久：第二輪跳過，直接請主持人整理
-                res["failed"].append({"id": p["id"], "name": p["name"], "round": 2, "error": "前面花太久，第二輪跳過"})
-                continue
-            me = {k: v for k, v in res["round1"][p["id"]].items() if k not in ("name", "model")}
-            oth = {res["round1"][q["id"]]["name"]: {k: v for k, v in res["round1"][q["id"]].items() if k not in ("name", "model")}
-                   for q in ok_ps if q["id"] != p["id"]}
-            try:
-                a = _ask(p, lambda f, p=p, me=me, oth=oth: p_round2(p["name"], f, me, oth), 2)
-                res["round2"][p["id"]] = {"name": p["name"], "model": a["model"], **a["json"]}
-            except Exception as e:     # noqa: BLE001
-                res["failed"].append({"id": p["id"], "name": p["name"], "round": 2, "error": _clean(e)[:300]})
+        if time.time() - t_run > ROUND2_BUDGET:                        # 第一輪就花太久：第二輪跳過，直接請主持人整理
+            res["failed"] += [{"id": p["id"], "name": p["name"], "round": 2, "error": "前面花太久，第二輪跳過"} for p in ok_ps]
+        else:
+            jobs = []
+            for p in ok_ps:
+                me = {k: v for k, v in res["round1"][p["id"]].items() if k not in ("name", "model")}
+                oth = {res["round1"][q["id"]]["name"]: {k: v for k, v in res["round1"][q["id"]].items() if k not in ("name", "model")}
+                       for q in ok_ps if q["id"] != p["id"]}
+                jobs.append((p, (lambda f, p=p, me=me, oth=oth: p_round2(p["name"], f, me, oth)), 2))
+            for p, a in _all(jobs):
+                if isinstance(a, Exception):
+                    res["failed"].append({"id": p["id"], "name": p["name"], "round": 2, "error": _clean(a)[:400]})
+                else:
+                    res["round2"][p["id"]] = {"name": p["name"], "model": a["model"], **a["json"]}
     res["participants"] = [{"id": p["id"], "name": p["name"], "model": res["round1"][p["id"]]["model"]} for p in ok_ps]
     if ok_ps:
         r1 = {v["name"]: {k: x for k, x in v.items() if k not in ("name", "model")} for v in res["round1"].values()}
@@ -792,7 +832,7 @@ def running_job() -> Optional[str]:
 
 
 def start(snap_fn, trigger: str = "manual") -> str:
-    """背景跑；同一時間只跑一個；手動每天最多 3 次（超過丟 OverflowError）"""
+    """背景跑；同一時間只跑一個；手動每天最多 MANUAL_LIMIT 次（超過丟 OverflowError）"""
     with _lock:
         for k, v in _jobs.items():
             if v["status"] == "running" and time.time() - v["t"] < 900:
