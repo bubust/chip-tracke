@@ -116,7 +116,7 @@ def test_groq_uses_small_prompt_directly(wave_db, monkeypatch):  # noqa: F811
 
 def test_timeout_model_is_skipped_next_time(wave_db, monkeypatch):  # noqa: F811
     """正式站 11/13：gemini-3.6-flash 一直逾時，每一輪都重等 → 逾時過的模型 30 分鐘內排最後，後面直接用精簡版"""
-    P._slow.clear()
+    P._slow.clear(), P._good.clear()
     pv = {"id": "z", "kind": "openai", "base": "x", "key": "k", "models": ["slow", "fast"]}
     calls = []
 
@@ -172,3 +172,37 @@ def test_busy_server_waits_twice_before_downgrading(wave_db):  # noqa: F811
         return seq.pop(0)
     a = P.ask(PV, "完整版", post=post, alt=["精簡版"], sleep=slept.append)
     assert sent == ["完整版"] * 3 and slept == [9.0, 17.0] and not a["small"]      # 伺服器忙：等兩次都還是用完整版
+
+
+def test_quota_exhausted_model_is_skipped_and_remembered(wave_db):  # noqa: F811
+    """正式站 11/13 14:28：gemini-3.6-flash「You exceeded your current quota」，卻在它身上完整版、精簡版、最短版各試兩次（白等 1 分多鐘）
+    → 額度用完直接換模型、不等；記住（存資料庫，重啟也記得），下一輪先問上次成功的模型"""
+    P._slow.clear(), P._good.clear()
+    P._state["loaded"] = P._today()
+    pv = {"id": "gm", "kind": "openai", "base": "x", "key": "k", "models": ["m36", "m25"]}
+    calls = []
+
+    def post(url, headers=None, json=None, timeout=None):
+        calls.append((json["model"], json["messages"][0]["content"]))
+        if json["model"] == "m36":
+            return R(429, {"error": {"message": "You exceeded your current quota, please check your plan and billing details."}})
+        return OK
+    a = P.ask(pv, "完整版", post=post, alt=["精簡版", "最短版"], sleep=lambda s: pytest.fail("額度用完不該等"))
+    assert calls == [("m36", "完整版"), ("m25", "完整版")] and a["model"] == "m25" and not a["small"]
+    calls.clear()
+    P._slow.clear(), P._good.clear()
+    P._state["loaded"] = None                                          # 模擬伺服器重啟：從資料庫讀回來
+    P.ask(pv, "完整版", post=post, alt=["精簡版"], sleep=lambda s: None)
+    assert calls == [("m25", "完整版")] and P._good == {"gm": "m25"} and "m36" in P._slow
+    # 每分鐘額度（說了幾秒後再試、等得起）不算用完：等一下再試同一個模型
+    assert not P._quota_out("429 You exceeded your current quota retry in 12.5s") and P._quota_out("429 You exceeded your current quota retry in 300s")
+    assert P._quota_out("429 quota（每日額度用完）") and not P._quota_out("429 Rate limit reached. Please try again in 5s")
+    P._slow.clear(), P._good.clear()
+
+
+def test_gemini_error_keeps_retry_hint_and_daily_flag():
+    long = "You exceeded your current quota. " + "x" * 400 + " Please retry in 23.4s."
+    body = {"error": {"message": long, "details": [{"violations": [{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]}]}}
+    with pytest.raises(RuntimeError) as e:
+        P.call_gemini("m", "hi", post=lambda *a, **k: R(429, body))
+    assert "retry in 23.4s" in str(e.value) and "每日額度用完" in str(e.value) and len(str(e.value)) < 260

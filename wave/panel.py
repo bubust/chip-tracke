@@ -25,8 +25,8 @@ GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models/{model}:ge
 GROQ_BASE = "https://api.groq.com/openai/v1"
 TIMEOUT = 45                 # 一次呼叫最多等幾秒（正常 2～25 秒；等不到就換下一個模型）
 NEWS_TIMEOUT = 90
-MANUAL_LIMIT = 5
-MANUAL_TRIES = 8             # 一天最多按幾次（沒回應的不算在手動次數裡，但總共不超過 8 次）
+MANUAL_LIMIT = 8
+MANUAL_TRIES = 12            # 一天最多按幾次（沒回應的不算在手動次數裡，但總共不超過 12 次）
 MAX_WAIT = 45                # 被限流時最多等幾秒再試
 ROUND2_BUDGET = 200          # 第一輪花超過這麼多秒，第二輪就跳過
 NEWS_TTL = 12 * 3600
@@ -124,7 +124,12 @@ def call_gemini(model: str, prompt: str, search: bool = False, json_mode: bool =
     r = post(GEMINI_API.format(model=model), params={"key": gemini_key()}, json=body, timeout=timeout or TIMEOUT)
     d = r.json()
     if r.status_code != 200 or "error" in d:
-        raise RuntimeError(f"{r.status_code} {str((d.get('error') or {}).get('message', ''))[:300]}")
+        err = d.get("error") or {}
+        msg = str(err.get("message", ""))
+        m = re.search(r"retry in ([\d.]+)s", msg, re.I)              # 訊息很長，「幾秒後再試」在最後面：先抓出來再截短
+        daily = any(re.search(r"per ?day", str(v.get("quotaId", "")), re.I)
+                    for x in err.get("details") or [] if isinstance(x, dict) for v in x.get("violations") or [])
+        raise RuntimeError(f"{r.status_code} {msg[:200]}" + (f" retry in {m.group(1)}s" if m else "") + ("（每日額度用完）" if daily else ""))
     cand = (d.get("candidates") or [{}])[0]
     txt = "".join(p.get("text", "") for p in (cand.get("content") or {}).get("parts", []) if not p.get("thought"))
     if not txt.strip():
@@ -183,12 +188,54 @@ def _too_big(msg: str) -> bool:
     return bool(re.search(r"\b413\b|too large|tokens per minute|\bTPM\b|context length|maximum context|reduce the length", msg, re.I))
 
 
-_slow: dict = {}             # 模型 → 到什麼時候之前先不用（剛逾時過）
+_slow: dict = {}             # 模型 → 到什麼時候之前先不用（剛逾時過、或額度用完）
+_good: dict = {}             # 哪一位 → 上次成功的模型（下次先問它）
+_state = {"loaded": None}    # 這兩個表是哪一天從資料庫讀的
 SLOW_TTL = 6 * 3600
+
+
+def _load_state():
+    """模型狀態存在 wave_snapshot（kind＝panel_models，一天一筆）：伺服器重啟也記得，隔天額度恢復就重來"""
+    day = _today()
+    if _state["loaded"] == day:
+        return
+    _state["loaded"] = day
+    _slow.clear()
+    _good.clear()
+    try:
+        with D.db() as c:
+            r = c.execute("SELECT json FROM wave_snapshot WHERE day=? AND kind='panel_models'", (day,)).fetchone()
+        if r:
+            j = json.loads(r["json"])
+            _slow.update({k: float(v) for k, v in (j.get("slow") or {}).items()})
+            _good.update(j.get("good") or {})
+    except Exception:     # noqa: BLE001
+        pass
+
+
+def _save_state():
+    try:
+        with D.db() as c:
+            c.execute("INSERT INTO wave_snapshot(day,kind,created_at,json) VALUES(?,?,?,?) ON CONFLICT(day,kind) DO UPDATE SET "
+                      "created_at=excluded.created_at, json=excluded.json",
+                      (_today(), "panel_models", time.strftime("%Y-%m-%d %H:%M:%S"), json.dumps({"slow": _slow, "good": _good}, ensure_ascii=False)))
+    except Exception:     # noqa: BLE001
+        pass
 
 
 def _is_timeout(msg: str) -> bool:
     return bool(re.search(r"timed out|timeout", msg, re.I))
+
+
+def _quota_out(msg: str) -> bool:
+    """這個模型的額度用完了（Gemini「You exceeded your current quota」）：換精簡版也沒用，要換模型。
+    訊息有說幾秒後再試、而且等得起（每分鐘額度）就不算"""
+    if "每日額度用完" in msg:
+        return True
+    if not re.search(r"exceeded your current quota|quota exceeded|RESOURCE_EXHAUSTED", msg, re.I):
+        return False
+    m = re.search(r"(?:try again|retry) in\s*(?:(\d+)m)?\s*([\d.]+)\s*s", msg, re.I)
+    return not (m and float(m.group(1) or 0) * 60 + float(m.group(2)) <= MAX_WAIT)
 
 
 def ask(p: dict, prompt: str, post=None, alt: Optional[str] = None, sleep=time.sleep) -> dict:
@@ -198,7 +245,8 @@ def ask(p: dict, prompt: str, post=None, alt: Optional[str] = None, sleep=time.s
     errors = []
     small = False                                                     # 逾時過一次以後，後面都用精簡版
     now = time.time()
-    for model in sorted(p["models"], key=lambda m: _slow.get(m, 0) > now):
+    _load_state()
+    for model in sorted(p["models"], key=lambda m: (_slow.get(m, 0) > now, m != _good.get(p["id"]))):   # 不能用的排最後、上次成功的排最前
         if used_today(model) >= daily_cap():
             errors.append(f"{model} 今日額度已達上限")
             continue
@@ -215,7 +263,11 @@ def ask(p: dict, prompt: str, post=None, alt: Optional[str] = None, sleep=time.s
                 else:
                     out = call_openai(p, model, text, post=post)
                 add_usage(model, out.get("tokens", 0))
-                return {"model": model, "json": extract_json(out["text"]), "tokens": out.get("tokens", 0), "small": bool(tag), "errors": errors}
+                ans = {"model": model, "json": extract_json(out["text"]), "tokens": out.get("tokens", 0), "small": bool(tag), "errors": errors}
+                if p.get("id") and _good.get(p["id"]) != model:
+                    _good[p["id"]] = model
+                    _save_state()
+                return ans
             except Exception as e:     # noqa: BLE001  429／413／逾時／JSON 壞掉
                 msg = _clean(e)[:300] or type(e).__name__
                 errors.append(f"{model}{tag}: {msg}")
@@ -226,8 +278,13 @@ def ask(p: dict, prompt: str, post=None, alt: Optional[str] = None, sleep=time.s
                     continue
                 if _is_timeout(msg):
                     _slow[model] = time.time() + SLOW_TTL
+                    _save_state()
                     small = True
                     break                                              # 逾時：不在同一個模型上再等，換下一個
+                if _quota_out(msg):
+                    _slow[model] = time.time() + SLOW_TTL
+                    _save_state()
+                    break                                              # 這個模型的額度用完：換精簡版也沒用，直接換模型
                 if _too_big(msg) and vi + 1 < len(variants):
                     vi, waited = vi + 1, 0                             # 太大 → 直接換精簡版
                 elif w is not None and waited < (2 if re.search(r"\b50[0-9]\b|529|overload|unavailable|high demand", msg, re.I) else 1) and w <= MAX_WAIT:
@@ -827,7 +884,7 @@ def manual_left() -> int:
         with D.db() as c:
             rows = [(r["ok"], json.loads(r["json"])) for r in c.execute("SELECT ok, json FROM ai_panel WHERE day=?", (_today(),)).fetchall()]
         man = [ok for ok, j in rows if j.get("trigger") == "manual"]
-        if len(man) >= MANUAL_TRIES:                                  # B109：AI 都沒回應的那次不扣次數，但一天總共最多按 8 次
+        if len(man) >= MANUAL_TRIES:                                  # B109：AI 都沒回應的那次不扣次數，但一天總共最多按 MANUAL_TRIES 次
             return 0
         return max(0, MANUAL_LIMIT - sum(1 for ok in man if ok))
     except Exception:     # noqa: BLE001
