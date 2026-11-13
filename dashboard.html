@@ -8558,9 +8558,10 @@ async function saveAllStratParams() {
     const totalMins = parseInt(hh) * 60 + parseInt(p.minute);
     const dayNum = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(p.weekday);
     const isTrading = dayNum >= 1 && dayNum <= 5 && totalMins >= 540 && totalMins <= 815;
+    const wkday = dayNum >= 1 && dayNum <= 5;                         // B108：開盤前寫「盤前」、週末寫「休市」（這裡講的是股票 09:00～13:35）
     const dot = isTrading
       ? '<span style="color:#3fb950">●</span> 盤中'
-      : '<span style="color:#8b949e">●</span> 盤後';
+      : `<span style="color:#8b949e">●</span> ${!wkday ? '休市' : totalMins < 540 ? '盤前' : '盤後'}`;
     el.innerHTML = `${dot}&nbsp;&nbsp;週${dow} ${hh}:${p.minute}:${p.second} <span style="color:#555">(台灣)</span>`;
   }
   updateClock();

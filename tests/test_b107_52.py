@@ -29,7 +29,7 @@ def test_tx_1112_51_done_and_52_buy_zones():
     assert int(z[0.382]["v"] + 0.5) == 42154 and z[0.382]["near"] == 42165     # 她 42,165
     assert int(z[0.5]["v"] + 0.5) == 41303 and z[0.5]["near"] is None           # 她 41,303
     assert int(z[0.618]["v"] + 0.5) == 40451 and z[0.618]["near"] == 40715     # 她 40,451～40,715
-    assert [int(v + 0.5) for v, _ in sb["b52"]] == [43341, 43641, 43941]
+    assert [int(v + 0.5) for v, _ in sb["b52"]] == [43341, 43641, 43941, 44367]          # B108 加 0.786（極限）
     assert o["tag"] == "52" and "5-1 在 44,911 結束" in o["status"] and "5-2-B 反彈中" in o["status"]
     assert "42,165" in o["entry"]["t"] and "0050" in o["entry"]["t"]
 

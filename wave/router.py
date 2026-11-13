@@ -42,6 +42,14 @@ def api_snapshot(request: Request, force: int = 0, sym: str = "TWII"):
     return Response(body, media_type="application/json")
 
 
+@router.get("/api/wave/quote")
+def api_quote(sym: str = "TWII"):
+    """B108 即時價（盤中前端每 15 秒問一次；伺服器 10 秒快取）"""
+    if sym not in S.SYMS:
+        raise HTTPException(status_code=400, detail="sym 只能是 TWII 或 TX")
+    return S.quote(sym)
+
+
 @router.get("/api/wave/status")
 def api_status():
     with D.db() as c:

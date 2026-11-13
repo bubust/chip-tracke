@@ -218,7 +218,8 @@ def _sub5(rest: list, top_t: str, u: int, p0: float, p5: float, sp: float, pull:
     l3 = abs(top3 - launch)
     z4 = {r: top3 - u * r * l3 for r in (0.236, 0.382)}
     lim = sorted([p5, plat_hi], key=lambda v: u * v)                  # (4) 不能碰 (1) 高點區
-    lows_after = [q["p"] for q in rest[k3:] if q["t"] != top_t and rest.index(q) > k3]
+    k_t3 = max((k for k in range(k3, len(rest)) if rest[k]["t"] == top_t and rest[k]["p"] == top3), default=len(rest))
+    lows_after = [q["p"] for q in rest[k_t3 + 1:] if q["t"] != top_t]   # 最高點之後的低點（現價創新高＝沒有）
     pb = min(lows_after + [float(price)], key=lambda v: u * v)
     in4 = abs(top3 - pb) >= 0.15 * l3
     t5 = [(z4[0.236] + u * 0.618 * l3, "(5)＝0.618 倍 (3)（從淺回位）")]
@@ -262,25 +263,57 @@ def _done52(rest: list, top_t: str, u: int, p0: float, p5: float, sp: float, pul
         nv = max(near, key=lambda v: u * v) if near else None
         z52.append({"r": r, "v": round(f, 2), "near": nv, "lo": round(min(f, nv if nv is not None else f), 2),
                     "hi": round(max(f, nv if nv is not None else f), 2)})
-    # 5-2-A：最高點之後的低點；之後反彈超過 A 的 0.236＝A 先走完、5-2-B 反彈中
-    k_pb = next((k for k in range(len(rest) - 1, -1, -1) if rest[k]["t"] != top_t and rest[k]["p"] == pb), None)
-    b_hi = max([q["p"] * u for q in rest[k_pb + 1:] if q["t"] == top_t] + [float(price) * u]) * u if k_pb is not None else float(price)
-    a_len = abs(top - pb)
-    in_b = a_len > 0 and (b_hi - pb) * u >= 0.236 * a_len
-    b52 = [(round(pb + u * r * a_len, 2), f"5-2-B 反彈 {r:g}") for r in (0.382, 0.5, 0.618)]
+    # 5-2 走 A-B-C：A 低點＝最高點之後第一個「彈回 ≥ 0.236 倍 A」的低點；B＝之後的反彈；再跌破 A 低點＝C
+    pts = [q["p"] for q in rest[k_top + 1:]] + [float(price)]
+    a_low = b_hi = c_low = lo = None
+    for v in pts:
+        if a_low is None:
+            if lo is None or (v - lo) * u < 0:
+                lo = v
+            elif (v - lo) * u >= 0.236 * abs(top - lo):
+                a_low, b_hi = lo, v
+        elif c_low is None:
+            if (v - b_hi) * u > 0:
+                b_hi = v
+            elif (v - a_low) * u < 0:
+                c_low = v
+        elif (v - c_low) * u < 0:
+            c_low = v
+    stage = "A" if a_low is None else "B" if c_low is None else "C"
+    if a_low is None:
+        a_low = lo if lo is not None else pb
+    if stage == "B":                                                  # B 高點：更細一級（30 分）在 A 低點之後的高點也算
+        fa = next((k for k, q in enumerate(fn) if q.get("t") != top_t and abs(q["p"] - a_low) < 1e-6), None)
+        if fa is not None:
+            b_hi = max([b_hi * u] + [q["p"] * u for q in fn[fa + 1:] if q.get("t") == top_t]) * u
+    a_len = abs(top - a_low)
+    in_b = stage != "A"
+    b52 = [(round(a_low + u * r * a_len, 2), f"5-2-B 反彈 {r:g}" + ("（極限）" if r == 0.786 else "")) for r in (0.382, 0.5, 0.618, 0.786)]
+    c52 = [(round(b_hi - u * r * a_len, 2), f"5-2-C＝{nm}") for r, nm in ((0.618, "0.618 倍 A"), (1.0, "A 等幅"))] if stage == "C" else []
+    low_all = min([a_low, float(price)] + ([c_low] if c_low is not None else []), key=lambda v: u * v)
+    for z in z52:
+        z["hit"] = bool((low_all - z["hi"]) * u <= 0)                 # 已經跌到這一區
     zt = lambda z: f"{z['r']:g} {_fmt(z['v'])}" + (f"～{_fmt(z['near'])}（前低）" if z["near"] is not None else "")   # noqa: E731
-    st = (f"5-1 在 {_fmt(top)} 結束（壓回到 {_fmt(pb)}，跌破 (1) 高點 {_fmt(lim[0])}：4 不能碰 1，所以不是 (4)）；日線 5-2 修正中："
-          + (f"5-2-A {_fmt(top)}→{_fmt(pb)}、5-2-B 反彈中（到 {_fmt(b_hi)}）" if in_b else f"5-2-A 進行中（到 {_fmt(pb)}）"))
+    if stage == "A":
+        now_t = f"5-2-A 進行中（到 {_fmt(a_low)}）"
+        obs = f"A 還在走（到 {_fmt(a_low)}），先看 0.382 {_fmt(z52[0]['v'])}；A 走完才有 5-2-B 反彈"
+    elif stage == "B":
+        now_t = f"5-2-A {_fmt(top)}→{_fmt(a_low)}、5-2-B 反彈中（到 {_fmt(b_hi)}）"
+        obs = (f"A {_fmt(top)}→{_fmt(a_low)}（{_fmt(a_len)} 點）；B 反彈 " + "、".join(f"{t.split()[-1]} {_fmt(v)}" for v, t in b52)
+               + f"，最高多半壓在 0.618 附近、不會過 {_fmt(top)}；B 走完再看 5-2-C 往上面三區")
+    else:
+        now_t = f"5-2-A {_fmt(top)}→{_fmt(a_low)}、5-2-B 彈到 {_fmt(b_hi)}、5-2-C 進行中（到 {_fmt(c_low)}）"
+        obs = (f"A {_fmt(top)}→{_fmt(a_low)}、B 彈到 {_fmt(b_hi)}；C 的量度 " + "、".join(f"{t.split('＝')[-1]} {_fmt(v)}" for v, t in c52)
+               + "，C 走完才是 5-3 起漲")
+    st = (f"5-1 在 {_fmt(top)} 結束（壓回到 {_fmt(low_all)}，跌破 (1) 高點 {_fmt(lim[0])}：4 不能碰 1，所以不是 (4)）；日線 5-2 修正中：" + now_t)
     lines = [f"大中小（她 11/11）：(1) {_fmt(p0)}→{_fmt(p5)}（{_fmt(sp)} 點）、(2) 橫台 {_fmt(pull)}～{_fmt(plat_hi)}、(3) {_fmt(launch)} 起；"
              f"她 11/12：{_fmt(top)} 是 5-1 終點（(3)(4)(5) 時間壓縮走完，或失敗第 5 波），{_fmt(p0)}→{_fmt(top)} 漲了 {_fmt(big)} 點",
              f"現在：{st}",
              f"5-2 三個大買點（{_fmt(p0)}→{_fmt(top)} 的回檔；個股、0050 分批介入，到了也要等止跌）：" + "、".join(zt(z) for z in z52),
-             "5-2-A／B 拿來觀察：" + (f"A {_fmt(top)}→{_fmt(pb)}（{_fmt(a_len)} 點）；B 反彈 " + "、".join(f"{t.split()[-1]} {_fmt(v)}" for v, t in b52)
-                                   + f"，最高多半壓在 0.618 附近、不會過 {_fmt(top)}；B 走完再看 5-2-C 往上面三區" if in_b else
-                                   f"A 還在走（到 {_fmt(pb)}），先看 0.382 {_fmt(z52[0]['v'])}；A 走完才有 5-2-B 反彈")]
-    return {"done": True, "launch": launch, "plat": [pull, plat_hi], "top3": top, "top": top, "limit": lim, "pb": pb,
-            "a_low": pb, "b_hi": round(b_hi, 2) if in_b else None, "b52": b52 if in_b else [], "z52": z52,
-            "z4": {}, "t5": [], "d52": [(z["r"], z["lo"], z["hi"]) for z in z52], "state": st, "lines": lines}
+             "5-2-A／B 拿來觀察：" + obs]
+    return {"done": True, "stage": stage, "launch": launch, "plat": [pull, plat_hi], "top3": top, "top": top, "limit": lim, "pb": low_all,
+            "p0": p0, "a_low": a_low, "b_hi": round(b_hi, 2) if in_b else None, "c_low": c_low, "b52": b52 if in_b else [], "c52": c52,
+            "z52": z52, "z4": {}, "t5": [], "d52": [(z["r"], z["lo"], z["hi"]) for z in z52], "state": st, "lines": lines}
 
 
 def _paths(after: list, d: int, ext: float, price: float, y: float, x: float, T: dict, L1: dict, H2: dict,
@@ -642,6 +675,156 @@ def structure(big: list, small: list, price: float, ma5: Optional[float] = None,
             "big": {"T": T["p"], "L1": L1["p"], "H2": H2["p"], "ext": ext},
             "small": small_out, "fib": {str(r): round(v, 2) for r, v in fib.items()}, "rebound": round(R, 2),
             "gate1": gate1, "gate2": gate2, "fork": fork, "ext3": ext3, "entry": entry, "status": status, "lines": lines}
+
+
+def pierce_reclaim(bars: list, lines: list, side: int, atr15: Optional[float], atr60: Optional[float],
+                   win: int = 8, recent: int = 4) -> Optional[dict]:
+    """B108 她的進場訊號（規則跟 B106 回測同一套）：最近 recent 根收完的 15 分 K 裡，有沒有「刺穿某條事先畫好的線、又收回」。
+    side＝1 做多（往下刺、收回線上）、-1 做空（往上刺、收回線下）。bars：收完的 15 分 K（舊→新）；lines：[(價位, 名稱)]。
+    刺穿深度 ≥ 0.15 ATR15、≤ 1 ATR60；8 根內收回；收回之後已經碰到停損（尖端外 0.1 ATR15）的不算。回最新的一個或 None"""
+    n = len(bars)
+    if n < 3 or not atr15 or not atr60:
+        return None
+    c = [side * b["close"] for b in bars]
+    lo = [side * (b["low"] if side > 0 else b["high"]) for b in bars]
+    best = None
+    for line, name in lines:
+        S = side * line
+        for j in range(max(1, n - recent - win), n):
+            if not (c[j - 1] > S and lo[j] < S):
+                continue
+            X = float("inf")
+            for k in range(j, min(j + win, n)):
+                X = min(X, lo[k])
+                if S - X > atr60:
+                    break                                             # 真的破了
+                if c[k] > S:
+                    stop = X - 0.1 * atr15
+                    if (S - X >= 0.15 * atr15 and k >= n - recent and all(lo[m] > stop for m in range(k + 1, n))
+                            and (best is None or k > best["_k"] or (k == best["_k"] and abs(c[k] - S) < best["_gap"]))):
+                        e = bars[k]["close"]
+                        risk = abs(e - side * stop)
+                        best = {"_k": k, "_gap": abs(c[k] - S), "side": side, "line": line, "name": name, "tip": side * X,
+                                "time": bars[k].get("time"), "ago": n - 1 - k, "close": e, "stop": round(side * stop, 2),
+                                "risk": round(risk, 2), "t1": round(e + side * risk, 2)}
+                    break
+    if best:
+        best = {k: v for k, v in best.items() if not k.startswith("_")}
+    return best
+
+
+METHOD = ("她的進出場（從 11/2～11/11 的對帳單推敲）：價位事先畫好 → 等價格刺穿又收回才進 → 停損放刺出去的尖端外 → "
+          "一口一口出、先把停損拉到成本。回測：照這套機械化地做跟隨機差不多 △（B106），她的優勢在挑哪條線、挑哪一次")
+EXIT = "出場：賺到跟停損一樣多的點數先出一口，剩下的停損拉到成本，之後一口一口出（她 11/11 的三口：+622、+805、+1,068 點）"
+
+
+def plan_card(t: dict, price: float, bars15: Optional[list] = None, atr15: Optional[float] = None,
+              atr60: Optional[float] = None) -> Optional[dict]:
+    """B108 結論卡（用戶：簡單說現在的位階、在哪個波形裡，然後怎麼試單、怎麼進出場）。
+    t＝structure() 的結果。回 {pos: [兩句位階], shape: 波形, plays: [{k, tag, t}], exit, flip, method, tiles, signal, watch}"""
+    if not t:
+        return None
+    lb, u = t["labels"], -t["dir"]
+    pu = ((t.get("ext3") or {}).get("paths") or {}).get("push") or {}
+    sb = pu.get("sub") or {}
+    price = float(price)
+    pct = lambda v: round((v / price - 1) * 100, 2)                   # noqa: E731
+    tile = lambda v, name, act: {"price": round(v, 2), "dist_pct": pct(v), "name": name, "act": act}   # noqa: E731
+    rng = lambda a, b: _fmt(a) + (f"～{_fmt(b)}" if b != a else "")   # noqa: E731
+    how_long = "跌破又收回（15 分 K 收回線上）才進，停損放最低點下面"
+    longs, shorts, tiles, shape, flip = [], [], None, None, None
+    plays = []
+    if t["tag"] == "52" and sb.get("done") and u > 0:
+        top, p0, a_low, b_hi, c_low, stage, zs = sb["top"], sb["p0"], sb["a_low"], sb.get("b_hi"), sb.get("c_low"), sb["stage"], sb["z52"]
+        ztxt = "、".join(rng(z["lo"], z["hi"]) + ("（已到）" if z.get("hit") else "") for z in zs)
+        nz = next((z for z in zs if not z.get("hit")), None)
+        longs = [(z["v"], f"大買點 {z['r']:g}") for z in zs] + [(z["near"], f"大買點 {z['r']:g} 旁邊的前低") for z in zs if z["near"] is not None]
+        pos = [f"{lb['big']}：第 5 大波裡的 5-2 回檔——5-1（{_fmt(p0)}→{_fmt(top)}，漲 {_fmt(top - p0)} 點）已經走完"]
+        buy = {"k": "long", "tag": "做多等大買點",
+               "t": f"{ztxt}——她說這三區才是 5-2 的最大買點（0050、個股也在這裡分批）；{how_long}"}
+        down = tile(nz["hi"], "5-2 大買點", "跌破又收回才做多") if nz else tile(p0, "5-1 起點", "跌破＝看法作廢")
+        if stage == "A":
+            pos.append(f"{lb['small']}：5-2 走 A-B-C 三段——現在是 A 段下跌（到 {_fmt(a_low)}），還沒有像樣的反彈")
+            shape = "三段式修正（A-B-C）的 A 段：第一段下跌"
+            plays = [{"k": "wait", "tag": "不接刀、不追空", "t": "A 段還在跌，等它止跌、彈出 B 段再說；A 段直接跌進大買點也可以開始分批"}, buy]
+            tiles = {"up": tile(top, "5-1 高點", "站上＝5-2 結束"), "down": down, "stop": None}
+        elif stage == "B":
+            lv = {r: v for (v, _), r in zip(sb["b52"], (0.382, 0.5, 0.618, 0.786))}
+            rel = (f"還沒到 0.382 {_fmt(lv[0.382])}" if b_hi < lv[0.382] else
+                   f"在 0.382～0.5（{_fmt(lv[0.382])}～{_fmt(lv[0.5])}）" if b_hi < lv[0.5] else
+                   f"在 0.5～0.618（{_fmt(lv[0.5])}～{_fmt(lv[0.618])}）" if b_hi < lv[0.618] else
+                   f"已過 0.618 的 {_fmt(lv[0.618])}、比她估的強一點" if b_hi < lv[0.786] else
+                   f"已過 0.786 的 {_fmt(lv[0.786])}、反彈太強，要提防 5-2 已經在 {_fmt(a_low)} 結束")
+            pos.append(f"{lb['small']}：5-2 走 A-B-C 三段——A 跌到 {_fmt(a_low)} 走完，現在是 B 段反彈（最高 {_fmt(b_hi)}，{rel}），C 段還沒走")
+            shape = "三段式修正（A-B-C）的 B 段：逆著 5-2 的反彈，走完還有一段 C 往下"
+            near = 0.5 * atr60 if atr60 else 0.004 * price
+            res = sorted({round(v, 2) for v in (lv[0.5], lv[0.618], b_hi, lv[0.786]) if v >= price - near})[:3]
+            nm = {round(lv[0.5], 2): "B 反彈 0.5", round(lv[0.618], 2): "B 反彈 0.618", round(lv[0.786], 2): "B 反彈 0.786", round(b_hi, 2): "B 段高點"}
+            shorts = [(v, nm.get(v, "反彈壓力")) for v in res]
+            below = [v for v in (lv[0.5], lv[0.382]) if v < price - (atr15 or 0)]
+            t1 = max(below) if below else a_low
+            plays = [{"k": "wait", "tag": "不追多", "t": "B 段只是反彈，她說 5-2-A、B「拿來觀察」；現在買，後面還有 C 段下跌"}]
+            if res:
+                plays.append({"k": "short", "tag": "小量試空",
+                              "t": f"反彈壓力 {'、'.join(_fmt(v) for v in res)}：價格刺過其中一條、15 分 K 又收回線下才空（她 11/6、11/9 的空單都是這樣進的）；"
+                                   f"停損放那根的最高點上面；目標先看 {_fmt(t1)}，再看 A 低點 {_fmt(a_low)}"})
+            plays.append(buy)
+            up_v = next((v for v in res if v > price), None)
+            tiles = {"up": tile(up_v, nm.get(up_v, "反彈壓力"), "刺過又收回＝試空") if up_v else tile(top, "5-1 高點", "站上＝5-2 結束"),
+                     "down": down, "stop": tile(top, "5-1 高點", "站上＝5-2 結束") if up_v else None}
+        else:
+            pos.append(f"{lb['small']}：5-2 走 A-B-C 三段——A 跌到 {_fmt(a_low)}、B 彈到 {_fmt(b_hi)} 都走完，現在是 C 段下跌（到 {_fmt(c_low)}），往大買點走")
+            shape = "三段式修正（A-B-C）的 C 段：最後一段下跌，走完才是 5-3 起漲"
+            ct = "、".join(f"{nm_.split('＝')[-1]} {_fmt(v)}" for v, nm_ in sb.get("c52") or [])
+            plays = [{"k": "wait", "tag": "不追空", "t": f"C 段的目標就是大買點（量度：{ct}），追空沒有肉；手上有空單就照目標分批回補"}, buy]
+            tiles = {"up": tile(b_hi, "B 段高點", "站上＝C 段沒了"), "down": down, "stop": tile(top, "5-1 高點", "站上＝5-1 還在走")}
+        flip = (f"改判：站上 {_fmt(b_hi)}（B 段高點）＝C 段沒了、5-2 可能已經結束；" if stage == "C" else
+                f"改判：站上 {_fmt(top)}＝5-2 提早結束、5-1 還在延伸；") + f"跌破 {_fmt(p0)}＝第 5 大波的看法作廢"
+    elif t["tag"] == "up5" and sb and not sb.get("done") and u > 0:
+        z4, lim, t5, in4 = sb["z4"], sb["limit"], sb["t5"], sb.get("pb") is not None
+        seq = pu["seq"]
+        pos = [f"{lb['big']}：第四大波修正走完，第 5 大波的第 1 段（5-1）推升中",
+               f"{lb['small']}：5-1 走五小段——(1) {_fmt(seq[0])}→{_fmt(seq[5])}、(2) 橫台、(3) {_fmt(sb['launch'])}→{_fmt(sb['top3'])}，"
+               + (f"現在是 (4) 回檔（到 {_fmt(sb['pb'])}）" if in4 else "(3) 還在走")]
+        shape = "五段推動的第 (4) 段回檔：回完還有最後一推 (5)" if in4 else "五段推動的第 (3) 段：最會跑的一段"
+        longs = [(float(z4["0.236"]), "(4) 淺回 0.236"), (float(z4["0.382"]), "(4) 標準 0.382")]
+        if not in4:
+            plays.append({"k": "wait", "tag": "不追高", "t": f"(3) 走到 {_fmt(sb['top3'])}，等 (4) 回檔出來再進"})
+        plays.append({"k": "long", "tag": "做多等 (4) 回測",
+                      "t": f"(4) 回到 {_fmt(z4['0.236'])}（淺）～{_fmt(z4['0.382'])}（標準）：{how_long}；目標最後一推 (5)：" + "、".join(_fmt(v) for v, _ in t5)})
+        flip = f"改判：跌破 (1) 高點 {_fmt(lim[0])}（4 不能碰 1）＝5-1 已經結束、進 5-2 回檔"
+        tiles = {"up": tile(t5[0][0], "(5) 目標", "最後一推") if t5 else None, "down": tile(float(z4["0.236"]), "(4) 回測", "止跌才做多"),
+                 "stop": tile(lim[0], "(1) 高點", "跌破＝進 5-2")}
+    elif pu and u > 0 and t["tag"] in ("up3", "4"):
+        seq, zones, where = pu["seq"], pu["zones"], pu.get("where")
+        pos = [f"{lb['big']}：{_fmt(seq[0])} 落底後的{lb['big']}級反彈（第 5 大波的 (1)，或大 B／C-4 的反彈，還分不出來）", f"{lb['small']}：{pu['state']}"]
+        if pu.get("third"):
+            shape = "初推五小段走完、壓回守住之後的第 (3) 浪（或小 c）推升"
+            plays = [{"k": "long", "tag": "順勢做多", "t": f"守住 {_fmt(pu['pull'])} 推升結構就還在；回檔不破前低、{how_long}；量度 " + "、".join(_fmt(v) for v, _ in pu["targets"])}]
+            tiles = {"up": tile(pu["targets"][0][0], "(3)／小 c 量度", "第一個目標") if pu["targets"] else None,
+                     "down": tile(pu["pull"], "(2) 低點", "要守住"), "stop": tile(seq[0], "初推起點", "跌破＝作廢")}
+        elif pu.get("pull") is not None:
+            shape = "初推五小段走完後的壓回（(2) 浪或小 b）：三波整理、不會破起點，整理完還有一段上攻"
+            zt = "、".join(f"{'①②③'[z['k'] - 1]} {rng(z['hi'], z['lo'])}" for z in zones)
+            longs = [(v, f"壓回第 {z['k']} 區") for z in zones for v, _ in z["lv"]]
+            plays = [{"k": "long", "tag": "做多等壓回", "t": f"壓回三區 {zt}：到了、{how_long}（最遠不能破 {_fmt(seq[0])}）；目標先看初推高點 {_fmt(seq[5])}"}]
+            zk = zones[min(max(where or 1, 1), 3) - 1]
+            tiles = {"up": tile(seq[5], "初推高點", "再過高＝(3) 啟動"), "down": tile(zk["hi"], f"壓回第 {zk['k']} 區", "止跌才做多"),
+                     "stop": tile(seq[0], "初推起點", "跌破＝作廢")}
+        else:
+            shape = "初推五小段還在走"
+            plays = [{"k": "wait", "tag": "不追高", "t": "初推還沒出現像樣的壓回，等壓回三區出來再進"}]
+        flip = f"改判：跌破 {_fmt(seq[0])}＝初推失敗"
+    else:
+        pos = [t["lines"][0], t["status"]]
+        plays = [{"k": "wait", "tag": "進場", "t": (t.get("entry") or {}).get("t") or t["lines"][-1]}]
+    sig = None
+    if bars15:
+        cands = [x for x in (pierce_reclaim(bars15, longs, 1, atr15, atr60) if longs else None,
+                             pierce_reclaim(bars15, shorts, -1, atr15, atr60) if shorts else None) if x]
+        sig = min(cands, key=lambda x: x["ago"]) if cands else None
+    return {"pos": pos, "shape": shape, "plays": plays, "exit": EXIT, "flip": flip, "method": METHOD, "tiles": tiles, "signal": sig,
+            "watch": {"long": [(round(v, 2), nm_) for v, nm_ in longs], "short": [(round(v, 2), nm_) for v, nm_ in shorts]}}
 
 
 def analyze_daily(df, price: Optional[float] = None) -> Optional[dict]:
