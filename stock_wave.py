@@ -630,7 +630,7 @@ def structure(big: list, small: list, price: float, ma5: Optional[float] = None,
                  neck_p=(fork or {}).get("a3"), fine=fine)
     pz = (ext3 or {}).get("paths")
     sub = ((pz or {}).get("push") or {}).get("sub")
-    if pz and pz["layers"][2]["ok"] and tag == "4" and sub:
+    if pz and pz["layers"][2]["ok"] and tag == "4" and sub and not sub.get("done"):
         # B105 她 11/11：站穩第一道關以後＝第四大波三段式完成、啟動 5-1；狀態講 60 分大中小走到哪、下一關 C-1 低點／頸線
         a3 = (fork or {}).get("a3")
         status = (f"已{v_cross}第一道關 {_fmt(gate1['lo'])}～{_fmt(gate1['hi'])}，升級{lb['big']}級{s_up}；{sub['state']}；"
@@ -758,10 +758,12 @@ def plan_card(t: dict, price: float, bars15: Optional[list] = None, atr15: Optio
             pos.append(f"{lb['small']}：5-2 走 A-B-C 三段——A 跌到 {_fmt(a_low)} 走完，現在是 B 段反彈（最高 {_fmt(b_hi)}，{rel}），C 段還沒走")
             shape = "三段式修正（A-B-C）的 B 段：逆著 5-2 的反彈，走完還有一段 C 往下"
             near = 0.5 * atr60 if atr60 else 0.004 * price
-            res = sorted({round(v, 2) for v in (lv[0.5], lv[0.618], b_hi, lv[0.786]) if v >= price - near})[:3]
-            nm = {round(lv[0.5], 2): "B 反彈 0.5", round(lv[0.618], 2): "B 反彈 0.618", round(lv[0.786], 2): "B 反彈 0.786", round(b_hi, 2): "B 段高點"}
+            hi_ok = b_hi - price >= 0.15 * (atr15 or 0.001 * price)   # B 高點就是現價（還在創高）時不算一條線
+            res = sorted({round(v, 2) for v in [lv[0.5], lv[0.618], lv[0.786], top] + ([b_hi] if hi_ok else []) if v >= price - near})[:3]
+            nm = {round(lv[0.5], 2): "B 反彈 0.5", round(lv[0.618], 2): "B 反彈 0.618", round(lv[0.786], 2): "B 反彈 0.786", round(top, 2): "5-1 高點",
+                  round(b_hi, 2): "B 段高點"}
             shorts = [(v, nm.get(v, "反彈壓力")) for v in res]
-            below = [v for v in (lv[0.5], lv[0.382]) if v < price - (atr15 or 0)]
+            below = [v for v in (lv[0.618], lv[0.5], lv[0.382]) if v < price - (atr15 or 0)]
             t1 = max(below) if below else a_low
             plays = [{"k": "wait", "tag": "不追多", "t": "B 段只是反彈，她說 5-2-A、B「拿來觀察」；現在買，後面還有 C 段下跌"}]
             if res:
@@ -771,7 +773,7 @@ def plan_card(t: dict, price: float, bars15: Optional[list] = None, atr15: Optio
             plays.append(buy)
             up_v = next((v for v in res if v > price), None)
             tiles = {"up": tile(up_v, nm.get(up_v, "反彈壓力"), "刺過又收回＝試空") if up_v else tile(top, "5-1 高點", "站上＝5-2 結束"),
-                     "down": down, "stop": tile(top, "5-1 高點", "站上＝5-2 結束") if up_v else None}
+                     "down": down, "stop": tile(top, "5-1 高點", "站上＝5-2 結束") if up_v and up_v != round(top, 2) else None}
         else:
             pos.append(f"{lb['small']}：5-2 走 A-B-C 三段——A 跌到 {_fmt(a_low)}、B 彈到 {_fmt(b_hi)} 都走完，現在是 C 段下跌（到 {_fmt(c_low)}），往大買點走")
             shape = "三段式修正（A-B-C）的 C 段：最後一段下跌，走完才是 5-3 起漲"
