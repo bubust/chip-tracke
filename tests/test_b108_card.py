@@ -48,6 +48,15 @@ def test_card_now_position_and_plays():
     assert "44,911" in c["flip"] and "△" in c["method"]
 
 
+def test_above_first_gate_still_52_card():
+    """11/13 09:17 正式站：B 反彈漲過第一道關 44,052（44,464）時結論卡整個不見（走到 5-1 的分支出錯）→ 還是 5-2 的 B 段"""
+    o = _o(44464.0, [{"p": 42371, "t": "L"}])
+    assert o["tag"] == "52" and o["entry"] and "5-2" in o["entry"]["t"]
+    c = W.plan_card(o, 44464.0, None, 100.0, 366.0)
+    assert "已過 0.786" in c["pos"][1] and [v for v, _ in c["watch"]["short"]] == [44367.44, 44911]   # 現價就是 B 高點：不當一條線
+    assert c["tiles"]["up"]["price"] == 44911 and c["tiles"]["stop"] is None and "43,941" in c["plays"][1]["t"]
+
+
 def test_card_stage_c_and_fallback():
     c = W.plan_card(_o(41900.0, [{"p": 42371, "t": "L"}, {"p": 44034, "t": "H"}]), 41900.0)
     assert "C 段下跌" in c["pos"][1] and c["plays"][0]["tag"] == "不追空" and "（已到）" in c["plays"][1]["t"]
