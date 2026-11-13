@@ -27,7 +27,7 @@ TIMEOUT = 45                 # 一次呼叫最多等幾秒（正常 2～25 秒�
 NEWS_TIMEOUT = 90
 MANUAL_LIMIT = 5
 MANUAL_TRIES = 8             # 一天最多按幾次（沒回應的不算在手動次數裡，但總共不超過 8 次）
-MAX_WAIT = 30                # 被限流時最多等幾秒再試
+MAX_WAIT = 45                # 被限流時最多等幾秒再試
 ROUND2_BUDGET = 200          # 第一輪花超過這麼多秒，第二輪就跳過
 NEWS_TTL = 12 * 3600
 DISCLAIMER = "劇本＝規則數浪＋歷史條件推估，不是投資建議；AI 看法不是系統計算"
@@ -57,7 +57,8 @@ def providers() -> list:
         out.append({"id": "gptoss", "name": "GPT-OSS-120B（OpenAI 開源模型，Groq）", "kind": "openai", "base": GROQ_BASE,
                     "key": gk, "models": ["openai/gpt-oss-120b"], "extra": {"reasoning_effort": "low"}, "small": True})
         out.append({"id": "qwen", "name": "Qwen3（阿里巴巴，Groq）", "kind": "openai", "base": GROQ_BASE,
-                    "key": gk, "models": ["qwen/qwen3.8-27b"], "extra": {"reasoning_format": "hidden"}, "small": True})
+                    "key": gk, "models": ["qwen/qwen3.8-27b"], "extra": {"reasoning_format": "hidden"}, "small": True,
+                    "max_tokens": 900})                                # Groq 免費額度：這個模型每分鐘最多輸出 1,000 token（要求 1,400 會被拒絕）
     for env, base, pid, name in (("OPENAI", "https://api.openai.com/v1", "openai", "GPT（OpenAI）"),
                                  ("XAI", "https://api.x.ai/v1", "grok", "Grok（xAI）")):
         k, m = (os.environ.get(f"{env}_API_KEY") or "").strip(), (os.environ.get(f"{env}_PANEL_MODEL") or "").strip()
@@ -134,7 +135,7 @@ def call_gemini(model: str, prompt: str, search: bool = False, json_mode: bool =
 
 def call_openai(p: dict, model: str, prompt: str, post=None) -> dict:
     post = post or httpx.post
-    body = {"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0.3, "max_tokens": 1400,
+    body = {"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0.3, "max_tokens": int(p.get("max_tokens") or 1400),
             "response_format": {"type": "json_object"}, **(p.get("extra") or {})}
     r = post(f"{p['base']}/chat/completions", headers={"Authorization": f"Bearer {p['key']}"}, json=body, timeout=TIMEOUT)
     d = r.json()
@@ -172,12 +173,18 @@ def _wait_hint(msg: str) -> Optional[float]:
     return 8.0
 
 
+def _out_limit(msg: str) -> Optional[int]:
+    """「每分鐘輸出上限 Limit 1000, Requested 1400；reduce max_tokens」→ 1000；不是這種錯誤回 None"""
+    m = re.search(r"output tokens per minute.*?Limit\s*(\d+),\s*Requested\s*(\d+)", msg, re.I | re.S)
+    return int(m.group(1)) if m and int(m.group(2)) > int(m.group(1)) else None
+
+
 def _too_big(msg: str) -> bool:
     return bool(re.search(r"\b413\b|too large|tokens per minute|\bTPM\b|context length|maximum context|reduce the length", msg, re.I))
 
 
 _slow: dict = {}             # 模型 → 到什麼時候之前先不用（剛逾時過）
-SLOW_TTL = 1800
+SLOW_TTL = 6 * 3600
 
 
 def _is_timeout(msg: str) -> bool:
@@ -187,7 +194,7 @@ def _is_timeout(msg: str) -> bool:
 def ask(p: dict, prompt: str, post=None, alt: Optional[str] = None, sleep=time.sleep) -> dict:
     """一位 AI 回答一次（JSON）。超過今日上限 → 丟 OverflowError。同一位的模型逐一試；
     B109：被限流／伺服器忙 → 照對方說的秒數等一下（最多 30 秒）再試一次；請求太大（413、每分鐘字數額度）→ 改用精簡版資料 alt 再試；
-    逾時 → 這個模型 30 分鐘內排到最後（不要每一輪都重等一次），後面的模型直接用精簡版"""
+    逾時 → 這個模型 6 小時內排到最後（不要每一輪都重等一次），後面的模型直接用精簡版"""
     errors = []
     small = False                                                     # 逾時過一次以後，後面都用精簡版
     now = time.time()
@@ -197,7 +204,7 @@ def ask(p: dict, prompt: str, post=None, alt: Optional[str] = None, sleep=time.s
             continue
         alts = [(t, "（精簡版）" if k == 0 else "（最短版）") for k, t in enumerate([alt] if isinstance(alt, str) else list(alt or []))]
         variants = alts if alts and small else [(prompt, "")] + alts
-        vi, waited = 0, False
+        vi, waited = 0, 0
         while vi < len(variants):
             text, tag = variants[vi]
             try:
@@ -213,17 +220,21 @@ def ask(p: dict, prompt: str, post=None, alt: Optional[str] = None, sleep=time.s
                 msg = _clean(e)[:300] or type(e).__name__
                 errors.append(f"{model}{tag}: {msg}")
                 w = _wait_hint(msg)
+                lim = _out_limit(msg)
+                if lim and int(p.get("max_tokens") or 1400) > lim * 0.9:
+                    p = {**p, "max_tokens": int(lim * 0.9)}            # 輸出上限比我們要求的小 → 照它的上限調低，同一份再試
+                    continue
                 if _is_timeout(msg):
                     _slow[model] = time.time() + SLOW_TTL
                     small = True
                     break                                              # 逾時：不在同一個模型上再等，換下一個
                 if _too_big(msg) and vi + 1 < len(variants):
-                    vi, waited = vi + 1, False                         # 太大 → 直接換精簡版
-                elif w is not None and not waited and w <= MAX_WAIT:
-                    waited = True
-                    sleep(w + 1)                                       # 等一下，同一份再試一次
+                    vi, waited = vi + 1, 0                             # 太大 → 直接換精簡版
+                elif w is not None and waited < (2 if re.search(r"\b50[0-9]\b|529|overload|unavailable|high demand", msg, re.I) else 1) and w <= MAX_WAIT:
+                    waited += 1
+                    sleep(w * waited + 1)                              # 等一下，同一份再試（伺服器忙最多等兩次：9 秒、17 秒）
                 else:
-                    vi, waited = vi + 1, False
+                    vi, waited = vi + 1, 0
     if errors and all("額度已達上限" in x for x in errors):
         raise OverflowError("；".join(errors))
     raise RuntimeError("；".join(errors) or "沒有可用模型")
