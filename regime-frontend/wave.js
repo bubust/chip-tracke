@@ -1344,6 +1344,17 @@
     } catch (e) { $('wv-ai').innerHTML = `<div class="wv-h3">🤖 AI 圓桌</div><div class="wv-dim">載入失敗：${esc(e.message)}</div>`; }
   }
 
+  // B109 AI 沒回應的原因（白話）
+  function whyFail(e) {
+    e = String(e || '');
+    const hit = [[/額度已達上限/, '今天的用量到了網站設的上限'], [/413|too large|tokens per minute|\bTPM\b|context length/i, '資料太長，超過這家每分鐘的額度'],
+      [/429|rate limit|quota|exhausted/i, 'AI 那邊限流或免費額度用完'], [/timeout|timed out/i, '等太久沒回（逾時）'],
+      [/\b50[0-9]\b|529|overload|unavailable/i, 'AI 伺服器忙'], [/401|403|api key|permission|unauthor/i, '金鑰有問題'],
+      [/404|not found|decommission|does not exist|not supported/i, '這個模型已經不能用'], [/json|expecting|delimiter/i, '回的內容格式壞掉']].filter(x => x[0].test(e)).map(x => x[1]);
+    return [...new Set(hit)].join('、') || '其他錯誤';
+  }
+  const failList = fs => `<ul>${(fs || []).map(f => `<li><b>${esc(f.name)}</b>（${f.round === '主持' ? '主持' : '第 ' + esc(f.round) + ' 輪'}）：${esc(whyFail(f.error))}<div class="wv-dim" style="font-size:.8rem;word-break:break-all">${esc(String(f.error || '').slice(0, 260))}</div></li>`).join('')}</ul>`;
+
   function renderPanel(d) {
     const ps = d.providers || [];
     const r = d.result;
@@ -1352,11 +1363,14 @@
     let html = `<div class="wv-h3">🤖 AI 圓桌 ${btn}</div>
       <div class="wv-dim">參加：${ps.map(p => esc(p.name)).join('、') || '還沒設定 AI 金鑰'}。先各自看系統資料（加權＋台指期＋籌碼）寫看法、再互相回應，最後整理共識和分歧。</div>`;
     if (d.note) html += `<div class="wv-note">${esc(d.note)}</div>`;
+    if (d.fail && (d.fail.errors || []).length) html += `<details class="wv-who" open><summary>為什麼沒回應（${esc(String(d.fail.at || '').slice(5, 16))} 那次；沒回應的不扣今天的次數）</summary>${failList(d.fail.errors)}</details>`;
     if (!r) { $('wv-ai').innerHTML = html + '<div class="wv-what">還沒有討論紀錄：每個交易日 16:30 自動討論一次，或按上面的按鈕（約 2 分鐘）。</div>'; bindRun(); return; }
     const mo = r.moderator || {};
     const stanceColor = s => /多/.test(s || '') ? 'var(--up)' : /空/.test(s || '') ? 'var(--down)' : 'var(--muted)';
     const mode = { roundtable: '', single: `⚠ 只有 ${esc(((r.participants || [])[0] || {}).name || '')} 的看法（其他 AI 沒回應）`, none: '⚠ AI 都沒回應' }[r.mode] || '';
     if (mode) html += `<div class="wv-note">${mode}</div>`;
+    const f1 = (r.failed || []).filter(f => f.round === 1);
+    if (mode && f1.length && !(d.fail && (d.fail.errors || []).length)) html += `<details class="wv-who"><summary>其他 AI 為什麼沒回應</summary>${failList(f1)}</details>`;
     if (mo.summary) {
       html += `<div class="wv-ai-sum"><span class="wv-stance" style="background:${stanceBg(mo.stance)};color:${stanceColor(mo.stance)}">${esc(mo.stance || '')}</span>
         <b>${esc(mo.summary)}</b> <span class="wv-dim">（${esc(mo.agree_count || '')} 位同意；信心 ${esc(mo.confidence || '')}）</span></div>
@@ -1374,7 +1388,7 @@
       return `<div style="margin:8px 0;padding-top:6px;border-top:1px dashed var(--border)"><b>${esc(a.name)}</b>：<b style="color:${stanceColor(a.stance)}">${esc(a.stance || '')}</b>
         <div>第一輪：${esc(a.short || '')}${a.swing ? '；' + esc(a.swing) : ''}</div>
         ${b ? `<div>第二輪（${esc(b.stance || '')}）：${esc(b.view || '')}${(b.disagree || []).length ? `<div class="wv-dim">不同意：${(b.disagree || []).map(esc).join('；')}</div>` : ''}</div>` : '<div class="wv-dim">第二輪沒有回應</div>'}</div>`;
-    }).join('') + (r.failed || []).map(f => `<div class="wv-dim">${esc(f.name)} 第 ${esc(f.round)} 輪沒回應</div>`).join('') + '</details>';
+    }).join('') + (r.failed || []).map(f => `<div class="wv-dim">${esc(f.name)} ${f.round === '主持' ? '主持' : '第 ' + esc(f.round) + ' 輪'}沒回應（${esc(whyFail(f.error))}）</div>`).join('') + '</details>';
     const nw = r.news || {};
     if ((nw.items || []).length) html += `<details class="wv-who"><summary>討論用的新聞（Google 搜尋近 7 天，${nw.items.length} 則）</summary>
       <ul>${nw.items.map(x => `<li>${esc(x.date || '')} ${esc(x.title)}<span class="wv-dim">：${esc(x.why || '')}</span></li>`).join('')}</ul>

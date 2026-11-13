@@ -242,7 +242,7 @@ def test_panel_one_fails_others_continue(wave_db, monkeypatch):
           {"id": "c", "name": "C", "kind": "openai", "base": "x", "key": "k", "models": ["mc"]}]
     monkeypatch.setattr(P, "providers", lambda: ps)
 
-    def fake_ask(p, prompt, post=None):
+    def fake_ask(p, prompt, post=None, alt=None):
         if p["id"] == "c":
             raise RuntimeError("429 rate limit")
         if "主持人" in prompt:
@@ -265,7 +265,7 @@ def test_panel_single_and_cap(wave_db, monkeypatch):
     real_ask = P.ask
     ps = [{"id": "a", "name": "A", "kind": "openai", "base": "x", "key": "k", "models": ["ma"]}]
     monkeypatch.setattr(P, "providers", lambda: ps)
-    monkeypatch.setattr(P, "ask", lambda p, prompt, post=None: {"model": "ma", "json": {"stance": "盤整", "summary": "s"}, "tokens": 5})
+    monkeypatch.setattr(P, "ask", lambda p, prompt, post=None, alt=None: {"model": "ma", "json": {"stance": "盤整", "summary": "s"}, "tokens": 5})
     r = P.run(_snap(), "auto", news_fn=lambda post=None: {"items": []})
     assert r["mode"] == "single" and r["round2"] == {}
     # 每日上限：這個模型今天已經用超過 → 不呼叫、丟 OverflowError

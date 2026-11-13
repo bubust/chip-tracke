@@ -23,8 +23,10 @@ from . import data as D
 log = logging.getLogger(__name__)
 GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 GROQ_BASE = "https://api.groq.com/openai/v1"
-TIMEOUT = 60
+TIMEOUT = 90
 MANUAL_LIMIT = 3
+MANUAL_TRIES = 8             # 一天最多按幾次（失敗的不算在 3 次裡，但總共不超過 8 次）
+MAX_WAIT = 30                # 被限流時最多等幾秒再試
 NEWS_TTL = 12 * 3600
 DISCLAIMER = "劇本＝規則數浪＋歷史條件推估，不是投資建議；AI 看法不是系統計算"
 _jobs: dict = {}
@@ -33,9 +35,9 @@ _lock = threading.Lock()
 
 def daily_cap() -> int:
     try:
-        return int(os.environ.get("PANEL_DAILY_TOKENS", "60000"))
+        return int(os.environ.get("PANEL_DAILY_TOKENS", "300000"))
     except ValueError:
-        return 60000
+        return 300000
 
 
 def gemini_key() -> str:
@@ -47,13 +49,13 @@ def providers() -> list:
     if gemini_key():
         first = os.environ.get("GEMINI_PANEL_MODEL") or "gemini-3.6-flash"
         out.append({"id": "gemini", "name": "Gemini（Google）", "kind": "gemini",
-                    "models": [first] + [m for m in ("gemini-3.6-flash", "gemini-flash-latest") if m != first]})
+                    "models": [first] + [m for m in ("gemini-3.6-flash", "gemini-flash-latest", "gemini-2.5-flash") if m != first]})
     gk = (os.environ.get("GROQ_API_KEY") or "").strip()
     if gk:
         out.append({"id": "gptoss", "name": "GPT-OSS-120B（OpenAI 開源模型，Groq）", "kind": "openai", "base": GROQ_BASE,
-                    "key": gk, "models": ["openai/gpt-oss-120b"], "extra": {"reasoning_effort": "low"}})
+                    "key": gk, "models": ["openai/gpt-oss-120b"], "extra": {"reasoning_effort": "low"}, "small": True})
         out.append({"id": "qwen", "name": "Qwen3（阿里巴巴，Groq）", "kind": "openai", "base": GROQ_BASE,
-                    "key": gk, "models": ["qwen/qwen3.8-27b"], "extra": {"reasoning_format": "hidden"}})
+                    "key": gk, "models": ["qwen/qwen3.8-27b"], "extra": {"reasoning_format": "hidden"}, "small": True})
     for env, base, pid, name in (("OPENAI", "https://api.openai.com/v1", "openai", "GPT（OpenAI）"),
                                  ("XAI", "https://api.x.ai/v1", "grok", "Grok（xAI）")):
         k, m = (os.environ.get(f"{env}_API_KEY") or "").strip(), (os.environ.get(f"{env}_PANEL_MODEL") or "").strip()
@@ -153,24 +155,57 @@ def call_anthropic(p: dict, model: str, prompt: str, post=None) -> dict:
             "tokens": int(u.get("input_tokens", 0)) + int(u.get("output_tokens", 0))}
 
 
-def ask(p: dict, prompt: str, post=None) -> dict:
-    """一位 AI 回答一次（JSON）。超過今日上限 → 丟 OverflowError；模型逐一試（同一位的備用模型），不重試同一個"""
+def _clean(msg) -> str:
+    """錯誤訊息裡不要留金鑰（網址的 key=、Bearer）"""
+    return re.sub(r"(key=|Bearer\s+)[\w\-.]+", r"\1***", str(msg))
+
+
+def _wait_hint(msg: str) -> Optional[float]:
+    """限流／伺服器忙的錯誤訊息 → 建議等幾秒（Groq「try again in 12.3s」「in 1m2.5s」、Gemini「retry in 23s」）；不是這類錯誤回 None"""
+    if not re.search(r"\b(429|500|502|503|529)\b|rate limit|overloaded|unavailable|try again|retry in", msg, re.I):
+        return None
+    m = re.search(r"(?:try again|retry) in\s*(?:(\d+)m)?\s*([\d.]+)\s*s", msg, re.I)
+    if m:
+        return float(m.group(1) or 0) * 60 + float(m.group(2))
+    return 8.0
+
+
+def _too_big(msg: str) -> bool:
+    return bool(re.search(r"\b413\b|too large|tokens per minute|\bTPM\b|context length|maximum context|reduce the length", msg, re.I))
+
+
+def ask(p: dict, prompt: str, post=None, alt: Optional[str] = None, sleep=time.sleep) -> dict:
+    """一位 AI 回答一次（JSON）。超過今日上限 → 丟 OverflowError。同一位的模型逐一試；
+    B109：被限流／伺服器忙 → 照對方說的秒數等一下（最多 30 秒）再試一次；請求太大（413、每分鐘字數額度）→ 改用精簡版資料 alt 再試"""
     errors = []
     for model in p["models"]:
         if used_today(model) >= daily_cap():
             errors.append(f"{model} 今日額度已達上限")
             continue
-        try:
-            if p["kind"] == "gemini":
-                out = call_gemini(model, prompt, post=post)
-            elif p["kind"] == "anthropic":
-                out = call_anthropic(p, model, prompt, post=post)
-            else:
-                out = call_openai(p, model, prompt, post=post)
-            add_usage(model, out.get("tokens", 0))
-            return {"model": model, "json": extract_json(out["text"]), "tokens": out.get("tokens", 0)}
-        except Exception as e:     # noqa: BLE001  429／413／逾時／JSON 壞掉都換下一個
-            errors.append(f"{model}: {str(e)[:140]}")
+        variants = [(prompt, "")] + ([(alt, "（精簡版）")] if alt else [])
+        vi, waited = 0, False
+        while vi < len(variants):
+            text, tag = variants[vi]
+            try:
+                if p["kind"] == "gemini":
+                    out = call_gemini(model, text, post=post)
+                elif p["kind"] == "anthropic":
+                    out = call_anthropic(p, model, text, post=post)
+                else:
+                    out = call_openai(p, model, text, post=post)
+                add_usage(model, out.get("tokens", 0))
+                return {"model": model, "json": extract_json(out["text"]), "tokens": out.get("tokens", 0), "small": bool(tag)}
+            except Exception as e:     # noqa: BLE001  429／413／逾時／JSON 壞掉
+                msg = _clean(e)[:160] or type(e).__name__
+                errors.append(f"{model}{tag}: {msg}")
+                w = _wait_hint(msg)
+                if _too_big(msg) and vi + 1 < len(variants):
+                    vi, waited = vi + 1, False                         # 太大 → 直接換精簡版
+                elif w is not None and not waited and w <= MAX_WAIT:
+                    waited = True
+                    sleep(w + 1)                                       # 等一下，同一份再試一次
+                else:
+                    vi, waited = vi + 1, False
     if errors and all("額度已達上限" in x for x in errors):
         raise OverflowError("；".join(errors))
     raise RuntimeError("；".join(errors) or "沒有可用模型")
@@ -298,7 +333,7 @@ def facts_b75(snap: dict) -> list:
     iw = (snap.get("waves") or {}).get("intra") or {}
     if iw.get("primary"):
         L.append(f"【超短線 60 分 K 數浪（加權）】{iw['primary'].get('text')}")
-    nl = _nest_line(snap)
+    nl = _nest_line(snap, brief=bool((snap.get("tx") or {}).get("ok")))   # 有台指期那一行（比較完整）時，加權只給主要／備選／關卡
     if nl:
         L.append(f"【多層浪名（加權 60 分，照 @fanny55520 的拆法）】{nl}")
     vo = snap.get("volume") or {}
@@ -349,6 +384,43 @@ def facts_b75(snap: dict) -> list:
     return L
 
 
+def facts_small(snap: dict, nw: Optional[dict] = None) -> str:
+    """B109 精簡版系統資料（約 2,000 字）：每分鐘字數額度小的 AI（Groq 免費額度）吃不下完整版時改用這份"""
+    L = [f"資料日期 {snap['asof']['date']}；加權 {snap['price']:,.0f}（{snap.get('chg_pct')}%）；ATR14 約 {snap.get('atr')} 點"]
+    L += ["【規則數浪（系統）】"] + [f"- {_cut(x, 160)}" for x in snap["scenario"]["lines"][:3]]
+    px = lambda zs: "、".join(f"{z['price']:,.0f}" for z in zs[:3]) or "無"       # noqa: E731
+    for k, nm in (("short", "短線"), ("swing", "波段")):
+        lv = snap["levels"][k]
+        L.append(f"【{nm}】支撐 {px(lv['support'])}／壓力 {px(lv['resistance'])}（支撐壓力回測沒有比隨機好 △）")
+    so = (snap.get("global") or {}).get("sox_overnight")
+    if so:
+        L.append(f"【前一晚費半 → 加權】費半 {so['sox_ret']}% → 歷史平均加權隔天 {so['tw_expect']}%（±{so['sd']}%，回測有效 ✅）")
+    orf = snap.get("open_ref")
+    if orf:
+        L.append(f"【台指期夜盤 → 加權】夜盤 {orf['night_ret']}% → 歷史平均加權開盤 {orf['gap']}%、收盤 {orf['r1']}%（回測有效 ✅）")
+    if snap.get("ladder_text"):
+        L.append(f"【多週期一覽】{snap['ladder_text']}")
+    tx = snap.get("tx") or {}
+    src = tx if tx.get("ok") else snap
+    if tx.get("ok"):
+        b = tx.get("basis") or {}
+        L.append(f"【台指期】{tx['price']:,.0f}（{tx.get('chg_pct')}%）" + (f"；期現價差 {b.get('pts')} 點" if b else ""))
+    nz = ((src.get("nest") or {}).get("60m")) or {}
+    her = _her_card(nz) if nz.get("ok") else ""
+    if her:
+        L.append("【照 @fanny55520 的拆法】" + _cut(her, 900))
+    elif nz.get("ok"):
+        L.append("【多層浪名 60 分】" + _nest_line(src, brief=True))
+    cp = snap.get("composite") or {}
+    if cp.get("dir"):
+        H = cp.get("horizons") or {}
+        L.append("【綜合方向（只算回測有效的）】" + "；".join(f"{H.get(h, h)}：{d.get('label')}" for h, d in cp["dir"].items()))
+    L.append("【研究結論】只有前一晚費半、台指期夜盤對隔天有效 ✅；波浪、費波那契、支撐壓力、轉折點、籌碼回測都跟隨機差不多 △")
+    if nw and nw.get("items"):
+        L.append("【近 7 天新聞】" + "；".join(f"{x.get('date', '')} {_cut(x['title'], 40)}" for x in nw["items"][:4]))
+    return "\n".join(L)
+
+
 RULES = ("規則：只用繁體中文；價位只能用上面資料裡出現的數字（支撐壓力、劇本目標、失效價、歷史分布），不要自己算新點位；"
          "標 △ 的指標回測沒有預測力，不能當成證據；支撐壓力只是參考點——回測「碰支撐做多、碰壓力放空」沒有比隨便畫線好、"
          "扣成本是賠的（B94），不能把碰到支撐／壓力當成進場理由；不要給買賣建議；不確定就說不確定。")
@@ -376,8 +448,30 @@ def p_moderate(fx: str, r1: dict, r2: dict) -> str:
             '"swing":"波段劇本（≤100 字）","watch_levels":[{"price":數字,"why":"≤30 字"}],"confidence":"低|中|高"}')
 
 
-def _nest_line(snap: dict) -> str:
-    """B79 多層浪名一句話：主要／備選數法＋關卡"""
+def _cut(t: str, n: int) -> str:
+    """太長就在最後一個「；」切掉（給 AI 的資料要省字）"""
+    t = str(t or "")
+    if len(t) <= n:
+        return t
+    h = t[:n]
+    k = h.rfind("；")
+    return (h[:k] if k > n * 0.5 else h) + "…"
+
+
+def _her_card(nz: dict) -> str:
+    """B108 的結論卡（現在位階、波形、照她的進出場怎麼做）→ 一段話；沒有卡就用狀態句"""
+    tz = nz.get("tiers") or {}
+    card = tz.get("card") or {}
+    if card.get("shape") and card.get("pos"):
+        return ("她的數法（現在位階）：" + "；".join(card["pos"]) + f"；波形：{card['shape']}；照她的進出場："
+                + "；".join(f"{x['tag']}——{x['t']}" for x in card.get("plays") or []) + (f"；{card['flip']}" if card.get("flip") else ""))
+    return ""
+
+
+def _nest_line(snap: dict, brief: bool = False) -> str:
+    """B79 多層浪名一句話：主要／備選數法＋關卡。
+    B109：原本把她每天的拆法整段貼進來，一行 5,000 多字（整份提示 1.6 萬字），Groq 的免費額度吃不下、Gemini 也常逾時 →
+    現在這個階段有結論卡就只給結論卡（位階、波形、怎麼做），整行最多 1,800 字；brief＝只給主要／備選／關卡（加權那一行）"""
     nz = ((snap.get("nest") or {}).get("60m")) or {}
     if not nz.get("ok"):
         return ""
@@ -385,52 +479,59 @@ def _nest_line(snap: dict) -> str:
     s = f"起點 {nz['anchor']['p']:,.0f}；主要 {p.get('path')}（{p.get('text')}）"
     if a:
         s += f"；備選 {a.get('path')}（{a.get('text')}）"
-    s += "；關卡：" + "；".join(f"{g['k']}{'✅' if g.get('ok') else ''} {g['t']}" for g in nz.get("gates") or [])
+    s += "；關卡：" + "；".join(_cut(f"{g['k']}{'✅' if g.get('ok') else ''} {g['t']}", 130) for g in (nz.get("gates") or [])[:5])
+    if brief:
+        return _cut(s, 800)
+    her = _her_card(nz)
+    big = snap.get("big") or {}
+    if her:                                                           # 現在的階段：只給結論卡＋她看的日線定位
+        s += "；" + her
+        hx = next((x for x in big.get("scenarios") or [] if x.get("key") == big.get("her")), None)
+        if hx:
+            s += f"；日線定位（她看這個）：{hx['title']}（" + "、".join(f"{v['label']} {v['price']:,.0f}" for v in hx["levels"]) + "）"
+        return _cut(s, 1800)
     vl = [x for x in nz.get("plan") or [] if x.startswith("版本")]       # B83 她 10/28 的兩個版本怎麼確認
     if vl:
         s += "；" + "；".join(vl)
     for x in (snap.get("positioning") or {}).values():
         if x:
-            s += f"；{x['tf']}定位：" + "；".join(x["lines"])
+            s += f"；{x['tf']}定位：" + _cut("；".join(x["lines"]), 400)
     tw = nz.get("two") or {}                                          # B87／B88 她 11/2 的兩種（版本那幾句已經在上面）
     if tw.get("one") and tw.get("two"):
         o, t = tw["one"], tw["two"]
-        s += f"；{o.get('text', '')}；第 5 小段目標 " + "、".join(f"{x['label']} {x['price']:,.0f}" for x in o.get("targets") or [])
+        x = f"{o.get('text', '')}；第 5 小段目標 " + "、".join(f"{q['label']} {q['price']:,.0f}" for q in o.get("targets") or [])
         if o.get("gate"):
             g = o["gate"]
-            s += (f"；決戰關卡 {g['lo']:,.0f}～{g['hi']:,.0f}（b 的 0.5 附近）、移動停利 {g['stop'][0]:,.0f}→{g['stop'][1]:,.0f}；小 c 目標 "
+            x += (f"；決戰關卡 {g['lo']:,.0f}～{g['hi']:,.0f}（b 的 0.5 附近）、移動停利 {g['stop'][0]:,.0f}→{g['stop'][1]:,.0f}；小 c 目標 "
                   + "、".join(f"{c['t']} {c['lo']:,.0f}～{c['hi']:,.0f}（{c['label']}）" for c in o.get("c") or []))
-        s += f"；{t.get('text', '')}"
+        x += f"；{t.get('text', '')}"
         if t.get("A") and t.get("B"):
-            s += (f"；走法 A：b 守 {t['A']['b_strict']:,.0f}、極限 {t['A']['b_ext']:,.0f}，c 依序 " + "→".join(f"{c['price']:,.0f}（{c['label']}）" for c in t["A"]["c"])
+            x += (f"；走法 A：b 守 {t['A']['b_strict']:,.0f}、極限 {t['A']['b_ext']:,.0f}，c 依序 " + "→".join(f"{c['price']:,.0f}（{c['label']}）" for c in t["A"]["c"])
                   + f"；走法 B：{min(t['B']['lo'], t['B']['hi']):,.0f}～{max(t['B']['lo'], t['B']['hi']):,.0f} 來回 2～3 天（偏弱）")
-        s += "；" + "；".join(tw.get("judge") or [])
+        s += "；" + _cut(x + "；" + "；".join(tw.get("judge") or []), 900)
     tz = nz.get("tiers") or {}                                        # B93 她 11/4 的兩道關卡（日線＋60 分）
     if tz.get("lines"):
-        s += "；兩道關卡：" + "；".join(tz["lines"])
+        s += "；兩道關卡：" + _cut("；".join(tz["lines"]), 900)
         if (tz.get("ext3") or {}).get("lines"):                       # B98 她 11/6 的延伸第 3 段（煞車區、3-4、第 5 段）
-            s += "；" + "；".join(tz["ext3"]["lines"])
-            if (tz["ext3"].get("paths") or {}).get("lines"):          # B100 她 11/8 三條路徑＋三層驗證
-                s += "；" + "；".join(tz["ext3"]["paths"]["lines"])
+            s += "；" + _cut("；".join(tz["ext3"]["lines"]), 600)
     pz = nz.get("pulses") or {}                                       # B89 她 11/3 的三種細微脈動
     if pz.get("views"):
-        s += (f"；三種細微脈動（分水嶺 {pz['end1']:,.0f}、0.382 {pz['f382']:,.0f}、低點 {pz['low']:,.0f}"
-              + (f"、60 分 5 均 {pz['ma5']:,.0f}" if pz.get("ma5") is not None else "")
-              + (f"、日線中線支撐 {pz['mid']['price']:,.0f}" if pz.get("mid") else "") + "）：")
-        s += "；".join(f"{v['fig']} {v['name']} 現在 {v['now']} → {v['next']}（目標 " + "、".join(f"{t['label']} {t['price']:,.0f}" for t in v["targets"]) + "）"
+        x = (f"三種細微脈動（分水嶺 {pz['end1']:,.0f}、0.382 {pz['f382']:,.0f}、低點 {pz['low']:,.0f}"
+             + (f"、60 分 5 均 {pz['ma5']:,.0f}" if pz.get("ma5") is not None else "")
+             + (f"、日線中線支撐 {pz['mid']['price']:,.0f}" if pz.get("mid") else "") + "）：")
+        x += "；".join(f"{v['fig']} {v['name']} 現在 {v['now']} → {v['next']}（目標 " + "、".join(f"{t['label']} {t['price']:,.0f}" for t in v["targets"]) + "）"
                       for v in pz["views"])
-        s += "；" + "；".join(pz.get("judge") or [])
+        s += "；" + _cut(x + "；" + "；".join(pz.get("judge") or []), 800)
     src = nz.get("source") or {}                                      # B86 她 11/1 的源頭兩種切組
     for k, nm in (("three", "第一種切組（三段式）"), ("five", "第二種切組（五段式・威脅）")):
         v = src.get(k)
         if v:
-            s += f"；{nm}：{v['desc']}，目標 " + "、".join(f"{t['label']} {t['price']:,.0f}" for t in v.get("targets") or [])
-    big = snap.get("big") or {}                                       # B86 三種日線定位
-    for i, x in enumerate(big.get("scenarios") or [], 1):
-        s += f"；日線定位 {i}：{x['title']}（" + "、".join(f"{v['label']} {v['price']:,.0f}" for v in x["levels"]) + f"）→ {x['after']}"
+            s += f"；{nm}：" + _cut(f"{v['desc']}，目標 " + "、".join(f"{t['label']} {t['price']:,.0f}" for t in v.get("targets") or []), 300)
+    for i, x in enumerate(big.get("scenarios") or [], 1):             # B86 三種日線定位
+        s += f"；日線定位 {i}：{_cut(x['title'], 80)}（" + "、".join(f"{v['label']} {v['price']:,.0f}" for v in x["levels"]) + "）"
     if big.get("mid"):                                                # B89 日線黃金切割（中線支撐 0.5）
         s += "；日線黃金切割：" + "、".join(f"{v['label']} {v['price']:,.0f}" for v in big["mid"]["levels"])
-    return s
+    return _cut(s, 3500)
 
 
 def _nest_prices(snap: dict) -> list:
@@ -572,25 +673,32 @@ def run(snap: dict, trigger: str = "auto", post=None, news_fn=None) -> dict:
         log.warning(f"[panel] 新聞失敗：{e}")
         nw = {"items": [], "searched": False}
     res["news"] = nw
-    fx = facts(snap, nw)
+    fx, fxs = facts(snap, nw), facts_small(snap, nw)
+    res["prompt_chars"] = {"full": len(fx), "small": len(fxs)}
+
+    def _ask(p, build):
+        """B109：每分鐘字數額度小的（Groq）直接用精簡版；其他先用完整版，太大／逾時再換精簡版"""
+        if p.get("small"):
+            return ask(p, build(fxs), post=post)
+        return ask(p, build(fx), post=post, alt=build(fxs))
     ok_ps = []
     for p in ps:
         try:
-            a = ask(p, p_round1(p["name"], fx), post=post)
+            a = _ask(p, lambda f, p=p: p_round1(p["name"], f))
             res["round1"][p["id"]] = {"name": p["name"], "model": a["model"], **a["json"]}
             ok_ps.append(p)
         except Exception as e:     # noqa: BLE001
-            res["failed"].append({"id": p["id"], "name": p["name"], "round": 1, "error": str(e)[:200]})
+            res["failed"].append({"id": p["id"], "name": p["name"], "round": 1, "error": _clean(e)[:300]})
     if len(ok_ps) >= 2:
         for p in ok_ps:
             me = {k: v for k, v in res["round1"][p["id"]].items() if k not in ("name", "model")}
             oth = {res["round1"][q["id"]]["name"]: {k: v for k, v in res["round1"][q["id"]].items() if k not in ("name", "model")}
                    for q in ok_ps if q["id"] != p["id"]}
             try:
-                a = ask(p, p_round2(p["name"], fx, me, oth), post=post)
+                a = _ask(p, lambda f, p=p, me=me, oth=oth: p_round2(p["name"], f, me, oth))
                 res["round2"][p["id"]] = {"name": p["name"], "model": a["model"], **a["json"]}
             except Exception as e:     # noqa: BLE001
-                res["failed"].append({"id": p["id"], "name": p["name"], "round": 2, "error": str(e)[:200]})
+                res["failed"].append({"id": p["id"], "name": p["name"], "round": 2, "error": _clean(e)[:300]})
     res["participants"] = [{"id": p["id"], "name": p["name"], "model": res["round1"][p["id"]]["model"]} for p in ok_ps]
     if ok_ps:
         r1 = {v["name"]: {k: x for k, x in v.items() if k not in ("name", "model")} for v in res["round1"].values()}
@@ -599,11 +707,11 @@ def run(snap: dict, trigger: str = "auto", post=None, news_fn=None) -> dict:
                [p for p in ps if p["id"] not in ("gemini", "gptoss")]
         for p in mods:
             try:
-                a = ask(p, p_moderate(fx, r1, r2), post=post)
+                a = _ask(p, lambda f: p_moderate(f, r1, r2))
                 res["moderator"] = {"name": p["name"], "model": a["model"], **a["json"]}
                 break
             except Exception as e:     # noqa: BLE001
-                res["failed"].append({"id": p["id"], "name": p["name"], "round": "主持", "error": str(e)[:200]})
+                res["failed"].append({"id": p["id"], "name": p["name"], "round": "主持", "error": _clean(e)[:300]})
     res["mode"] = "roundtable" if len(ok_ps) >= 2 else "single" if ok_ps else "none"
     allowed = allowed_levels(snap)
     res["flagged"] = flag_numbers({"r1": res["round1"], "r2": res["round2"], "mod": res["moderator"]}, allowed)
@@ -626,18 +734,23 @@ def latest() -> dict:
     if not last:
         return {**out, "result": None}
     res = json.loads(last["json"])
-    if not last["ok"] and good:
-        out["note"] = "今天 AI 都沒回應，下面是上一次成功的圓桌"
-        res = json.loads(good["json"])
+    if not last["ok"]:                                                # B109：把沒回應的原因帶出去（畫面上看得到是額度、太大還是逾時）
+        out["fail"] = {"at": res.get("finished"), "errors": [{"name": f.get("name"), "round": f.get("round"), "error": _clean(f.get("error", ""))[:300]}
+                                                              for f in res.get("failed") or []]}
+        if good:
+            out["note"] = f"最近一次（{str(res.get('finished') or '')[5:16]}）AI 都沒回應，下面是上一次成功的圓桌"
+            res = json.loads(good["json"])
     return {**out, "result": res}
 
 
 def manual_left() -> int:
     try:
         with D.db() as c:
-            n = sum(1 for r in c.execute("SELECT json FROM ai_panel WHERE day=?", (_today(),)).fetchall()
-                    if json.loads(r["json"]).get("trigger") == "manual")
-        return max(0, MANUAL_LIMIT - n)
+            rows = [(r["ok"], json.loads(r["json"])) for r in c.execute("SELECT ok, json FROM ai_panel WHERE day=?", (_today(),)).fetchall()]
+        man = [ok for ok, j in rows if j.get("trigger") == "manual"]
+        if len(man) >= MANUAL_TRIES:                                  # B109：AI 都沒回應的那次不扣次數，但一天總共最多按 8 次
+            return 0
+        return max(0, MANUAL_LIMIT - sum(1 for ok in man if ok))
     except Exception:     # noqa: BLE001
         return MANUAL_LIMIT
 
