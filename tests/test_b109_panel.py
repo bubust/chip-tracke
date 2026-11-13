@@ -109,3 +109,22 @@ def test_groq_uses_small_prompt_directly(wave_db, monkeypatch):  # noqa: F811
     P.run({**_snap(), "tx": TX()}, "auto", news_fn=lambda post=None: {"items": []})
     assert all(not has_alt for _, has_alt in seen["g"]) and all(has_alt for _, has_alt in seen["h"])    # Groq 直接精簡版；其他完整版＋備用
     assert seen["g"][0][0] < seen["h"][0][0]
+
+
+def test_timeout_model_is_skipped_next_time(wave_db, monkeypatch):  # noqa: F811
+    """正式站 11/13：gemini-3.6-flash 一直逾時，每一輪都重等 → 逾時過的模型 30 分鐘內排最後，後面直接用精簡版"""
+    P._slow.clear()
+    pv = {"id": "z", "kind": "openai", "base": "x", "key": "k", "models": ["slow", "fast"]}
+    calls = []
+
+    def post(url, headers=None, json=None, timeout=None):
+        calls.append((json["model"], json["messages"][0]["content"]))
+        if json["model"] == "slow":
+            raise TimeoutError("The read operation timed out")
+        return OK
+    a = P.ask(pv, "完整版", post=post, alt="精簡版", sleep=lambda s: None)
+    assert calls == [("slow", "完整版"), ("fast", "精簡版")] and a["model"] == "fast" and a["small"] and "timed out" in a["errors"][0]
+    calls.clear()
+    P.ask(pv, "完整版", post=post, alt="精簡版", sleep=lambda s: None)
+    assert calls == [("fast", "完整版")]                               # 第二次：逾時過的排最後，先問快的
+    P._slow.clear()

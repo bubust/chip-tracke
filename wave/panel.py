@@ -23,10 +23,11 @@ from . import data as D
 log = logging.getLogger(__name__)
 GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 GROQ_BASE = "https://api.groq.com/openai/v1"
-TIMEOUT = 90
+TIMEOUT = 75
 MANUAL_LIMIT = 3
 MANUAL_TRIES = 8             # 一天最多按幾次（失敗的不算在 3 次裡，但總共不超過 8 次）
 MAX_WAIT = 30                # 被限流時最多等幾秒再試
+ROUND2_BUDGET = 240          # 第一輪開始後超過這麼多秒，第二輪就跳過
 NEWS_TTL = 12 * 3600
 DISCLAIMER = "劇本＝規則數浪＋歷史條件推估，不是投資建議；AI 看法不是系統計算"
 _jobs: dict = {}
@@ -174,15 +175,26 @@ def _too_big(msg: str) -> bool:
     return bool(re.search(r"\b413\b|too large|tokens per minute|\bTPM\b|context length|maximum context|reduce the length", msg, re.I))
 
 
+_slow: dict = {}             # 模型 → 到什麼時候之前先不用（剛逾時過）
+SLOW_TTL = 1800
+
+
+def _is_timeout(msg: str) -> bool:
+    return bool(re.search(r"timed out|timeout", msg, re.I))
+
+
 def ask(p: dict, prompt: str, post=None, alt: Optional[str] = None, sleep=time.sleep) -> dict:
     """一位 AI 回答一次（JSON）。超過今日上限 → 丟 OverflowError。同一位的模型逐一試；
-    B109：被限流／伺服器忙 → 照對方說的秒數等一下（最多 30 秒）再試一次；請求太大（413、每分鐘字數額度）→ 改用精簡版資料 alt 再試"""
+    B109：被限流／伺服器忙 → 照對方說的秒數等一下（最多 30 秒）再試一次；請求太大（413、每分鐘字數額度）→ 改用精簡版資料 alt 再試；
+    逾時 → 這個模型 30 分鐘內排到最後（不要每一輪都重等一次），後面的模型直接用精簡版"""
     errors = []
-    for model in p["models"]:
+    small = False                                                     # 逾時過一次以後，後面都用精簡版
+    now = time.time()
+    for model in sorted(p["models"], key=lambda m: _slow.get(m, 0) > now):
         if used_today(model) >= daily_cap():
             errors.append(f"{model} 今日額度已達上限")
             continue
-        variants = [(prompt, "")] + ([(alt, "（精簡版）")] if alt else [])
+        variants = [(alt, "（精簡版）")] if alt and small else [(prompt, "")] + ([(alt, "（精簡版）")] if alt else [])
         vi, waited = 0, False
         while vi < len(variants):
             text, tag = variants[vi]
@@ -194,11 +206,15 @@ def ask(p: dict, prompt: str, post=None, alt: Optional[str] = None, sleep=time.s
                 else:
                     out = call_openai(p, model, text, post=post)
                 add_usage(model, out.get("tokens", 0))
-                return {"model": model, "json": extract_json(out["text"]), "tokens": out.get("tokens", 0), "small": bool(tag)}
+                return {"model": model, "json": extract_json(out["text"]), "tokens": out.get("tokens", 0), "small": bool(tag), "errors": errors}
             except Exception as e:     # noqa: BLE001  429／413／逾時／JSON 壞掉
                 msg = _clean(e)[:160] or type(e).__name__
                 errors.append(f"{model}{tag}: {msg}")
                 w = _wait_hint(msg)
+                if _is_timeout(msg):
+                    _slow[model] = time.time() + SLOW_TTL
+                    small = True
+                    break                                              # 逾時：不在同一個模型上再等，換下一個
                 if _too_big(msg) and vi + 1 < len(variants):
                     vi, waited = vi + 1, False                         # 太大 → 直接換精簡版
                 elif w is not None and not waited and w <= MAX_WAIT:
@@ -676,26 +692,38 @@ def run(snap: dict, trigger: str = "auto", post=None, news_fn=None) -> dict:
     fx, fxs = facts(snap, nw), facts_small(snap, nw)
     res["prompt_chars"] = {"full": len(fx), "small": len(fxs)}
 
-    def _ask(p, build):
-        """B109：每分鐘字數額度小的（Groq）直接用精簡版；其他先用完整版，太大／逾時再換精簡版"""
-        if p.get("small"):
-            return ask(p, build(fxs), post=post)
-        return ask(p, build(fx), post=post, alt=build(fxs))
+    res["log"] = []
+    t_run = time.time()
+
+    def _ask(p, build, rd=None):
+        """B109：每分鐘字數額度小的（Groq）直接用精簡版；其他先用完整版，太大／逾時再換精簡版。每次呼叫記一筆（哪個模型、幾秒、中間的錯）"""
+        t0 = time.time()
+        try:
+            a = ask(p, build(fxs), post=post) if p.get("small") else ask(p, build(fx), post=post, alt=build(fxs))
+            res["log"].append({"id": p["id"], "round": rd, "model": a.get("model"), "small": bool(a.get("small") or p.get("small")),
+                               "sec": round(time.time() - t0), "retries": [_clean(x)[:200] for x in a.get("errors") or []]})
+            return a
+        except Exception:
+            res["log"].append({"id": p["id"], "round": rd, "model": None, "sec": round(time.time() - t0)})
+            raise
     ok_ps = []
     for p in ps:
         try:
-            a = _ask(p, lambda f, p=p: p_round1(p["name"], f))
+            a = _ask(p, lambda f, p=p: p_round1(p["name"], f), 1)
             res["round1"][p["id"]] = {"name": p["name"], "model": a["model"], **a["json"]}
             ok_ps.append(p)
         except Exception as e:     # noqa: BLE001
             res["failed"].append({"id": p["id"], "name": p["name"], "round": 1, "error": _clean(e)[:300]})
     if len(ok_ps) >= 2:
         for p in ok_ps:
+            if time.time() - t_run > ROUND2_BUDGET:                    # 已經花太久：第二輪跳過，直接請主持人整理
+                res["failed"].append({"id": p["id"], "name": p["name"], "round": 2, "error": "前面花太久，第二輪跳過"})
+                continue
             me = {k: v for k, v in res["round1"][p["id"]].items() if k not in ("name", "model")}
             oth = {res["round1"][q["id"]]["name"]: {k: v for k, v in res["round1"][q["id"]].items() if k not in ("name", "model")}
                    for q in ok_ps if q["id"] != p["id"]}
             try:
-                a = _ask(p, lambda f, p=p, me=me, oth=oth: p_round2(p["name"], f, me, oth))
+                a = _ask(p, lambda f, p=p, me=me, oth=oth: p_round2(p["name"], f, me, oth), 2)
                 res["round2"][p["id"]] = {"name": p["name"], "model": a["model"], **a["json"]}
             except Exception as e:     # noqa: BLE001
                 res["failed"].append({"id": p["id"], "name": p["name"], "round": 2, "error": _clean(e)[:300]})
@@ -707,7 +735,7 @@ def run(snap: dict, trigger: str = "auto", post=None, news_fn=None) -> dict:
                [p for p in ps if p["id"] not in ("gemini", "gptoss")]
         for p in mods:
             try:
-                a = _ask(p, lambda f: p_moderate(f, r1, r2))
+                a = _ask(p, lambda f: p_moderate(f, r1, r2), "主持")
                 res["moderator"] = {"name": p["name"], "model": a["model"], **a["json"]}
                 break
             except Exception as e:     # noqa: BLE001
