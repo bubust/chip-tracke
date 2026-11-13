@@ -919,6 +919,15 @@ def _tiers(snap: dict, waves: dict, closes, price: float, a60: Optional[dict] = 
             break
     if not t:
         return
+    try:                                                              # B108 結論卡：現在位階＋照她的進出場怎麼做＋「刺穿再收回」有沒有出現
+        ch, it = snap.get("chart") or {}, snap.get("intra") or {}
+        b15 = [b for b in ch.get("i15") or [] if not b.get("partial")]
+        card = SW.plan_card(t, price, b15, (it.get("m15") or {}).get("atr"), it.get("atr"))
+        if card and card.get("signal") and card["signal"].get("time"):
+            card["signal"]["label"] = FD.tw_dt(card["signal"]["time"]).strftime("%m/%d %H:%M")
+        t["card"] = card
+    except Exception as e:     # noqa: BLE001
+        log.warning(f"[wave] 結論卡失敗：{e}")
     n60["tiers"] = t
     gates = n60.setdefault("gates", [])
     g1 = t["gate1"]
@@ -1162,7 +1171,7 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
     night = _night_info(b, now)
     snap = {
         "ok": True, "sym": sym, "name": SYM_NAME[sym], "generated": now.strftime("%Y-%m-%d %H:%M:%S"),
-        "asof": {"date": last_date, "live": {"time": live.get("time"), "date": live["date"]} if use_live else None,
+        "asof": {"date": last_date, "live": {"time": live.get("time"), "date": live["date"]} if use_live else None, "ts": int(time.time()),
                  "stale": stale_reason is not None, "stale_reason": stale_reason, "session": _session_label(sym, now)},
         "price": _f(price), "prev_close": _f(prev), "chg": _f(price - prev), "chg_pct": _pct(price, prev),
         "atr": _f(b["atr"], 0), "trend240": b["trend"],
@@ -1335,6 +1344,35 @@ def snapshot(force: bool = False, sym: str = "TWII") -> dict:
         if snap.get("ok"):
             cc.update(t=now, data=snap, session=session)
         return snap
+
+
+_quote_cache: dict = {}
+QUOTE_TTL = 10
+
+
+def quote(sym: str) -> dict:
+    """B108 只回即時價（鉅亨報價，10 秒快取）：前端盤中每 15 秒更新價格和時間，不用重算整份快照。
+    回 {ok, sym, price, time（成交時間 HH:MM:SS）, session, label}；休市或抓不到 → ok=False"""
+    if sym not in SYMS:
+        raise ValueError(sym)
+    now = time.time()
+    cc = _quote_cache.get(sym)
+    if cc and now - cc[0] < QUOTE_TTL:
+        return cc[1]
+    tnow = D.tw_now()
+    session = FD.in_session(sym, tnow)
+    out = {"ok": False, "sym": sym, "session": session, "label": _session_label(sym, tnow)}
+    if session:
+        try:
+            q = FD.fetch_cnyes_quote(sym)
+            if q and q.get("price"):
+                ts = q.get("ts") or 0
+                t = FD.tw_dt(ts) if 0 <= now - ts < 900 else tnow       # 鉅亨的成交時間合理就用它，不然用伺服器時間
+                out.update(ok=True, price=float(q["price"]), time=t.strftime("%H:%M:%S"), ts=int(t.timestamp()))
+        except Exception as e:     # noqa: BLE001
+            out["error"] = str(e)[:120]
+    _quote_cache[sym] = (now, out)
+    return out
 
 
 def fill_twii_today() -> int:

@@ -71,7 +71,19 @@ def ladder_summary(rows: list) -> str:
     """小週期 → 大週期一句話"""
     parts = [f"{TF_NAME[r['tf']]}{'↑' if r.get('dir') == 1 else '↓' if r.get('dir') == -1 else '－'}" for r in rows]
     d = {r["tf"]: r.get("dir") for r in rows}
-    return "、".join(parts) + " → " + headline(d)
+    return "、".join(parts) + " → " + headline_all(d)
+
+
+def headline_all(d: dict) -> str:
+    """headline＋15／30 分：跟 60 分反向時要講（B108：原本只看 60 分以上，15、30 分往下也寫成「大小週期都往上」）"""
+    hl = headline(d)
+    s60 = d.get("60m")
+    opp = [TF_NAME[k] for k in ("15m", "30m") if s60 in (1, -1) and d.get(k) == -s60]
+    if opp:
+        if hl.startswith("大小週期都往"):
+            hl = "60 分以上都往" + hl[-1]
+        hl += f"；{'、'.join(opp)}短線在{'回檔' if s60 == 1 else '反彈'}"
+    return hl
 
 
 def _cands(snap: dict, price: float) -> tuple:
@@ -189,7 +201,7 @@ def build(snap: dict) -> dict:
         if len(dn) > 1:
             nxt = f"，下一個看 {dn[2]['price']:,.0f}" if len(dn) > 2 else ""
             conds.append({"side": "down", "price": dn[1]["price"], "label": dn[1]["label"], "act": f"再跌破 → 降到 {rg['lo']}%{nxt}"})
-        return {"ok": True, "range": rg, "headline": f"建議持股 {rg['lo']}～{rg['hi']}%：{headline(dirs)}", "lines": lines,
+        return {"ok": True, "range": rg, "headline": f"建議持股 {rg['lo']}～{rg['hi']}%：{headline_all(dirs)}", "lines": lines,
                 "risks": risks, "conds": conds, "cond_note": "" if conds else "附近沒有系統價位",
                 "name": name,
                 "note": "規則推出來的部位紀律參考，不是預測：回測只有夜盤、前一晚費半對隔天有效，波浪、支撐壓力、籌碼都沒有預測力"}

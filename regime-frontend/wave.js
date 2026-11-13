@@ -193,16 +193,53 @@
     if (st.tab === 'chart') drawChart();
   }
 
-  function renderHead() {
-    const live = S.asof.live;
-    $('wv-price').innerHTML = `<b>${fmt(S.price, S.sym === 'TX' ? 0 : 2)}</b> <span style="color:${colorOf(S.chg)}">${S.chg > 0 ? '▲' : S.chg < 0 ? '▼' : ''} ${fmt(Math.abs(S.chg ?? 0), S.sym === 'TX' ? 0 : 2)}（${pctS(S.chg_pct)}）</span>`;
+  // B108 價格和更新時間：盤中每 15 秒問一次即時報價（輕量），寫清楚是幾點的價、幾秒前；波浪和價位照舊每 2 分鐘重算
+  const QUOTE = {};                                   // 商品 → {price, time, ts}
+  const curQ = () => { const q = S && QUOTE[S.sym]; return q && q.ts >= ((S.asof || {}).ts || 0) ? q : null; };
+  const shown = () => { if (document.visibilityState !== 'visible') return false; try { const fe = window.frameElement; return !fe || fe.offsetParent !== null; } catch (e) { return true; } };
+  function paintPrice() {
+    if (!S) return;
+    const q = curQ(), live = S.asof.live, dg = S.sym === 'TX' ? 0 : 2;
+    const px = q ? q.price : S.price, prev = num(S.prev_close);
+    const chg = q && prev != null ? px - prev : S.chg, cp = q && prev ? (px / prev - 1) * 100 : S.chg_pct;
+    $('wv-price').innerHTML = `<b>${fmt(px, dg)}</b> <span style="color:${colorOf(chg)}">${chg > 0 ? '▲' : chg < 0 ? '▼' : ''} ${fmt(Math.abs(chg ?? 0), dg)}（${pctS(cp)}）</span>`;
     const sess = S.asof.session && S.asof.session !== '休市' ? S.asof.session : '';
-    let asof = live ? (sess ? `${esc(sess)} ${esc(live.time || '')}` : esc(live.time || '盤中')) : `${md(S.asof.date)} 收盤`;   // B86 週末顯示「夜盤收 05:00」
+    let asof;
+    if (q || (live && sess)) asof = `<span class="wv-livedot">●</span> ${esc(sess || '盤中')}即時價 <b>${esc((q ? q.time : live.time) || '')}</b><span id="wv-ago"></span>`;
+    else if (live) asof = esc(live.time || '盤中');                 // B86 週末顯示「夜盤收 05:00」
+    else asof = `${md(S.asof.date)} 收盤價<span class="wv-dim">（現在休市）</span>`;
     if (S.sym === 'TX') asof = `<span class="wv-dim">台指期近月（含夜盤）</span> ` + asof;
-    if (S.basis) asof += ` <span class="wv-badge" style="background:rgba(148,163,184,.12);color:var(--text);border-color:rgba(148,163,184,.3)" title="台指期 − 加權（${esc(S.basis.when || '')}）">${esc(S.basis.label)} ${sgn(S.basis.pts)} 點</span>`;
+    if (S.basis) {
+      const pts = q && num(S.basis.twii) != null ? Math.round(px - S.basis.twii) : S.basis.pts;
+      asof += ` <span class="wv-badge" style="background:rgba(148,163,184,.12);color:var(--text);border-color:rgba(148,163,184,.3)" title="台指期 − 加權（${esc(S.basis.when || '')}）">${pts >= 0 ? '正價差' : '逆價差'} ${sgn(pts)} 點</span>`;
+    }
     if (S.asof.stale) asof += ` <span class="wv-badge">⚠ ${esc(S.asof.stale_reason || '資料過期')}</span>`;
     if ((S.problems || []).length) asof += ` <span class="wv-badge" title="${esc(S.problems.map(p => p.src + ' 連續失敗 ' + p.fails + ' 次').join('、'))}">⚠ ${S.problems.length} 個資料來源有問題</span>`;
+    if (sess) asof += `<div class="wv-upd">價格每 15 秒更新；波浪、價位每 2 分鐘重算（上次 ${esc(String(S.generated || '').slice(11, 19))}）</div>`;
     $('wv-asof').innerHTML = asof;
+    tickAgo();
+  }
+  function tickAgo() {
+    const el = $('wv-ago');
+    if (!el || !S) return;
+    const q = curQ(), ts = q ? q.ts : (S.asof || {}).ts;
+    if (!ts) { el.textContent = ''; return; }
+    const age = Math.max(0, Math.round(Date.now() / 1000 - ts));
+    const old = age > 180 && isSession(S.sym);
+    el.textContent = old ? `（⚠ 已 ${Math.floor(age / 60)} 分鐘沒更新，按右上角 🔄）` : age < 60 ? `（${age} 秒前）` : `（${Math.floor(age / 60)} 分鐘前）`;
+    el.className = old ? 'old' : 'wv-dim';
+  }
+  async function pollQuote() {
+    const sym = st.sym;
+    if (!S || S.sym !== sym || !isSession(sym) || !shown()) return;
+    try {
+      const q = await (await fetch(`/api/wave/quote?sym=${encodeURIComponent(sym)}`)).json();
+      if (q && q.ok && sym === st.sym) { QUOTE[sym] = q; paintPrice(); }
+    } catch (e) { /* 下一輪再試 */ }
+  }
+
+  function renderHead() {
+    paintPrice();
     document.querySelectorAll('[data-wv-sym]').forEach(b => b.classList.toggle('on', b.dataset.wvSym === st.sym));
     document.querySelectorAll('[data-wv-deg]').forEach(b => b.classList.toggle('on', b.dataset.wvDeg === st.degSel));
     document.querySelectorAll('[data-wv-show]').forEach(cb => { cb.checked = !!st.show[cb.dataset.wvShow]; });
@@ -397,11 +434,36 @@
       const sm = String(mo.summary);
       lines.push(['🤖 AI', `<b style="color:${sc}">${esc(mo.stance || '')}</b>・${esc(sm.length > 70 ? sm.slice(0, 70) + '…' : sm)} <a data-goto-tab="ai">看討論 →</a>`, 'mh']);
     }
+    // B108 她的結論卡（台指期）：現在位階、在哪個波形裡 → 怎麼做（照她的進出場推敲）；系統自己的數浪收到下面
+    const hc = S.sym === 'TX' ? (((((S.nest || {})['60m'] || {}).tiers) || {}).card || null) : null;
+    let herTop = '', herPlay = '';
+    if (hc) {
+      const lab = t => { const k = String(t).indexOf('：'); return k > 0 && k <= 6 ? `<b class="lab">${esc(t.slice(0, k))}</b>：${esc(t.slice(k + 1))}` : esc(t); };
+      herTop = `<div class="wv-head">📍 現在位階 <span class="wv-dim" style="font-size:.85rem;font-weight:400">她的數法（日線＋60 分）；切哪個週期都一樣</span></div>
+        <div class="wv-pos">${(hc.pos || []).map(t => `<div>${lab(t)}</div>`).join('')}${hc.shape ? `<div><b class="lab">波形</b>：<b>${esc(hc.shape)}</b></div>` : ''}</div>`;
+      const sg = hc.signal, w = hc.watch || {};
+      const wl = (xs, nm) => (xs || []).length ? `${nm} ${xs.slice(0, 3).map(x => fmt(x[0])).join('、')}` : '';
+      const sigTxt = sg
+        ? `✅ <b>訊號出現</b>（${esc(sg.label || '')} 那根 15 分 K）：刺過 <b>${fmt(sg.line)}</b>（${esc(sg.name)}）到 ${fmt(sg.tip)}、又收回 ${fmt(sg.close)} → 試${sg.side > 0 ? '多' : '空'}參考 <b>${fmt(sg.close)}</b> 附近、停損 <b>${fmt(sg.stop)}</b>（約 ${fmt(sg.risk)} 點）、先出一口 <b>${fmt(sg.t1)}</b>`
+        : `⏳ 現在還沒有「刺穿又收回」的訊號。盯這幾條線：${[wl(w.short, '試空'), wl(w.long, '做多')].filter(Boolean).join('｜') || '—'}`;
+      herPlay = `<div class="wv-h3" style="margin:12px 0 4px">🎯 怎麼做 <span class="wv-dim" style="font-size:.85rem;font-weight:400">照她的進出場推敲；回測 △，只當紀律，不是她的實際下單</span></div>
+        <ul class="wv-plays">${(hc.plays || []).map(x => `<li><span class="wv-pt ${esc(x.k)}">${esc(x.tag)}</span>${esc(x.t)}</li>`).join('')}</ul>
+        <div class="wv-sig${sg ? ' on' : ''}">${sigTxt}</div>
+        <div class="wv-sub">${[hc.exit, hc.flip].filter(Boolean).map(esc).join('<br>')}</div>`;
+      if (hc.tiles) top = { up: hc.tiles.up, down: hc.tiles.down, stop: hc.tiles.stop, her: true };
+      const k = lines.findIndex(x => x[0] === '🎯 試單');
+      if (k >= 0) lines.splice(k, 1);
+    }
+    const sysBox = !hc ? '' : `<details class="wv-who"><summary>她的方法怎麼來的、系統自己的數浪（${esc(T.name)}：${esc((nz && nz.ok && nz.primary && nz.primary.path) || (p && p.title) || '—')}）</summary>
+        <div class="wv-sub">${esc(hc.method || '')}</div>
+        <div class="wv-sub" style="margin-top:6px"><b>系統數浪</b>　${head}<br>${sub.join('<br>')}${sl ? `<br><b>系統價位梯的試單</b>　${sl}` : ''}</div></details>`;
+    const tl = top.her ? ['⬆ 上方', '⬇ 下方', '🔁 改判線'] : null;
     $('wv-sum').innerHTML = `
-      <div class="wv-head">${head}</div>
-      <div class="wv-sub">${sub.join('<br>')}</div>
+      ${hc ? herTop : `<div class="wv-head">${head}</div>
+      <div class="wv-sub">${sub.join('<br>')}</div>`}
       ${intraNote}
-      <div class="wv-tiles${top.stop ? '' : ' two'}">
+      ${hc ? `<div class="wv-tiles${top.stop ? '' : ' two'}">${tileHtml(tl[0], top.up, 'var(--up)')}${tileHtml(tl[1], top.down, 'var(--down)')}${top.stop ? tileHtml(tl[2], top.stop, 'var(--warn)') : ''}</div>${herPlay}${sysBox}` : ''}
+      <div class="wv-tiles${top.stop ? '' : ' two'}"${hc ? ' style="display:none"' : ''}>
         ${tileHtml(top.stop_same === 'up' ? '⬆ 上方關鍵（也是停損）' : '⬆ 上方關鍵', top.up, 'var(--up)')}
         ${tileHtml(top.stop_same === 'down' ? '⬇ 下方關鍵（也是停損）' : '⬇ 下方關鍵', top.down, 'var(--down)')}
         ${top.stop ? tileHtml(top.stop_src === 'setup' ? '🛑 多空線（試單停損）' : top.stop_pos === 'before' ? (top.stop_same === 'down' ? '⬇ 途中先遇到' : '⬆ 途中先遇到')
@@ -1414,7 +1476,9 @@
     load(false);
     loadPanel();
     // 盤中每 2 分鐘；總經分頁沒在看（iframe 藏起來）就不抓（PLAN-B77 C2）
-    const shown = () => { if (document.visibilityState !== 'visible') return false; try { const fe = window.frameElement; return !fe || fe.offsetParent !== null; } catch (e) { return true; } };
     setInterval(() => { if (isSession(st.sym) && shown()) load(false); }, 120000);
+    setInterval(pollQuote, 15000);                                    // B108 即時價每 15 秒
+    setInterval(tickAgo, 1000);
+    document.addEventListener('visibilitychange', () => { if (shown() && isSession(st.sym)) { pollQuote(); if (S && Date.now() / 1000 - ((S.asof || {}).ts || 0) > 120) load(false); } });
   });
 })();
