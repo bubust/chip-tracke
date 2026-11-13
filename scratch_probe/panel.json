@@ -1,0 +1,315 @@
+{
+ "before": {
+  "note": null,
+  "fail": null,
+  "providers": [
+   {
+    "id": "gemini",
+    "name": "Gemini（Google）"
+   },
+   {
+    "id": "gptoss",
+    "name": "GPT-OSS-120B（OpenAI 開源模型，Groq）"
+   },
+   {
+    "id": "qwen",
+    "name": "Qwen3（阿里巴巴，Groq）"
+   }
+  ],
+  "usage_today": {
+   "gemini-2.5-flash": 56758,
+   "gemini-flash-latest": 3214,
+   "openai/gpt-oss-120b": 8585,
+   "qwen/qwen3.8-27b": 1784
+  },
+  "cap": 300000,
+  "manual_left": 3,
+  "running": null,
+  "result": {
+   "day": "2026-11-13",
+   "started": "2026-11-13 14:18:32",
+   "finished": "2026-11-13 14:21:40",
+   "trigger": "manual",
+   "mode": "roundtable",
+   "participants": [
+    {
+     "id": "gemini",
+     "name": "Gemini（Google）",
+     "model": "gemini-2.5-flash"
+    },
+    {
+     "id": "gptoss",
+     "name": "GPT-OSS-120B（OpenAI 開源模型，Groq）",
+     "model": "openai/gpt-oss-120b"
+    }
+   ],
+   "failed": [
+    {
+     "id": "qwen",
+     "name": "Qwen3（阿里巴巴，Groq）",
+     "round": 1,
+     "error": "qwen/qwen3.8-27b: 429 Request too large for model `qwen/qwen3.8-27b` in organization `org_01m34yrdsdez3955yb1p468p5n` service tier `on_demand` on output tokens per minute (OTPM): Limit 1000, Requested 1400. The request's expected output tokens exceed the enforced limit; reduce max_tokens (or the request's expected ou；qwen/qwen3.8-27b（精簡版）: 429 Request too large for model `qwen/qwen3.8-27b` in orga"
+    }
+   ],
+   "prompt_chars": {
+    "full": 7454,
+    "small": 1506,
+    "tiny": 534
+   },
+   "flagged": [],
+   "log": [
+    {
+     "id": "gptoss",
+     "round": 1,
+     "model": "openai/gpt-oss-120b",
+     "small": true,
+     "sec": 1,
+     "retries": []
+    },
+    {
+     "id": "qwen",
+     "round": 1,
+     "model": null,
+     "sec": 9
+    },
+    {
+     "id": "gemini",
+     "round": 1,
+     "model": "gemini-2.5-flash",
+     "small": true,
+     "sec": 107,
+     "retries": [
+      "gemini-3.6-flash: The read operation timed out",
+      "gemini-flash-latest（精簡版）: The read operation timed out"
+     ]
+    },
+    {
+     "id": "gptoss",
+     "round": 2,
+     "model": "openai/gpt-oss-120b",
+     "small": true,
+     "sec": 1,
+     "retries": []
+    },
+    {
+     "id": "gemini",
+     "round": 2,
+     "model": "gemini-2.5-flash",
+     "small": false,
+     "sec": 18,
+     "retries": []
+    },
+    {
+     "id": "gemini",
+     "round": "主持",
+     "model": "gemini-2.5-flash",
+     "small": true,
+     "sec": 62,
+     "retries": [
+      "gemini-2.5-flash: 503 This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.",
+      "gemini-2.5-flash: 503 This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.",
+      "gemini-2.5-flash（精簡版）: 503 This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.",
+      "gemini-2.5-flash（精簡版）: 503 This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."
+     ]
+    }
+   ]
+  },
+  "moderator": {
+   "name": "Gemini（Google）",
+   "model": "gemini-2.5-flash",
+   "summary": "短線震盪，中期缺乏有效指標，維持盤整觀點。",
+   "stance": "盤整",
+   "agree_count": "2/2",
+   "confidence": "中"
+  },
+  "round1": {
+   "gemini": {
+    "model": "gemini-2.5-flash",
+    "stance": "盤整"
+   },
+   "gptoss": {
+    "model": "openai/gpt-oss-120b",
+    "stance": "盤整"
+   }
+  },
+  "round2": [
+   "gemini",
+   "gptoss"
+  ]
+ },
+ "run": {
+  "status": 200,
+  "body": {
+   "job": "e4cbdc4e26"
+  }
+ },
+ "job": {
+  "status": "done",
+  "t": 1794551304.0811853,
+  "mode": "roundtable",
+  "sec": 308
+ },
+ "after": {
+  "note": null,
+  "fail": null,
+  "providers": [
+   {
+    "id": "gemini",
+    "name": "Gemini（Google）"
+   },
+   {
+    "id": "gptoss",
+    "name": "GPT-OSS-120B（OpenAI 開源模型，Groq）"
+   },
+   {
+    "id": "qwen",
+    "name": "Qwen3（阿里巴巴，Groq）"
+   }
+  ],
+  "usage_today": {
+   "gemini-2.5-flash": 84627,
+   "gemini-flash-latest": 3214,
+   "openai/gpt-oss-120b": 13638,
+   "qwen/qwen3.8-27b": 6463
+  },
+  "cap": 300000,
+  "manual_left": 2,
+  "running": null,
+  "result": {
+   "day": "2026-11-13",
+   "started": "2026-11-13 14:28:24",
+   "finished": "2026-11-13 14:33:26",
+   "trigger": "manual",
+   "mode": "roundtable",
+   "participants": [
+    {
+     "id": "gemini",
+     "name": "Gemini（Google）",
+     "model": "gemini-2.5-flash"
+    },
+    {
+     "id": "gptoss",
+     "name": "GPT-OSS-120B（OpenAI 開源模型，Groq）",
+     "model": "openai/gpt-oss-120b"
+    },
+    {
+     "id": "qwen",
+     "name": "Qwen3（阿里巴巴，Groq）",
+     "model": "qwen/qwen3.8-27b"
+    }
+   ],
+   "failed": [],
+   "prompt_chars": {
+    "full": 7454,
+    "small": 1506,
+    "tiny": 534
+   },
+   "flagged": [],
+   "log": [
+    {
+     "id": "qwen",
+     "round": 1,
+     "model": "qwen/qwen3.8-27b",
+     "small": true,
+     "sec": 1,
+     "retries": []
+    },
+    {
+     "id": "gptoss",
+     "round": 1,
+     "model": "openai/gpt-oss-120b",
+     "small": true,
+     "sec": 2,
+     "retries": []
+    },
+    {
+     "id": "gemini",
+     "round": 1,
+     "model": "gemini-2.5-flash",
+     "small": true,
+     "sec": 173,
+     "retries": [
+      "gemini-3.6-flash: 503 This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.",
+      "gemini-3.6-flash: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://aistudio.google.com/docs/rate-limits. To monitor",
+      "gemini-3.6-flash（精簡版）: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://aistudio.google.com/docs/rate-limits. To mo",
+      "gemini-3.6-flash（精簡版）: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://aistudio.google.com/docs/rate-limits. To mo",
+      "gemini-3.6-flash（最短版）: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://aistudio.google.com/docs/rate-limits. To mo",
+      "gemini-3.6-flash（最短版）: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://aistudio.google.com/docs/rate-limits. To mo",
+      "gemini-flash-latest: 503 This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.",
+      "gemini-flash-latest: The read operation timed out",
+      "gemini-2.5-flash（精簡版）: 503 This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."
+     ]
+    },
+    {
+     "id": "qwen",
+     "round": 2,
+     "model": "qwen/qwen3.8-27b",
+     "small": true,
+     "sec": 1,
+     "retries": []
+    },
+    {
+     "id": "gptoss",
+     "round": 2,
+     "model": "openai/gpt-oss-120b",
+     "small": true,
+     "sec": 1,
+     "retries": []
+    },
+    {
+     "id": "gemini",
+     "round": 2,
+     "model": "gemini-2.5-flash",
+     "small": false,
+     "sec": 50,
+     "retries": [
+      "gemini-3.6-flash: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://aistudio.google.com/docs/rate-limits. To monitor",
+      "gemini-3.6-flash: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://aistudio.google.com/docs/rate-limits. To monitor",
+      "gemini-3.6-flash（精簡版）: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://aistudio.google.com/docs/rate-limits. To mo",
+      "gemini-3.6-flash（精簡版）: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://aistudio.google.com/docs/rate-limits. To mo",
+      "gemini-3.6-flash（最短版）: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://aistudio.google.com/docs/rate-limits. To mo",
+      "gemini-3.6-flash（最短版）: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://aistudio.google.com/docs/rate-limits. To mo"
+     ]
+    },
+    {
+     "id": "gemini",
+     "round": "主持",
+     "model": "gemini-2.5-flash",
+     "small": true,
+     "sec": 80,
+     "retries": [
+      "gemini-3.6-flash: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://aistudio.google.com/docs/rate-limits. To monitor",
+      "gemini-3.6-flash: The read operation timed out"
+     ]
+    }
+   ]
+  },
+  "moderator": {
+   "name": "Gemini（Google）",
+   "model": "gemini-2.5-flash",
+   "summary": "市場中長期方向不明，短線受夜盤影響開盤可能偏多，但15分級別回檔，需留意後續下跌風險。",
+   "stance": "盤整",
+   "agree_count": "2/3",
+   "confidence": "低"
+  },
+  "round1": {
+   "gemini": {
+    "model": "gemini-2.5-flash",
+    "stance": "中性"
+   },
+   "gptoss": {
+    "model": "openai/gpt-oss-120b",
+    "stance": "盤整"
+   },
+   "qwen": {
+    "model": "qwen/qwen3.8-27b",
+    "stance": "盤整"
+   }
+  },
+  "round2": [
+   "gemini",
+   "gptoss",
+   "qwen"
+  ]
+ }
+}
