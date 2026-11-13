@@ -142,3 +142,33 @@ def test_alt_list_small_then_tiny(wave_db):  # noqa: F811
         return OK if len(sent) == 3 else R(429, {"error": {"message": "Request too large for model on tokens per minute (TPM): Limit 6000, Requested 7000"}})
     a = P.ask(PV, "完整版", post=post, alt=["精簡版", "最短版"], sleep=lambda s: None)
     assert sent == ["完整版", "精簡版", "最短版"] and a["small"]
+
+
+def test_output_limit_lowers_max_tokens(wave_db):  # noqa: F811
+    """正式站 11/13 14:18 Qwen3：「output tokens per minute (OTPM): Limit 1000, Requested 1400 … reduce max_tokens」→ 照上限調低再試"""
+    asked = []
+
+    def post(url, headers=None, json=None, timeout=None):
+        asked.append(json["max_tokens"])
+        if json["max_tokens"] > 1000:
+            return R(429, {"error": {"message": "Request too large for model `q` on output tokens per minute (OTPM): Limit 1000, Requested 1400. "
+                                                "The request's expected output tokens exceed the enforced limit; reduce max_tokens"}})
+        return OK
+    a = P.ask(PV, "hi", post=post, sleep=lambda s: pytest.fail("不用等"))
+    assert asked == [1400, 900] and a["json"] == {"stance": "盤整"}
+    asked.clear()
+    P.ask({**PV, "max_tokens": 900}, "hi", post=post, sleep=lambda s: None)
+    assert asked == [900]                                              # Qwen3 的設定直接用 900
+    q = next(x for x in P.providers() if x["id"] == "qwen") if os.environ.get("GROQ_API_KEY") else {"max_tokens": 900}
+    assert q["max_tokens"] <= 900
+
+
+def test_busy_server_waits_twice_before_downgrading(wave_db):  # noqa: F811
+    seq = [R(503, {"error": {"message": "This model is currently experiencing high demand."}})] * 2 + [OK]
+    slept, sent = [], []
+
+    def post(url, headers=None, json=None, timeout=None):
+        sent.append(json["messages"][0]["content"])
+        return seq.pop(0)
+    a = P.ask(PV, "完整版", post=post, alt=["精簡版"], sleep=slept.append)
+    assert sent == ["完整版"] * 3 and slept == [9.0, 17.0] and not a["small"]      # 伺服器忙：等兩次都還是用完整版
