@@ -86,10 +86,10 @@ def test_failed_run_shows_reason_and_keeps_manual_quota(wave_db, monkeypatch):  
         raise RuntimeError("ma: 429 quota exceeded key=SECRET123")
     monkeypatch.setattr(P, "ask", ok)
     P.run(_snap(), "manual", news_fn=lambda post=None: {"items": []})
-    assert P.manual_left() == 2
+    assert P.manual_left() == P.MANUAL_LIMIT - 1
     monkeypatch.setattr(P, "ask", bad)
     r = P.run(_snap(), "manual", news_fn=lambda post=None: {"items": []})
-    assert r["mode"] == "none" and P.manual_left() == 2                # 沒回應的那次不扣
+    assert r["mode"] == "none" and P.manual_left() == P.MANUAL_LIMIT - 1                # 沒回應的那次不扣
     lt = P.latest()
     assert lt["result"]["mode"] == "single" and "AI 都沒回應" in lt["note"]
     assert lt["fail"]["errors"][0]["name"] == "A" and "429" in lt["fail"]["errors"][0]["error"] and "SECRET123" not in json.dumps(lt["fail"])
@@ -103,12 +103,15 @@ def test_groq_uses_small_prompt_directly(wave_db, monkeypatch):  # noqa: F811
     seen = {}
 
     def fake(p, prompt, post=None, alt=None):
-        seen.setdefault(p["id"], []).append((len(prompt), alt is not None))
+        seen.setdefault(p["id"], []).append((len(prompt), [len(x) for x in alt or []]))
         return {"model": p["models"][0], "json": {"stance": "盤整", "summary": "s"}, "tokens": 5}
     monkeypatch.setattr(P, "ask", fake)
-    P.run({**_snap(), "tx": TX()}, "auto", news_fn=lambda post=None: {"items": []})
-    assert all(not has_alt for _, has_alt in seen["g"]) and all(has_alt for _, has_alt in seen["h"])    # Groq 直接精簡版；其他完整版＋備用
-    assert seen["g"][0][0] < seen["h"][0][0]
+    r = P.run({**_snap(), "tx": TX()}, "auto", news_fn=lambda post=None: {"items": []})
+    g, h = seen["g"][0], seen["h"][0]
+    assert len(g[1]) == 1 and len(h[1]) == 2                           # Groq：精簡版＋最短版；其他：完整版＋精簡版＋最短版
+    assert g[0] == h[1][0] and g[0] < h[0] and g[1][0] < g[0]          # Groq 第一份就是精簡版；最短版更短
+    assert r["mode"] == "roundtable" and set(r["round2"]) == {"g", "h"} and [x["round"] for x in r["log"]].count(1) == 2
+    assert r["prompt_chars"]["tiny"] < r["prompt_chars"]["small"] < r["prompt_chars"]["full"]
 
 
 def test_timeout_model_is_skipped_next_time(wave_db, monkeypatch):  # noqa: F811
@@ -128,3 +131,14 @@ def test_timeout_model_is_skipped_next_time(wave_db, monkeypatch):  # noqa: F811
     P.ask(pv, "完整版", post=post, alt="精簡版", sleep=lambda s: None)
     assert calls == [("fast", "完整版")]                               # 第二次：逾時過的排最後，先問快的
     P._slow.clear()
+
+
+def test_alt_list_small_then_tiny(wave_db):  # noqa: F811
+    """Qwen3 連精簡版都被說太大（正式站 11/13 14:08）→ 再換最短版"""
+    sent = []
+
+    def post(url, headers=None, json=None, timeout=None):
+        sent.append(json["messages"][0]["content"])
+        return OK if len(sent) == 3 else R(429, {"error": {"message": "Request too large for model on tokens per minute (TPM): Limit 6000, Requested 7000"}})
+    a = P.ask(PV, "完整版", post=post, alt=["精簡版", "最短版"], sleep=lambda s: None)
+    assert sent == ["完整版", "精簡版", "最短版"] and a["small"]
