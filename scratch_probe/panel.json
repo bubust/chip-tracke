@@ -1,0 +1,191 @@
+{
+ "before": {
+  "note": "最近一次（11-13 08:52）AI 都沒回應，下面是上一次成功的圓桌",
+  "fail": {
+   "at": "2026-11-13 08:52:11",
+   "errors": [
+    {
+     "name": "Gemini（Google）",
+     "round": 1,
+     "error": "gemini-3.6-flash: The read operation timed out；gemini-flash-latest: The read operation timed out"
+    },
+    {
+     "name": "GPT-OSS-120B（OpenAI 開源模型，Groq）",
+     "round": 1,
+     "error": "openai/gpt-oss-120b: 413 Request too large for model `openai/gpt-oss-120b` in organization `org_01m34yrdsdez3955yb1p468p5n` service tier `on_dema"
+    },
+    {
+     "name": "Qwen3（阿里巴巴，Groq）",
+     "round": 1,
+     "error": "qwen/qwen3.8-27b: 413 Request too large for model `qwen/qwen3.8-27b` in organization `org_01m34yrdsdez3955yb1p468p5n` service tier `on_demand`"
+    }
+   ]
+  },
+  "providers": [
+   {
+    "id": "gemini",
+    "name": "Gemini（Google）"
+   },
+   {
+    "id": "gptoss",
+    "name": "GPT-OSS-120B（OpenAI 開源模型，Groq）"
+   },
+   {
+    "id": "qwen",
+    "name": "Qwen3（阿里巴巴，Groq）"
+   }
+  ],
+  "usage_today": {
+   "gemini-2.5-flash": 4238
+  },
+  "cap": 300000,
+  "manual_left": 3,
+  "running": null,
+  "result": {
+   "day": "2026-11-12",
+   "started": "2026-11-12 16:30:27",
+   "finished": "2026-11-12 16:31:06",
+   "trigger": "auto",
+   "mode": "single",
+   "participants": [
+    {
+     "id": "gemini",
+     "name": "Gemini（Google）",
+     "model": "gemini-3.6-flash"
+    }
+   ],
+   "failed": [
+    {
+     "id": "gptoss",
+     "name": "GPT-OSS-120B（OpenAI 開源模型，Groq）",
+     "round": 1,
+     "error": "openai/gpt-oss-120b: 413 Request too large for model `openai/gpt-oss-120b` in organization `org_01m34yrdsdez3955yb1p468p5n` service tier `on_dema"
+    },
+    {
+     "id": "qwen",
+     "name": "Qwen3（阿里巴巴，Groq）",
+     "round": 1,
+     "error": "qwen/qwen3.8-27b: 413 Request too large for model `qwen/qwen3.8-27b` in organization `org_01m34yrdsdez3955yb1p468p5n` service tier `on_demand`"
+    }
+   ],
+   "prompt_chars": null,
+   "flagged": []
+  },
+  "moderator": {
+   "name": "Gemini（Google）",
+   "model": "gemini-3.6-flash",
+   "summary": "極短線受夜盤影響偏多，但中短期缺乏有效指標，盤勢方向不確定。",
+   "stance": "盤整",
+   "agree_count": "1/1",
+   "confidence": "低"
+  },
+  "round1": {
+   "gemini": {
+    "model": "gemini-3.6-flash",
+    "stance": "盤整"
+   }
+  },
+  "round2": []
+ },
+ "run": {
+  "status": 200,
+  "body": {
+   "job": "1957493ac4"
+  }
+ },
+ "job": {
+  "status": "還在跑或沒啟動",
+  "sec": 603
+ },
+ "after": {
+  "note": "最近一次（11-13 08:52）AI 都沒回應，下面是上一次成功的圓桌",
+  "fail": {
+   "at": "2026-11-13 08:52:11",
+   "errors": [
+    {
+     "name": "Gemini（Google）",
+     "round": 1,
+     "error": "gemini-3.6-flash: The read operation timed out；gemini-flash-latest: The read operation timed out"
+    },
+    {
+     "name": "GPT-OSS-120B（OpenAI 開源模型，Groq）",
+     "round": 1,
+     "error": "openai/gpt-oss-120b: 413 Request too large for model `openai/gpt-oss-120b` in organization `org_01m34yrdsdez3955yb1p468p5n` service tier `on_dema"
+    },
+    {
+     "name": "Qwen3（阿里巴巴，Groq）",
+     "round": 1,
+     "error": "qwen/qwen3.8-27b: 413 Request too large for model `qwen/qwen3.8-27b` in organization `org_01m34yrdsdez3955yb1p468p5n` service tier `on_demand`"
+    }
+   ]
+  },
+  "providers": [
+   {
+    "id": "gemini",
+    "name": "Gemini（Google）"
+   },
+   {
+    "id": "gptoss",
+    "name": "GPT-OSS-120B（OpenAI 開源模型，Groq）"
+   },
+   {
+    "id": "qwen",
+    "name": "Qwen3（阿里巴巴，Groq）"
+   }
+  ],
+  "usage_today": {
+   "gemini-2.5-flash": 4238,
+   "gemini-flash-latest": 3214,
+   "openai/gpt-oss-120b": 2014,
+   "qwen/qwen3.8-27b": 1784
+  },
+  "cap": 300000,
+  "manual_left": 3,
+  "running": "1957493ac4",
+  "result": {
+   "day": "2026-11-12",
+   "started": "2026-11-12 16:30:27",
+   "finished": "2026-11-12 16:31:06",
+   "trigger": "auto",
+   "mode": "single",
+   "participants": [
+    {
+     "id": "gemini",
+     "name": "Gemini（Google）",
+     "model": "gemini-3.6-flash"
+    }
+   ],
+   "failed": [
+    {
+     "id": "gptoss",
+     "name": "GPT-OSS-120B（OpenAI 開源模型，Groq）",
+     "round": 1,
+     "error": "openai/gpt-oss-120b: 413 Request too large for model `openai/gpt-oss-120b` in organization `org_01m34yrdsdez3955yb1p468p5n` service tier `on_dema"
+    },
+    {
+     "id": "qwen",
+     "name": "Qwen3（阿里巴巴，Groq）",
+     "round": 1,
+     "error": "qwen/qwen3.8-27b: 413 Request too large for model `qwen/qwen3.8-27b` in organization `org_01m34yrdsdez3955yb1p468p5n` service tier `on_demand`"
+    }
+   ],
+   "prompt_chars": null,
+   "flagged": []
+  },
+  "moderator": {
+   "name": "Gemini（Google）",
+   "model": "gemini-3.6-flash",
+   "summary": "極短線受夜盤影響偏多，但中短期缺乏有效指標，盤勢方向不確定。",
+   "stance": "盤整",
+   "agree_count": "1/1",
+   "confidence": "低"
+  },
+  "round1": {
+   "gemini": {
+    "model": "gemini-3.6-flash",
+    "stance": "盤整"
+   }
+  },
+  "round2": []
+ }
+}
