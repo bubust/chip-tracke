@@ -701,6 +701,11 @@ def _nest_prices(snap: dict) -> list:
                                 out += [sb["top"]] + [v for v, _ in sb["b52"]] + [z["v"] for z in sb["z52"]] + [z["near"] for z in sb["z52"] if z["near"] is not None]
                                 out += [sb["b_hi"]] if sb.get("b_hi") else []
                                 out += [v for v, _ in sb.get("c52") or []] + ([sb["c_low"]] if sb.get("c_low") else []) + [sb["a_low"]]
+                                fk = sb.get("fork") or {}                # B110 她 11/15：C 的每一腳、往上三關、往下三道防線、母級共振區
+                                out += [x["p"] for x in fk.get("legs") or []]
+                                out += [v for g in (fk.get("up") or []) + (fk.get("down") or []) for v, _ in g["lv"]]
+                                out += [v for v, _ in (fk.get("deep") or {}).get("lv") or []]
+                                out += [v for v, _ in sb.get("t53") or []] + [x for x in (sb.get("end52"), sb.get("hi53")) if x]
         pz = nz.get("pulses") or {}                      # B89 三種細微脈動
         if pz.get("views"):
             out += [pz["end1"], pz["h2"], pz["low"], pz["f382"]] + ([pz["ma5"]] if pz.get("ma5") is not None else [])

@@ -798,6 +798,10 @@ def _intraday(sym: str, b: dict, price: float, lv_c, live_rows: list, st: dict, 
     out["nest"] = {"60m": n60, "30m": _nest(a.get("m30") or {}, 30, price, b), "15m": _nest(a.get("m15") or {}, 15, price, b, parent)}
     # B80 量能＋價位梯要用的（_tf 只在伺服器端，compute 用完就刪，不進快照）
     out["_tf"] = {"60m": a, "30m": a.get("m30") or {}, "15m": a.get("m15") or {}}
+    try:                                                   # B110：兩道關卡用「看得比較久」的 60 分轉折
+        out["_tf"]["60m_long"] = _a60_long(sym, a, now_ts)
+    except Exception as e:     # noqa: BLE001
+        log.warning(f"[wave] 長期 60 分轉折失敗：{e}")
     out["vol"] = {"60m": _vol_intra(sym, 60, b60, a, price, now_ts), "30m": _vol_intra(sym, 30, b30, a.get("m30") or {}, price, now_ts),
                   "15m": _vol_intra(sym, 15, b15, a.get("m15") or {}, price, now_ts)}
     if a.get("ok"):
@@ -876,21 +880,69 @@ def _tiers_inputs(big: list, n60: dict, P: dict, sm: dict, a60: Optional[dict]):
     """兩道關卡用哪一組（日線轉折, 60 分轉折）：
     ① 原本（B93）：60 分的起點＝日線這一段的起點（日線倒數第 2 個轉折），60 分轉折用多層浪名的 marks；
     ② B101：日線這一段已經走完（極值變成確認轉折、後面又有反向的暫定轉折，例：37,694 之後的 42,317）→ 拿掉最後那個暫定轉折，
-       60 分轉折改用 60 分分析確認過的轉折，從日線 H2（47,607）接到現在——她 11/6～11/10 都還是用 47,607 起跌那組在看 37,694 之後的反彈"""
+       60 分轉折改用 60 分分析確認過的轉折，從日線 H2（47,607）接到現在——她 11/6～11/10 都還是用 47,607 起跌那組在看 37,694 之後的反彈；
+    ③ B110：之後日線又多出轉折（44,911 確認成高點、後面又有暫定低點 42,371）→ 最多拿掉最後 3 個，她還是用同一組（5-1、5-2 都從 37,694 起算）"""
     anchor = float(n60["anchor"]["p"])
     if len(big) >= 4 and abs(big[-2]["p"] / anchor - 1) <= 0.005:
         yield big, [{"p": anchor, "t": big[-2]["t"]}] + [{"p": float(m["p"]), "t": m["t"]} for m in P.get("marks") or []]
-    if not sm.get("tentative") or len(big) < 5 or not a60 or not a60.get("ok"):
+    if len(big) < 5 or not a60 or not a60.get("ok"):
         return
-    bg = big[:-1]
     an = a60.get("an") or {}
     pv = [{"p": float(q["p"]), "t": q["t"]} for q in an.get("pivots") or []]
     if an.get("tentative"):
         pv.append({"p": float(an["tentative"]["p"]), "t": an["tentative"]["t"]})
-    H2 = bg[-2]
-    k = next((j for j in range(len(pv) - 1, -1, -1) if pv[j]["t"] == H2["t"] and abs(pv[j]["p"] / H2["p"] - 1) < 0.001), None)
-    if k is not None and len(pv) - k >= 6:
-        yield bg, pv[k:]
+    for drop in (1, 2, 3):
+        bg = big[:-drop]
+        if len(bg) < 4 or (drop == 1 and not sm.get("tentative")):
+            continue
+        H2 = bg[-2]
+        k = next((j for j in range(len(pv) - 1, -1, -1) if pv[j]["t"] == H2["t"] and abs(pv[j]["p"] / H2["p"] - 1) < 0.001), None)
+        if k is not None and len(pv) - k >= 6:
+            yield bg, pv[k:]
+
+
+def _tiers_rank(t: Optional[dict]) -> int:
+    """B110：幾組都算得出來時挑哪一組——有她的「大中小／5-2」的（3）＞有初推小 5 段的（2）＞其他（1）"""
+    if not t:
+        return 0
+    pu = (((t.get("ext3") or {}).get("paths") or {}).get("push")) or {}
+    return 3 if pu.get("sub") else 2 if pu else 1
+
+
+def join_pivots(old: list, new: list) -> list:
+    """B110：把「看得比較久」的 60 分轉折（old）跟平常那份（new，近 40 天）接起來。兩份用同一套 θ，但 new 的窗口開頭 60 根門檻還沒暖機、
+    轉折會比較碎 → 重疊的部分以 old 為準，只在「最後一個兩邊都有的轉折」之後接 new（old 沒有的最新轉折）；完全對不上就只用 new。
+    每個轉折 {time, p, t}"""
+    for k in range(len(new) - 1, -1, -1):
+        j = next((j for j in range(len(old) - 1, -1, -1) if old[j]["time"] == new[k]["time"] and old[j]["t"] == new[k]["t"]
+                  and abs(old[j]["p"] - new[k]["p"]) < 1e-6), None)
+        if j is not None:
+            return old[:j] + new[k:]
+    return list(new)
+
+
+LONG_DAYS = 400           # B110：兩道關卡的 60 分轉折最多往前看幾天（資料庫的 5 分 K 不會刪）
+_long60: dict = {}        # sym → (最後一根收完的 60 分 K 時間, 更早的轉折)
+
+
+def _a60_long(sym: str, a: dict, now_ts: float) -> Optional[dict]:
+    """B110：兩道關卡要用的 60 分轉折。平常的分 K 分析只看近 40 天，日線這一段的起點（10/7 的 50,265、10/29 的 47,607）滑出去以後
+    她的框架就對不上（結論卡整個不見）→ 資料庫裡更早的 5 分 K 也拿來數（同一套 θ），接在前面；每收一根 60 分 K 才重算一次"""
+    if not a.get("ok") or not a.get("times"):
+        return None
+    times, an = a["times"], a["an"]
+    tm = lambda q: {"time": int(times[q["i"]]), "p": float(q["p"]), "t": q["t"]}   # noqa: E731
+    new = [tm(q) for q in an.get("pivots") or []]
+    hit = _long60.get(sym)
+    if not hit or hit[0] != times[-1]:
+        old = []
+        bs = [b for b in FD.agg_bars(FD.load_bars5(sym, int(now_ts - LONG_DAYS * 86400)), sym, 60) if b["time"] <= times[-1]]
+        if len(bs) > len(times) + 20:                                 # 資料庫真的有更早的才算
+            o, h, l, c = I._arr(bs)
+            conf, _ = E.state_at(E.zigzag(h, l, I.theta(h, l, c, I.TF[60]["cfg"])), h, l, len(c) - 1)
+            old = [{"time": int(bs[q["i"]]["time"]), "p": float(q["p"]), "t": q["t"]} for q in conf]
+        hit = _long60[sym] = (times[-1], old)
+    return {"ok": True, "an": {"pivots": join_pivots(hit[1], new), "tentative": an.get("tentative")}}
 
 
 def _tiers(snap: dict, waves: dict, closes, price: float, a60: Optional[dict] = None) -> None:
@@ -910,13 +962,16 @@ def _tiers(snap: dict, waves: dict, closes, price: float, a60: Optional[dict] = 
     ma5 = sum(c[-5:]) / 5 if len(c) >= 5 else None
     ma10 = sum(c[-10:]) / 10 if len(c) >= 10 else None
     t = None
-    fine = [{"p": float(q["p"]), "t": q["t"]} for q in ((waves.get("intra30") or {}).get("pivots") or [])]   # B107：30 分前低（5-2 大買點旁邊）
+    w30 = waves.get("intra30") or {}
+    fine = [{"p": float(q["p"]), "t": q["t"]} for q in (w30.get("pivots") or [])]   # B107：30 分前低（5-2 大買點旁邊）
+    if w30.get("tentative"):                                          # B110：5-2-B 高點之後的腳（C-4 反彈到哪）要連暫定的一起看
+        fine.append({"p": float(w30["tentative"]["p"]), "t": w30["tentative"]["t"]})
     for bg, small in _tiers_inputs(big, n60, P, sm, a60):
         first = _first_leg(a60, bg[-4], bg[-3])
-        t = SW.structure(bg, small, price, ma5, ma10, {"big": "日線", "small": "60 分"}, first_leg=first, full=_full_from(waves, sm, bg),
+        x = SW.structure(bg, small, price, ma5, ma10, {"big": "日線", "small": "60 分"}, first_leg=first, full=_full_from(waves, sm, bg),
                          fine=fine)
-        if t:
-            break
+        if _tiers_rank(x) > _tiers_rank(t):                           # B110：挑有她那套「大中小／5-2」的那一組
+            t = x
     if not t:
         return
     try:                                                              # B108 結論卡：現在位階＋照她的進出場怎麼做＋「刺穿再收回」有沒有出現
@@ -1228,7 +1283,7 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
         log.warning(f"[wave] 三種日線定位失敗：{e}")
         snap["big"] = None
     try:                                                   # B93 她 11/4：日線＋60 分兩道關卡、大中小
-        _tiers(snap, waves, lv_c, price, (intra.get("_tf") or {}).get("60m"))
+        _tiers(snap, waves, lv_c, price, (intra.get("_tf") or {}).get("60m_long") or (intra.get("_tf") or {}).get("60m"))
     except Exception as e:     # noqa: BLE001
         log.warning(f"[wave] 兩道關卡失敗：{e}")
     # B80 價位梯＋如果…就…＋三條路（每個週期一份）
