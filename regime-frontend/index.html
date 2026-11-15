@@ -142,6 +142,11 @@
   .wv-plays { list-style: none; margin: 4px 0 0; padding: 0; font-size: .97rem; line-height: 1.65; }
   .wv-plays li { padding: 6px 0; border-top: 1px dashed var(--border); }
   .wv-plays li:first-child { border-top: 0; }
+  .wv-steps { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; margin-top: 6px; line-height: 1.6; }
+  .wv-steps ol { margin: 2px 0 0 20px; padding: 0; }
+  .wv-steps li { margin: 3px 0; }
+  .wv-steps .wv-deep { margin: 4px 0 0 2px; }
+  @media (max-width: 720px) { .wv-steps { grid-template-columns: 1fr; } }
   .wv-pt { display: inline-block; padding: 0 8px; border-radius: 8px; font-weight: 700; font-size: .88rem; margin-right: 8px; white-space: nowrap; }
   .wv-pt.wait { background: rgba(148,163,184,.18); }
   .wv-pt.long { background: rgba(239,68,68,.16); color: var(--up); }
@@ -1149,6 +1154,6 @@ setInterval(() => { if (_regimeVisible() && Date.now() - _lastLoad >= 300000) { 
 // 視窗 resize 時重繪圖表
 window.addEventListener('resize', () => { window.__regimeRedraw(); });
 </script>
-<script src="/regime/static/wave.js?v=20261113b109"></script>
+<script src="/regime/static/wave.js?v=20261115b110"></script>
 </body>
 </html>

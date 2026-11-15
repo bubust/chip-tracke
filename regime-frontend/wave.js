@@ -448,6 +448,7 @@
         : `⏳ 現在還沒有「刺穿又收回」的訊號。盯這幾條線：${[wl(w.short, '試空'), wl(w.long, '做多')].filter(Boolean).join('｜') || '—'}`;
       herPlay = `<div class="wv-h3" style="margin:12px 0 4px">🎯 怎麼做 <span class="wv-dim" style="font-size:.85rem;font-weight:400">照她的進出場推敲；回測 △，只當紀律，不是她的實際下單</span></div>
         <ul class="wv-plays">${(hc.plays || []).map(x => `<li><span class="wv-pt ${esc(x.k)}">${esc(x.tag)}</span>${esc(x.t)}</li>`).join('')}</ul>
+        ${stepsHtml(hc.steps, true)}
         <div class="wv-sig${sg ? ' on' : ''}">${sigTxt}</div>
         <div class="wv-sub">${[hc.exit, hc.flip].filter(Boolean).map(esc).join('<br>')}</div>`;
       if (hc.tiles) top = { up: hc.tiles.up, down: hc.tiles.down, stop: hc.tiles.stop, her: true };
@@ -649,6 +650,20 @@
       ${far.length ? `<details class="wv-who"><summary>更遠的 ${far.length} 個價位</summary><table class="wv-tbl wv-lad">${far.map(row).join('')}</table></details>` : ''}`;
   }
 
+  // B110 她 11/15：往上三關、往下三道防線、接下來三種走法（結論卡和劇本分頁共用）
+  function stepsHtml(st, open) {
+    if (!st) return '';
+    const zr = g => `<b>${fmt(g.lo)}${g.hi !== g.lo ? `～${fmt(g.hi)}` : ''}</b>`;
+    const li = g => `<li>${zr(g)} <span class="wv-dim">${esc(g.name)}</span>　${esc(g.t)}</li>`;
+    const dp = st.deep;
+    return `<details class="wv-who"${open ? ' open' : ''}><summary>🚪 ${esc(st.src || '她')}的關卡：往上 ${st.up.length} 關${st.down.length ? `、往下 ${st.down.length} 道防線` : ''}</summary>
+      <div class="wv-steps"><div><b style="color:var(--up)">⬆ 往上</b><ol>${st.up.map(li).join('')}</ol></div>
+      <div><b style="color:var(--down)">⬇ 往下</b>${st.down.length ? `<ol>${st.down.map(li).join('')}</ol>` : ''}
+        <div class="wv-deep">再下面 <b>${fmt(dp.a_low)}</b>、<b>${fmt(dp.lo)}${dp.hi !== dp.lo ? `～${fmt(dp.hi)}` : ''}</b><span class="wv-dim">（${dp.lv.map(x => esc(x[1])).join('、')}）</span>　${esc(dp.t || '')}</div></div></div>
+      <div class="wv-sub"><b>現在</b>　${esc(st.now || '')}</div>
+      <div class="wv-sub"><b>接下來三種走法</b><br>${(st.evo || []).map((t, i) => `${'①②③'[i]} ${esc(t)}`).join('<br>')}</div></details>`;
+  }
+
   function planLevels(nz, lm) {
     const out = [];
     const core = t => String(t).replace(/^[^：]{1,8}：/, '').replace(/（[^）]*）/g, '').trim();   // 去掉前綴、括號說明再比
@@ -683,7 +698,16 @@
         if (sb && sb.done) {                                            // B107 她 11/12：5-1 結束、日線 5-2
           add(sb.top, '5-1 高點（5-2 起點）', true);
           add(sb.a_low, '5-2-A 低點', true);
-          sb.b52.forEach(x => add(x[0], x[1]));
+          const fk = sb.fork;
+          if (fk) {                                                     // B110 她 11/15：B 之後的三關、三道防線
+            fk.legs.forEach(x => add(x.p, `5-2-C 的 C-${x.k}（主追蹤）`));
+            fk.up.forEach(g => g.lv.forEach(x => add(x[0], `往上第 ${g.k} 關：${x[1]}`, true)));
+            fk.down.forEach(g => g.lv.forEach(x => add(x[0], `往下第 ${g.k} 道防線：${x[1]}`, true)));
+            fk.deep.lv.forEach(x => add(x[0], `母級共振區：${x[1]}`, true));
+          } else if (sb.stage === '3') {
+            (sb.t53 || []).forEach(x => add(x[0], `${x[1]}（僅參考）`));
+            if (sb.end52 != null) add(sb.end52, '5-2 終點（跌破＝5-2 還沒完）', true);
+          } else sb.b52.forEach(x => add(x[0], x[1]));
           sb.z52.forEach(z => { add(z.v, `5-2 大買點 ${z.r}`, true); if (z.near != null) add(z.near, `5-2 大買點 ${z.r}：前低`, true); });
         } else if (sb) {                                                // B105 大中小：(4) 回測區、(5) 目標
           add(sb.top3, '(3) 高點（候選結束點）', true);
@@ -773,8 +797,16 @@
     const subBox = !sb ? '' : sb.done ? `<ul class="wv-chk">
         <li class="ok">✅ 5-1：(1) ${fmt(pu.seq[0])}→${fmt(pu.seq[5])}、(2) 橫台 ${fmt(sb.plat[0])}～${fmt(sb.plat[1])}、(3)(4)(5) 走到 <b>${fmt(sb.top)}</b><span class="wv-dim">（壓回跌破 (1) 高點 ${fmt(sb.limit[0])}：4 不能碰 1 → ${fmt(sb.top)} 就是 5-1 終點）</span></li>
         <li class="${sb.b_hi == null ? 'part' : 'ok'}">${sb.b_hi == null ? '◀' : '✅'} 5-2-A ${fmt(sb.top)}→<b>${fmt(sb.a_low)}</b>${sb.b_hi == null ? '<span class="wv-dim">（還在走）</span>' : ''}</li>
-        <li class="${sb.b_hi != null ? 'part' : ''}">${sb.b_hi != null ? '◀' : '⬜'} 5-2-B 反彈${sb.b_hi != null ? `（到 ${fmt(sb.b_hi)}）` : ''}：${sb.b52.length ? sb.b52.map(x => `<span class="wv-chip">${esc(x[1].split(' ').pop())} <b>${fmt(x[0])}</b></span>`).join('') : '<span class="wv-dim">A 走完才算</span>'}<span class="wv-dim">；最高多半壓在 0.618、不會過 ${fmt(sb.top)}</span></li>
-        <li>⬜ 5-2-C：往下面三個大買點</li></ul>
+        ${sb.fork || sb.stage === '3'
+          ? `<li class="ok">✅ 5-2-B 反彈到 <b>${fmt(sb.b_hi)}</b>${sb.fork ? '<span class="wv-dim">（候選終點）</span>' : ''}</li>`
+          : `<li class="${sb.b_hi != null ? 'part' : ''}">${sb.b_hi != null ? '◀' : '⬜'} 5-2-B 反彈${sb.b_hi != null ? `（到 ${fmt(sb.b_hi)}）` : ''}：${sb.b52.length ? sb.b52.map(x => `<span class="wv-chip">${esc(x[1].split(' ').pop())} <b>${fmt(x[0])}</b></span>`).join('') : '<span class="wv-dim">A 走完才算</span>'}<span class="wv-dim">；最高多半壓在 0.618、不會過 ${fmt(sb.top)}</span></li>`}
+        ${sb.stage === '3'
+          ? `<li class="ok">✅ 5-2 在 <b>${fmt(sb.end52)}</b> 走完<span class="wv-dim">（最低 ${fmt(sb.pb)}）</span></li>
+             <li class="part">◀ 5-3 啟動：站上 ${fmt(sb.top)}（最高 <b>${fmt(sb.hi53)}</b>）<span class="wv-dim">；要帶量突破、第一次回測踩穩才算數。量度（僅參考）：</span>${(sb.t53 || []).map(x => `<span class="wv-chip">${esc(x[1].split('＝').pop())} <b>${fmt(x[0])}</b></span>`).join('')}</li>`
+          : sb.fork
+          ? `<li class="part">◀ ${esc(sb.fork.main)}</li><li>⬜ ${esc(sb.fork.alt)}</li>`
+          : `<li class="${sb.stage === 'C' ? 'part' : ''}">${sb.stage === 'C' ? `◀ 5-2-C 進行中（到 ${fmt(sb.c_low)}）` : '⬜ 5-2-C'}：往下面三個大買點</li>`}</ul>
+      ${sb.fork ? stepsHtml({ up: sb.fork.up, down: sb.fork.down, deep: { ...sb.fork.deep, t: '最後一腳的落底觀察區：到了等止穩才出手' }, evo: sb.fork.evo, now: sb.fork.now, src: '她 11/15' }, true) : ''}
       <div>5-2 三個大買點<span class="wv-dim">（${fmt(pu.seq[0])}→${fmt(sb.top)} 的 0.382／0.5／0.618；個股、0050 分批，到了也要等止跌）</span>：${sb.z52.map(z52t).join('')}</div>` : `<ul class="wv-chk">
         <li class="ok">✅ (1) ${fmt(pu.seq[0])}→${fmt(pu.seq[5])}、(2) 橫台 ${fmt(sb.plat[0])}～${fmt(sb.plat[1])}</li>
         <li class="${sb.pb == null ? 'part' : 'ok'}">${sb.pb == null ? '◀' : '✅'} (3) ${fmt(sb.launch)}→${fmt(sb.top3)}<span class="wv-dim">（候選結束點）</span></li>
@@ -782,7 +814,7 @@
         <li>⬜ (5) 最後一推：${sb.t5.map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}</li></ul>
       ${(sb.d52 || []).length ? `<div class="wv-dim">之後日線 5-2 壓回推敲（僅參考）：${sb.d52.map(x => `${x[0]} ${fmt(x[1])}～${fmt(x[2])}`).join('、')}</div>` : ''}`;
     const pushBox = !pu ? '' : pu.third
-      ? `<div class="wv-sec">${sb && sb.done ? '📉 5-1 結束、日線 5-2 修正' : `🚀 ${sb ? '推升的大中小' : '第 (3) 浪（或小 c）已啟動'}`} <span class="wv-dim">${sb && sb.done ? `她 11/12：${fmt(sb.top)} 是 5-1 終點；5-2-A／B 拿來觀察，大買點分批` : `初推 ${fmt(pu.seq[0])}→${fmt(pu.seq[5])} 小 5 段、壓回到 ${fmt(pu.pull)}（第 ${pu.where} 區）後再過高${sb ? '；她 11/11：第四大波完成、這是 5-1' : ''}`}</span></div>
+      ? `<div class="wv-sec">${sb && sb.done ? (sb.stage === '3' ? '🚀 5-2 走完、5-3 啟動' : '📉 5-1 結束、日線 5-2 修正') : `🚀 ${sb ? '推升的大中小' : '第 (3) 浪（或小 c）已啟動'}`} <span class="wv-dim">${sb && sb.done ? (sb.fork ? `她 11/15：${fmt(sb.b_hi)} 之後是 C 段的第 ${sb.fork.n} 腳，還是 B 還沒走完？兩種看法並列` : sb.stage === '3' ? `她 11/15：帶量突破 ${fmt(sb.top)}、第一次回測踩穩＝5-3` : `她 11/12：${fmt(sb.top)} 是 5-1 終點；5-2-A／B 拿來觀察，大買點分批`) : `初推 ${fmt(pu.seq[0])}→${fmt(pu.seq[5])} 小 5 段、壓回到 ${fmt(pu.pull)}（第 ${pu.where} 區）後再過高${sb ? '；她 11/11：第四大波完成、這是 5-1' : ''}`}</span></div>
         ${subBox || `<div>守住 <b>${fmt(pu.pull)}</b>（(2)／小 b 低點）推升結構就還在；量度：${pu.targets.map(x => `<span class="wv-chip">${esc(x[1])} <b>${fmt(x[0])}</b></span>`).join('')}</div>`}
         ${sb && sb.done ? '' : `<div class="wv-dim">守住 ${fmt(pu.pull)} 推升結構就還在；C-4 版本的小 c 不能重疊 C-1 低點，越過 C-1 低點、頸線＝真推升（看驗證清單）</div>`}
         <details class="wv-who"><summary>壓回三種區（她 11/10 傍晚）</summary>${zl}</details>`

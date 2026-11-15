@@ -31,7 +31,8 @@ def test_52_stages_a_b_c_and_new_high():
     c = sb(_o(41900.0, [{"p": 42371, "t": "L"}, {"p": 44034, "t": "H"}]))
     assert (c["stage"], c["c_low"]) == ("C", 41900.0) and [z["hit"] for z in c["z52"]] == [True, False, False]
     assert [int(v + 0.5) for v, _ in c["c52"]] == [42464, 41494]                             # C＝0.618 倍 A、C＝A
-    assert _o(45100.0, [{"p": 42371, "t": "L"}])["tag"] != "52"                              # 再創高＝5-1 還在延伸，不是 5-2
+    n = _o(45100.0, [{"p": 42371, "t": "L"}])                                                # B110 她 11/15：壓回已經跌破 (1) 高點，之後再創高
+    assert n["tag"] == "52" and sb(n)["stage"] == "3" and sb(n)["top"] == 44911            # ＝5-2 走完、5-3 啟動（不是 5-1 延伸）
 
 
 def test_card_now_position_and_plays():
