@@ -311,7 +311,8 @@ def _done52(rest: list, top_t: str, u: int, p0: float, p5: float, sp: float, pul
     a_len = abs(top - a_low)
     in_b = stage != "A"
     b52 = [(round(a_low + u * r * a_len, 2), f"5-2-B 反彈 {r:g}" + ("（極限）" if r == 0.786 else "")) for r in (0.382, 0.5, 0.618, 0.786)]
-    c52 = [(round(b_hi - u * r * a_len, 2), f"5-2-C＝{nm}") for r, nm in ((0.618, "0.618 倍 A"), (1.0, "A 等幅"))] if stage == "C" else []
+    c52 = ([(round(b_hi - u * r * a_len, 2), f"5-2-C＝{nm}") for r, nm in ((0.618, "0.618 倍 A"), (1.0, "A 等幅"), (1.618, "1.618 倍 A"))]
+           if stage == "C" else [])                                  # B112：跌很深的時候看 1.618 倍（11/16 低點 40,714 剛好是它）
     low_all = min([a_low] + ([float(price)] if k_over is None else []) + ([c_low] if c_low is not None else []), key=lambda v: u * v)
     for z in z52:
         z["hit"] = bool((low_all - z["hi"]) * u <= 0)                 # 已經跌到這一區
@@ -1052,11 +1053,27 @@ def plan_card(t: dict, price: float, bars15: Optional[list] = None, atr15: Optio
             tiles = {"up": tile(up_v, nm.get(up_v, "反彈壓力"), "刺過又收回＝試空") if up_v else tile(top, "5-1 高點", "站上＝5-2 結束"),
                      "down": down, "stop": tile(top, "5-1 高點", "站上＝5-2 結束") if up_v and up_v != round(top, 2) else None}
         else:
-            pos.append(f"{lb['small']}：5-2 走 A-B-C 三段——A 跌到 {_fmt(a_low)}、B 彈到 {_fmt(b_hi)} 都走完，現在是 C 段下跌（到 {_fmt(c_low)}），往大買點走")
+            # B112：C 段跌很深（11/16 一天跌 2,949 點到 40,714，三個大買點全到）——量度標「已到」、上方下方格子用離現價最近的那一層
+            c52 = sb.get("c52") or []
+            n_hit = sum(1 for z in zs if z.get("hit"))
+            ct = "、".join(f"{nm_.split('＝')[-1]} {_fmt(v)}" + ("（已到）" if (c_low - v) * u <= 1 else "") for v, nm_ in c52)
+            where_t = "三個大買點都到了" if n_hit == len(zs) else f"已經到第 {n_hit} 個大買點" if n_hit else "往大買點走"
+            pos.append(f"{lb['small']}：5-2 走 A-B-C 三段——A 跌到 {_fmt(a_low)}、B 彈到 {_fmt(b_hi)} 都走完，現在是 C 段下跌（到 {_fmt(c_low)}），{where_t}")
             shape = "三段式修正（A-B-C）的 C 段：最後一段下跌，走完才是 5-3 起漲"
-            ct = "、".join(f"{nm_.split('＝')[-1]} {_fmt(v)}" for v, nm_ in sb.get("c52") or [])
-            plays = [{"k": "wait", "tag": "不追空", "t": f"C 段的目標就是大買點（量度：{ct}），追空沒有肉；手上有空單就照目標分批回補"}, buy]
-            tiles = {"up": tile(b_hi, "B 段高點", "站上＝C 段沒了"), "down": down, "stop": tile(top, "5-1 高點", "站上＝5-1 還在走")}
+            lvn = {}
+            for v, nm_ in c52:
+                lvn[round(v, 2)] = "C＝" + nm_.split("＝")[-1]
+            for z in zs:                                              # 大買點的名字蓋過量度（同一個價位時）
+                lvn[round(z["v"], 2)] = f"大買點 {z['r']:g}"
+                if z["near"] is not None:
+                    lvn[round(z["near"], 2)] = f"大買點 {z['r']:g} 旁邊的前低"
+            broke = sorted(v for v in lvn if v > price and (c_low - v) * u <= 1)          # 已經跌破、現在在頭上的
+            under = sorted((v for v in lvn if v < price), reverse=True)                   # 現價下面的
+            plays = [{"k": "wait", "tag": "不追空", "t": f"C 段的量度 {ct}；{where_t}，追空沒有肉，手上有空單就照目標分批回補"},
+                     {**buy, "t": buy["t"] + (f"；三區都到了，最深這一區 {rng(zs[-1]['lo'], zs[-1]['hi'])} 守不守是關鍵" if n_hit == len(zs) else "")}]
+            tiles = {"up": tile(broke[0], lvn[broke[0]], "站回去＝止跌第一步") if broke else tile(b_hi, "B 段高點", "站上＝C 段沒了"),
+                     "down": tile(under[0], lvn[under[0]], "跌破又收回才做多") if under else tile(p0, "5-1 起點", "跌破＝看法作廢"),
+                     "stop": tile(b_hi, "B 段高點", "站上＝C 段沒了") if broke else tile(top, "5-1 高點", "站上＝5-1 還在走")}
         if flip is None:
             flip = (f"改判：站上 {_fmt(b_hi)}（B 段高點）＝C 段沒了、5-2 可能已經結束；" if stage == "C" else
                     f"改判：站上 {_fmt(top)}＝5-2 走完、5-3 啟動；") + f"跌破 {_fmt(p0)}＝第 5 大波的看法作廢"
