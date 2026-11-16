@@ -1,24 +1,17 @@
-"""暫時檢查：證交所台股儀表板（信用交易）頁面 → 找資料 API"""
-import json, re
+"""暫時檢查 2：證交所 BFIJ3U（全市場擔保維持率、追繳處分）的格式、能查哪幾天"""
+import json, time
 import httpx
 UA = {"User-Agent": "Mozilla/5.0"}
-B = "https://www.twse.com.tw"
+B = "https://www.twse.com.tw/rwd/zh/marginTrading/"
 out = {}
-for u in ("/dashboard/zh/credit/margin.html", "/dashboard/zh/index.html"):
+for name, params in (("BFIJ3U", {}), ("BFIJ3U_d1113", {"date": "20261113"}), ("BFIJ3U_d1105", {"date": "20261105"}), ("BFIJ3U_d0701", {"date": "20260701"}),
+                     ("BFIJ3U_TREND", {}), ("BFIJ3U_TREND_d60", {"days": 60}), ("MI_MARGN_TREND", {})):
+    ep = name.split("_d")[0] if name.startswith("BFIJ3U_d") else name.replace("_d60", "")
     try:
-        r = httpx.get(B + u, headers=UA, timeout=40, follow_redirects=True)
-        out[u] = {"status": r.status_code, "len": len(r.text), "scripts": re.findall(r'src="([^"]+\.js[^"]*)"', r.text), "head": r.text[:3000]}
+        r = httpx.get(B + ep, params={"response": "json", **params}, headers=UA, timeout=40)
+        out[name] = {"status": r.status_code, "body": r.text[:4000]}
     except Exception as e:  # noqa: BLE001
-        out[u] = repr(e)
-js = {}
-for u in (out.get("/dashboard/zh/credit/margin.html") or {}).get("scripts", [])[:12]:
-    full = u if u.startswith("http") else (B + u if u.startswith("/") else B + "/dashboard/zh/credit/" + u)
-    try:
-        t = httpx.get(full, headers=UA, timeout=40).text
-        js[full] = {"len": len(t), "urls": sorted(set(re.findall(r'["\'`](/[A-Za-z0-9_/\-\.]*(?:rwd|api|dashboard|exchangeReport|json)[A-Za-z0-9_/\-\.?=&]*)["\'`]', t)))[:80],
-                    "hits": [t[max(0, m.start() - 200):m.start() + 300] for m in re.finditer(r'維持率|maintenance|margin', t)][:6]}
-    except Exception as e:  # noqa: BLE001
-        js[full] = repr(e)
-out["js"] = js
-json.dump(out, open("scratch_probe/b115.json", "w"), ensure_ascii=False, indent=1)
-print(json.dumps(out, ensure_ascii=False)[:4000])
+        out[name] = repr(e)
+    time.sleep(3)
+json.dump(out, open("scratch_probe/b115b.json", "w"), ensure_ascii=False, indent=1)
+print(json.dumps(out, ensure_ascii=False)[:3000])
