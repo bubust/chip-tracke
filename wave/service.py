@@ -798,6 +798,12 @@ def _intraday(sym: str, b: dict, price: float, lv_c, live_rows: list, st: dict, 
     out["nest"] = {"60m": n60, "30m": _nest(a.get("m30") or {}, 30, price, b), "15m": _nest(a.get("m15") or {}, 15, price, b, parent)}
     # B80 量能＋價位梯要用的（_tf 只在伺服器端，compute 用完就刪，不進快照）
     out["_tf"] = {"60m": a, "30m": a.get("m30") or {}, "15m": a.get("m15") or {}}
+    if sym == "TX":                                        # B111：日盤、夜盤的漲跌分開算
+        try:
+            dc = {str(d)[:10]: float(x) for d, x in zip(b["dates"][-15:], b["c"][-15:])}
+            out["sess"] = FD.session_changes([r for r in rows if r[0] >= now_ts - 15 * 86400], price, now_ts, dc)
+        except Exception as e:     # noqa: BLE001
+            log.warning(f"[wave] 日夜盤漲跌失敗：{e}")
     try:                                                   # B110：兩道關卡用「看得比較久」的 60 分轉折
         out["_tf"]["60m_long"] = _a60_long(sym, a, now_ts)
     except Exception as e:     # noqa: BLE001
@@ -1224,11 +1230,16 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
         stale_reason = f"今天收盤資料還沒進來（最新 {last_date}）"
     problems = [s for s in D.status() if (s.get("fails") or 0) >= 2]
     night = _night_info(b, now)
+    sess = intra.get("sess") if sym == "TX" else None      # B111：台指期的漲跌比「這一盤該比的收盤」（夜盤比當天日盤收、日盤比前一天日盤收）
+    if sess:
+        prev = float(sess["cur"]["ref"])
+        if use_live and live.get("after_hours") and sess["cur"]["kind"] == "day":      # 日盤收盤到夜盤開盤中間：最後一筆是日盤的
+            live = {**live, "time": str(live.get("time") or "").replace("夜盤收", "日盤收")}
     snap = {
         "ok": True, "sym": sym, "name": SYM_NAME[sym], "generated": now.strftime("%Y-%m-%d %H:%M:%S"),
         "asof": {"date": last_date, "live": {"time": live.get("time"), "date": live["date"]} if use_live else None, "ts": int(time.time()),
                  "stale": stale_reason is not None, "stale_reason": stale_reason, "session": _session_label(sym, now)},
-        "price": _f(price), "prev_close": _f(prev), "chg": _f(price - prev), "chg_pct": _pct(price, prev),
+        "price": _f(price), "prev_close": _f(prev), "chg": _f(price - prev), "chg_pct": _pct(price, prev), "sess": sess,
         "atr": _f(b["atr"], 0), "trend240": b["trend"],
         "chart": {"bars": bars, "weekly": weekly_bars, "ma": mas, "i60": intra.get("tf60") or [], "i30": intra.get("tf30") or [],
                   "i15": intra.get("tf15") or []},

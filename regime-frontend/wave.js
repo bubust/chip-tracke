@@ -199,16 +199,22 @@
   const shown = () => { if (document.visibilityState !== 'visible') return false; try { const fe = window.frameElement; return !fe || fe.offsetParent !== null; } catch (e) { return true; } };
   function paintPrice() {
     if (!S) return;
-    const q = curQ(), live = S.asof.live, dg = S.sym === 'TX' ? 0 : 2;
+    const q0 = curQ(), live = S.asof.live, dg = S.sym === 'TX' ? 0 : 2;
+    const sk = S.sym === 'TX' && S.sess ? S.sess.cur.kind : null;
+    const q = q0 && sk && q0.label && ((q0.label === '夜盤') !== (sk === 'night')) ? null : q0;   // B111 剛換盤、快照還是上一盤的：先不拿新一盤的報價去比舊基準
     const px = q ? q.price : S.price, prev = num(S.prev_close);
     const chg = q && prev != null ? px - prev : S.chg, cp = q && prev ? (px / prev - 1) * 100 : S.chg_pct;
-    $('wv-price').innerHTML = `<b>${fmt(px, dg)}</b> <span style="color:${colorOf(chg)}">${chg > 0 ? '▲' : chg < 0 ? '▼' : ''} ${fmt(Math.abs(chg ?? 0), dg)}（${pctS(cp)}）</span>`;
+    // B111 台指期：日盤、夜盤的漲跌分開——大字＝這一盤自己的漲跌（夜盤比當天日盤收盤、日盤比前一天日盤收盤），旁邊小字＝另一盤的結果
+    const ss = S.sym === 'TX' ? S.sess : null, cu = ss && ss.cur, ot = ss && ss.other;
+    const chgH = (c, p) => `<span style="color:${colorOf(c)}">${c > 0 ? '▲' : c < 0 ? '▼' : ''} ${fmt(Math.abs(c ?? 0), dg)}（${pctS(p)}）</span>`;
+    $('wv-price').innerHTML = `<b>${fmt(px, dg)}</b> ${cu ? `<span class="wv-sk ${esc(cu.kind)}" title="漲跌比 ${esc(cu.ref_label)} ${fmt(cu.ref, 0)}">${esc(cu.label)}</span> ` : ''}${chgH(chg, cp)}`
+      + (ot ? `<span class="wv-other" title="${esc(ot.date)} ${esc(ot.label)} ${fmt(ot.close, 0)}，比 ${fmt(ot.ref, 0)}"><span class="wv-sk ${esc(ot.kind)}">${esc(ot.date)} ${esc(ot.label)}</span> ${fmt(ot.close, 0)} ${chgH(ot.chg, ot.chg_pct)}</span>` : '');
     const sess = S.asof.session && S.asof.session !== '休市' ? S.asof.session : '';
     let asof;
     if (q || (live && sess)) asof = `<span class="wv-livedot">●</span> ${esc(sess || '盤中')}即時價 <b>${esc((q ? q.time : live.time) || '')}</b><span id="wv-ago"></span>`;
     else if (live) asof = esc(live.time || '盤中');                 // B86 週末顯示「夜盤收 05:00」
     else asof = `${md(S.asof.date)} 收盤價<span class="wv-dim">（現在休市）</span>`;
-    if (S.sym === 'TX') asof = `<span class="wv-dim">台指期近月（含夜盤）</span> ` + asof;
+    if (S.sym === 'TX') asof = `<span class="wv-dim">台指期近月${cu ? `；漲跌比 ${esc(cu.ref_label)} ${fmt(cu.ref, 0)}` : '（含夜盤）'}</span> ` + asof;
     if (S.basis) {
       const pts = q && num(S.basis.twii) != null ? Math.round(px - S.basis.twii) : S.basis.pts;
       asof += ` <span class="wv-badge" style="background:rgba(148,163,184,.12);color:var(--text);border-color:rgba(148,163,184,.3)" title="台指期 − 加權（${esc(S.basis.when || '')}）">${pts >= 0 ? '正價差' : '逆價差'} ${sgn(pts)} 點</span>`;

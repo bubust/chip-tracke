@@ -92,6 +92,13 @@
   .wv-title { font-size: 1.3rem; font-weight: 800; }
   #wv-price { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
   #wv-asof { font-size: .9rem; color: var(--muted); }
+  /* B111 台指期日盤、夜盤的漲跌分開 */
+  .wv-sk { display: inline-block; font-size: .55em; font-weight: 700; padding: 1px 7px; border-radius: 999px; vertical-align: middle;
+           border: 1px solid var(--border2); color: var(--muted); }
+  .wv-sk.night { color: #a5b4fc; border-color: rgba(129,140,248,.5); }
+  .wv-sk.day { color: #fcd34d; border-color: rgba(251,191,36,.5); }
+  .wv-other { display: block; font-size: .62em; font-weight: 400; white-space: nowrap; margin-top: 1px; }
+  .wv-other .wv-sk { font-size: .82em; }
   .wv-seg { display: inline-flex; border: 1px solid var(--border2); border-radius: 10px; overflow: hidden; }
   .wv-seg button { background: transparent; border: 0; color: var(--muted); padding: 8px 16px; font-size: .95rem; cursor: pointer; }
   .wv-seg button.on { background: var(--accent-soft); color: #c7d7ff; font-weight: 700; }
@@ -1154,6 +1161,6 @@ setInterval(() => { if (_regimeVisible() && Date.now() - _lastLoad >= 300000) { 
 // 視窗 resize 時重繪圖表
 window.addEventListener('resize', () => { window.__regimeRedraw(); });
 </script>
-<script src="/regime/static/wave.js?v=20261115b110"></script>
+<script src="/regime/static/wave.js?v=20261116b111"></script>
 </body>
 </html>
