@@ -7,7 +7,7 @@ B = "https://qiangni-tactics.fly.dev"
 ok = False
 for k in range(40):
     try:
-        if "20261116b112" in httpx.get(B + "/regime/static/index.html", timeout=30).text + httpx.get(B + "/regime/", timeout=30).text:
+        if "B112" in httpx.get(B + "/regime/static/wave.js", timeout=30).text:
             ok = True
             break
     except Exception as e:  # noqa: BLE001
