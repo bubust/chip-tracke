@@ -1088,13 +1088,31 @@
         紅線＝150%（11/06 急殺、追繳很多的那天這裡是 150.3%）。只當描述、沒有回測。</div></div>`;
   }
 
+  // B115 證交所台股儀表板：全市場整戶擔保維持率（上市＋上櫃、融資＋融券合併）、低於 130% 的戶數、補繳、處分（斷頭）
+  function creditBox(cr) {
+    if (!cr || !cr.ok) return '';
+    const col = v => v < 150 ? '#ef4444' : v < 160 ? '#f97316' : v < 170 ? '#eab308' : 'var(--fg)';
+    const ser = (cr.series || []).slice(-12).reverse();
+    const hot = r => r.below >= 1000 || (r.exe || 0) >= 150;
+    return `<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">
+      <div><b>⚖️ 整戶擔保維持率 <span style="color:${col(cr.keep)}">${fmt(cr.keep, 2)}%</span></b>
+        <span class="wv-dim">（${md(cr.date)}，證交所公布${num(cr.chg) != null ? `；比前一天 ${sgn(cr.chg, 2)} 個百分點` : ''}；近 60 天最低 ${fmt(cr.low, 2)}%）</span></div>
+      <div>低於 130% 的 <b>${fmt(cr.below, 0)} 戶</b>${num(cr.mult) != null ? `<span class="wv-dim">（前 20 天平均的 ${cr.mult} 倍）</span>` : ''}、
+        當天通知補繳 <b>${fmt(cr.call_yi, 2)} 億</b>、處分（斷頭）<b style="color:${(cr.exe || 0) >= 150 ? '#ef4444' : 'inherit'}">${fmt(cr.exe, 0)} 戶 ${fmt(cr.exe_yi, 2)} 億</b></div>
+      <table class="wv-tbl" style="margin-top:4px"><tr><th>日期</th><th>整戶維持率</th><th>低於 130%（戶）</th><th>補繳（億）</th><th>處分（戶／億）</th></tr>
+        ${ser.map(r => `<tr${hot(r) ? ' style="color:#f97316"' : ''}><td>${esc(md(r.date))}</td><td class="n" style="color:${col(r.keep)}">${fmt(r.keep, 2)}%</td>
+          <td class="n">${fmt(r.below, 0)}</td><td class="n">${fmt(r.call_yi, 2)}</td><td class="n">${fmt(r.exe, 0)}／${fmt(r.exe_yi, 2)}</td></tr>`).join('')}</table>
+      <div class="wv-what">證交所「台股儀表板」每天公布：全市場融資＋融券合併算（上市＋上櫃），所以比上面只算融資的維持率高。
+        低於 130% 的戶數突然暴增、處分戶數上百＝斷頭潮（例：11/05、11/06）。只當描述、沒有回測。</div></div>`;
+  }
+
   function renderMargin() {
     const m = S.margin || {};
     const el = $('wv-margin');
-    if (!m.ok) { keepOpen(el, `<summary>💰 融資餘額<span class="s">${esc(m.note || '資料暫缺')}</span></summary>${maintBox(m.maint)}`); return; }
+    if (!m.ok) { keepOpen(el, `<summary>💰 融資餘額<span class="s">${esc(m.note || '資料暫缺')}</span></summary>${maintBox(m.maint)}${creditBox(m.credit)}`); return; }
     const stk = m.streak > 0 ? `連增 ${m.streak} 天` : m.streak < 0 ? `連減 ${-m.streak} 天` : '';
     const yi = (v, nd = 0) => `<b style="color:${colorOf(v)}">${sgn(v, nd)} 億</b>`;
-    keepOpen(el, `<summary>💰 融資餘額 ${fmt(m.amt)} 億<span class="wv-dim">（上市、含 ETF）</span>：${md(m.date)} ${sgn(m.chg1, 0)} 億${stk ? '，' + stk : ''}${m.maint && m.maint.ok ? `；大盤融資維持率 ${m.maint.all}%` : ''}
+    keepOpen(el, `<summary>💰 融資餘額 ${fmt(m.amt)} 億<span class="wv-dim">（上市、含 ETF）</span>：${md(m.date)} ${sgn(m.chg1, 0)} 億${stk ? '，' + stk : ''}${m.maint && m.maint.ok ? `；大盤融資維持率 ${m.maint.all}%` : ''}${m.credit && m.credit.ok ? `；整戶 ${fmt(m.credit.keep, 1)}%、斷頭 ${fmt(m.credit.exe, 0)} 戶` : ''}
         <span class="s">5 天 ${sgn(m.chg5, 0)} 億、20 天 ${sgn(m.chg20, 0)} 億（${pctS(m.pct20, 1)}）；增加＝散戶加碼${m.pending ? '。' + esc(m.pending) : ''}</span></summary>
       <div class="wv-kv">
         <span class="k">餘額（${md(m.date)}）</span><span><b>${fmt(m.amt)} 億</b><span class="wv-dim">　證交所公布的上市融資金額（含 ETF；有的網站扣掉 ETF，會少約 300 億）</span></span>
@@ -1103,6 +1121,7 @@
         <span class="k">20 天</span><span>${yi(m.chg20)}（${pctS(m.pct20)}）</span>
       </div>
       ${maintBox(m.maint)}
+      ${creditBox(m.credit)}
       ${last10(m.last10)}
       ${spark(m.hist)}
       <div class="wv-dim" style="font-size:.84rem">柱子＝近 60 天每天增減（紅＝增加、綠＝減少，滑過看數字）；黃線＝餘額走勢</div>

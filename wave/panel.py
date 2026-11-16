@@ -467,6 +467,10 @@ def facts_b75(snap: dict) -> list:
     if mg.get("ok"):
         L.append(f"【融資 {mg['date']}】餘額 {mg['amt']} 億；1 天 {mg['chg1']} 億、5 天 {mg['chg5']} 億、20 天 {mg['chg20']} 億（{mg['pct20']}%）；"
                  f"連續 {'增加' if mg['streak'] > 0 else '減少'} {abs(mg['streak'])} 天 △")
+    cr = mg.get("credit") or {}
+    if cr.get("ok"):                                      # B115 證交所公布的整戶擔保維持率、追繳／處分
+        L.append(f"【信用交易 {cr['date']}】整戶擔保維持率 {cr['keep']}%（近 60 天最低 {cr['low']}%）；低於 130% {cr['below']:.0f} 戶"
+                 f"（前 20 天平均的 {cr.get('mult')} 倍）、補繳 {cr['call_yi']} 億、處分 {cr['exe']:.0f} 戶 {cr['exe_yi']} 億 △")
     return L
 
 

@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS src_status (src TEXT PRIMARY KEY, last_ok TEXT, fails
 CREATE TABLE IF NOT EXISTS fut_daily (date TEXT, sess TEXT, contract TEXT, o REAL, h REAL, l REAL, c REAL, v REAL, oi REAL,
     ref_close REAL, src TEXT, PRIMARY KEY (date, sess));
 CREATE TABLE IF NOT EXISTS fut_settle (date TEXT PRIMARY KEY, settle REAL, src TEXT);
+CREATE TABLE IF NOT EXISTS credit_keep (date TEXT PRIMARY KEY, keep REAL, below_acc REAL, call_acc REAL, call_amt REAL, exe_acc REAL,
+    exe_amt REAL, credit_acc REAL, credit_rate REAL, crd_amt REAL);
 CREATE TABLE IF NOT EXISTS bars5 (sym TEXT, ts INTEGER, o REAL, h REAL, l REAL, c REAL, v REAL, src TEXT, PRIMARY KEY (sym, ts));
 CREATE TABLE IF NOT EXISTS fut_chips (date TEXT PRIMARY KEY, mtx_oi REAL, mtx_inst_long REAL, mtx_inst_short REAL,
     retail_ratio REAL, opt_f_bull REAL, src TEXT);
@@ -410,3 +412,55 @@ def live_taiex() -> Optional[dict]:
     except Exception as e:     # noqa: BLE001
         mark("mis", False, repr(e))
         return None
+
+
+# ── B115 全市場整戶擔保維持率、追繳／處分（證交所台股儀表板 BFIJ3U，上市＋上櫃、融資＋融券合併計算）─────────────
+BFIJ3U = "https://www.twse.com.tw/rwd/zh/marginTrading/BFIJ3U_TREND"
+CREDIT_COLS = (("keepRate", "keep"), ("belowAccNum", "below_acc"), ("callAccNum", "call_acc"), ("callAmt", "call_amt"),
+               ("exeAccNum", "exe_acc"), ("exeAmt", "exe_amt"), ("marginAccNum", "credit_acc"), ("marginAccRate", "credit_rate"),
+               ("crdAmt", "crd_amt"))
+
+
+def parse_credit_keep(j: dict) -> list:
+    """BFIJ3U_TREND（或單日 BFIJ3U）的 JSON → [{date: YYYY-MM-DD, keep, below_acc, ...}]；格式不對回 []"""
+    if not isinstance(j, dict) or j.get("stat") != "OK":
+        return []
+    rows = j.get("data") if isinstance(j.get("data"), list) else [j]
+    out = []
+    for r in rows:
+        d = str(r.get("date") or "")
+        if len(d) != 8 or not d.isdigit() or r.get("keepRate") in (None, ""):
+            continue
+        x = {"date": f"{d[:4]}-{d[4:6]}-{d[6:]}"}
+        for k, c in CREDIT_COLS:
+            try:
+                x[c] = float(r[k]) if r.get(k) not in (None, "") else None
+            except (TypeError, ValueError):
+                x[c] = None
+        out.append(x)
+    return out
+
+
+def update_credit_keep(days: int = 120, get=None) -> int:
+    """抓近 days 個交易日的全市場整戶擔保維持率、追繳／處分 → credit_keep（證交所約晚上公布當天的）"""
+    get = get or (lambda u, p: httpx.get(u, params=p, headers=UA, timeout=30).json())
+    try:
+        rows = parse_credit_keep(get(BFIJ3U, {"response": "json", "days": int(days)}))
+        if rows:
+            with db() as c:
+                c.executemany("INSERT OR REPLACE INTO credit_keep(date," + ",".join(c_ for _, c_ in CREDIT_COLS) + ") VALUES (?" + ",?" * len(CREDIT_COLS) + ")",
+                              [tuple([r["date"]] + [r[c_] for _, c_ in CREDIT_COLS]) for r in rows])
+        mark("twse_credit_keep", bool(rows), "" if rows else "沒有資料")
+        return len(rows)
+    except Exception as e:     # noqa: BLE001
+        mark("twse_credit_keep", False, repr(e)[:200])
+        return 0
+
+
+def load_credit_keep(n: int = 120) -> list:
+    try:
+        with db() as c:
+            rs = c.execute("SELECT * FROM credit_keep ORDER BY date DESC LIMIT ?", (int(n),)).fetchall()
+        return [dict(r) for r in reversed(rs)]
+    except Exception:     # noqa: BLE001
+        return []
