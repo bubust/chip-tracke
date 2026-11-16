@@ -69,6 +69,54 @@ def session_of(sym: str, ts: float):
     return None
 
 
+def session_changes(rows: Iterable, price: float, now_ts: float, day_closes: Optional[dict] = None) -> Optional[dict]:
+    """B111 用戶 11/16：台指期日盤、夜盤的漲跌點數要分開算（夜盤 15:18 顯示「▼2,926（-6.68%）」＝拿夜盤價去比上週五日盤收盤，
+    把當天日盤的大跌也算進去了）。照期貨的習慣：日盤的漲跌比「前一個交易日的日盤收盤」，夜盤的漲跌比「當天的日盤收盤」。
+    rows：5 分 K [(ts, o, h, l, c, v)]（舊→新，含盤中那一根）；price：現價；day_closes：{日期: 日盤收盤}（日資料有就用它，沒有才用 5 分 K 最後一根）。
+    回 {cur: 現在（或最後）這一盤 {kind, label, date, open, price, ref, ref_label, chg, chg_pct}, other: 另一盤的結果 {kind, label, date, close, ref, chg, chg_pct} 或 None}；
+    資料不夠回 None"""
+    ss: dict = {}
+    for r in rows:
+        if r[4] is None or not math.isfinite(r[4]):
+            continue
+        s = session_of("TX", r[0])
+        if s:
+            ss.setdefault(s[1], {"kind": s[0], "st": s[1], "en": s[2]})["close"] = float(r[4])
+    now_s = session_of("TX", now_ts)
+    open_now = bool(now_s) and in_session("TX", tw_dt(now_ts))
+    if open_now and now_s[1] not in ss:
+        ss[now_s[1]] = {"kind": now_s[0], "st": now_s[1], "en": now_s[2], "close": float(price)}   # 剛開盤、還沒有 5 分 K
+    seq = [ss[k] for k in sorted(ss)]
+    if not seq:
+        return None
+    cur = seq[-1]
+    md = lambda x: tw_dt(x["st"]).strftime("%m/%d")                   # noqa: E731
+    dclose = lambda x: float((day_closes or {}).get(tw_dt(x["st"]).strftime("%Y-%m-%d")) or x["close"])   # noqa: E731
+    pct = lambda a, b: round((a / b - 1) * 100, 2) if b else None     # noqa: E731
+    days = [x for x in seq if x["kind"] == "day" and x["st"] < cur["st"]]
+    if not days:
+        return None
+    is_open = open_now and now_s[1] == cur["st"]
+    ref = dclose(days[-1])
+    px = float(price)
+    if cur["kind"] == "night":                                        # 夜盤：比當天日盤收盤；另一盤＝那個日盤（比再前一個日盤收盤）
+        other = None
+        if len(days) >= 2:
+            r1 = dclose(days[-2])
+            other = {"kind": "day", "label": "日盤收", "date": md(days[-1]), "close": ref, "ref": r1, "chg": round(ref - r1, 2), "chg_pct": pct(ref, r1)}
+        lab = "夜盤" if is_open else "夜盤收"
+    else:                                                             # 日盤：比前一個交易日的日盤收盤；另一盤＝中間那個夜盤（同一個基準）
+        nights = [x for x in seq if x["kind"] == "night" and days[-1]["st"] < x["st"] < cur["st"]]
+        other = None
+        if nights:
+            nc = nights[-1]["close"]
+            other = {"kind": "night", "label": "夜盤收", "date": md(nights[-1]), "close": nc, "ref": ref, "chg": round(nc - ref, 2), "chg_pct": pct(nc, ref)}
+        lab = "日盤" if is_open else "日盤收"
+    return {"cur": {"kind": cur["kind"], "label": lab, "date": md(cur), "open": is_open, "price": px, "ref": ref,
+                    "ref_label": f"{md(days[-1])} 日盤收盤", "chg": round(px - ref, 2), "chg_pct": pct(px, ref)},
+            "other": other}
+
+
 # ── 5 分 K → 30／60 分 K ─────────────────────────────────────────────────────
 def agg_bars(rows: Iterable, sym: str, tf_min: int) -> list:
     """rows：[(ts, o, h, l, c, v)]（ts＝5 分 K 開始時間，升冪）→ [{time, open, high, low, close, volume}]（time＝該根開始時間）
