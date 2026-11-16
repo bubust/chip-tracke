@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS ai_usage (day TEXT, model TEXT, tokens INTEGER, PRIMA
 CREATE TABLE IF NOT EXISTS src_status (src TEXT PRIMARY KEY, last_ok TEXT, fails INTEGER DEFAULT 0, last_err TEXT, last_try TEXT);
 CREATE TABLE IF NOT EXISTS fut_daily (date TEXT, sess TEXT, contract TEXT, o REAL, h REAL, l REAL, c REAL, v REAL, oi REAL,
     ref_close REAL, src TEXT, PRIMARY KEY (date, sess));
+CREATE TABLE IF NOT EXISTS fut_settle (date TEXT PRIMARY KEY, settle REAL, src TEXT);
 CREATE TABLE IF NOT EXISTS bars5 (sym TEXT, ts INTEGER, o REAL, h REAL, l REAL, c REAL, v REAL, src TEXT, PRIMARY KEY (sym, ts));
 CREATE TABLE IF NOT EXISTS fut_chips (date TEXT PRIMARY KEY, mtx_oi REAL, mtx_inst_long REAL, mtx_inst_short REAL,
     retail_ratio REAL, opt_f_bull REAL, src TEXT);

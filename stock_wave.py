@@ -173,7 +173,8 @@ def _push(after: list, d: int, ext: float, price: float, fib382: Optional[float]
     sub = None
     if third:
         sub = _sub5(after[jt + 1:], after[0]["t"], u, p0, p5, sp, pull, price, big_hi, c1_low, neck,
-                    lows=[q["p"] for q in seq if q["t"] != after[0]["t"]], fine=fine)
+                    lows=sorted({q["p"] for q in seq if q["t"] != after[0]["t"]}
+                                | {q["p"] for q in after[:jt + 1] if q["t"] != after[0]["t"]}), fine=fine)   # B113：初推裡沒併掉以前的低點也要（39,977）
         if sub and sub.get("done"):
             st = sub["state"]                                         # B107：5-1 已結束、日線 5-2
     lines = [f"初推小 5 段（她 11/10）：{'→'.join(_fmt(q['p']) for q in seq)}（2 不破起點、3 不是最短、4 不碰 1）＝第五大波 (1) 浪或大 B／C-4 的小 a；"
@@ -276,6 +277,12 @@ def _done52(rest: list, top_t: str, u: int, p0: float, p5: float, sp: float, pul
         nv = max(near, key=lambda v: u * v) if near else None
         z52.append({"r": r, "v": round(f, 2), "near": nv, "lo": round(min(f, nv if nv is not None else f), 2),
                     "hi": round(max(f, nv if nv is not None else f), 2)})
+    # B113 她 11/16：第二層（破四萬深層洗盤底座 39,238～39,977）＝0.786＋上面 2% 內的前波平台低點
+    f786 = top - u * 0.786 * big
+    pl = [v for v in cand if 0 < (v - f786) * u <= 0.02 * abs(f786)]
+    n786 = max(pl, key=lambda v: u * v) if pl else None
+    z786 = {"r": 0.786, "v": round(f786, 2), "near": n786, "lo": round(min(f786, n786 if n786 is not None else f786), 2),
+            "hi": round(max(f786, n786 if n786 is not None else f786), 2)}
     # 5-2 走 A-B-C：A 低點＝最高點之後第一個「彈回 ≥ 0.236 倍 A」的低點；B＝之後的反彈；再跌破 A 低點＝C
     pts = [q["p"] for q in rest[k_top + 1:]] + [float(price)]
     k_over = next((i for i, v in enumerate(pts) if (v - top) * u > 0), None)   # B110：又站上 5-1 高點
@@ -314,8 +321,9 @@ def _done52(rest: list, top_t: str, u: int, p0: float, p5: float, sp: float, pul
     c52 = ([(round(b_hi - u * r * a_len, 2), f"5-2-C＝{nm}") for r, nm in ((0.618, "0.618 倍 A"), (1.0, "A 等幅"), (1.618, "1.618 倍 A"))]
            if stage == "C" else [])                                  # B112：跌很深的時候看 1.618 倍（11/16 低點 40,714 剛好是它）
     low_all = min([a_low] + ([float(price)] if k_over is None else []) + ([c_low] if c_low is not None else []), key=lambda v: u * v)
-    for z in z52:
+    for z in z52 + [z786]:
         z["hit"] = bool((low_all - z["hi"]) * u <= 0)                 # 已經跌到這一區
+    cleg = _c5(rest[k_top + 1:], top_t, u, b_hi, float(price)) if stage == "C" and k_over is None else None
     zt = lambda z: f"{z['r']:g} {_fmt(z['v'])}" + (f"～{_fmt(z['near'])}（前低）" if z["near"] is not None else "")   # noqa: E731
     t53 = []
     if k_over is not None:                                            # B110：5-2 走完、5-3 啟動（她：帶量突破且首次回測踩穩）
@@ -338,7 +346,8 @@ def _done52(rest: list, top_t: str, u: int, p0: float, p5: float, sp: float, pul
         obs = (f"A {_fmt(top)}→{_fmt(a_low)}（{_fmt(a_len)} 點）；B 反彈 " + "、".join(f"{t.split()[-1]} {_fmt(v)}" for v, t in b52)
                + f"，最高多半壓在 0.618 附近、不會過 {_fmt(top)}；B 走完再看 5-2-C 往上面三區")
     else:
-        now_t = f"5-2-A {_fmt(top)}→{_fmt(a_low)}、5-2-B 彈到 {_fmt(b_hi)}、5-2-C 進行中（到 {_fmt(c_low)}）"
+        now_t = (f"5-2-A {_fmt(top)}→{_fmt(a_low)}、5-2-B 彈到 {_fmt(b_hi)}、5-2-C 進行中（到 {_fmt(c_low)}"
+                 + (f"；{cleg['now']}" if cleg else "") + "）")
         obs = (f"A {_fmt(top)}→{_fmt(a_low)}、B 彈到 {_fmt(b_hi)}；C 的量度 " + "、".join(f"{t.split('＝')[-1]} {_fmt(v)}" for v, t in c52)
                + "，C 走完才是 5-3 起漲")
     st = (f"5-1 在 {_fmt(top)} 結束（壓回到 {_fmt(low_all)}，跌破 (1) 高點 {_fmt(lim[0])}：4 不能碰 1，所以不是 (4)）；"
@@ -350,10 +359,88 @@ def _done52(rest: list, top_t: str, u: int, p0: float, p5: float, sp: float, pul
              ("5-3 啟動（她 11/15）：" if stage == "3" else "她 11/15 的分歧：" if fork else "5-2-A／B 拿來觀察：") + obs]
     if fork:
         lines += fork["lines"][2:]                                    # 主追蹤、強替代上面那一行已經講了
+    if cleg:
+        lines += cleg["lines"]
+    if stage == "C":
+        lines.append(f"第二層（她 11/16：破四萬深層洗盤底座）{_fmt(z786['lo'])}" + (f"～{_fmt(z786['hi'])}" if z786["hi"] != z786["lo"] else "")
+                     + f"：{_fmt(p0)}→{_fmt(top)} 的 0.786" + ("＋前波平台低點" if z786["near"] is not None else "")
+                     + "；跌破大買點 0.618 才看這裡，要伴隨底背離、迅速收復才是洗盤底")
     return {"done": True, "stage": stage, "launch": launch, "plat": [pull, plat_hi], "top3": top, "top": top, "limit": lim, "pb": low_all,
             "p0": p0, "a_low": a_low, "b_hi": round(b_hi, 2) if in_b else None, "c_low": c_low, "b52": b52 if in_b else [], "c52": c52,
-            "z52": z52, "z4": {}, "t5": [], "d52": [(z["r"], z["lo"], z["hi"]) for z in z52], "fork": fork,
+            "z52": z52, "z786": z786, "cleg": cleg, "z4": {}, "t5": [], "d52": [(z["r"], z["lo"], z["hi"]) for z in z52], "fork": fork,
             "hi53": hi53, "t53": t53, "end52": end52 if stage == "3" else None, "state": st, "lines": lines}
+
+
+def _legs_down(seq: list, low_t: str, top_t: str, u: int, price: float) -> list:
+    """一段回檔切成腳：C-1（低）、C-2（高）、C-3（更低）…——沒破前低的低點算在反彈裡；現價已經跌破前一個低點＝下一腳開始；最多五腳"""
+    legs = []
+    for q in seq:
+        if not legs:
+            if q["t"] == low_t:
+                legs.append(q)
+        elif q["t"] == low_t:
+            if legs[-1]["t"] == low_t:
+                if (q["p"] - legs[-1]["p"]) * u < 0:
+                    legs[-1] = q
+            elif (q["p"] - legs[-2]["p"]) * u < 0:
+                legs.append(q)
+        elif legs[-1]["t"] == low_t:
+            legs.append(q)
+        elif (q["p"] - legs[-1]["p"]) * u > 0:
+            legs[-1] = q
+    if legs and legs[-1]["t"] == top_t and (price - legs[-2]["p"]) * u < 0:
+        legs.append({"p": price, "t": low_t})
+    if len(legs) > 5:                                                 # 超過五腳：後面的低點都併進第 5 腳
+        legs = legs[:4] + [min((q for q in legs[4:] if q["t"] == low_t), key=lambda q: u * q["p"])]
+    return legs
+
+
+def _c5(after: list, top_t: str, u: int, b_hi: float, price: float) -> Optional[dict]:
+    """B113 她 11/16：5-2-C 走「標準五波」（目前在 C-3 末端）→ C-3 踩煞車、C-4 橫盤箱體、C-5 最後一腳（動能衰竭只針尖刺穿，或等幅下殺摜破再收復）。
+    用小級（60 分）轉折切（她：60 分決定切組）：C-1 44,824→42,956（1,868 點）、C-2 43,770、C-3 →40,714、C-4 41,465、C-5…；4 不能碰 1。
+    C-5 的量度從 C-4 高點往下：0.618 倍 C-1（40,311；她的針尖區 40,313～40,451 下緣）、C-1 等幅（39,597；落在她的第二層 39,238～39,977）。
+    after：5-1 高點之後的小級轉折。不到三腳回 None"""
+    low_t = "L" if u > 0 else "H"
+    kb = max((k for k, q in enumerate(after or []) if q.get("t") == top_t and abs(q["p"] - b_hi) < 1e-6), default=None)
+    if kb is None:
+        return None
+    seq = [{"p": float(q["p"]), "t": q["t"]} for q in after[kb + 1:]]
+    if not seq:
+        return None
+    if (price - seq[-1]["p"]) * (u if seq[-1]["t"] == top_t else -u) > 0:
+        seq[-1]["p"] = price
+    legs = _legs_down(seq, low_t, top_t, u, price)
+    n = len(legs)
+    if n < 3:
+        return None
+    lo_w, hi_w, dn_w = ("低", "高", "跌") if u > 0 else ("高", "低", "漲")
+    c1 = abs(b_hi - legs[0]["p"])
+    c3 = abs(legs[1]["p"] - legs[2]["p"])
+    overlap = bool(n >= 4 and (legs[3]["p"] - legs[0]["p"]) * u > 0)
+    names = "、".join(f"C-{k + 1} {_fmt(q['p'])}" for k, q in enumerate(legs))
+    c4z, t5 = [], []
+    if n == 3:                                                        # C-3 之後的 C-4 反彈：C-3 的 0.236～0.382，不能回到 C-1 低點上面
+        c4z = [(round(legs[2]["p"] + u * r * c3, 2), f"C-3 的 {r:g}") for r in (0.236, 0.382)]
+        now = f"C-3 {dn_w}到 {_fmt(legs[2]['p'])}（{c3 / c1:.2f} 倍 C-1）"
+        nxt = (f"C-3 踩煞車以後是 C-4 橫盤箱體（反彈 " + "、".join(f"{t.split()[-1]} {_fmt(v)}" for v, t in c4z)
+               + f"，不能回到 C-1 {lo_w}點 {_fmt(legs[0]['p'])} 上面），再走最後一腳 C-5")
+    else:
+        c4 = legs[3]["p"]
+        t5 = [(round(c4 - u * r * c1, 2), f"C-5＝{nm}") for r, nm in ((0.618, "0.618 倍 C-1"), (1.0, "C-1 等幅"))]
+        tt = "、".join(f"{t.split('＝')[-1]} {_fmt(v)}" for v, t in t5)
+        if n == 4:
+            now = f"C-4 反彈到 {_fmt(c4)}"
+            nxt = f"C-4 是橫盤箱體，後面還有最後一腳 C-5（從 {_fmt(c4)} 往下量：{tt}）"
+        else:
+            ext = abs(legs[4]["p"] - legs[2]["p"])
+            now = f"C-5 到 {_fmt(legs[4]['p'])}（比 C-3 {lo_w}點多{dn_w} {_fmt(ext)} 點）"
+            nxt = (f"五腳走齊：站回 C-4 {hi_w}點 {_fmt(c4)} 才算 C 段走完；也可能 C-4 箱體還沒走完（{_fmt(c4)}～{_fmt(legs[4]['p'])} 只是箱體上下緣）、"
+                   f"真正的 C-5 還在後面（{tt}）")
+    kind = "重疊型（4 碰到 1）" if overlap else "標準五波"
+    lines = [f"5-2-C 的腳（她 11/16：{kind} 5-2-C；照小級轉折切）：{names}；C-1 {_fmt(c1)} 點、C-3 是它的 {c3 / c1:.2f} 倍",
+             nxt]
+    return {"legs": [{"k": k + 1, "p": q["p"], "t": q["t"]} for k, q in enumerate(legs)], "n": n, "overlap": overlap, "c1": round(c1, 2),
+            "c4": legs[3]["p"] if n >= 4 else None, "c4z": c4z, "t5": t5, "now": now, "next": nxt, "kind": kind, "lines": lines}
 
 
 def _fork52(after: list, fn: list, top_t: str, u: int, top: float, p0: float, a_low: float, b_hi: float, price: float,
@@ -378,25 +465,7 @@ def _fork52(after: list, fn: list, top_t: str, u: int, top: float, p0: float, a_
     seq = seq or [{"p": price, "t": low_t}]
     if (price - seq[-1]["p"]) * (u if seq[-1]["t"] == top_t else -u) > 0:
         seq[-1]["p"] = price                                          # 最後一腳還在走：用現價延長
-    legs = []                                                         # C-1（低）、C-2（高）、C-3（更低）…：沒破前低的低點算在反彈裡
-    for q in seq:
-        if not legs:
-            if q["t"] == low_t:
-                legs.append(q)
-        elif q["t"] == low_t:
-            if legs[-1]["t"] == low_t:
-                if (q["p"] - legs[-1]["p"]) * u < 0:
-                    legs[-1] = q
-            elif (q["p"] - legs[-2]["p"]) * u < 0:
-                legs.append(q)
-        elif legs[-1]["t"] == low_t:
-            legs.append(q)
-        elif (q["p"] - legs[-1]["p"]) * u > 0:
-            legs[-1] = q
-    if legs and legs[-1]["t"] == top_t and (price - legs[-2]["p"]) * u < 0:
-        legs.append({"p": price, "t": low_t})                         # 現價已經跌破前一個低點＝下一腳開始了
-    if len(legs) > 5:                                                 # 超過五腳：後面的低點都併進第 5 腳
-        legs = legs[:4] + [min((q for q in legs[4:] if q["t"] == low_t), key=lambda q: u * q["p"])]
+    legs = _legs_down(seq, low_t, top_t, u, price)
     if not legs:
         return None
     n = len(legs)
@@ -928,7 +997,10 @@ def plan_card(t: dict, price: float, bars15: Optional[list] = None, atr15: Optio
     plays = []
     if t["tag"] == "52" and sb.get("done") and u > 0:
         top, p0, a_low, b_hi, c_low, stage, zs = sb["top"], sb["p0"], sb["a_low"], sb.get("b_hi"), sb.get("c_low"), sb["stage"], sb["z52"]
-        ztxt = "、".join(rng(z["lo"], z["hi"]) + ("（已到）" if z.get("hit") else "") for z in zs)
+        low52 = sb.get("pb")                                          # 5-2 到現在的最低點
+        zhit = lambda z: ("" if not z.get("hit") else "（已到）" if low52 is None or (low52 - z["v"]) * u <= 0   # noqa: E731
+                          else f"（碰到上緣，{z['r']:g} 的 {_fmt(z['v'])} 還沒到）")       # B113 她 11/16：「還沒到 0.618 差一點」
+        ztxt = "、".join(rng(z["lo"], z["hi"]) + zhit(z) for z in zs)
         nz = next((z for z in zs if not z.get("hit")), None)
         longs = [(z["v"], f"大買點 {z['r']:g}") for z in zs] + [(z["near"], f"大買點 {z['r']:g} 旁邊的前低") for z in zs if z["near"] is not None]
         pos = [f"{lb['big']}：第 5 大波裡的 5-2 回檔——5-1（{_fmt(p0)}→{_fmt(top)}，漲 {_fmt(top - p0)} 點）已經走完"]
@@ -1054,26 +1126,56 @@ def plan_card(t: dict, price: float, bars15: Optional[list] = None, atr15: Optio
                      "down": down, "stop": tile(top, "5-1 高點", "站上＝5-2 結束") if up_v and up_v != round(top, 2) else None}
         else:
             # B112：C 段跌很深（11/16 一天跌 2,949 點到 40,714，三個大買點全到）——量度標「已到」、上方下方格子用離現價最近的那一層
-            c52 = sb.get("c52") or []
+            # B113 她 11/16：C 段是標準五波（C-1～C-5，照 60 分轉折切）、第二層 0.786＋平台低點
+            c52, cg, z7 = sb.get("c52") or [], sb.get("cleg"), sb.get("z786")
             n_hit = sum(1 for z in zs if z.get("hit"))
             ct = "、".join(f"{nm_.split('＝')[-1]} {_fmt(v)}" + ("（已到）" if (c_low - v) * u <= 1 else "") for v, nm_ in c52)
-            where_t = "三個大買點都到了" if n_hit == len(zs) else f"已經到第 {n_hit} 個大買點" if n_hit else "往大買點走"
-            pos.append(f"{lb['small']}：5-2 走 A-B-C 三段——A 跌到 {_fmt(a_low)}、B 彈到 {_fmt(b_hi)} 都走完，現在是 C 段下跌（到 {_fmt(c_low)}），{where_t}")
-            shape = "三段式修正（A-B-C）的 C 段：最後一段下跌，走完才是 5-3 起漲"
+            gap = (low52 - zs[-1]["v"]) * u if low52 is not None else 0     # 最深一區的黃金切割本身還差幾點
+            where_t = (("三個大買點都碰到了" + (f"（最深一區只碰到上緣，{zs[-1]['r']:g} 的 {_fmt(zs[-1]['v'])} 還差 {_fmt(round(gap))} 點）" if gap > 0 else ""))
+                       if n_hit == len(zs) else f"已經到第 {n_hit} 個大買點" if n_hit else "往大買點走")
+            leg_t = "、".join(f"C-{x['k']} {_fmt(x['p'])}" for x in cg["legs"]) if cg else ""
+            pos.append(f"{lb['small']}：5-2 走 A-B-C 三段——A 跌到 {_fmt(a_low)}、B 彈到 {_fmt(b_hi)} 都走完，現在是 C 段下跌（到 {_fmt(c_low)}），{where_t}"
+                       + (f"；C 段照 {lb['small']}轉折是{cg['kind']}：{leg_t}" if cg else ""))
+            if cg:
+                pos.append(f"接下來：{cg['next']}")
+            shape = ("三段式修正（A-B-C）的 C 段" + (f"，{cg['kind']}走到第 {cg['n']} 腳" if cg else "") + "：最後一段下跌，走完才是 5-3 起漲")
             lvn = {}
             for v, nm_ in c52:
                 lvn[round(v, 2)] = "C＝" + nm_.split("＝")[-1]
+            if z7:
+                lvn[round(z7["v"], 2)] = "第二層：0.786"
+                if z7["near"] is not None:
+                    lvn[round(z7["near"], 2)] = "第二層：前波平台低點"
+            if cg:
+                for v, nm_ in cg["t5"]:
+                    lvn[round(v, 2)] = nm_
+                for x in cg["legs"][:4 if cg["n"] == 5 else cg["n"] - 1]:    # 還在走的那一腳（最後一個）不當價位
+                    lvn[round(x["p"], 2)] = f"C-{x['k']} {'低' if x['t'] == 'L' else '高'}點"
+                if cg["n"] == 5:
+                    lvn[round(cg["legs"][4]["p"], 2)] = "C-5 低點"
             for z in zs:                                              # 大買點的名字蓋過量度（同一個價位時）
                 lvn[round(z["v"], 2)] = f"大買點 {z['r']:g}"
                 if z["near"] is not None:
                     lvn[round(z["near"], 2)] = f"大買點 {z['r']:g} 旁邊的前低"
             broke = sorted(v for v in lvn if v > price and (c_low - v) * u <= 1)          # 已經跌破、現在在頭上的
             under = sorted((v for v in lvn if v < price), reverse=True)                   # 現價下面的
-            plays = [{"k": "wait", "tag": "不追空", "t": f"C 段的量度 {ct}；{where_t}，追空沒有肉，手上有空單就照目標分批回補"},
-                     {**buy, "t": buy["t"] + (f"；三區都到了，最深這一區 {rng(zs[-1]['lo'], zs[-1]['hi'])} 守不守是關鍵" if n_hit == len(zs) else "")}]
+            longs = longs + [(v, nm_) for v, nm_ in lvn.items() if v < price and all(abs(v - w) > 1 for w, _ in longs)]
+            z7t = f"；再破就看第二層 {rng(z7['lo'], z7['hi'])}（0.786" + ("＋前波平台低點" if z7["near"] is not None else "") + "）" if z7 else ""
+            t5t = ("；C-5 的量度 " + "、".join(f"{nm_.split('＝')[-1]} {_fmt(v)}" for v, nm_ in cg["t5"])) if cg and cg["t5"] else ""
+            plays = [{"k": "wait", "tag": "不追空", "t": f"C 段的量度 {ct}；{where_t.split('（')[0]}，追空沒有肉，手上有空單就照目標分批回補"},
+                     {**buy, "t": buy["t"] + (f"；三區都碰到了，最深這一區 {rng(zs[-1]['lo'], zs[-1]['hi'])} 守不守是關鍵" if n_hit == len(zs) else "") + z7t + t5t}]
+            c4 = cg["c4"] if cg and cg["n"] == 5 else None            # 五腳走齊以後：站回 C-4 高點＝C 段走完的第一個證據
+            c1_lo = cg["legs"][0]["p"] if cg and cg["n"] < 5 else None  # 還沒走齊：C-4 反彈不能回到 C-1 低點上面（4 不碰 1）
+            stop_t = (tile(c4, "C-4 高點", "站上＝C 段五腳走完") if c4 is not None and c4 > price else
+                      tile(c1_lo, "C-1 低點", "站上＝4 碰到 1") if c1_lo is not None and c1_lo > price else tile(b_hi, "B 段高點", "站上＝C 段沒了"))
             tiles = {"up": tile(broke[0], lvn[broke[0]], "站回去＝止跌第一步") if broke else tile(b_hi, "B 段高點", "站上＝C 段沒了"),
                      "down": tile(under[0], lvn[under[0]], "跌破又收回才做多") if under else tile(p0, "5-1 起點", "跌破＝看法作廢"),
-                     "stop": tile(b_hi, "B 段高點", "站上＝C 段沒了") if broke else tile(top, "5-1 高點", "站上＝5-1 還在走")}
+                     "stop": stop_t if broke else tile(top, "5-1 高點", "站上＝5-1 還在走")}
+            if cg:
+                flip = ((f"改判：站上 {_fmt(c4)}（C-4 高點）＝C 段五腳走完、5-2 可能已經落底；" if c4 is not None and c4 > price else
+                         f"改判：站上 {_fmt(c1_lo)}（C-1 低點）＝4 碰到 1、標準五波不成立（C 段可能已經在 {_fmt(c_low)} 走完）；" if c1_lo is not None and c1_lo > price
+                         else "改判：")
+                        + f"站上 {_fmt(b_hi)}（B 段高點）＝C 段沒了；跌破 {_fmt(p0)}＝第 5 大波的看法作廢")
         if flip is None:
             flip = (f"改判：站上 {_fmt(b_hi)}（B 段高點）＝C 段沒了、5-2 可能已經結束；" if stage == "C" else
                     f"改判：站上 {_fmt(top)}＝5-2 走完、5-3 啟動；") + f"跌破 {_fmt(p0)}＝第 5 大波的看法作廢"

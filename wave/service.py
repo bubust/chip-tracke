@@ -772,7 +772,8 @@ def _session_label(sym: str, now) -> str:
     return "日盤" if (8, 45) <= (now.hour, now.minute) <= (13, 50) else "夜盤"
 
 
-def _intraday(sym: str, b: dict, price: float, lv_c, live_rows: list, st: dict, vol_live: Optional[dict] = None) -> dict:
+def _intraday(sym: str, b: dict, price: float, lv_c, live_rows: list, st: dict, vol_live: Optional[dict] = None,
+              live_ref: Optional[float] = None) -> dict:
     now_ts = time.time()
     rows = I.rows5(sym, live_rows, now_ts, vol_live)
     b60 = I.bars(sym, 60, rows=rows, now_ts=now_ts)
@@ -801,7 +802,8 @@ def _intraday(sym: str, b: dict, price: float, lv_c, live_rows: list, st: dict, 
     if sym == "TX":                                        # B111：日盤、夜盤的漲跌分開算
         try:
             dc = {str(d)[:10]: float(x) for d, x in zip(b["dates"][-15:], b["c"][-15:])}
-            out["sess"] = FD.session_changes([r for r in rows if r[0] >= now_ts - 15 * 86400], price, now_ts, dc)
+            out["sess"] = FD.session_changes([r for r in rows if r[0] >= now_ts - 15 * 86400], price, now_ts, dc,
+                                             settles=FD.load_settles(), live_ref=live_ref)   # B113：基準＝結算價
         except Exception as e:     # noqa: BLE001
             log.warning(f"[wave] 日夜盤漲跌失敗：{e}")
     try:                                                   # B110：兩道關卡用「看得比較久」的 60 分轉折
@@ -1157,7 +1159,7 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
         key[mode] = _key_out(cands, mode, price, b["atr"], st)
     # 超短線（60 分 K）
     try:
-        intra = _intraday(sym, b, price, lv_c, live_rows or [], st, (vol_live or {}).get("map"))
+        intra = _intraday(sym, b, price, lv_c, live_rows or [], st, (vol_live or {}).get("map"), live_ref=(live or {}).get("ref"))
     except Exception as e:     # noqa: BLE001
         log.exception(f"[wave] 分 K 失敗 {sym}：{e}")
         intra = {"ok": False, "note": f"分 K 計算失敗：{e}", "tf60": [], "tf30": [], "tf15": [],
@@ -1380,7 +1382,17 @@ def _live_day(sym: str) -> Optional[dict]:
     x = FD.live_tx_day()
     if not x:
         return None
-    return {"date": x["date"], "o": x["o"], "h": x["h"], "l": x["l"], "c": x["c"], "v": x.get("v"), "time": D.tw_now().strftime("%H:%M:%S")}
+    ref = None
+    try:                                                   # B113：報價帶的漲跌基準（＝結算價）；夜盤時順便把當天日盤的結算價存起來
+        q = FD.fetch_cnyes_quote("TX")
+        ref = (q or {}).get("ref")
+        now = D.tw_now()
+        if ref and now.hour >= 15:                         # 夜盤（當天 15:00 以後）：基準＝今天日盤的結算價
+            FD.save_settles({now.strftime("%Y-%m-%d"): ref}, "CNYES_Q")
+    except Exception as e:     # noqa: BLE001
+        log.info(f"[wave] 報價基準抓不到：{e}")
+    return {"date": x["date"], "o": x["o"], "h": x["h"], "l": x["l"], "c": x["c"], "v": x.get("v"), "time": D.tw_now().strftime("%H:%M:%S"),
+            "ref": ref}
 
 
 def snapshot(force: bool = False, sym: str = "TWII") -> dict:
@@ -1434,7 +1446,7 @@ def quote(sym: str) -> dict:
             if q and q.get("price"):
                 ts = q.get("ts") or 0
                 t = FD.tw_dt(ts) if 0 <= now - ts < 900 else tnow       # 鉅亨的成交時間合理就用它，不然用伺服器時間
-                out.update(ok=True, price=float(q["price"]), time=t.strftime("%H:%M:%S"), ts=int(t.timestamp()))
+                out.update(ok=True, price=float(q["price"]), time=t.strftime("%H:%M:%S"), ts=int(t.timestamp()), ref=q.get("ref"))
         except Exception as e:     # noqa: BLE001
             out["error"] = str(e)[:120]
     _quote_cache[sym] = (now, out)

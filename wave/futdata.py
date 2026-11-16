@@ -69,9 +69,12 @@ def session_of(sym: str, ts: float):
     return None
 
 
-def session_changes(rows: Iterable, price: float, now_ts: float, day_closes: Optional[dict] = None) -> Optional[dict]:
+def session_changes(rows: Iterable, price: float, now_ts: float, day_closes: Optional[dict] = None,
+                    settles: Optional[dict] = None, live_ref: Optional[float] = None) -> Optional[dict]:
     """B111 用戶 11/16：台指期日盤、夜盤的漲跌點數要分開算（夜盤 15:18 顯示「▼2,926（-6.68%）」＝拿夜盤價去比上週五日盤收盤，
-    把當天日盤的大跌也算進去了）。照期貨的習慣：日盤的漲跌比「前一個交易日的日盤收盤」，夜盤的漲跌比「當天的日盤收盤」。
+    把當天日盤的大跌也算進去了）。照期貨的習慣：日盤的漲跌比「前一個交易日日盤」，夜盤的漲跌比「當天日盤」。
+    B113：基準是那個日盤的**結算價**，不是最後成交價（期交所日行情表、看盤軟體都這樣；11/16 收盤 40,885、結算 40,781，差 104 點）。
+    結算價的來源：盤中用報價反推的 live_ref（成交 − 漲跌）＞ settles {日期: 結算價}（FinMind 日資料）＞ 沒有才用收盤。
     rows：5 分 K [(ts, o, h, l, c, v)]（舊→新，含盤中那一根）；price：現價；day_closes：{日期: 日盤收盤}（日資料有就用它，沒有才用 5 分 K 最後一根）。
     回 {cur: 現在（或最後）這一盤 {kind, label, date, open, price, ref, ref_label, chg, chg_pct}, other: 另一盤的結果 {kind, label, date, close, ref, chg, chg_pct} 或 None}；
     資料不夠回 None"""
@@ -91,21 +94,28 @@ def session_changes(rows: Iterable, price: float, now_ts: float, day_closes: Opt
         return None
     cur = seq[-1]
     md = lambda x: tw_dt(x["st"]).strftime("%m/%d")                   # noqa: E731
-    dclose = lambda x: float((day_closes or {}).get(tw_dt(x["st"]).strftime("%Y-%m-%d")) or x["close"])   # noqa: E731
+    dk = lambda x: tw_dt(x["st"]).strftime("%Y-%m-%d")                # noqa: E731
+    dclose = lambda x: float((day_closes or {}).get(dk(x)) or x["close"])   # noqa: E731
     pct = lambda a, b: round((a / b - 1) * 100, 2) if b else None     # noqa: E731
+
+    def base(x):                                                      # 這個日盤給後面比的基準：結算價，沒有才用收盤
+        sv = (settles or {}).get(dk(x))
+        return (float(sv), "結算價") if sv else (dclose(x), "收盤")
     days = [x for x in seq if x["kind"] == "day" and x["st"] < cur["st"]]
     if not days:
         return None
     is_open = open_now and now_s[1] == cur["st"]
-    ref = dclose(days[-1])
+    ref, how = base(days[-1])
+    if is_open and live_ref and abs(float(live_ref) / dclose(days[-1]) - 1) < 0.02:      # 盤中：報價自己帶的基準（離收盤太遠＝資料怪，不用）
+        ref, how = float(live_ref), "結算價"
     px = float(price)
-    if cur["kind"] == "night":                                        # 夜盤：比當天日盤收盤；另一盤＝那個日盤（比再前一個日盤收盤）
+    if cur["kind"] == "night":                                        # 夜盤：比當天日盤；另一盤＝那個日盤（比再前一個日盤）
         other = None
         if len(days) >= 2:
-            r1 = dclose(days[-2])
-            other = {"kind": "day", "label": "日盤收", "date": md(days[-1]), "close": ref, "ref": r1, "chg": round(ref - r1, 2), "chg_pct": pct(ref, r1)}
+            dc, (r1, _) = dclose(days[-1]), base(days[-2])
+            other = {"kind": "day", "label": "日盤收", "date": md(days[-1]), "close": dc, "ref": r1, "chg": round(dc - r1, 2), "chg_pct": pct(dc, r1)}
         lab = "夜盤" if is_open else "夜盤收"
-    else:                                                             # 日盤：比前一個交易日的日盤收盤；另一盤＝中間那個夜盤（同一個基準）
+    else:                                                             # 日盤：比前一個交易日的日盤；另一盤＝中間那個夜盤（同一個基準）
         nights = [x for x in seq if x["kind"] == "night" and days[-1]["st"] < x["st"] < cur["st"]]
         other = None
         if nights:
@@ -113,7 +123,7 @@ def session_changes(rows: Iterable, price: float, now_ts: float, day_closes: Opt
             other = {"kind": "night", "label": "夜盤收", "date": md(nights[-1]), "close": nc, "ref": ref, "chg": round(nc - ref, 2), "chg_pct": pct(nc, ref)}
         lab = "日盤" if is_open else "日盤收"
     return {"cur": {"kind": cur["kind"], "label": lab, "date": md(cur), "open": is_open, "price": px, "ref": ref,
-                    "ref_label": f"{md(days[-1])} 日盤收盤", "chg": round(px - ref, 2), "chg_pct": pct(px, ref)},
+                    "ref_label": f"{md(days[-1])} 日盤{how}", "chg": round(px - ref, 2), "chg_pct": pct(px, ref)},
             "other": other}
 
 
@@ -163,7 +173,9 @@ def select_continuous(df: pd.DataFrame) -> pd.DataFrame:
     x = df[df["contract_date"].map(_plain_month)].copy()
     x["contract"] = x["contract_date"].astype(str).str.strip()
     x["sess"] = np.where(x["trading_session"].astype(str) == "after_market", "night", "day")
-    for k in ("open", "max", "min", "close", "volume", "open_interest"):
+    if "settlement_price" not in x.columns:
+        x["settlement_price"] = np.nan
+    for k in ("open", "max", "min", "close", "volume", "open_interest", "settlement_price"):
         x[k] = pd.to_numeric(x[k], errors="coerce")
     x = x.dropna(subset=["open", "max", "min", "close"])          # 缺值列直接丟（審查 Groq F2）
     x = x[(x["close"] > 0) & (x["open"] > 0) & (x["max"] >= x["min"])]
@@ -182,7 +194,8 @@ def select_continuous(df: pd.DataFrame) -> pd.DataFrame:
             rc = float(cs[k]) if k >= 0 else None
         out.append({"date": str(r.date)[:10], "sess": r.sess, "contract": r.contract, "o": float(r.open), "h": float(r.max),
                     "l": float(r.min), "c": float(r.close), "v": float(r.volume or 0),
-                    "oi": None if pd.isna(r.open_interest) or r.sess == "night" else float(r.open_interest), "ref_close": rc})
+                    "oi": None if pd.isna(r.open_interest) or r.sess == "night" else float(r.open_interest), "ref_close": rc,
+                    "settle": float(r.settlement_price) if r.sess == "day" and not pd.isna(r.settlement_price) and r.settlement_price > 0 else None})
     return pd.DataFrame(out).sort_values(["date", "sess"]).reset_index(drop=True)
 
 
@@ -263,14 +276,18 @@ def parse_cnyes_hist(j: dict) -> list:
 
 
 def parse_cnyes_quote(j: dict) -> Optional[dict]:
-    """quote → {price, ref, high, low, open, ts}（6 成交、21 參考價（昨收）、12 高、13 低、19 開、200007 時間）"""
+    """quote → {price, ref, chg, high, low, open, ts}（6 成交、21 參考價、11 漲跌、12 高、13 低、19 開、200007 時間）
+    B113：台指期沒有 21，用「成交 − 漲跌」當基準＝期交所的結算價（夜盤比當天日盤結算價、日盤比前一天結算價；跟看盤軟體一樣）"""
     try:
         x = (j.get("data") or [])[0]
         f = lambda k: float(x[k]) if x.get(k) not in (None, "", "-") else None
         p = f("6")
         if p is None:
             return None
-        return {"price": p, "ref": f("21"), "high": f("12"), "low": f("13"), "open": f("19"), "ts": int(x.get("200007") or 0)}
+        chg, ref = f("11"), f("21")
+        if ref is None and chg is not None:
+            ref = round(p - chg, 2)
+        return {"price": p, "ref": ref, "chg": chg, "high": f("12"), "low": f("13"), "open": f("19"), "ts": int(x.get("200007") or 0)}
     except Exception:     # noqa: BLE001
         return None
 
@@ -395,6 +412,26 @@ def save_fut_daily(df: pd.DataFrame, src: str) -> int:
     return len(df)
 
 
+def save_settles(items: dict, src: str) -> int:
+    """B113 {日期: 日盤結算價} → fut_settle（漲跌的基準；FinMind 日資料或鉅亨報價反推）"""
+    rows = [(str(d)[:10], float(v), src) for d, v in (items or {}).items() if v is not None and math.isfinite(float(v)) and float(v) > 0]
+    if not rows:
+        return 0
+    with D.db() as c:
+        c.executemany("INSERT INTO fut_settle(date,settle,src) VALUES(?,?,?) ON CONFLICT(date) DO UPDATE SET settle=excluded.settle, src=excluded.src "
+                      "WHERE excluded.src='FINMIND' OR fut_settle.src!='FINMIND'", rows)      # 報價反推的不蓋掉日資料的正式結算價
+    return len(rows)
+
+
+def load_settles(n: int = 40) -> dict:
+    try:
+        with D.db() as c:
+            rs = c.execute("SELECT date, settle FROM fut_settle ORDER BY date DESC LIMIT ?", (int(n),)).fetchall()
+        return {r["date"]: float(r["settle"]) for r in rs}
+    except Exception:     # noqa: BLE001
+        return {}
+
+
 def load_fut_daily() -> pd.DataFrame:
     with D.db() as c:
         rs = c.execute("SELECT date,sess,contract,o,h,l,c,v,oi,ref_close FROM fut_daily ORDER BY date, sess").fetchall()
@@ -433,7 +470,12 @@ def update_fut_daily(full: bool = False) -> int:
     start = "2017-01-01" if full else (D.tw_now().date() - timedelta(days=45)).strftime("%Y-%m-%d")
     try:
         df = D._finmind("TaiwanFuturesDaily", start, data_id="TX")
-        n = save_fut_daily(select_continuous(df), "FINMIND")
+        sel = select_continuous(df)
+        n = save_fut_daily(sel, "FINMIND")
+        try:                                                          # B113：日盤結算價（漲跌的基準）
+            save_settles({r["date"]: r["settle"] for r in sel.to_dict("records") if r["sess"] == "day" and r.get("settle")}, "FINMIND")
+        except Exception as e:     # noqa: BLE001
+            log.warning(f"[fut] 結算價沒存到：{e}")
         D.mark("finmind_txdaily", True)
         return n
     except Exception as e:     # noqa: BLE001

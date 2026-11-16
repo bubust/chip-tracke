@@ -23,11 +23,13 @@ def test_tx_1116_all_three_zones_hit():
     sb, c = _card(41067.0)
     assert sb["stage"] == "C" and sb["fork"] is None and sb["c_low"] == 40714 and [z["hit"] for z in sb["z52"]] == [True, True, True]
     assert [int(v + 0.5) for v, _ in sb["c52"]] == [43254, 42284, 40714]                     # 0.618、1、1.618 倍 A
-    assert "三個大買點都到了" in c["pos"][1] and "40,714" in c["pos"][1]
+    assert "三個大買點都碰到了" in c["pos"][1] and "40,714" in c["pos"][1]
+    assert "0.618 的 40,451 還差 263 點" in c["pos"][1]                                      # B113 她：「還沒到 0.618 差一點」
     assert c["plays"][0]["tag"] == "不追空" and c["plays"][0]["t"].count("（已到）") == 3
-    assert "最深這一區 40,451～40,715 守不守是關鍵" in c["plays"][1]["t"]
+    assert "最深這一區 40,451～40,715 守不守是關鍵" in c["plays"][1]["t"] and "碰到上緣，0.618 的 40,451 還沒到" in c["plays"][1]["t"]
     tl = c["tiles"]
-    assert (tl["up"]["price"], tl["up"]["name"]) == (41302.5, "大買點 0.5") and tl["down"]["price"] == 40715 and tl["stop"]["price"] == 44824
+    assert (tl["up"]["price"], tl["up"]["name"]) == (41302.5, "大買點 0.5") and tl["down"]["price"] == 40715
+    assert (tl["stop"]["price"], tl["stop"]["name"]) == (42956, "C-1 低點")                  # B113：C-4 反彈不能回到 C-1 低點上面
 
 
 def test_tiles_follow_price():
