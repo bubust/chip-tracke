@@ -202,7 +202,7 @@
     const q0 = curQ(), live = S.asof.live, dg = S.sym === 'TX' ? 0 : 2;
     const sk = S.sym === 'TX' && S.sess ? S.sess.cur.kind : null;
     const q = q0 && sk && q0.label && ((q0.label === '夜盤') !== (sk === 'night')) ? null : q0;   // B111 剛換盤、快照還是上一盤的：先不拿新一盤的報價去比舊基準
-    const px = q ? q.price : S.price, prev = num(S.prev_close);
+    const px = q ? q.price : S.price, prev = q && S.sym === 'TX' && num(q.ref) != null ? q.ref : num(S.prev_close);   // B113 報價自己帶的基準（結算價）優先
     const chg = q && prev != null ? px - prev : S.chg, cp = q && prev ? (px / prev - 1) * 100 : S.chg_pct;
     // B111 台指期：日盤、夜盤的漲跌分開——大字＝這一盤自己的漲跌（夜盤比當天日盤收盤、日盤比前一天日盤收盤），旁邊小字＝另一盤的結果
     const ss = S.sym === 'TX' ? S.sess : null, cu = ss && ss.cur, ot = ss && ss.other;
@@ -214,7 +214,8 @@
     if (q || (live && sess)) asof = `<span class="wv-livedot">●</span> ${esc(sess || '盤中')}即時價 <b>${esc((q ? q.time : live.time) || '')}</b><span id="wv-ago"></span>`;
     else if (live) asof = esc(live.time || '盤中');                 // B86 週末顯示「夜盤收 05:00」
     else asof = `${md(S.asof.date)} 收盤價<span class="wv-dim">（現在休市）</span>`;
-    if (S.sym === 'TX') asof = `<span class="wv-dim">台指期近月${cu ? `；漲跌比 ${esc(cu.ref_label)} ${fmt(cu.ref, 0)}` : '（含夜盤）'}</span> ` + asof;
+    const qRef = q && S.sym === 'TX' && num(q.ref) != null;          // B113 用報價自己帶的基準時，標籤也寫結算價
+    if (S.sym === 'TX') asof = `<span class="wv-dim">台指期近月${cu ? `；漲跌比 ${esc(qRef ? cu.ref_label.replace('收盤', '結算價') : cu.ref_label)} ${fmt(qRef ? q.ref : cu.ref, 0)}` : '（含夜盤）'}</span> ` + asof;
     if (S.basis) {
       const pts = q && num(S.basis.twii) != null ? Math.round(px - S.basis.twii) : S.basis.pts;
       asof += ` <span class="wv-badge" style="background:rgba(148,163,184,.12);color:var(--text);border-color:rgba(148,163,184,.3)" title="台指期 − 加權（${esc(S.basis.when || '')}）">${pts >= 0 ? '正價差' : '逆價差'} ${sgn(pts)} 點</span>`;
@@ -716,6 +717,12 @@
           } else if (sb.stage === 'C') {                                // B112：C 段的量度（0.618、1、1.618 倍 A）
             (sb.c52 || []).forEach(x => add(x[0], x[1], true));
             if (sb.b_hi != null) add(sb.b_hi, '5-2-B 高點（站上＝C 段沒了）');
+            if (sb.cleg) {                                              // B113 她 11/16：C 段的五腳、C-4 反彈、C-5 量度
+              sb.cleg.legs.forEach(x => add(x.p, `5-2-C 的 C-${x.k}`, x.k >= 3));
+              (sb.cleg.c4z || []).forEach(x => add(x[0], `C-4 反彈：${x[1]}`));
+              (sb.cleg.t5 || []).forEach(x => add(x[0], x[1], true));
+            }
+            if (sb.z786) { add(sb.z786.v, '第二層：5-1 的 0.786', true); if (sb.z786.near != null) add(sb.z786.near, '第二層：前波平台低點', true); }
           } else sb.b52.forEach(x => add(x[0], x[1]));
           sb.z52.forEach(z => { add(z.v, `5-2 大買點 ${z.r}`, true); if (z.near != null) add(z.near, `5-2 大買點 ${z.r}：前低`, true); });
         } else if (sb) {                                                // B105 大中小：(4) 回測區、(5) 目標
@@ -816,7 +823,9 @@
           ? `<li class="part">◀ ${esc(sb.fork.main)}</li><li>⬜ ${esc(sb.fork.alt)}</li>`
           : `<li class="${sb.stage === 'C' ? 'part' : ''}">${sb.stage === 'C' ? `◀ 5-2-C 進行中（到 <b>${fmt(sb.c_low)}</b>）` : '⬜ 5-2-C'}：往下面三個大買點${(sb.c52 || []).length ? `<span class="wv-dim">；量度</span>${sb.c52.map(x => `<span class="wv-chip">${esc(x[1].split('＝').pop())} <b>${fmt(x[0])}</b>${sb.c_low != null && sb.c_low <= x[0] + 1 ? ' ✓' : ''}</span>`).join('')}` : ''}</li>`}</ul>
       ${sb.fork ? stepsHtml({ up: sb.fork.up, down: sb.fork.down, deep: { ...sb.fork.deep, t: '最後一腳的落底觀察區：到了等止穩才出手' }, evo: sb.fork.evo, now: sb.fork.now, src: '她 11/15' }, true) : ''}
-      <div>5-2 三個大買點<span class="wv-dim">（${fmt(pu.seq[0])}→${fmt(sb.top)} 的 0.382／0.5／0.618；個股、0050 分批，到了也要等止跌）</span>：${sb.z52.map(z52t).join('')}</div>` : `<ul class="wv-chk">
+      ${sb.cleg ? `<div class="wv-sub"><b>C 段的腳</b><span class="wv-dim">（她 11/16：${esc(sb.cleg.kind)} 5-2-C；照 60 分轉折切）</span>　${sb.cleg.legs.map(x => `<span class="wv-chip">C-${x.k} <b>${fmt(x.p)}</b></span>`).join('')}<br>${esc(sb.cleg.next)}</div>` : ''}
+      <div>5-2 三個大買點<span class="wv-dim">（${fmt(pu.seq[0])}→${fmt(sb.top)} 的 0.382／0.5／0.618；個股、0050 分批，到了也要等止跌）</span>：${sb.z52.map(z52t).join('')}</div>
+      ${sb.z786 && sb.stage === 'C' ? `<div>第二層<span class="wv-dim">（她 11/16：破四萬深層洗盤底座；0.786${sb.z786.near != null ? '＋前波平台低點' : ''}，跌破 0.618 才看這裡）</span>：<span class="wv-chip">0.786 <b>${fmt(sb.z786.v)}</b>${sb.z786.near != null ? `～<b>${fmt(sb.z786.near)}</b>` : ''}</span></div>` : ''}` : `<ul class="wv-chk">
         <li class="ok">✅ (1) ${fmt(pu.seq[0])}→${fmt(pu.seq[5])}、(2) 橫台 ${fmt(sb.plat[0])}～${fmt(sb.plat[1])}</li>
         <li class="${sb.pb == null ? 'part' : 'ok'}">${sb.pb == null ? '◀' : '✅'} (3) ${fmt(sb.launch)}→${fmt(sb.top3)}<span class="wv-dim">（候選結束點）</span></li>
         <li class="${sb.pb != null ? 'part' : ''}">${sb.pb != null ? '◀' : '⬜'} (4) 淺回 <b>${fmt(sb.z4['0.236'])}</b>（0.236）、標準 <b>${fmt(sb.z4['0.382'])}</b>（0.382）<span class="wv-dim">；不能碰 (1) 高點區 ${fmt(sb.limit[0])}～${fmt(sb.limit[1])}</span></li>
