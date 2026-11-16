@@ -713,6 +713,9 @@
           } else if (sb.stage === '3') {
             (sb.t53 || []).forEach(x => add(x[0], `${x[1]}（僅參考）`));
             if (sb.end52 != null) add(sb.end52, '5-2 終點（跌破＝5-2 還沒完）', true);
+          } else if (sb.stage === 'C') {                                // B112：C 段的量度（0.618、1、1.618 倍 A）
+            (sb.c52 || []).forEach(x => add(x[0], x[1], true));
+            if (sb.b_hi != null) add(sb.b_hi, '5-2-B 高點（站上＝C 段沒了）');
           } else sb.b52.forEach(x => add(x[0], x[1]));
           sb.z52.forEach(z => { add(z.v, `5-2 大買點 ${z.r}`, true); if (z.near != null) add(z.near, `5-2 大買點 ${z.r}：前低`, true); });
         } else if (sb) {                                                // B105 大中小：(4) 回測區、(5) 目標
@@ -811,7 +814,7 @@
              <li class="part">◀ 5-3 啟動：站上 ${fmt(sb.top)}（最高 <b>${fmt(sb.hi53)}</b>）<span class="wv-dim">；要帶量突破、第一次回測踩穩才算數。量度（僅參考）：</span>${(sb.t53 || []).map(x => `<span class="wv-chip">${esc(x[1].split('＝').pop())} <b>${fmt(x[0])}</b></span>`).join('')}</li>`
           : sb.fork
           ? `<li class="part">◀ ${esc(sb.fork.main)}</li><li>⬜ ${esc(sb.fork.alt)}</li>`
-          : `<li class="${sb.stage === 'C' ? 'part' : ''}">${sb.stage === 'C' ? `◀ 5-2-C 進行中（到 ${fmt(sb.c_low)}）` : '⬜ 5-2-C'}：往下面三個大買點</li>`}</ul>
+          : `<li class="${sb.stage === 'C' ? 'part' : ''}">${sb.stage === 'C' ? `◀ 5-2-C 進行中（到 <b>${fmt(sb.c_low)}</b>）` : '⬜ 5-2-C'}：往下面三個大買點${(sb.c52 || []).length ? `<span class="wv-dim">；量度</span>${sb.c52.map(x => `<span class="wv-chip">${esc(x[1].split('＝').pop())} <b>${fmt(x[0])}</b>${sb.c_low != null && sb.c_low <= x[0] + 1 ? ' ✓' : ''}</span>`).join('')}` : ''}</li>`}</ul>
       ${sb.fork ? stepsHtml({ up: sb.fork.up, down: sb.fork.down, deep: { ...sb.fork.deep, t: '最後一腳的落底觀察區：到了等止穩才出手' }, evo: sb.fork.evo, now: sb.fork.now, src: '她 11/15' }, true) : ''}
       <div>5-2 三個大買點<span class="wv-dim">（${fmt(pu.seq[0])}→${fmt(sb.top)} 的 0.382／0.5／0.618；個股、0050 分批，到了也要等止跌）</span>：${sb.z52.map(z52t).join('')}</div>` : `<ul class="wv-chk">
         <li class="ok">✅ (1) ${fmt(pu.seq[0])}→${fmt(pu.seq[5])}、(2) 橫台 ${fmt(sb.plat[0])}～${fmt(sb.plat[1])}</li>

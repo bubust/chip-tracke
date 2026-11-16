@@ -30,7 +30,7 @@ def test_52_stages_a_b_c_and_new_high():
     assert a["stage"] == "A" and a["b_hi"] is None
     c = sb(_o(41900.0, [{"p": 42371, "t": "L"}, {"p": 44034, "t": "H"}]))
     assert (c["stage"], c["c_low"]) == ("C", 41900.0) and [z["hit"] for z in c["z52"]] == [True, False, False]
-    assert [int(v + 0.5) for v, _ in c["c52"]] == [42464, 41494]                             # C＝0.618 倍 A、C＝A
+    assert [int(v + 0.5) for v, _ in c["c52"]] == [42464, 41494, 39924]                      # C＝0.618 倍 A、C＝A、B112 加 1.618 倍
     n = _o(45100.0, [{"p": 42371, "t": "L"}])                                                # B110 她 11/15：壓回已經跌破 (1) 高點，之後再創高
     assert n["tag"] == "52" and sb(n)["stage"] == "3" and sb(n)["top"] == 44911            # ＝5-2 走完、5-3 啟動（不是 5-1 延伸）
 
@@ -61,7 +61,7 @@ def test_above_first_gate_still_52_card():
 def test_card_stage_c_and_fallback():
     c = W.plan_card(_o(41900.0, [{"p": 42371, "t": "L"}, {"p": 44034, "t": "H"}]), 41900.0)
     assert "C 段下跌" in c["pos"][1] and c["plays"][0]["tag"] == "不追空" and "（已到）" in c["plays"][1]["t"]
-    assert c["tiles"]["up"]["price"] == 44034 and c["tiles"]["down"]["price"] == 41302.5
+    assert c["tiles"]["up"]["price"] == 42154.11 and c["tiles"]["down"]["price"] == 41494.0 and c["tiles"]["stop"]["price"] == 44034   # B112：最近的那一層
     g = W.plan_card(T._s(40286.0) if hasattr(T, "_s") else W.structure(T.BIG, T.SMALL, 40286.0, 41834.0, 43000.0, T.LB), 40286.0)
     assert g and len(g["pos"]) == 2 and g["plays"]
 
