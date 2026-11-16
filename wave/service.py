@@ -557,6 +557,27 @@ def _composite(b: dict, st: dict, night: Optional[dict]) -> dict:
             "research": {k: (st.get("futures") or {}).get(k) for k in ("is", "oos", "generated", "n_tests")}}
 
 
+_credit_tried: list = []
+
+
+def credit_out(rows: list) -> dict:
+    """B115 證交所台股儀表板（BFIJ3U）：整戶擔保維持率（上市＋上櫃、融資＋融券合併）、維持率低於 130% 的戶數、當天通知補繳金額、
+    處分（斷頭）戶數和金額。倍數＝低於 130% 戶數 ÷ 前 20 天平均"""
+    rows = [r for r in rows or [] if r.get("keep") is not None]
+    if not rows:
+        return {"ok": False}
+    last = rows[-1]
+    prev = [r["below_acc"] for r in rows[-21:-1] if r.get("below_acc")]
+    avg = sum(prev) / len(prev) if prev else None
+    yi = lambda v: None if v is None else round(v / 1e8, 2)        # noqa: E731
+    tail = [{"date": r["date"], "keep": r["keep"], "below": r["below_acc"], "call_yi": yi(r["call_amt"]), "exe": r["exe_acc"],
+             "exe_yi": yi(r["exe_amt"])} for r in rows[-60:]]
+    return {"ok": True, "date": last["date"], "keep": last["keep"], "below": last["below_acc"], "call_yi": yi(last["call_amt"]),
+            "exe": last["exe_acc"], "exe_yi": yi(last["exe_amt"]), "mult": round(last["below_acc"] / avg, 1) if avg and last.get("below_acc") else None,
+            "chg": round(last["keep"] - rows[-2]["keep"], 2) if len(rows) >= 2 else None, "low": min(r["keep"] for r in rows[-60:]),
+            "series": tail}
+
+
 def _margin_out(chips_df, now) -> dict:
     """融資餘額＋大盤融資維持率（官方融資金額 ÷ 融資股票市值，margin_maint.market_maint）"""
     out = CP.margin_block(chips_df, now.strftime("%Y-%m-%d"))
@@ -567,6 +588,15 @@ def _margin_out(chips_df, now) -> dict:
             out["maint"] = mt
     except Exception as e:     # noqa: BLE001
         log.warning(f"[wave] 大盤融資維持率失敗：{e}")
+    try:                                                   # B115：證交所公布的全市場整戶擔保維持率、追繳／處分
+        rows = D.load_credit_keep()
+        if not rows and not _credit_tried:                 # 剛上線、資料表還是空的：先抓一次（之後跟著 16:30、21:40 排程）
+            _credit_tried.append(1)
+            D.update_credit_keep()
+            rows = D.load_credit_keep()
+        out["credit"] = credit_out(rows)
+    except Exception as e:     # noqa: BLE001
+        log.warning(f"[wave] 整戶擔保維持率失敗：{e}")
     return out
 
 
@@ -1474,6 +1504,7 @@ def refresh_all(chips: bool = True) -> dict:
     FD.live_bars("TWII")
     if chips:
         D.update_chips()
+        D.update_credit_keep()                              # B115：全市場整戶擔保維持率、追繳／處分
         FD.update_fut_chips()
         FD.backfill_taifex(max_files=5)
         fill_twii_today()
