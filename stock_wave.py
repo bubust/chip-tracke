@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import math
+import re
 from typing import Optional
 
 import numpy as np
@@ -325,6 +326,11 @@ def _done52(rest: list, top_t: str, u: int, p0: float, p5: float, sp: float, pul
         z["hit"] = bool((low_all - z["hi"]) * u <= 0)                 # 已經跌到這一區
     cleg = (_c5(rest[k_top + 1:], top_t, u, b_hi, float(price), top=top, a_low=a_low, z382=z52[0]["v"])
             if stage == "C" and k_over is None else None)
+    # B121 她 11/17 晚上：5-1 總漲幅的 0.8＝極限防線（39,137）；三種發展——守住＝5-2 極限洗盤直接 5-3；
+    # 跌破 0.8＝日線第二隻大腳（W 底，回測 37,694）；37,694 收盤長黑跌破＝A 版 4-C 真 C-5 主跌段
+    z80 = round(top - u * 0.8 * big, 2)
+    depth = round(abs(top - low_all) / big, 3) if big else None
+    dev = 1 if (low_all - z80) * u > 0 else 2 if (float(price) - p0) * u > 0 else 3
     zt = lambda z: f"{z['r']:g} {_fmt(z['v'])}" + (f"～{_fmt(z['near'])}（前低）" if z["near"] is not None else "")   # noqa: E731
     t53 = []
     if k_over is not None:                                            # B110：5-2 走完、5-3 啟動（她：帶量突破且首次回測踩穩）
@@ -362,13 +368,19 @@ def _done52(rest: list, top_t: str, u: int, p0: float, p5: float, sp: float, pul
         lines += fork["lines"][2:]                                    # 主追蹤、強替代上面那一行已經講了
     if cleg:
         lines += cleg["lines"]
+    if stage == "C" and depth is not None:
+        lines.append(f"5-2 回撤深度（她 11/17 晚上）：最低 {_fmt(low_all)}＝5-1 漲幅的 {depth:.1%}；0.786 {_fmt(z786['v'])}、極限 0.8 {_fmt(z80)}。"
+                     f"三種發展：① 日線收盤守住 {_fmt(z80)}＝5-2 極限壓回洗盤，整理完直接 5-3"
+                     f"② 跌破 {_fmt(z80)}＝日線級第二隻大腳（W 底），回測 {_fmt(p0)}，第二隻腳的低點才重算 5-1"
+                     f"③ {_fmt(p0)} 被日線帶量長黑收盤跌破＝4-C 走真 C-5 主跌段（{_fmt(top)} 只是 4-C-4 反彈）。現在：第 {dev} 種")
     if stage == "C":
         lines.append(f"第二層（她 11/16：破四萬深層洗盤底座）{_fmt(z786['lo'])}" + (f"～{_fmt(z786['hi'])}" if z786["hi"] != z786["lo"] else "")
                      + f"：{_fmt(p0)}→{_fmt(top)} 的 0.786" + ("＋前波平台低點" if z786["near"] is not None else "")
                      + "；跌破大買點 0.618 才看這裡，要伴隨底背離、迅速收復才是洗盤底")
     return {"done": True, "stage": stage, "launch": launch, "plat": [pull, plat_hi], "top3": top, "top": top, "limit": lim, "pb": low_all,
             "p0": p0, "a_low": a_low, "b_hi": round(b_hi, 2) if in_b else None, "c_low": c_low, "b52": b52 if in_b else [], "c52": c52,
-            "z52": z52, "z786": z786, "cleg": cleg, "z4": {}, "t5": [], "d52": [(z["r"], z["lo"], z["hi"]) for z in z52], "fork": fork,
+            "z52": z52, "z786": z786, "cleg": cleg, "z80": z80 if stage == "C" else None, "depth": depth if stage == "C" else None,
+            "dev": dev if stage == "C" else None, "z4": {}, "t5": [], "d52": [(z["r"], z["lo"], z["hi"]) for z in z52], "fork": fork,
             "hi53": hi53, "t53": t53, "end52": end52 if stage == "3" else None, "state": st, "lines": lines}
 
 
@@ -971,7 +983,7 @@ def structure(big: list, small: list, price: float, ma5: Optional[float] = None,
     else:
         lines.append(f"進場：先看 0.382 {_fmt(fib[0.382])} 有沒有真的{'過' if d < 0 else '破'}，之後壓回的第二隻腳（{s_up}的 0.382～0.5）才考慮；"
                      "現在追沒有肉")
-    return {"dir": d, "case": case, "tag": tag, "labels": lb,
+    return {"dir": d, "case": case, "tag": tag, "labels": lb, "ma5": ma5,
             "big": {"T": T["p"], "L1": L1["p"], "H2": H2["p"], "ext": ext},
             "small": small_out, "fib": {str(r): round(v, 2) for r, v in fib.items()}, "rebound": round(R, 2),
             "gate1": gate1, "gate2": gate2, "fork": fork, "ext3": ext3, "entry": entry, "status": status, "lines": lines}
@@ -1230,7 +1242,29 @@ def plan_card(t: dict, price: float, bars15: Optional[list] = None, atr15: Optio
                          "stop": tile(reb, "C-5 後的反彈高點", "站上＝C 段走完")}
                 flip = (f"改判：站回 {_fmt(c5a)}＝假跌破、C 段可能已經落底；站上 {_fmt(reb)}＝C 段走完、看 5-3；"
                         f"跌破第二層" + (f" {_fmt(z7['lo'])}" if z7 else "") + "＝5-2 比她估的更深")
-            elif ph == "done" and g53:                                # B119 她 11/17 情境 A：C 段走完、5-3 要過三關
+            dev, z80, dep = sb.get("dev"), sb.get("z80"), sb.get("depth")
+            if dev and z80 is not None and dep is not None and dep >= 0.618:   # B121 她 11/17 晚上：跌過 0.618 以後才講 0.8 極限防線、三種發展
+                ma5 = t.get("ma5")
+                reb = (cg or {}).get("reb")
+                strong = sorted(x for x in (ma5, reb) if x)
+                pos.append(f"深度：5-2 已回撤 5-1 漲幅的 {dep:.1%}（最低 {_fmt(sb['pb'])}）；0.786 {_fmt(z7['v']) if z7 else '—'}、極限 0.8 {_fmt(z80)}"
+                              + ("——還沒跌破，屬「5-2 極限壓回洗盤」" if dev == 1 else
+                                 f"——已跌破 0.8，轉「日線第二隻大腳（W 底）」，看 {_fmt(p0)}" if dev == 2 else
+                                 f"——{_fmt(p0)} 也跌破了，要防「4-C 真 C-5 主跌段」"))
+                dv = [f"① 日線收盤守住 {_fmt(z80)}、60 分收復 {_fmt((cg or {}).get('c5a') or c_low)}" + (f"、站上日線 5 均 {_fmt(ma5)}" if ma5 else "")
+                      + "＝5-2 極限洗盤，整理完直接 5-3",
+                      f"② 跌破 {_fmt(z80)}＝打日線第二隻大腳（W 底），回測 {_fmt(p0)}：不破或假跌破迅速收回都算築底，第二隻腳低點才重算 5-1",
+                      f"③ {_fmt(p0)} 被帶量長黑收盤跌破、反彈收不回前箱底與 5 均＝真 C-5 主跌段（風險邊界，沒觸發前不要自己嚇自己）"]
+                plays.insert(0, {"k": "wait", "tag": f"三種發展（現在第 {dev} 種）", "t": "；".join(dv)})
+                if dev == 1:
+                    tiles["down"] = tile(z80, "0.8 極限防線", "日線收盤跌破＝轉第二隻腳")
+                    if strong and strong[-1] > price:
+                        tiles["stop"] = tile(strong[0], "日線 5 均～C-5 後反彈高點" if len(strong) > 1 else "轉強關卡",
+                                             f"帶量站穩 {rng(strong[0], strong[-1])}＝重啟波段")
+                elif dev == 2:
+                    tiles["down"] = tile(p0, "多頭總底線", "長黑收盤跌破＝主跌段")
+                flip = (re.sub(r"；跌破第二層[^；]*", "", flip or "") + f"；日線收盤跌破 {_fmt(z80)}＝轉第二隻大腳（W 底）；{_fmt(p0)} 被長黑跌破＝4-C 真 C-5").lstrip("；")
+            if ph == "done" and g53:                                # B119 她 11/17 情境 A：C 段走完、5-3 要過三關
                 c5a = cg["c5a"]
                 nxt_g = next((g for g in g53 if (g["hi"] - price) * u > 0), None)
                 plays = [{"k": "wait", "tag": "5-3 還沒開",
