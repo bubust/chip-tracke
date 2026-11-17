@@ -1489,6 +1489,34 @@ def _clean_text(v, limit: int) -> str:
     return v[:limit]
 
 
+@app.get("/api/watchlist/order")
+def api_get_watchlist_order():
+    """B116 觀察清單的排列順序（以前只存在各裝置的瀏覽器 → 手機、電腦順序不一樣）"""
+    try:
+        order = json.loads(settings_get("wl_order") or "[]")
+    except Exception:     # noqa: BLE001
+        order = []
+    return {"order": [x for x in order if isinstance(x, str) and _SID_OK.match(x)]}
+
+
+@app.post("/api/watchlist/order")
+async def api_set_watchlist_order(request: Request):
+    try:
+        body = await request.json()
+    except Exception:     # noqa: BLE001
+        body = None
+    order = body.get("order") if isinstance(body, dict) else None
+    if not isinstance(order, list) or len(order) > 500:
+        raise HTTPException(status_code=400, detail="順序格式不正確")
+    clean = []
+    for x in order:
+        x = str(x or "").strip()
+        if _SID_OK.match(x) and x not in clean:
+            clean.append(x)
+    settings_set("wl_order", json.dumps(clean))
+    return {"ok": True, "n": len(clean)}
+
+
 @app.post("/api/watchlist")
 def api_add_watchlist(item: WatchlistItem):
     sid  = _check_sid(item.stock_id)
