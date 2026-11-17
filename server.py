@@ -1493,10 +1493,14 @@ def _clean_text(v, limit: int) -> str:
 def api_get_watchlist_order():
     """B116 觀察清單的排列順序（以前只存在各裝置的瀏覽器 → 手機、電腦順序不一樣）"""
     try:
-        order = json.loads(settings_get("wl_order") or "[]")
+        v = json.loads(settings_get("wl_order") or "[]")
     except Exception:     # noqa: BLE001
+        v = []
+    # B120：改存 {order, ts}（ts＝最後改的時間，各裝置用來判斷要不要重排）；舊格式是單純清單
+    order, ts = (v.get("order") or [], v.get("ts") or 0) if isinstance(v, dict) else (v, 0)
+    if not isinstance(order, list):
         order = []
-    return {"order": [x for x in order if isinstance(x, str) and _SID_OK.match(x)]}
+    return {"order": [x for x in order if isinstance(x, str) and _SID_OK.match(x)], "ts": ts}
 
 
 @app.post("/api/watchlist/order")
@@ -1513,8 +1517,9 @@ async def api_set_watchlist_order(request: Request):
         x = str(x or "").strip()
         if _SID_OK.match(x) and x not in clean:
             clean.append(x)
-    settings_set("wl_order", json.dumps(clean))
-    return {"ok": True, "n": len(clean)}
+    ts = round(_time.time(), 3)
+    settings_set("wl_order", json.dumps({"order": clean, "ts": ts}))
+    return {"ok": True, "n": len(clean), "ts": ts}
 
 
 @app.post("/api/watchlist")

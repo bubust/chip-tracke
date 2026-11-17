@@ -14,8 +14,10 @@ def test_order_roundtrip(monkeypatch):
     monkeypatch.setattr(server, "settings_get", lambda k: store.get(k))
     monkeypatch.setattr(server, "settings_set", lambda k, v: store.__setitem__(k, v))
     c = TestClient(server.app)
-    assert c.get("/api/watchlist/order").json() == {"order": []}
-    r = c.post("/api/watchlist/order", json={"order": ["3481", "2449", "<b>", "3481", "4583"]})
-    assert r.json() == {"ok": True, "n": 3}                                     # 壞代號、重複的拿掉
-    assert c.get("/api/watchlist/order").json() == {"order": ["3481", "2449", "4583"]}
+    assert c.get("/api/watchlist/order").json() == {"order": [], "ts": 0}
+    store["wl_order"] = '["2449", "3481"]'                                      # 舊格式（單純清單）也讀得到
+    assert c.get("/api/watchlist/order").json() == {"order": ["2449", "3481"], "ts": 0}
+    r = c.post("/api/watchlist/order", json={"order": ["3481", "2449", "<b>", "3481", "4583"]}).json()
+    assert r["ok"] and r["n"] == 3 and r["ts"] > 0                              # 壞代號、重複的拿掉
+    assert c.get("/api/watchlist/order").json() == {"order": ["3481", "2449", "4583"], "ts": r["ts"]}
     assert c.post("/api/watchlist/order", json={"order": "x"}).status_code == 400
