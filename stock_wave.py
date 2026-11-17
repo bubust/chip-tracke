@@ -266,7 +266,7 @@ def _done52(rest: list, top_t: str, u: int, p0: float, p5: float, sp: float, pul
     big = abs(top - p0)
     k_top = next((k for k, q in enumerate(rest) if q["t"] == top_t and q["p"] == top), len(rest))
     fn = list(fine or [])
-    f_top = max((k for k, q in enumerate(fn) if q.get("t") == top_t and abs(q["p"] - top) < 1e-6), default=len(fn))
+    f_top = max((k for k, q in enumerate(fn) if q.get("t") == top_t and abs(q["p"] - top) < 1e-6), default=0)   # B119：5-1 高點已經不在更細一級的轉折裡＝不用它找前低（不然會把 5-2 自己的低點算進去）
     f_st = max((k for k, q in enumerate(fn[:f_top]) if q.get("t") != top_t and (q["p"] - p0) * u <= 0), default=-1) + 1
     cand = [v for v in [pull, launch] + list(lows or []) + [q["p"] for q in rest[:k_top] if q["t"] != top_t]   # 只用 5-1 裡面的前低
             + [q["p"] for q in fn[f_st:f_top] if q.get("t") != top_t] if v is not None and (v - p0) * u > 0 and (top - v) * u > 0]
@@ -323,7 +323,8 @@ def _done52(rest: list, top_t: str, u: int, p0: float, p5: float, sp: float, pul
     low_all = min([a_low] + ([float(price)] if k_over is None else []) + ([c_low] if c_low is not None else []), key=lambda v: u * v)
     for z in z52 + [z786]:
         z["hit"] = bool((low_all - z["hi"]) * u <= 0)                 # 已經跌到這一區
-    cleg = _c5(rest[k_top + 1:], top_t, u, b_hi, float(price)) if stage == "C" and k_over is None else None
+    cleg = (_c5(rest[k_top + 1:], top_t, u, b_hi, float(price), top=top, a_low=a_low, z382=z52[0]["v"])
+            if stage == "C" and k_over is None else None)
     zt = lambda z: f"{z['r']:g} {_fmt(z['v'])}" + (f"～{_fmt(z['near'])}（前低）" if z["near"] is not None else "")   # noqa: E731
     t53 = []
     if k_over is not None:                                            # B110：5-2 走完、5-3 啟動（她：帶量突破且首次回測踩穩）
@@ -371,7 +372,7 @@ def _done52(rest: list, top_t: str, u: int, p0: float, p5: float, sp: float, pul
             "hi53": hi53, "t53": t53, "end52": end52 if stage == "3" else None, "state": st, "lines": lines}
 
 
-def _legs_down(seq: list, low_t: str, top_t: str, u: int, price: float) -> list:
+def _legs_down(seq: list, low_t: str, top_t: str, u: int, price: float, cap: bool = True) -> list:
     """一段回檔切成腳：C-1（低）、C-2（高）、C-3（更低）…——沒破前低的低點算在反彈裡；現價已經跌破前一個低點＝下一腳開始；最多五腳"""
     legs = []
     for q in seq:
@@ -390,12 +391,13 @@ def _legs_down(seq: list, low_t: str, top_t: str, u: int, price: float) -> list:
             legs[-1] = q
     if legs and legs[-1]["t"] == top_t and (price - legs[-2]["p"]) * u < 0:
         legs.append({"p": price, "t": low_t})
-    if len(legs) > 5:                                                 # 超過五腳：後面的低點都併進第 5 腳
+    if cap and len(legs) > 5:                                         # 超過五腳：後面的低點都併進第 5 腳
         legs = legs[:4] + [min((q for q in legs[4:] if q["t"] == low_t), key=lambda q: u * q["p"])]
     return legs
 
 
-def _c5(after: list, top_t: str, u: int, b_hi: float, price: float) -> Optional[dict]:
+def _c5(after: list, top_t: str, u: int, b_hi: float, price: float, top: Optional[float] = None, a_low: Optional[float] = None,
+        z382: Optional[float] = None) -> Optional[dict]:
     """B113 她 11/16：5-2-C 走「標準五波」（目前在 C-3 末端）→ C-3 踩煞車、C-4 橫盤箱體、C-5 最後一腳（動能衰竭只針尖刺穿，或等幅下殺摜破再收復）。
     用小級（60 分）轉折切（她：60 分決定切組）：C-1 44,824→42,956（1,868 點）、C-2 43,770、C-3 →40,714、C-4 41,465、C-5…；4 不能碰 1。
     C-5 的量度從 C-4 高點往下：0.618 倍 C-1（40,311；她的針尖區 40,313～40,451 下緣）、C-1 等幅（39,597；落在她的第二層 39,238～39,977）。
@@ -436,11 +438,48 @@ def _c5(after: list, top_t: str, u: int, b_hi: float, price: float) -> Optional[
             now = f"C-5 到 {_fmt(legs[4]['p'])}（比 C-3 {lo_w}點多{dn_w} {_fmt(ext)} 點）"
             nxt = (f"五腳走齊：站回 C-4 {hi_w}點 {_fmt(c4)} 才算 C 段走完；也可能 C-4 箱體還沒走完（{_fmt(c4)}～{_fmt(legs[4]['p'])} 只是箱體上下緣）、"
                    f"真正的 C-5 還在後面（{tt}）")
+    # B119 她 11/17：C-5 之後站上 C-4 高點＝C 段走完（情境 A，看 5-3）；之後又跌破 C-5 低點＝C-5 延伸（情境 B「再踹最後一腳」）
+    phase, c5a, reb, gates = "box", None, None, []
+    raw = _legs_down(seq, low_t, top_t, u, price, cap=False)
+    if n == 5 and len(raw) > 5:
+        c5a, c4 = raw[4]["p"], raw[3]["p"]
+        post = raw[5:]
+        reb = max((q["p"] for q in post if q["t"] == top_t), key=lambda v: u * v, default=None)
+        lows_post = [q["p"] for q in post if q["t"] == low_t]
+        if reb is not None and (reb - c4) * u > 0:
+            phase = "ext" if lows_post and (min(lows_post, key=lambda v: u * v) - c5a) * u < 0 else "done"
+    cl = legs[4]["p"] if n == 5 else None
+    if phase in ("done", "ext") and top is not None:
+        k5 = max((k for k, q in enumerate(seq) if q["t"] == low_t and q["p"] == c5a), default=0)
+        first_reb = next((q["p"] for q in seq[k5 + 1:] if q["t"] == top_t), reb)    # C-5 之後第一個反彈高點（她：41,627 仙人指路）
+        g1 = sorted([legs[3]["p"], first_reb])
+        gates.append({"k": 1, "name": "C-4 高點～C-5 之後第一個反彈高點", "lo": g1[0], "hi": g1[1],
+                      "t": f"保留站穩＝5-3 起跳前漸入佳境（她：41,500～41,700）"})
+        f382 = cl + u * 0.382 * abs(top - cl)
+        if reb is not None and (reb - first_reb) * u > 0:            # 後來又彈得更高（11/17 早上 41,828）
+            gates.append({"k": 2, "name": "C-5 之後最高的反彈高點", "lo": reb, "hi": reb, "t": "第二目標（她：41,650～41,745）"})
+        elif z382 is None or (z382 - f382) * u > 0:
+            gates.append({"k": 2, "name": f"{_fmt(top)}→{_fmt(cl)} 的 0.382", "lo": round(f382, 2), "hi": round(f382, 2),
+                          "t": "第二目標（她：41,650～41,745）"})
+        if z382 is not None and a_low is not None:
+            g3 = sorted([z382, a_low])
+            gates.append({"k": len(gates) + 1, "name": "大買點 0.382～5-2-A 低點（撐壓互換）", "lo": round(g3[0], 2), "hi": round(g3[1], 2),
+                          "t": "站穩第二目標以後才看；三關都過才開啟 5-3（她：42,134～42,349）"})
+    if phase == "done":
+        now = f"C-5 在 {_fmt(c5a)} 走完，反彈到 {_fmt(reb)} 已站上 C-4 {hi_w}點 {_fmt(legs[3]['p'])}"
+        nxt = (f"C 段走完（她 11/17 情境 A：C-5 打底吃貨）；5-3 要依序過關：" + "；".join(
+            f"{'①②③'[g['k'] - 1]} {_fmt(g['lo'])}" + (f"～{_fmt(g['hi'])}" if g["hi"] != g["lo"] else "") + f"（{g['name']}）" for g in gates)
+            + f"；跌破 {_fmt(c5a)}＝C-5 還沒走完")
+    elif phase == "ext":
+        now = f"C-5 先到 {_fmt(c5a)}、反彈 {_fmt(reb)} 站上 C-4 {hi_w}點後又跌破，{dn_w}到 {_fmt(cl)}"
+        nxt = (f"站上 C-4 {hi_w}點以後又跌破 C-5 {lo_w}點 {_fmt(c5a)}＝C-5 還在延伸（她 11/17 情境 B：結算前再踹最後一腳黃金坑）；"
+               f"跌深以後站回 {_fmt(c5a)} 才是買點（她：站回收上 40,616 就是很漂亮的買點），站不回去就看第二層")
     kind = "重疊型（4 碰到 1）" if overlap else "標準五波"
     lines = [f"5-2-C 的腳（她 11/16：{kind} 5-2-C；照小級轉折切）：{names}；C-1 {_fmt(c1)} 點、C-3 是它的 {c3 / c1:.2f} 倍",
              nxt]
     return {"legs": [{"k": k + 1, "p": q["p"], "t": q["t"]} for k, q in enumerate(legs)], "n": n, "overlap": overlap, "c1": round(c1, 2),
-            "c4": legs[3]["p"] if n >= 4 else None, "c4z": c4z, "t5": t5, "now": now, "next": nxt, "kind": kind, "lines": lines}
+            "c4": legs[3]["p"] if n >= 4 else None, "c4z": c4z, "t5": t5, "now": now, "next": nxt, "kind": kind, "lines": lines,
+            "phase": phase, "c5a": c5a, "reb": reb, "gates53": gates}
 
 
 def _fork52(after: list, fn: list, top_t: str, u: int, top: float, p0: float, a_low: float, b_hi: float, price: float,
@@ -1176,6 +1215,33 @@ def plan_card(t: dict, price: float, bars15: Optional[list] = None, atr15: Optio
                          f"改判：站上 {_fmt(c1_lo)}（C-1 低點）＝4 碰到 1、標準五波不成立（C 段可能已經在 {_fmt(c_low)} 走完）；" if c1_lo is not None and c1_lo > price
                          else "改判：")
                         + f"站上 {_fmt(b_hi)}（B 段高點）＝C 段沒了；跌破 {_fmt(p0)}＝第 5 大波的看法作廢")
+            ph = (cg or {}).get("phase")
+            g53 = (cg or {}).get("gates53") or []
+            gt = lambda g: _fmt(g["lo"]) + (f"～{_fmt(g['hi'])}" if g["hi"] != g["lo"] else "")   # noqa: E731
+            if ph == "ext":                                           # B119 她 11/17 情境 B：站上 C-4 高點後又跌破 C-5 低點
+                c5a, reb = cg["c5a"], cg["reb"]
+                deep_ok = z7 and (z7["hi"] - price) * u < 0
+                plays.insert(1, {"k": "long", "tag": "站回才做多",
+                                 "t": f"C-5 跌破前低 {_fmt(c5a)} 還在延伸：跌深以後 15 分 K 站回 {_fmt(c5a)} 才進（她：站回收上 40,616 就是很漂亮的買點），"
+                                      f"停損放最低點下面；站不回去就看第二層" + (f" {rng(z7['lo'], z7['hi'])}" if z7 else "")
+                                      + "（要有底背離、迅速收復才是洗盤底）"})
+                tiles = {"up": tile(c5a, "前一個 C-5 低點", "站回＝買點") if (c5a - price) * u > 0 else tiles["up"],
+                         "down": tile(z7["hi"], "第二層上緣", "跌進去等止穩") if deep_ok else tiles["down"],
+                         "stop": tile(reb, "C-5 後的反彈高點", "站上＝C 段走完")}
+                flip = (f"改判：站回 {_fmt(c5a)}＝假跌破、C 段可能已經落底；站上 {_fmt(reb)}＝C 段走完、看 5-3；"
+                        f"跌破第二層" + (f" {_fmt(z7['lo'])}" if z7 else "") + "＝5-2 比她估的更深")
+            elif ph == "done" and g53:                                # B119 她 11/17 情境 A：C 段走完、5-3 要過三關
+                c5a = cg["c5a"]
+                nxt_g = next((g for g in g53 if (g["hi"] - price) * u > 0), None)
+                plays = [{"k": "wait", "tag": "5-3 還沒開",
+                          "t": "三關都過才開啟 5-3：" + "；".join(f"{'①②③'[g['k'] - 1]} {gt(g)}（{g['name']}）" for g in g53)},
+                         {"k": "long", "tag": "回測不破才做多",
+                          "t": f"回測不破 C-5 低點 {_fmt(c5a)}、{how_long}；跌破 {_fmt(c5a)}＝C-5 還沒走完"}]
+                up_p = (nxt_g["lo"] if (nxt_g["lo"] - price) * u > 0 else nxt_g["hi"]) if nxt_g else None   # 已經在這一關裡面＝看上緣
+                tiles = {"up": tile(up_p, nxt_g["name"].split("（")[0], "站穩＝下一關") if nxt_g else tiles["up"],
+                         "down": tile(c5a, "C-5 低點", "跌破＝C-5 還沒走完"), "stop": None}
+                longs = longs + [(c5a, "C-5 低點")]
+                flip = f"改判：跌破 {_fmt(c5a)}＝C-5 還在延伸（她的情境 B）；三關都過＝5-3 開啟"
         if flip is None:
             flip = (f"改判：站上 {_fmt(b_hi)}（B 段高點）＝C 段沒了、5-2 可能已經結束；" if stage == "C" else
                     f"改判：站上 {_fmt(top)}＝5-2 走完、5-3 啟動；") + f"跌破 {_fmt(p0)}＝第 5 大波的看法作廢"

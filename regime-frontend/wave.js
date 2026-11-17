@@ -721,6 +721,8 @@
               sb.cleg.legs.forEach(x => add(x.p, `5-2-C 的 C-${x.k}`, x.k >= 3));
               (sb.cleg.c4z || []).forEach(x => add(x[0], `C-4 反彈：${x[1]}`));
               (sb.cleg.t5 || []).forEach(x => add(x[0], x[1], true));
+              (sb.cleg.gates53 || []).forEach(g => { add(g.lo, `5-3 第 ${g.k} 關：${g.name}`, true); if (g.hi !== g.lo) add(g.hi, `5-3 第 ${g.k} 關：${g.name}`, true); });
+              if (sb.cleg.c5a != null) add(sb.cleg.c5a, sb.cleg.phase === 'ext' ? '前一個 C-5 低點（站回＝買點）' : 'C-5 低點', true);
             }
             if (sb.z786) { add(sb.z786.v, '第二層：5-1 的 0.786', true); if (sb.z786.near != null) add(sb.z786.near, '第二層：前波平台低點', true); }
           } else sb.b52.forEach(x => add(x[0], x[1]));
@@ -823,7 +825,7 @@
           ? `<li class="part">◀ ${esc(sb.fork.main)}</li><li>⬜ ${esc(sb.fork.alt)}</li>`
           : `<li class="${sb.stage === 'C' ? 'part' : ''}">${sb.stage === 'C' ? `◀ 5-2-C 進行中（到 <b>${fmt(sb.c_low)}</b>）` : '⬜ 5-2-C'}：往下面三個大買點${(sb.c52 || []).length ? `<span class="wv-dim">；量度</span>${sb.c52.map(x => `<span class="wv-chip">${esc(x[1].split('＝').pop())} <b>${fmt(x[0])}</b>${sb.c_low != null && sb.c_low <= x[0] + 1 ? ' ✓' : ''}</span>`).join('')}` : ''}</li>`}</ul>
       ${sb.fork ? stepsHtml({ up: sb.fork.up, down: sb.fork.down, deep: { ...sb.fork.deep, t: '最後一腳的落底觀察區：到了等止穩才出手' }, evo: sb.fork.evo, now: sb.fork.now, src: '她 11/15' }, true) : ''}
-      ${sb.cleg ? `<div class="wv-sub"><b>C 段的腳</b><span class="wv-dim">（她 11/16：${esc(sb.cleg.kind)} 5-2-C；照 60 分轉折切）</span>　${sb.cleg.legs.map(x => `<span class="wv-chip">C-${x.k} <b>${fmt(x.p)}</b></span>`).join('')}<br>${esc(sb.cleg.next)}</div>` : ''}
+      ${sb.cleg ? `<div class="wv-sub"><b>C 段的腳</b><span class="wv-dim">（她 11/16：${esc(sb.cleg.kind)} 5-2-C；照 60 分轉折切）</span>　${sb.cleg.legs.map(x => `<span class="wv-chip">C-${x.k} <b>${fmt(x.p)}</b></span>`).join('')}<br>${esc(sb.cleg.next)}${(sb.cleg.gates53 || []).length ? `<br><b>5-3 開啟要依序過關</b><span class="wv-dim">（她 11/17）</span>　${sb.cleg.gates53.map(g => `<span class="wv-chip">${'①②③'[g.k - 1]} <b>${fmt(g.lo)}${g.hi !== g.lo ? `～${fmt(g.hi)}` : ''}</b> ${esc(g.name)}</span>`).join('')}` : ''}</div>` : ''}
       <div>5-2 三個大買點<span class="wv-dim">（${fmt(pu.seq[0])}→${fmt(sb.top)} 的 0.382／0.5／0.618；個股、0050 分批，到了也要等止跌）</span>：${sb.z52.map(z52t).join('')}</div>
       ${sb.z786 && sb.stage === 'C' ? `<div>第二層<span class="wv-dim">（她 11/16：破四萬深層洗盤底座；0.786${sb.z786.near != null ? '＋前波平台低點' : ''}，跌破 0.618 才看這裡）</span>：<span class="wv-chip">0.786 <b>${fmt(sb.z786.v)}</b>${sb.z786.near != null ? `～<b>${fmt(sb.z786.near)}</b>` : ''}</span></div>` : ''}` : `<ul class="wv-chk">
         <li class="ok">✅ (1) ${fmt(pu.seq[0])}→${fmt(pu.seq[5])}、(2) 橫台 ${fmt(sb.plat[0])}～${fmt(sb.plat[1])}</li>
