@@ -2867,7 +2867,7 @@ async function loadWatchlist() {
   if (!_shown) document.getElementById('wl-table-wrap').style.display = 'none';
   _wlUpdating(_shown);
   try {
-    const _wlResp = await api('GET', '/api/watchlist/summary');
+    const [_wlResp] = await Promise.all([api('GET', '/api/watchlist/summary'), _syncWlOrder()]);
     if (!Array.isArray(_wlResp)) _wlSnapSave(_wlResp);
     _wlData = Array.isArray(_wlResp) ? _wlResp : (_wlResp.items || []);
     // 顯示最後更新時間（不管有沒有籌碼資料都顯示）
@@ -3347,7 +3347,19 @@ function _fmtAdded(v) {
 // 觀察清單上下移動
 const WL_ORDER_KEY = 'chip_wl_order_v1';
 function _loadWlOrder()  { try { return JSON.parse(localStorage.getItem(WL_ORDER_KEY) || '[]'); } catch(e) { return []; } }
-function _saveWlOrder(o) { try { localStorage.setItem(WL_ORDER_KEY, JSON.stringify(o)); } catch(e) {} }
+// B116：順序也存到伺服器（以前只存在這台瀏覽器 → 手機、電腦順序不一樣）；載入時以伺服器為準
+function _saveWlOrder(o) {
+  try { localStorage.setItem(WL_ORDER_KEY, JSON.stringify(o)); } catch(e) {}
+  api('POST', '/api/watchlist/order', { order: o }).catch(() => {});
+}
+async function _syncWlOrder() {
+  try {
+    const r = await api('GET', '/api/watchlist/order');
+    const srv = (r && r.order) || [];
+    if (srv.length) { try { localStorage.setItem(WL_ORDER_KEY, JSON.stringify(srv)); } catch(e) {} }
+    else if (_loadWlOrder().length) _saveWlOrder(_loadWlOrder());      // 伺服器還沒有：用這台的順序當第一份
+  } catch(e) {}
+}
 function _applyWlOrder() {
   const order = _loadWlOrder();
   if (!order.length) return;
@@ -3371,13 +3383,31 @@ function moveWlItem(sid, dir) {
 
 // ── 拖拉排序 ────────────────────────────────────────────────────────────────
 let _wlDragSid = null;
+// B116：拖到畫面上緣／下緣自動捲動（以前拉到上面會停住：上面有固定的標題列擋住，瀏覽器自己的自動捲動碰不到）
+let _wlScrollV = 0, _wlScrollRaf = null;
+function _wlAutoScroll(e) {
+  if (!_wlDragSid) return;
+  const y = e.clientY, h = window.innerHeight, edge = Math.max(90, h * 0.18);
+  _wlScrollV = y < edge ? -Math.ceil((edge - y) / edge * 28) : y > h - edge ? Math.ceil((y - (h - edge)) / edge * 28) : 0;
+  if (_wlScrollV && !_wlScrollRaf) {
+    const step = () => {
+      if (!_wlDragSid || !_wlScrollV) { _wlScrollRaf = null; return; }
+      window.scrollBy(0, _wlScrollV);
+      _wlScrollRaf = requestAnimationFrame(step);
+    };
+    _wlScrollRaf = requestAnimationFrame(step);
+  }
+}
+document.addEventListener('dragover', _wlAutoScroll);
 function wlDragStart(e) {
   _wlDragSid = e.currentTarget.dataset.sid;
   e.currentTarget.style.opacity = '0.5';
   e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', _wlDragSid); } catch(_) {}
 }
 function wlDragEnd(e) {
   e.currentTarget.style.opacity = '';
+  _wlScrollV = 0;
   // 若沒成功 drop，也清掉 drag 狀態
   if (_wlDragSid) _wlDragSid = null;
 }
