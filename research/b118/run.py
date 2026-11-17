@@ -1,5 +1,5 @@
-"""B117 回測：四大金剛 項目1（日 K 分數）、項目9 KSAR（60 分 K），規則見 PLAN.md（照他們網頁的程式抄）。
-用法：python research/b117/run.py  → results/b117.json、REPORT.md"""
+"""B118 回測：四大金剛 項目1（日 K 分數）、項目9 KSAR（60 分 K），規則見 PLAN.md（照他們網頁的程式抄）。
+用法：python research/b118/run.py  → results/b117.json、REPORT.md"""
 import json
 import math
 import os
@@ -335,7 +335,7 @@ def pct(x, nd=2):
 
 
 def write_report(res):
-    L = ["# B117 回測結果：四大金剛 項目1（日 K 分數）、項目9 KSAR（60 分 K）", "",
+    L = ["# B118 回測結果：四大金剛 項目1（日 K 分數）、項目9 KSAR（60 分 K）", "",
          f"產生：{res['generated']}；日 K {res['data']['daily']['stocks']} 檔（{res['data']['daily']['start']}～{res['data']['daily']['end']}）、"
          f"60 分 K {res['data']['h60']['stocks']} 檔（{res['data']['h60']['start']}～{res['data']['h60']['end']}）", "",
          "報酬＝隔天（下一根）開盤買、持有期最後一根收盤賣，已扣來回成本 0.585%。隨機＝同一天（同一根）隨便挑 5 檔、同樣進出。", "",

@@ -1,9 +1,9 @@
-# PLAN-B117：別人網站的兩套選股分數回測（四大金剛 項目1、項目9 KSAR）
+# PLAN-B118：別人網站的兩套選股分數回測（四大金剛 項目1、項目9 KSAR）
 
 用戶（11/17）給了兩個網站（`precipitation.fengyuan55961585.workers.dev`、`ksar-trade.vicky741114.workers.dev`），問選股邏輯；看完同意回測。
-主網站：`fourkingkong.vicky741114.workers.dev`（項目1 的另一個版本，配分略不同，沒有另外測）。規則、資料、判準見 `research/b117/PLAN.md`（跑之前 commit）。
+主網站：`fourkingkong.vicky741114.workers.dev`（項目1 的另一個版本，配分略不同，沒有另外測）。規則、資料、判準見 `research/b118/PLAN.md`（跑之前 commit）。
 
-## 結果（`research/b117/REPORT.md`）
+## 結果（`research/b118/REPORT.md`）
 | 檢定 | 筆數 | 平均報酬（扣成本） | 同一天隨便挑 | 差（95% 區間） | 結果 |
 |---|---|---|---|---|---|
 | H1 項目1 ≥55 分、抱 5 天 | 333,026 | −0.62% | −0.60% | −0.02%（−0.05～+0.01） | △ |

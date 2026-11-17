@@ -1,4 +1,4 @@
-"""B117 回測資料（GitHub Actions 跑）：Yahoo 日 K 5 年（1,990 檔）→ data/daily.csv.gz；成交金額前 300 檔的 60 分 K → data/h60.csv.gz"""
+"""B118 回測資料（GitHub Actions 跑）：Yahoo 日 K 5 年（1,990 檔）→ data/daily.csv.gz；成交金額前 300 檔的 60 分 K → data/h60.csv.gz"""
 import json
 import os
 import time
