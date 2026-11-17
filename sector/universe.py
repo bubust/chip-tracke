@@ -12,12 +12,7 @@ from .db import db
 
 log = logging.getLogger(__name__)
 
-_FALLBACK_FM_TOKEN = (
-    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
-    ".eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0"
-    ".LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
-)
-FINMIND_TOKEN = os.environ.get("FINMIND_TOKEN", "") or _FALLBACK_FM_TOKEN
+FINMIND_TOKEN = os.environ.get("FINMIND_TOKEN", "").strip()  # 沒設＝用 FinMind 免費額度
 FINMIND_URL = "https://api.finmindtrade.com/api/v4/data"
 
 # 排除的 industry_category 關鍵字（ETF、指數、權證「所有證券」、ETN 都不是一般股票）
@@ -85,8 +80,7 @@ def fetch_and_build_mapping() -> dict:
     """
     token = FINMIND_TOKEN
     if not token:
-        log.warning("[universe] 未設定 FINMIND_TOKEN，無法抓取產業資料")
-        return {}
+        log.info("[universe] 沒設 FINMIND_TOKEN，用 FinMind 免費額度抓產業資料")
 
     log.info("[universe] 開始從 FinMind 抓 TaiwanStockInfo...")
     try:

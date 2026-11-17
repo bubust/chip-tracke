@@ -951,11 +951,7 @@ def fetch_twse_market_breadth(lookback: int = 90):
         _fetch_breadth_finmind(targets)
 
 
-_FINMIND_TOKEN = os.environ.get("FINMIND_TOKEN", "").strip() or (
-    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
-    ".eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0"
-    ".LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
-)
+_FINMIND_TOKEN = os.environ.get("FINMIND_TOKEN", "").strip()  # 沒設＝用 FinMind 免費額度
 
 
 def _fetch_breadth_finmind(targets: list):
