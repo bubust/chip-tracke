@@ -713,6 +713,7 @@ def _nest_prices(snap: dict) -> list:
                                 cg, z7 = sb.get("cleg") or {}, sb.get("z786") or {}     # B113 她 11/16：C 的五腳、C-4／C-5 量度、第二層
                                 out += [x["p"] for x in cg.get("legs") or []] + [v for v, _ in (cg.get("t5") or []) + (cg.get("c4z") or [])]
                                 out += [x for x in (z7.get("v"), z7.get("near")) if x]
+                                out += [v for g in cg.get("gates53") or [] for v in (g["lo"], g["hi"])] + [x for x in (cg.get("c5a"), cg.get("reb")) if x]
         pz = nz.get("pulses") or {}                      # B89 三種細微脈動
         if pz.get("views"):
             out += [pz["end1"], pz["h2"], pz["low"], pz["f382"]] + ([pz["ma5"]] if pz.get("ma5") is not None else [])
