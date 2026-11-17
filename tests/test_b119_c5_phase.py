@@ -46,7 +46,7 @@ def test_extended_c5_after_breaking_low():
     c = W.plan_card(o, 40206.0, None, 190.0, 464.0)
     assert "站回 40,616 才是買點" in c["pos"][2] and any(x["tag"] == "站回才做多" for x in c["plays"])
     tl = c["tiles"]
-    assert (tl["up"]["price"], int(tl["down"]["price"] + 0.5), tl["stop"]["price"]) == (40616, 39137, 41828)   # B120：下方改 0.8 極限防線（她 11/17 晚上）
+    assert (tl["up"]["price"], int(tl["down"]["price"] + 0.5), tl["stop"]["price"]) == (40616, 39137, 41828)   # B121：下方改 0.8 極限防線（她 11/17 晚上）
     assert (int(sb["z786"]["lo"] + 0.5), sb["z786"]["hi"]) == (39238, 39977)
 
 
@@ -56,7 +56,7 @@ def test_box_unchanged_when_no_break_above_c4():
 
 
 def test_b120_depth_and_three_developments():
-    """B120 她 11/17 晚上：夜盤 39,537＝回撤 74.5%；0.786 39,238、0.8 極限防線 39,137；守住＝第 1 種（5-2 極限洗盤）"""
+    """B121 她 11/17 晚上：夜盤 39,537＝回撤 74.5%；0.786 39,238、0.8 極限防線 39,137；守住＝第 1 種（5-2 極限洗盤）"""
     o = _o(40285.0, C.TAIL + H + [{"p": 39537, "t": "L"}])
     sb = B._sb(o)
     assert (sb["depth"], int(sb["z80"] + 0.5), sb["dev"]) == (0.745, 39137, 1)

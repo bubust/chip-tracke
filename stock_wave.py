@@ -326,7 +326,7 @@ def _done52(rest: list, top_t: str, u: int, p0: float, p5: float, sp: float, pul
         z["hit"] = bool((low_all - z["hi"]) * u <= 0)                 # 已經跌到這一區
     cleg = (_c5(rest[k_top + 1:], top_t, u, b_hi, float(price), top=top, a_low=a_low, z382=z52[0]["v"])
             if stage == "C" and k_over is None else None)
-    # B120 她 11/17 晚上：5-1 總漲幅的 0.8＝極限防線（39,137）；三種發展——守住＝5-2 極限洗盤直接 5-3；
+    # B121 她 11/17 晚上：5-1 總漲幅的 0.8＝極限防線（39,137）；三種發展——守住＝5-2 極限洗盤直接 5-3；
     # 跌破 0.8＝日線第二隻大腳（W 底，回測 37,694）；37,694 收盤長黑跌破＝A 版 4-C 真 C-5 主跌段
     z80 = round(top - u * 0.8 * big, 2)
     depth = round(abs(top - low_all) / big, 3) if big else None
@@ -1243,7 +1243,7 @@ def plan_card(t: dict, price: float, bars15: Optional[list] = None, atr15: Optio
                 flip = (f"改判：站回 {_fmt(c5a)}＝假跌破、C 段可能已經落底；站上 {_fmt(reb)}＝C 段走完、看 5-3；"
                         f"跌破第二層" + (f" {_fmt(z7['lo'])}" if z7 else "") + "＝5-2 比她估的更深")
             dev, z80, dep = sb.get("dev"), sb.get("z80"), sb.get("depth")
-            if dev and z80 is not None and dep is not None and dep >= 0.618:   # B120 她 11/17 晚上：跌過 0.618 以後才講 0.8 極限防線、三種發展
+            if dev and z80 is not None and dep is not None and dep >= 0.618:   # B121 她 11/17 晚上：跌過 0.618 以後才講 0.8 極限防線、三種發展
                 ma5 = t.get("ma5")
                 reb = (cg or {}).get("reb")
                 strong = sorted(x for x in (ma5, reb) if x)
