@@ -626,6 +626,12 @@ details.guide[open]>summary::before{content:'▾ ';}
 .tail-tbl td{padding:6px 8px;white-space:nowrap;text-align:right;border-top:1px solid #21262d}
 .tail-tbl td.l{text-align:left}
 .tail-act button{padding:2px 7px !important;min-height:28px !important;font-size:.75rem !important}
+  /* B120 手機拖拉把手（只在觸控螢幕顯示） */
+  .wl-handle { display: none; }
+  @media (pointer: coarse) {
+    .wl-handle { display: inline-block; touch-action: none; user-select: none; -webkit-user-select: none;
+                 padding: 6px 8px 6px 2px; margin-right: 2px; color: var(--muted); font-size: 1.15rem; line-height: 1; cursor: grab; }
+  }
 </style>
 </head>
 <body>
@@ -3014,7 +3020,7 @@ function renderWatchlist(opts) {
       return `<tr class="clickable wl-row" draggable="true" data-sid="${s.stock_id}"
         ondragstart="wlDragStart(event)" ondragend="wlDragEnd(event)" ondragover="wlDragOver(event)" ondragleave="wlDragLeave(event)" ondrop="wlDrop(event)"
         onclick="openDetail('${s.stock_id}')">
-        <td onclick="event.stopPropagation();openWlChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
+        <td onclick="event.stopPropagation();openWlChart('${s.stock_id}')" style="cursor:pointer">${_wlHandle()}<b style="color:var(--accent)">${s.stock_id}</b></td>
         <td>${nameCell(s)}${_dpBtn(s.stock_id, s.name)}</td>
         <td class="muted" title="${s.added_at || ''}">${_fmtAdded(s.added_at)}</td>
         ${_sinceAddedCell(s)}
@@ -3086,7 +3092,7 @@ function renderWatchlist(opts) {
     return `<tr class="clickable wl-row" draggable="true" data-sid="${s.stock_id}"
         ondragstart="wlDragStart(event)" ondragend="wlDragEnd(event)" ondragover="wlDragOver(event)" ondragleave="wlDragLeave(event)" ondrop="wlDrop(event)"
         onclick="openDetail('${s.stock_id}')">
-      <td onclick="event.stopPropagation();openWlChart('${s.stock_id}')" style="cursor:pointer"><b style="color:var(--accent)">${s.stock_id}</b></td>
+      <td onclick="event.stopPropagation();openWlChart('${s.stock_id}')" style="cursor:pointer">${_wlHandle()}<b style="color:var(--accent)">${s.stock_id}</b></td>
       <td>${nameCell(s)}${_dpBtn(s.stock_id, s.name)}</td>
       <td class="muted" title="${s.added_at || ''}">${_fmtAdded(s.added_at)}</td>
         ${_sinceAddedCell(s)}
@@ -3345,21 +3351,59 @@ function _fmtAdded(v) {
 }
 
 // 觀察清單上下移動
+function _wlHandle() { return `<span class="wl-handle" title="按住拖拉排順序" onpointerdown="wlHandleDown(event)" onclick="event.stopPropagation()">⠿</span>`; }
 const WL_ORDER_KEY = 'chip_wl_order_v1';
 function _loadWlOrder()  { try { return JSON.parse(localStorage.getItem(WL_ORDER_KEY) || '[]'); } catch(e) { return []; } }
 // B116：順序也存到伺服器（以前只存在這台瀏覽器 → 手機、電腦順序不一樣）；載入時以伺服器為準
+// B120：伺服器多存 ts（最後改的時間）→ 別台改了，這台切回來／每 20 秒會自動重排；手機第一次打開用手機的順序
+const WL_ORDER_TS_KEY = 'chip_wl_order_ts', WL_ORDER_MIG_KEY = 'chip_wl_order_mig_b120';
+function _wlOrderTs() { try { return +localStorage.getItem(WL_ORDER_TS_KEY) || 0; } catch(e) { return 0; } }
 function _saveWlOrder(o) {
   try { localStorage.setItem(WL_ORDER_KEY, JSON.stringify(o)); } catch(e) {}
-  api('POST', '/api/watchlist/order', { order: o }).catch(() => {});
+  api('POST', '/api/watchlist/order', { order: o })
+    .then(r => { if (r && r.ts) try { localStorage.setItem(WL_ORDER_TS_KEY, String(r.ts)); } catch(e) {} })
+    .catch(() => {});
+}
+// 伺服器的順序寫進本機；回傳順序有沒有變
+function _takeSrvWlOrder(r) {
+  const srv = (r && r.order) || [];
+  const changed = JSON.stringify(srv) !== JSON.stringify(_loadWlOrder());
+  try {
+    localStorage.setItem(WL_ORDER_KEY, JSON.stringify(srv));
+    localStorage.setItem(WL_ORDER_TS_KEY, String((r && r.ts) || 0));
+  } catch(e) {}
+  return changed;
 }
 async function _syncWlOrder() {
   try {
     const r = await api('GET', '/api/watchlist/order');
-    const srv = (r && r.order) || [];
-    if (srv.length) { try { localStorage.setItem(WL_ORDER_KEY, JSON.stringify(srv)); } catch(e) {} }
-    else if (_loadWlOrder().length) _saveWlOrder(_loadWlOrder());      // 伺服器還沒有：用這台的順序當第一份
+    const srv = (r && r.order) || [], local = _loadWlOrder();
+    let mig = true;
+    try { mig = !localStorage.getItem(WL_ORDER_MIG_KEY); localStorage.setItem(WL_ORDER_MIG_KEY, '1'); } catch(e) {}
+    // B120 用戶：手機的順序才是對的 → 手機（觸控螢幕）第一次打開新版：用手機的順序（伺服器多的股票接在後面）
+    const phone = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    if ((mig && phone && local.length) || (!srv.length && local.length)) {
+      _saveWlOrder(local.concat(srv.filter(x => !local.includes(x))));
+      return;
+    }
+    if (srv.length) _takeSrvWlOrder(r);
   } catch(e) {}
 }
+// 別台裝置改了順序 → 這台跟著重排（正在拖拉、正在打備註時先不動）
+async function _pollWlOrder() {
+  if (document.hidden || _wlDragSid || !_wlData.length) return;
+  const tab = document.getElementById('tab-watchlist');
+  if (!tab || !tab.offsetParent) return;
+  try {
+    const r = await api('GET', '/api/watchlist/order');
+    if (!r || !r.order || !r.order.length || (r.ts || 0) === _wlOrderTs()) return;
+    const tb = document.getElementById('wl-tbody');
+    if (_wlDragSid || (tb && tb.contains(document.activeElement))) return;
+    if (_takeSrvWlOrder(r)) renderWatchlist();
+  } catch(e) {}
+}
+setInterval(_pollWlOrder, 20000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) _pollWlOrder(); });
 function _applyWlOrder() {
   const order = _loadWlOrder();
   if (!order.length) return;
@@ -3424,14 +3468,51 @@ function wlDrop(e) {
   e.currentTarget.style.boxShadow = '';
   const targetSid = e.currentTarget.dataset.sid;
   if (!_wlDragSid || _wlDragSid === targetSid) { _wlDragSid = null; return; }
-  const fromIdx = _wlData.findIndex(x => x.stock_id === _wlDragSid);
+  const sid = _wlDragSid;
+  _wlDragSid = null;
+  _wlMoveTo(sid, targetSid);
+}
+function _wlMoveTo(sid, targetSid) {
+  const fromIdx = _wlData.findIndex(x => x.stock_id === sid);
   const toIdx   = _wlData.findIndex(x => x.stock_id === targetSid);
-  if (fromIdx < 0 || toIdx < 0) { _wlDragSid = null; return; }
+  if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
   const [item] = _wlData.splice(fromIdx, 1);
   _wlData.splice(toIdx, 0, item);
   _saveWlOrder(_wlData.map(x => x.stock_id));
-  _wlDragSid = null;
   renderWatchlist();
+}
+// B120：手機拖拉（手機瀏覽器不支援整列 draggable）→ 按住代號左邊的 ⠿ 拖到要放的那張卡片
+let _wlTouch = null;
+function wlHandleDown(e) {
+  e.preventDefault(); e.stopPropagation();
+  const h = e.currentTarget, tr = h.closest('tr.wl-row');
+  if (!tr) return;
+  _wlDragSid = tr.dataset.sid;
+  _wlTouch = { tr, target: null };
+  tr.style.opacity = '0.5';
+  try { h.setPointerCapture(e.pointerId); } catch(_) {}
+  h.addEventListener('pointermove', _wlTouchMove);
+  h.addEventListener('pointerup', _wlTouchUp);
+  h.addEventListener('pointercancel', _wlTouchUp);
+}
+function _wlTouchMove(e) {
+  if (!_wlTouch) return;
+  _wlAutoScroll(e);
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const tr = el && el.closest ? el.closest('#wl-tbody tr.wl-row') : null;
+  if (_wlTouch.target && _wlTouch.target !== tr) _wlTouch.target.style.boxShadow = '';
+  _wlTouch.target = tr && tr !== _wlTouch.tr ? tr : null;
+  if (_wlTouch.target) _wlTouch.target.style.boxShadow = 'inset 0 2px 0 0 var(--accent)';
+}
+function _wlTouchUp(e) {
+  const h = e.currentTarget, t = _wlTouch, sid = _wlDragSid;
+  h.removeEventListener('pointermove', _wlTouchMove);
+  h.removeEventListener('pointerup', _wlTouchUp);
+  h.removeEventListener('pointercancel', _wlTouchUp);
+  _wlTouch = null; _wlDragSid = null; _wlScrollV = 0;
+  if (!t) return;
+  t.tr.style.opacity = '';
+  if (t.target) { t.target.style.boxShadow = ''; if (e.type === 'pointerup') _wlMoveTo(sid, t.target.dataset.sid); }
 }
 
 // ── 刪除確認 inline ───────────────────────────────────────────────────────────
