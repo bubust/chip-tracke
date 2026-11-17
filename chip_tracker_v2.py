@@ -24,10 +24,7 @@ def _tw_today() -> date:
     return datetime.now(_TW_TZ).date()
 
 # ── FinMind Token ─────────────────────────────────────────────────────────────
-_FM_TOKEN = os.getenv(
-    "FINMIND_TOKEN",
-    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0.LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA"
-)
+_FM_TOKEN = os.getenv("FINMIND_TOKEN", "").strip()  # 沒設＝用 FinMind 免費額度
 
 # ── 目錄設定 ──────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent

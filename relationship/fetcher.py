@@ -13,7 +13,7 @@ import os
 
 log = logging.getLogger(__name__)
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-FINMIND_TOKEN = os.getenv("FINMIND_TOKEN", "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiYnVidXN0IiwiZW1haWwiOiJidWJ1c3RAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6MH0.LcLL157_bH6YbABE7JOlg0cAEwwzOV6GfJA6uK2cvIA")
+FINMIND_TOKEN = os.getenv("FINMIND_TOKEN", "").strip()
 
 
 async def fetch_taiex_ohlcv(days: int = 400) -> list[dict]:
@@ -162,8 +162,7 @@ async def _fetch_tx_taifex(days: int) -> list[dict]:
 
 async def _fetch_tx_finmind(days: int) -> list[dict]:
     if not FINMIND_TOKEN:
-        log.warning("FINMIND_TOKEN not set, TX futures unavailable")
-        return []
+        log.info("[relationship] 沒設 FINMIND_TOKEN，用 FinMind 免費額度抓 TX")
     start = (date.today() - timedelta(days=days)).strftime("%Y-%m-%d")
     params = {"dataset": "TaiwanFuturesDaily", "data_id": "TX", "start_date": start, "token": FINMIND_TOKEN}
     async with httpx.AsyncClient(headers={"User-Agent": _UA}, timeout=60) as client:

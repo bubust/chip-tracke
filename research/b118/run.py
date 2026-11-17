@@ -1,5 +1,5 @@
 """B118 回測：四大金剛 項目1（日 K 分數）、項目9 KSAR（60 分 K），規則見 PLAN.md（照他們網頁的程式抄）。
-用法：python research/b118/run.py  → results/b117.json、REPORT.md"""
+用法：python research/b118/run.py  → results/b118.json、REPORT.md"""
 import json
 import math
 import os
@@ -325,7 +325,7 @@ def main():
         res["tests"][h] = {"set": k, "q": q.get(h), "verdict": "✅" if ok else "✗" if bad else "△", **{x: r[x] for x in ("n", "real", "ctrl")},
                            "boot": b, "years_same": same}
     res["desc"] = allr
-    json.dump(res, open(os.path.join(OUT, "b117.json"), "w"), ensure_ascii=False, indent=1)
+    json.dump(res, open(os.path.join(OUT, "b118.json"), "w"), ensure_ascii=False, indent=1)
     write_report(res)
     print("done", f"{time.time() - t0:.0f}s")
 
