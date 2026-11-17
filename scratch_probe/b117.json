@@ -1,0 +1,27 @@
+{
+ "https://precipitation.fengyuan55961585.workers.dev/": [
+  {
+   "url": "https://precipitation.fengyuan55961585.workers.dev/",
+   "status": 200,
+   "ct": "text/html; charset=utf-8",
+   "len": 165022,
+   "file": "index.html"
+  }
+ ],
+ "https://ksar-trade.vicky741114.workers.dev/": [
+  {
+   "url": "https://ksar-trade.vicky741114.workers.dev/",
+   "status": 200,
+   "ct": "text/html; charset=utf-8",
+   "len": 189342,
+   "file": "index.html"
+  },
+  {
+   "url": "https://ksar-trade.vicky741114.workers.dev/manifest.json",
+   "status": 200,
+   "ct": "application/manifest+json",
+   "len": 594,
+   "file": "manifest.json"
+  }
+ ]
+}

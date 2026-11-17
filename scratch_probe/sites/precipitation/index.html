@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>⚡ 四大金剛 · 項目1 做多選股戰情室 (寬鬆模式 | 最低55分 | 5日20% | 8大技術指標)</title>
+  <!-- Tailwind CSS & Plotly.js CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist@2.35.2/plotly.min.js"></script>
+  <!-- Google Fonts Outfit & Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    h1, h2, h3, .font-heading { font-family: 'Outfit', sans-serif; }
+    /* 自訂深色滾動條 */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0B1120; }
+    ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #10B981; }
+    input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.85); cursor: pointer; }
+    .neon-border { box-shadow: 0 0 15px rgba(16, 185, 129, 0.25); }
+    .neon-text { text-shadow: 0 0 10px rgba(16, 185, 129, 0.5); }
+  </style>
+</head>
+<body class="bg-[#0B1120] text-slate-100 min-h-screen flex flex-col antialiased selection:bg-emerald-500 selection:text-white">
+
+  <!-- 頂部導航列 -->
+  <header class="sticky top-0 z-40 bg-[#0F172A]/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 shadow-xl">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <!-- Logo 與標題 -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-500 to-cyan-400 flex items-center justify-center font-black text-xl text-white shadow-lg shadow-emerald-500/30">
+          1
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-1.5">
+              <span>四大金剛 · 項目1</span>
+              <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">經典做多戰情室</span>
+            </h1>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">寬鬆模式 · 最低55分 · 5日漲幅20% · 趨勢過濾 (月線支撐/多頭/跌深反彈)</p>
+        </div>
+      </div>
+
+      <!-- 右側快捷狀態與操作 -->
+      <div class="flex items-center gap-2 text-xs">
+        <div class="hidden md:flex items-center gap-2 bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span class="text-slate-400">指標引擎：</span>
+          <span class="font-mono text-emerald-400 font-bold">5/20/60EMA · SAR · KDJ · MACD</span>
+        </div>
+        <button onclick="startScanning()" id="btn-scan" class="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500 hover:from-emerald-500 hover:to-cyan-400 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-lg shadow-emerald-500/25 active:scale-95 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          <span id="scan-btn-text">開始做多篩選 / 回測</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主控制區：日期、策略條件與篩選範圍 -->
+  <section class="max-w-7xl mx-auto w-full px-4 pt-4 pb-2">
+    <div class="bg-gradient-to-r from-slate-900/90 via-[#111827]/90 to-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-lg space-y-3">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        
+        <!-- 1. 選擇日期 -->
+        <div class="space-y-1">
+          <label class="text-xs font-semibold text-emerald-400 flex items-center gap-1">
+            <span>📅 1. 選擇分析/回測基準日期</span>
+          </label>
+          <div class="flex items-center gap-1.5">
+            <input type="date" id="selected-date" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-sm focus:outline-none focus:border-emerald-500">
+            <button onclick="setTodayDate()" class="px-2.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300" title="設為今天">今天</button>
+          </div>
+          <div class="text-[11px] text-slate-400 flex items-center justify-between" id="date-mode-hint">
+            <span>模式：即時起漲預測</span>
+          </div>
+        </div>
+
+        <!-- 2. 篩選強度與策略模式 -->
+        <div class="space-y-1">
+          <label class="text-xs font-semibold text-cyan-400 flex items-center gap-1">
+            <span>🔓 2. 策略與精準強度</span>
+          </label>
+          <div class="bg-slate-950/80 border border-slate-700/80 rounded-xl px-3 py-1.5 text-xs flex flex-col justify-center h-[42px]">
+            <div class="font-bold text-slate-200">經典四大金剛策略</div>
+            <div class="text-[11px] text-emerald-400 font-semibold">🔓 寬鬆模式 (Loose - 原有廣泛特徵)</div>
+          </div>
+          <div class="text-[11px] text-slate-500">鎖定最經典做多高勝率原版特徵</div>
+        </div>
+
+        <!-- 3. 最低量化分數 & 5日最低漲幅 -->
+        <div class="space-y-1">
+          <label class="text-xs font-semibold text-amber-400 flex items-center justify-between">
+            <span>🎯 3. 策略門檻控制</span>
+            <span class="font-mono text-emerald-400 font-bold" id="score-display">門檻: 55分 | 漲幅: 20%</span>
+          </label>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <span class="text-[10px] text-slate-400">最低量化分:</span>
+              <input type="number" id="min-score" value="55" min="40" max="95" step="5" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono text-center">
+            </div>
+            <div>
+              <span class="text-[10px] text-slate-400">5日漲幅(%):</span>
+              <input type="number" id="target-return" value="20" min="5" max="50" step="1" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono text-center">
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. 趨勢與型態過濾開關 (完全對齊截圖) -->
+        <div class="space-y-1">
+          <label class="text-xs font-semibold text-purple-400 flex items-center gap-1">
+            <span>🔍 4. 策略過濾開關 (截圖設定)</span>
+          </label>
+          <div class="bg-slate-950/80 border border-slate-700/80 rounded-xl p-2 space-y-1 text-xs">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="filter-trend" checked class="w-4 h-4 rounded text-emerald-500 bg-slate-900 border-slate-700 focus:ring-0">
+              <span class="text-emerald-300 font-medium text-[11px]">✅ 趨勢支撐過濾 (月線/多頭/反彈)</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="filter-wash" class="w-4 h-4 rounded text-slate-600 bg-slate-900 border-slate-700 focus:ring-0">
+              <span class="text-slate-400 text-[11px]">型態洗盤過濾 (實體黑K/溫和紅K)</span>
+            </label>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 掃描範圍選擇條 -->
+      <div class="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div class="flex items-center gap-2">
+          <span class="text-slate-400 font-medium">股票範圍：</span>
+          <div class="inline-flex rounded-xl bg-slate-950 p-0.5 border border-slate-800" id="scope-pills">
+            <button onclick="setScope('theme70')" id="scope-theme70" class="px-3 py-1 rounded-lg font-bold text-xs bg-emerald-600 text-white shadow">精選題材股 (70檔)</button>
+            <button onclick="setScope('active300')" id="scope-active300" class="px-3 py-1 rounded-lg text-slate-400 hover:text-white">活躍主力股 (300檔)</button>
+            <button onclick="setScope('all')" id="scope-all" class="px-3 py-1 rounded-lg text-slate-400 hover:text-white">全台股 (1,990檔)</button>
+            <button onclick="setScope('custom')" id="scope-custom" class="px-3 py-1 rounded-lg text-slate-400 hover:text-white">自訂代碼</button>
+          </div>
+        </div>
+
+        <div id="custom-code-box" class="hidden flex items-center gap-1.5 flex-1 max-w-sm">
+          <input type="text" id="custom-stocks-input" placeholder="代號如: 3653, 2330, 6182, 5371" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-mono">
+        </div>
+
+        <!-- 掃描進度提示 -->
+        <div id="scan-status-badge" class="text-slate-400 font-mono text-[11px] flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-slate-600" id="status-dot"></span>
+          <span id="status-text">就緒，請點擊「開始做多篩選」</span>
+        </div>
+      </div>
+
+      <!-- 進度條 -->
+      <div id="scan-progress-wrapper" class="hidden w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+        <div id="scan-progress-bar" class="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 transition-all duration-150" style="width: 0%"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 主內容區：雙欄佈局 (左側符合個股清單 / 右側 8大指標高清圖表) -->
+  <main class="max-w-7xl mx-auto w-full px-4 py-2 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4">
+    
+    <!-- 左側欄：篩選結果清單 (佔 4 欄) -->
+    <div class="lg:col-span-4 flex flex-col space-y-3">
+      
+      <!-- 統計摘要卡片 -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 shadow-lg">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            四大金剛項目1 篩選戰果
+          </span>
+          <span id="res-count-badge" class="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+            0 檔符合
+          </span>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 text-center font-mono">
+          <div class="bg-slate-950/80 p-2 rounded-xl border border-slate-800/80">
+            <div class="text-[10px] text-slate-400">平均做多分</div>
+            <div id="stat-avg-score" class="text-sm font-black text-emerald-400">--</div>
+          </div>
+          <div class="bg-slate-950/80 p-2 rounded-xl border border-slate-800/80">
+            <div class="text-[10px] text-slate-400">5日達標率</div>
+            <div id="stat-win-rate" class="text-sm font-black text-rose-400">--</div>
+          </div>
+          <div class="bg-slate-950/80 p-2 rounded-xl border border-slate-800/80">
+            <div class="text-[10px] text-slate-400">最大5日漲幅</div>
+            <div id="stat-max-runup" class="text-sm font-black text-cyan-400">--</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 個股點選清單 (點選股票名稱即刻載入右側圖表) -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 shadow-lg flex-1 flex flex-col min-h-[480px]">
+        <div class="text-xs font-bold text-slate-400 px-1 pb-2 border-b border-slate-800/80 flex justify-between items-center">
+          <span>📋 點選股票名稱查看日K與8大指標</span>
+          <span class="text-[10px] text-slate-500">依量化分排序</span>
+        </div>
+
+        <!-- 列表容器 -->
+        <div id="stock-list-container" class="mt-2 space-y-2 overflow-y-auto flex-1 max-h-[640px] pr-1">
+          <div class="p-8 text-center text-slate-500 text-xs">
+            請點擊上方按鈕開始篩選，系統將自動載入符合四大金剛項目1做多條件之個股！
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 右側欄：選中個股深度資訊與 8大指標四軸聯動圖表 (佔 8 欄) -->
+    <div class="lg:col-span-8 flex flex-col space-y-3">
+      
+      <!-- 當前選中個股資訊列 -->
+      <div id="stock-header-card" class="bg-gradient-to-r from-slate-900/95 via-[#131D31]/95 to-slate-900/95 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div class="flex items-center gap-2.5">
+            <h2 id="view-stock-name" class="text-2xl font-black text-white tracking-tight">健策</h2>
+            <span id="view-stock-ticker" class="text-xs font-mono text-slate-300 bg-slate-800 px-2 py-0.5 rounded-md border border-slate-700">3653.TW</span>
+            <span id="view-stock-cat" class="text-xs font-semibold text-emerald-300 bg-emerald-950/80 px-2.5 py-0.5 rounded-full border border-emerald-800/40">散熱均熱</span>
+            <span id="view-stock-rating" class="text-xs font-bold text-amber-400 bg-amber-950/40 px-2.5 py-0.5 rounded-full border border-amber-800/40">🔥 飆股型態/扭轉爆發</span>
+          </div>
+          <div class="flex items-baseline gap-3 mt-1.5">
+            <span id="view-stock-price" class="text-3xl font-extrabold text-white font-mono">$3,380.00</span>
+            <span id="view-stock-change" class="text-sm font-bold font-mono text-rose-400">+2.42%</span>
+            <span id="view-stock-runup" class="text-xs font-mono font-bold text-rose-400 bg-rose-950/60 px-2 py-0.5 rounded border border-rose-800/40">5日最高: +28.3%</span>
+          </div>
+        </div>
+
+        <!-- 8項技術指標即時速查狀態膠囊 -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px] font-mono">
+          <div class="bg-slate-950/80 px-2.5 py-1 rounded-xl border border-slate-800">
+            <div class="text-[9px] text-slate-400">四大金剛做多分</div>
+            <div id="view-score" class="font-bold text-emerald-400">85 分</div>
+          </div>
+          <div class="bg-slate-950/80 px-2.5 py-1 rounded-xl border border-slate-800">
+            <div class="text-[9px] text-slate-400">EMA均線結構</div>
+            <div id="view-ema-status" class="font-bold text-amber-400">5>20>60 多頭</div>
+          </div>
+          <div class="bg-slate-950/80 px-2.5 py-1 rounded-xl border border-slate-800">
+            <div class="text-[9px] text-slate-400">SAR 趨勢狀態</div>
+            <div id="view-sar-status" class="font-bold text-rose-400">🔴 多頭保護</div>
+          </div>
+          <div class="bg-slate-950/80 px-2.5 py-1 rounded-xl border border-slate-800">
+            <div class="text-[9px] text-slate-400">KDJ & MACD</div>
+            <div id="view-kd-macd-status" class="font-bold text-cyan-400">雙金叉轉強</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 四大金剛診斷標籤列 -->
+      <div id="view-diagnostics-bar" class="flex flex-wrap gap-1.5">
+        <!-- 診斷標籤 injected via JS -->
+      </div>
+
+      <!-- 專業 4 軸聯動技術圖表 (Plotly.js) -->
+      <div class="bg-[#0E1526] border border-slate-800 rounded-2xl p-2 sm:p-3 shadow-2xl relative">
+        <div class="flex items-center justify-between px-2 pb-1.5 border-b border-slate-800/80 text-xs">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-emerald-400">📈 日K線與 8 大指標多視圖聯動</span>
+            <span class="text-[10px] text-slate-400 font-mono hidden sm:inline">(日K · 5EMA · 20EMA · 60EMA · SAR · 成交量 · KDJ · MACD)</span>
+          </div>
+          <div class="text-[10px] text-slate-400 font-mono">滑鼠滾輪可局部縮放 · 懸停看精確數值</div>
+        </div>
+
+        <!-- Plotly 圖表容器 -->
+        <div id="plotly-chart-container" class="w-full" style="height: 640px;">
+          <!-- Plotly chart renders here -->
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- 底部版權 -->
+  <footer class="mt-8 border-t border-slate-800/80 py-4 text-center text-xs text-slate-500 font-mono">
+    ⚡ AntiGravity 四大金剛項目1 · 做多選股戰情室 v9.0 · 支援 Cloudflare Workers 邊緣網路極速運算
+  </footer>
+
+  <!-- ================================= 核心量化引擎與前端互動腳本 ================================= -->
+  <script>
+    // 注入全台股乾淨對照表
+    const ALL_STOCKS_MAP = {"1101.TW": {"n": "台泥", "cat": "水泥工業"}, "1102.TW": {"n": "亞泥", "cat": "水泥工業"}, "1103.TW": {"n": "嘉泥", "cat": "水泥工業"}, "1104.TW": {"n": "環泥", "cat": "水泥工業"}, "1108.TW": {"n": "幸福", "cat": "水泥工業"}, "1109.TW": {"n": "信大", "cat": "水泥工業"}, "1110.TW": {"n": "東泥", "cat": "水泥工業"}, "1201.TW": {"n": "味全", "cat": "食品工業"}, "1203.TW": {"n": "味王", "cat": "食品工業"}, "1210.TW": {"n": "大成", "cat": "食品工業"}, "1213.TW": {"n": "大飲", "cat": "食品工業"}, "1215.TW": {"n": "卜蜂", "cat": "食品工業"}, "1216.TW": {"n": "統一", "cat": "食品工業"}, "1217.TW": {"n": "愛之味", "cat": "食品工業"}, "1218.TW": {"n": "泰山", "cat": "食品工業"}, "1219.TW": {"n": "福壽", "cat": "食品工業"}, "1220.TW": {"n": "台榮", "cat": "食品工業"}, "1225.TW": {"n": "福懋油", "cat": "食品工業"}, "1227.TW": {"n": "佳格", "cat": "食品工業"}, "1229.TW": {"n": "聯華", "cat": "食品工業"}, "1231.TW": {"n": "聯華食", "cat": "食品工業"}, "1232.TW": {"n": "大統益", "cat": "食品工業"}, "1233.TW": {"n": "天仁", "cat": "食品工業"}, "1234.TW": {"n": "黑松", "cat": "食品工業"}, "1235.TW": {"n": "興泰", "cat": "食品工業"}, "1236.TW": {"n": "宏亞", "cat": "食品工業"}, "1256.TW": {"n": "鮮活果汁-KY", "cat": "食品工業"}, "1301.TW": {"n": "台塑", "cat": "塑膠工業"}, "1303.TW": {"n": "南亞", "cat": "塑膠工業"}, "1304.TW": {"n": "台聚", "cat": "塑膠工業"}, "1305.TW": {"n": "華夏", "cat": "塑膠工業"}, "1307.TW": {"n": "三芳", "cat": "塑膠工業"}, "1308.TW": {"n": "亞聚", "cat": "塑膠工業"}, "1309.TW": {"n": "台達化", "cat": "塑膠工業"}, "1310.TW": {"n": "台苯", "cat": "塑膠工業"}, "1312.TW": {"n": "國喬", "cat": "塑膠工業"}, "1313.TW": {"n": "聯成", "cat": "塑膠工業"}, "1314.TW": {"n": "中石化", "cat": "塑膠工業"}, "1315.TW": {"n": "達新", "cat": "塑膠工業"}, "1316.TW": {"n": "上曜", "cat": "建材營造業"}, "1319.TW": {"n": "東陽", "cat": "汽車工業"}, "1321.TW": {"n": "大洋", "cat": "塑膠工業"}, "1323.TW": {"n": "永裕", "cat": "塑膠工業"}, "1324.TW": {"n": "地球", "cat": "塑膠工業"}, "1325.TW": {"n": "恆大", "cat": "塑膠工業"}, "1326.TW": {"n": "台化", "cat": "塑膠工業"}, "1337.TW": {"n": "再生-KY", "cat": "塑膠工業"}, "1338.TW": {"n": "廣華-KY", "cat": "汽車工業"}, "1339.TW": {"n": "昭輝", "cat": "汽車工業"}, "1340.TW": {"n": "勝悅-KY", "cat": "塑膠工業"}, "1341.TW": {"n": "富林-KY", "cat": "塑膠工業"}, "1342.TW": {"n": "八貫", "cat": "其他業"}, "1402.TW": {"n": "遠東新", "cat": "紡織纖維"}, "1409.TW": {"n": "新纖", "cat": "紡織纖維"}, "1410.TW": {"n": "南染", "cat": "紡織纖維"}, "1413.TW": {"n": "宏洲", "cat": "紡織纖維"}, "1414.TW": {"n": "東和", "cat": "紡織纖維"}, "1416.TW": {"n": "廣豐", "cat": "其他業"}, "1417.TW": {"n": "嘉裕", "cat": "紡織纖維"}, "1418.TW": {"n": "東華", "cat": "紡織纖維"}, "1419.TW": {"n": "新紡", "cat": "紡織纖維"}, "1423.TW": {"n": "利華", "cat": "紡織纖維"}, "1432.TW": {"n": "大魯閣", "cat": "運動休閒"}, "1434.TW": {"n": "福懋", "cat": "紡織纖維"}, "1435.TW": {"n": "中福", "cat": "其他業"}, "1436.TW": {"n": "華友聯", "cat": "建材營造業"}, "1437.TW": {"n": "勤益控", "cat": "其他業"}, "1438.TW": {"n": "三地開發", "cat": "建材營造業"}, "1439.TW": {"n": "雋揚", "cat": "建材營造業"}, "1440.TW": {"n": "南紡", "cat": "紡織纖維"}, "1441.TW": {"n": "大東", "cat": "紡織纖維"}, "1442.TW": {"n": "名軒", "cat": "建材營造業"}, "1443.TW": {"n": "立益物流", "cat": "其他業"}, "1444.TW": {"n": "力麗", "cat": "紡織纖維"}, "1445.TW": {"n": "大宇", "cat": "紡織纖維"}, "1446.TW": {"n": "宏和", "cat": "紡織纖維"}, "1447.TW": {"n": "力鵬", "cat": "紡織纖維"}, "1449.TW": {"n": "佳和", "cat": "紡織纖維"}, "1451.TW": {"n": "年興", "cat": "紡織纖維"}, "1452.TW": {"n": "宏益", "cat": "紡織纖維"}, "1453.TW": {"n": "大將", "cat": "建材營造業"}, "1454.TW": {"n": "台富", "cat": "紡織纖維"}, "1455.TW": {"n": "集盛", "cat": "紡織纖維"}, "1456.TW": {"n": "怡華", "cat": "建材營造業"}, "1457.TW": {"n": "宜進", "cat": "紡織纖維"}, "1459.TW": {"n": "聯發", "cat": "紡織纖維"}, "1460.TW": {"n": "宏遠", "cat": "紡織纖維"}, "1463.TW": {"n": "強盛新", "cat": "紡織纖維"}, "1464.TW": {"n": "得力", "cat": "紡織纖維"}, "1465.TW": {"n": "偉全", "cat": "紡織纖維"}, "1466.TW": {"n": "聚隆", "cat": "紡織纖維"}, "1467.TW": {"n": "南緯", "cat": "紡織纖維"}, "1468.TW": {"n": "昶和", "cat": "紡織纖維"}, "1470.TW": {"n": "大統新創", "cat": "紡織纖維"}, "1471.TW": {"n": "首利", "cat": "電子零組件業"}, "1472.TW": {"n": "三洋實業", "cat": "建材營造業"}, "1473.TW": {"n": "台南", "cat": "紡織纖維"}, "1474.TW": {"n": "弘裕", "cat": "紡織纖維"}, "1475.TW": {"n": "業旺", "cat": "紡織纖維"}, "1476.TW": {"n": "儒鴻", "cat": "紡織纖維"}, "1477.TW": {"n": "聚陽", "cat": "紡織纖維"}, "1503.TW": {"n": "士電", "cat": "電機機械"}, "1504.TW": {"n": "東元", "cat": "電機機械"}, "1506.TW": {"n": "正道", "cat": "電機機械"}, "1512.TW": {"n": "瑞利", "cat": "汽車工業"}, "1513.TW": {"n": "中興電", "cat": "電機機械"}, "1514.TW": {"n": "亞力", "cat": "電機機械"}, "1515.TW": {"n": "力山", "cat": "電機機械"}, "1516.TW": {"n": "川飛", "cat": "其他業"}, "1517.TW": {"n": "利奇", "cat": "電機機械"}, "1519.TW": {"n": "華城", "cat": "電機機械"}, "1521.TW": {"n": "大億", "cat": "汽車工業"}, "1522.TW": {"n": "堤維西", "cat": "汽車工業"}, "1524.TW": {"n": "耿鼎", "cat": "汽車工業"}, "1525.TW": {"n": "江申", "cat": "汽車工業"}, "1526.TW": {"n": "日馳", "cat": "電機機械"}, "1527.TW": {"n": "鑽全", "cat": "電機機械"}, "1528.TW": {"n": "恩德", "cat": "電機機械"}, "1529.TW": {"n": "樂事綠能", "cat": "電機機械"}, "1530.TW": {"n": "亞崴", "cat": "電機機械"}, "1531.TW": {"n": "高林股", "cat": "電機機械"}, "1532.TW": {"n": "勤美", "cat": "電機機械"}, "1533.TW": {"n": "車王電", "cat": "汽車工業"}, "1535.TW": {"n": "中宇", "cat": "電機機械"}, "1536.TW": {"n": "和大", "cat": "汽車工業"}, "1537.TW": {"n": "廣隆", "cat": "電機機械"}, "1538.TW": {"n": "正峰", "cat": "電機機械"}, "1539.TW": {"n": "巨庭", "cat": "電機機械"}, "1540.TW": {"n": "喬福", "cat": "電機機械"}, "1541.TW": {"n": "錩泰", "cat": "電機機械"}, "1558.TW": {"n": "伸興", "cat": "電機機械"}, "1560.TW": {"n": "中砂", "cat": "電機機械"}, "1563.TW": {"n": "巧新", "cat": "汽車工業"}, "1568.TW": {"n": "倉佑", "cat": "汽車工業"}, "1582.TW": {"n": "信錦", "cat": "電子零組件業"}, "1583.TW": {"n": "程泰", "cat": "電機機械"}, "1587.TW": {"n": "吉茂", "cat": "汽車工業"}, "1589.TW": {"n": "永冠-KY", "cat": "電機機械"}, "1590.TW": {"n": "亞德客-KY", "cat": "電機機械"}, "1597.TW": {"n": "直得", "cat": "電機機械"}, "1598.TW": {"n": "岱宇", "cat": "運動休閒"}, "1603.TW": {"n": "華電", "cat": "電器電纜"}, "1604.TW": {"n": "聲寶", "cat": "電器電纜"}, "1605.TW": {"n": "華新", "cat": "電器電纜"}, "1608.TW": {"n": "華榮", "cat": "電器電纜"}, "1609.TW": {"n": "大亞", "cat": "電器電纜"}, "1611.TW": {"n": "中電", "cat": "電器電纜"}, "1612.TW": {"n": "宏泰", "cat": "電器電纜"}, "1614.TW": {"n": "三洋電", "cat": "電器電纜"}, "1615.TW": {"n": "大山", "cat": "電器電纜"}, "1616.TW": {"n": "億泰", "cat": "電器電纜"}, "1617.TW": {"n": "榮星", "cat": "電器電纜"}, "1618.TW": {"n": "合機", "cat": "電器電纜"}, "1623.TW": {"n": "大東電", "cat": "電器電纜"}, "1626.TW": {"n": "艾美特-KY", "cat": "電器電纜"}, "1702.TW": {"n": "南僑", "cat": "食品工業"}, "1707.TW": {"n": "葡萄王", "cat": "生技醫療業"}, "1708.TW": {"n": "東鹼", "cat": "化學工業"}, "1709.TW": {"n": "和益", "cat": "化學工業"}, "1710.TW": {"n": "東聯", "cat": "化學工業"}, "1711.TW": {"n": "永光", "cat": "化學工業"}, "1712.TW": {"n": "興農", "cat": "化學工業"}, "1713.TW": {"n": "國化", "cat": "化學工業"}, "1714.TW": {"n": "和桐", "cat": "化學工業"}, "1717.TW": {"n": "長興", "cat": "化學工業"}, "1718.TW": {"n": "中纖", "cat": "化學工業"}, "1720.TW": {"n": "生達", "cat": "生技醫療業"}, "1721.TW": {"n": "國慶科技", "cat": "化學工業"}, "1722.TW": {"n": "台肥", "cat": "化學工業"}, "1723.TW": {"n": "中碳", "cat": "化學工業"}, "1725.TW": {"n": "元禎", "cat": "化學工業"}, "1726.TW": {"n": "永記", "cat": "化學工業"}, "1727.TW": {"n": "中華化", "cat": "化學工業"}, "1730.TW": {"n": "花仙子", "cat": "化學工業"}, "1731.TW": {"n": "美吾華", "cat": "生技醫療業"}, "1732.TW": {"n": "毛寶", "cat": "化學工業"}, "1733.TW": {"n": "五鼎", "cat": "生技醫療業"}, "1734.TW": {"n": "杏輝", "cat": "生技醫療業"}, "1735.TW": {"n": "日勝化", "cat": "化學工業"}, "1736.TW": {"n": "喬山", "cat": "運動休閒"}, "1737.TW": {"n": "臺鹽", "cat": "食品工業"}, "1752.TW": {"n": "南光", "cat": "生技醫療業"}, "1760.TW": {"n": "寶齡富錦", "cat": "生技醫療業"}, "1762.TW": {"n": "中化生", "cat": "生技醫療業"}, "1773.TW": {"n": "勝一", "cat": "化學工業"}, "1776.TW": {"n": "展宇", "cat": "化學工業"}, "1783.TW": {"n": "和康生", "cat": "生技醫療業"}, "1786.TW": {"n": "科妍", "cat": "生技醫療業"}, "1789.TW": {"n": "神隆", "cat": "生技醫療業"}, "1795.TW": {"n": "美時", "cat": "生技醫療業"}, "1802.TW": {"n": "台玻", "cat": "玻璃陶瓷"}, "1805.TW": {"n": "寶徠", "cat": "建材營造業"}, "1806.TW": {"n": "冠軍", "cat": "玻璃陶瓷"}, "1808.TW": {"n": "潤隆", "cat": "建材營造業"}, "1809.TW": {"n": "中釉", "cat": "玻璃陶瓷"}, "1810.TW": {"n": "和成", "cat": "玻璃陶瓷"}, "1817.TW": {"n": "凱撒衛", "cat": "玻璃陶瓷"}, "1903.TW": {"n": "士紙", "cat": "造紙工業"}, "1904.TW": {"n": "正隆", "cat": "造紙工業"}, "1905.TW": {"n": "華紙", "cat": "造紙工業"}, "1906.TW": {"n": "寶隆", "cat": "造紙工業"}, "1907.TW": {"n": "永豐餘", "cat": "造紙工業"}, "1909.TW": {"n": "榮成", "cat": "造紙工業"}, "2002.TW": {"n": "中鋼", "cat": "鋼鐵工業"}, "2006.TW": {"n": "東和鋼鐵", "cat": "鋼鐵工業"}, "2007.TW": {"n": "燁興", "cat": "鋼鐵工業"}, "2008.TW": {"n": "高興昌", "cat": "鋼鐵工業"}, "2009.TW": {"n": "第一銅", "cat": "鋼鐵工業"}, "2010.TW": {"n": "春源", "cat": "鋼鐵工業"}, "2012.TW": {"n": "春雨", "cat": "鋼鐵工業"}, "2013.TW": {"n": "中鋼構", "cat": "鋼鐵工業"}, "2014.TW": {"n": "中鴻", "cat": "鋼鐵工業"}, "2015.TW": {"n": "豐興", "cat": "鋼鐵工業"}, "2017.TW": {"n": "官田鋼", "cat": "鋼鐵工業"}, "2020.TW": {"n": "美亞", "cat": "鋼鐵工業"}, "2022.TW": {"n": "聚亨", "cat": "鋼鐵工業"}, "2023.TW": {"n": "燁輝", "cat": "鋼鐵工業"}, "2024.TW": {"n": "志聯", "cat": "鋼鐵工業"}, "2025.TW": {"n": "千興", "cat": "鋼鐵工業"}, "2027.TW": {"n": "大成鋼", "cat": "鋼鐵工業"}, "2028.TW": {"n": "威致", "cat": "鋼鐵工業"}, "2029.TW": {"n": "盛餘", "cat": "鋼鐵工業"}, "2030.TW": {"n": "彰源", "cat": "鋼鐵工業"}, "2031.TW": {"n": "新光鋼", "cat": "鋼鐵工業"}, "2032.TW": {"n": "新鋼", "cat": "鋼鐵工業"}, "2033.TW": {"n": "佳大", "cat": "鋼鐵工業"}, "2034.TW": {"n": "允強", "cat": "鋼鐵工業"}, "2038.TW": {"n": "海光", "cat": "鋼鐵工業"}, "2049.TW": {"n": "上銀", "cat": "電機機械"}, "2059.TW": {"n": "川湖", "cat": "電子零組件業"}, "2062.TW": {"n": "橋椿", "cat": "居家生活"}, "2069.TW": {"n": "運錩", "cat": "鋼鐵工業"}, "2072.TW": {"n": "世紀風電", "cat": "綠能環保"}, "2101.TW": {"n": "南港", "cat": "橡膠工業"}, "2102.TW": {"n": "泰豐", "cat": "橡膠工業"}, "2103.TW": {"n": "台橡", "cat": "橡膠工業"}, "2104.TW": {"n": "國際中橡", "cat": "橡膠工業"}, "2105.TW": {"n": "正新", "cat": "橡膠工業"}, "2106.TW": {"n": "建大", "cat": "橡膠工業"}, "2107.TW": {"n": "厚生", "cat": "橡膠工業"}, "2108.TW": {"n": "南帝", "cat": "橡膠工業"}, "2109.TW": {"n": "華豐", "cat": "橡膠工業"}, "2114.TW": {"n": "鑫永銓", "cat": "橡膠工業"}, "2115.TW": {"n": "六暉-KY", "cat": "汽車工業"}, "2201.TW": {"n": "裕隆", "cat": "汽車工業"}, "2204.TW": {"n": "中華", "cat": "汽車工業"}, "2206.TW": {"n": "三陽工業", "cat": "汽車工業"}, "2207.TW": {"n": "和泰車", "cat": "汽車工業"}, "2208.TW": {"n": "台船", "cat": "航運業"}, "2211.TW": {"n": "長榮鋼", "cat": "鋼鐵工業"}, "2227.TW": {"n": "裕日車", "cat": "汽車工業"}, "2228.TW": {"n": "劍麟", "cat": "汽車工業"}, "2231.TW": {"n": "為升", "cat": "汽車工業"}, "2233.TW": {"n": "宇隆", "cat": "汽車工業"}, "2236.TW": {"n": "百達-KY", "cat": "汽車工業"}, "2239.TW": {"n": "英利-KY", "cat": "汽車工業"}, "2241.TW": {"n": "艾姆勒", "cat": "汽車工業"}, "2243.TW": {"n": "宏旭-KY", "cat": "汽車工業"}, "2247.TW": {"n": "汎德永業", "cat": "汽車工業"}, "2248.TW": {"n": "華勝-KY", "cat": "汽車工業"}, "2250.TW": {"n": "IKKA-KY", "cat": "汽車工業"}, "2301.TW": {"n": "光寶科", "cat": "電腦及週邊設備業"}, "2302.TW": {"n": "麗正", "cat": "半導體業"}, "2303.TW": {"n": "聯電", "cat": "半導體業"}, "2305.TW": {"n": "全友", "cat": "電腦及週邊設備業"}, "2308.TW": {"n": "台達電", "cat": "電子零組件業"}, "2312.TW": {"n": "金寶", "cat": "其他電子業"}, "2313.TW": {"n": "華通", "cat": "電子零組件業"}, "2314.TW": {"n": "台揚", "cat": "通信網路業"}, "2316.TW": {"n": "楠梓電", "cat": "電子零組件業"}, "2317.TW": {"n": "鴻海", "cat": "其他電子業"}, "2321.TW": {"n": "東訊", "cat": "通信網路業"}, "2323.TW": {"n": "中環", "cat": "光電業"}, "2324.TW": {"n": "仁寶", "cat": "電腦及週邊設備業"}, "2327.TW": {"n": "國巨*", "cat": "電子零組件業"}, "2328.TW": {"n": "廣宇", "cat": "電子零組件業"}, "2329.TW": {"n": "華泰", "cat": "半導體業"}, "2330.TW": {"n": "台積電", "cat": "半導體業"}, "2331.TW": {"n": "精英", "cat": "電腦及週邊設備業"}, "2332.TW": {"n": "友訊", "cat": "通信網路業"}, "2337.TW": {"n": "旺宏", "cat": "半導體業"}, "2338.TW": {"n": "光罩", "cat": "半導體業"}, "2340.TW": {"n": "台亞", "cat": "半導體業"}, "2342.TW": {"n": "茂矽", "cat": "半導體業"}, "2344.TW": {"n": "華邦電", "cat": "半導體業"}, "2345.TW": {"n": "智邦", "cat": "通信網路業"}, "2347.TW": {"n": "聯強", "cat": "電子通路業"}, "2348.TW": {"n": "海悅", "cat": "其他業"}, "2349.TW": {"n": "錸德", "cat": "光電業"}, "2351.TW": {"n": "順德", "cat": "半導體業"}, "2352.TW": {"n": "佳世達", "cat": "電腦及週邊設備業"}, "2353.TW": {"n": "宏碁", "cat": "電腦及週邊設備業"}, "2354.TW": {"n": "鴻準", "cat": "其他電子業"}, "2355.TW": {"n": "敬鵬", "cat": "電子零組件業"}, "2356.TW": {"n": "英業達", "cat": "電腦及週邊設備業"}, "2357.TW": {"n": "華碩", "cat": "電腦及週邊設備業"}, "2359.TW": {"n": "所羅門", "cat": "其他電子業"}, "2360.TW": {"n": "致茂", "cat": "其他電子業"}, "2362.TW": {"n": "藍天", "cat": "電腦及週邊設備業"}, "2363.TW": {"n": "矽統", "cat": "半導體業"}, "2364.TW": {"n": "倫飛", "cat": "電腦及週邊設備業"}, "2365.TW": {"n": "昆盈", "cat": "電腦及週邊設備業"}, "2367.TW": {"n": "燿華", "cat": "電子零組件業"}, "2368.TW": {"n": "金像電", "cat": "電子零組件業"}, "2369.TW": {"n": "菱生", "cat": "半導體業"}, "2371.TW": {"n": "大同", "cat": "電機機械"}, "2373.TW": {"n": "震旦行", "cat": "其他電子業"}, "2374.TW": {"n": "佳能", "cat": "光電業"}, "2375.TW": {"n": "凱美", "cat": "電子零組件業"}, "2376.TW": {"n": "技嘉", "cat": "電腦及週邊設備業"}, "2377.TW": {"n": "微星", "cat": "電腦及週邊設備業"}, "2379.TW": {"n": "瑞昱", "cat": "半導體業"}, "2380.TW": {"n": "虹光", "cat": "電腦及週邊設備業"}, "2382.TW": {"n": "廣達", "cat": "電腦及週邊設備業"}, "2383.TW": {"n": "台光電", "cat": "電子零組件業"}, "2385.TW": {"n": "群光", "cat": "電子零組件業"}, "2387.TW": {"n": "精元", "cat": "電腦及週邊設備業"}, "2388.TW": {"n": "威盛", "cat": "半導體業"}, "2390.TW": {"n": "云辰", "cat": "其他電子業"}, "2392.TW": {"n": "正崴", "cat": "電子零組件業"}, "2393.TW": {"n": "億光", "cat": "光電業"}, "2395.TW": {"n": "研華", "cat": "電腦及週邊設備業"}, "2397.TW": {"n": "友通", "cat": "電腦及週邊設備業"}, "2399.TW": {"n": "映泰", "cat": "電腦及週邊設備業"}, "2401.TW": {"n": "凌陽", "cat": "半導體業"}, "2402.TW": {"n": "毅嘉", "cat": "電子零組件業"}, "2404.TW": {"n": "漢唐", "cat": "其他電子業"}, "2405.TW": {"n": "輔信", "cat": "電腦及週邊設備業"}, "2406.TW": {"n": "國碩", "cat": "光電業"}, "2408.TW": {"n": "南亞科", "cat": "半導體業"}, "2409.TW": {"n": "友達", "cat": "光電業"}, "2412.TW": {"n": "中華電", "cat": "通信網路業"}, "2413.TW": {"n": "環科", "cat": "電子零組件業"}, "2414.TW": {"n": "精技", "cat": "電子通路業"}, "2415.TW": {"n": "錩新", "cat": "電子零組件業"}, "2417.TW": {"n": "圓剛", "cat": "電腦及週邊設備業"}, "2419.TW": {"n": "仲琦", "cat": "通信網路業"}, "2420.TW": {"n": "新巨", "cat": "電子零組件業"}, "2421.TW": {"n": "建準", "cat": "電子零組件業"}, "2423.TW": {"n": "固緯", "cat": "其他電子業"}, "2424.TW": {"n": "隴華", "cat": "通信網路業"}, "2425.TW": {"n": "承啟", "cat": "電腦及週邊設備業"}, "2426.TW": {"n": "鼎元", "cat": "光電業"}, "2427.TW": {"n": "三商電", "cat": "資訊服務業"}, "2428.TW": {"n": "興勤", "cat": "電子零組件業"}, "2429.TW": {"n": "銘旺科", "cat": "光電業"}, "2430.TW": {"n": "燦坤", "cat": "電子通路業"}, "2431.TW": {"n": "聯昌", "cat": "電子零組件業"}, "2433.TW": {"n": "互盛電", "cat": "其他電子業"}, "2434.TW": {"n": "統懋", "cat": "半導體業"}, "2436.TW": {"n": "偉詮電", "cat": "半導體業"}, "2438.TW": {"n": "翔耀", "cat": "光電業"}, "2439.TW": {"n": "美律", "cat": "通信網路業"}, "2440.TW": {"n": "太空梭", "cat": "電子零組件業"}, "2441.TW": {"n": "超豐", "cat": "半導體業"}, "2442.TW": {"n": "新美齊", "cat": "建材營造業"}, "2444.TW": {"n": "兆勁", "cat": "通信網路業"}, "2449.TW": {"n": "京元電子", "cat": "半導體業"}, "2450.TW": {"n": "神腦", "cat": "通信網路業"}, "2451.TW": {"n": "創見", "cat": "半導體業"}, "2453.TW": {"n": "凌群", "cat": "資訊服務業"}, "2454.TW": {"n": "聯發科", "cat": "半導體業"}, "2455.TW": {"n": "全新", "cat": "通信網路業"}, "2457.TW": {"n": "飛宏", "cat": "電子零組件業"}, "2458.TW": {"n": "義隆", "cat": "半導體業"}, "2459.TW": {"n": "敦吉", "cat": "其他電子業"}, "2460.TW": {"n": "建通", "cat": "電子零組件業"}, "2461.TW": {"n": "光群雷", "cat": "其他電子業"}, "2462.TW": {"n": "良得電", "cat": "電子零組件業"}, "2464.TW": {"n": "盟立", "cat": "其他電子業"}, "2465.TW": {"n": "麗臺", "cat": "電腦及週邊設備業"}, "2466.TW": {"n": "冠西電", "cat": "光電業"}, "2467.TW": {"n": "志聖", "cat": "電子零組件業"}, "2468.TW": {"n": "華經", "cat": "資訊服務業"}, "2471.TW": {"n": "資通", "cat": "資訊服務業"}, "2472.TW": {"n": "立隆電", "cat": "電子零組件業"}, "2474.TW": {"n": "可成", "cat": "其他電子業"}, "2476.TW": {"n": "鉅祥", "cat": "電子零組件業"}, "2477.TW": {"n": "美隆電", "cat": "其他電子業"}, "2478.TW": {"n": "大毅", "cat": "電子零組件業"}, "2480.TW": {"n": "敦陽科", "cat": "資訊服務業"}, "2481.TW": {"n": "強茂", "cat": "半導體業"}, "2482.TW": {"n": "連宇", "cat": "其他電子業"}, "2483.TW": {"n": "百容", "cat": "電子零組件業"}, "2484.TW": {"n": "希華", "cat": "電子零組件業"}, "2485.TW": {"n": "兆赫", "cat": "通信網路業"}, "2486.TW": {"n": "一詮", "cat": "光電業"}, "2488.TW": {"n": "漢平", "cat": "其他電子業"}, "2489.TW": {"n": "瑞軒", "cat": "光電業"}, "2491.TW": {"n": "吉祥全", "cat": "光電業"}, "2492.TW": {"n": "華新科", "cat": "電子零組件業"}, "2493.TW": {"n": "揚博", "cat": "電子零組件業"}, "2495.TW": {"n": "普安", "cat": "電腦及週邊設備業"}, "2496.TW": {"n": "卓越", "cat": "其他業"}, "2497.TW": {"n": "怡利電", "cat": "汽車工業"}, "2498.TW": {"n": "宏達電", "cat": "通信網路業"}, "2501.TW": {"n": "國建", "cat": "建材營造業"}, "2504.TW": {"n": "國產", "cat": "建材營造業"}, "2505.TW": {"n": "國揚", "cat": "建材營造業"}, "2506.TW": {"n": "太設", "cat": "建材營造業"}, "2509.TW": {"n": "全坤建", "cat": "建材營造業"}, "2511.TW": {"n": "太子", "cat": "建材營造業"}, "2514.TW": {"n": "龍邦", "cat": "其他業"}, "2515.TW": {"n": "中工", "cat": "建材營造業"}, "2516.TW": {"n": "新建", "cat": "建材營造業"}, "2520.TW": {"n": "冠德", "cat": "建材營造業"}, "2524.TW": {"n": "京城", "cat": "建材營造業"}, "2527.TW": {"n": "宏璟", "cat": "建材營造業"}, "2528.TW": {"n": "皇普", "cat": "建材營造業"}, "2530.TW": {"n": "華建", "cat": "建材營造業"}, "2534.TW": {"n": "宏盛", "cat": "建材營造業"}, "2535.TW": {"n": "達欣工", "cat": "建材營造業"}, "2536.TW": {"n": "宏普", "cat": "建材營造業"}, "2537.TW": {"n": "聯上發", "cat": "建材營造業"}, "2538.TW": {"n": "基泰", "cat": "建材營造業"}, "2539.TW": {"n": "櫻花建", "cat": "建材營造業"}, "2540.TW": {"n": "愛山林", "cat": "建材營造業"}, "2542.TW": {"n": "興富發", "cat": "建材營造業"}, "2543.TW": {"n": "皇昌", "cat": "建材營造業"}, "2545.TW": {"n": "皇翔", "cat": "建材營造業"}, "2546.TW": {"n": "根基", "cat": "建材營造業"}, "2547.TW": {"n": "日勝生", "cat": "建材營造業"}, "2548.TW": {"n": "華固", "cat": "建材營造業"}, "2597.TW": {"n": "潤弘", "cat": "建材營造業"}, "2601.TW": {"n": "益航", "cat": "航運業"}, "2603.TW": {"n": "長榮", "cat": "航運業"}, "2605.TW": {"n": "新興", "cat": "航運業"}, "2606.TW": {"n": "裕民", "cat": "航運業"}, "2607.TW": {"n": "榮運", "cat": "航運業"}, "2608.TW": {"n": "嘉里大榮", "cat": "航運業"}, "2609.TW": {"n": "陽明", "cat": "航運業"}, "2610.TW": {"n": "華航", "cat": "航運業"}, "2611.TW": {"n": "志信", "cat": "航運業"}, "2612.TW": {"n": "中航", "cat": "航運業"}, "2613.TW": {"n": "中櫃", "cat": "航運業"}, "2614.TW": {"n": "東森", "cat": "其他業"}, "2615.TW": {"n": "萬海", "cat": "航運業"}, "2616.TW": {"n": "山隆", "cat": "油電燃氣業"}, "2617.TW": {"n": "台航", "cat": "航運業"}, "2618.TW": {"n": "長榮航", "cat": "航運業"}, "2630.TW": {"n": "亞航", "cat": "航運業"}, "2633.TW": {"n": "台灣高鐵", "cat": "航運業"}, "2634.TW": {"n": "漢翔", "cat": "航運業"}, "2636.TW": {"n": "台驊控股", "cat": "航運業"}, "2637.TW": {"n": "慧洋-KY", "cat": "航運業"}, "2642.TW": {"n": "宅配通", "cat": "航運業"}, "2645.TW": {"n": "長榮航太", "cat": "航運業"}, "2646.TW": {"n": "星宇航空", "cat": "航運業"}, "2701.TW": {"n": "萬企", "cat": "觀光餐旅"}, "2702.TW": {"n": "華園", "cat": "觀光餐旅"}, "2704.TW": {"n": "國賓", "cat": "觀光餐旅"}, "2705.TW": {"n": "六福", "cat": "觀光餐旅"}, "2706.TW": {"n": "第一店", "cat": "觀光餐旅"}, "2707.TW": {"n": "晶華", "cat": "觀光餐旅"}, "2712.TW": {"n": "遠雄來", "cat": "觀光餐旅"}, "2722.TW": {"n": "夏都", "cat": "觀光餐旅"}, "2723.TW": {"n": "美食-KY", "cat": "觀光餐旅"}, "2727.TW": {"n": "王品", "cat": "觀光餐旅"}, "2731.TW": {"n": "雄獅", "cat": "觀光餐旅"}, "2739.TW": {"n": "寒舍", "cat": "觀光餐旅"}, "2748.TW": {"n": "雲品", "cat": "觀光餐旅"}, "2753.TW": {"n": "八方雲集", "cat": "觀光餐旅"}, "2762.TW": {"n": "世界健身-KY", "cat": "運動休閒"}, "2801.TW": {"n": "彰銀", "cat": "金融保險業"}, "2812.TW": {"n": "台中銀", "cat": "金融保險業"}, "2816.TW": {"n": "旺旺保", "cat": "金融保險業"}, "2820.TW": {"n": "華票", "cat": "金融保險業"}, "2832.TW": {"n": "台產", "cat": "金融保險業"}, "2834.TW": {"n": "臺企銀", "cat": "金融保險業"}, "2836.TW": {"n": "高雄銀", "cat": "金融保險業"}, "2838.TW": {"n": "聯邦銀", "cat": "金融保險業"}, "2845.TW": {"n": "遠東銀", "cat": "金融保險業"}, "2849.TW": {"n": "安泰銀", "cat": "金融保險業"}, "2850.TW": {"n": "新產", "cat": "金融保險業"}, "2851.TW": {"n": "中再保", "cat": "金融保險業"}, "2852.TW": {"n": "第一保", "cat": "金融保險業"}, "2855.TW": {"n": "統一證", "cat": "金融保險業"}, "2880.TW": {"n": "華南金", "cat": "金融保險業"}, "2881.TW": {"n": "富邦金", "cat": "金融保險業"}, "2882.TW": {"n": "國泰金", "cat": "金融保險業"}, "2883.TW": {"n": "凱基金", "cat": "金融保險業"}, "2884.TW": {"n": "玉山金", "cat": "金融保險業"}, "2885.TW": {"n": "元大金", "cat": "金融保險業"}, "2886.TW": {"n": "兆豐金", "cat": "金融保險業"}, "2887.TW": {"n": "台新新光金", "cat": "金融保險業"}, "2889.TW": {"n": "國票金", "cat": "金融保險業"}, "2890.TW": {"n": "永豐金", "cat": "金融保險業"}, "2891.TW": {"n": "中信金", "cat": "金融保險業"}, "2892.TW": {"n": "第一金", "cat": "金融保險業"}, "2897.TW": {"n": "王道銀行", "cat": "金融保險業"}, "2901.TW": {"n": "欣欣", "cat": "貿易百貨業"}, "2903.TW": {"n": "遠百", "cat": "貿易百貨業"}, "2904.TW": {"n": "匯僑", "cat": "其他業"}, "2905.TW": {"n": "三商", "cat": "貿易百貨業"}, "2906.TW": {"n": "高林", "cat": "貿易百貨業"}, "2908.TW": {"n": "特力", "cat": "貿易百貨業"}, "2910.TW": {"n": "統領", "cat": "貿易百貨業"}, "2911.TW": {"n": "麗嬰房", "cat": "貿易百貨業"}, "2912.TW": {"n": "統一超", "cat": "貿易百貨業"}, "2913.TW": {"n": "農林", "cat": "貿易百貨業"}, "2915.TW": {"n": "潤泰全", "cat": "貿易百貨業"}, "2923.TW": {"n": "鼎固-KY", "cat": "建材營造業"}, "2929.TW": {"n": "淘帝-KY", "cat": "貿易百貨業"}, "2939.TW": {"n": "永邑-KY", "cat": "貿易百貨業"}, "2945.TW": {"n": "三商家購", "cat": "貿易百貨業"}, "3002.TW": {"n": "歐格", "cat": "電腦及週邊設備業"}, "3003.TW": {"n": "健和興", "cat": "電子零組件業"}, "3004.TW": {"n": "豐達科", "cat": "鋼鐵工業"}, "3005.TW": {"n": "神基", "cat": "電腦及週邊設備業"}, "3006.TW": {"n": "晶豪科", "cat": "半導體業"}, "3008.TW": {"n": "大立光", "cat": "光電業"}, "3010.TW": {"n": "華立", "cat": "電子通路業"}, "3011.TW": {"n": "今皓", "cat": "電子零組件業"}, "3013.TW": {"n": "晟銘電", "cat": "電腦及週邊設備業"}, "3014.TW": {"n": "聯陽", "cat": "半導體業"}, "3015.TW": {"n": "全漢", "cat": "電子零組件業"}, "3016.TW": {"n": "嘉晶", "cat": "半導體業"}, "3017.TW": {"n": "奇鋐", "cat": "電腦及週邊設備業"}, "3018.TW": {"n": "隆銘綠能", "cat": "其他電子業"}, "3019.TW": {"n": "亞光", "cat": "光電業"}, "3021.TW": {"n": "鴻名", "cat": "電子零組件業"}, "3022.TW": {"n": "威強電", "cat": "電腦及週邊設備業"}, "3023.TW": {"n": "信邦", "cat": "電子零組件業"}, "3024.TW": {"n": "憶聲", "cat": "光電業"}, "3025.TW": {"n": "星通", "cat": "通信網路業"}, "3026.TW": {"n": "禾伸堂", "cat": "電子零組件業"}, "3027.TW": {"n": "盛達", "cat": "通信網路業"}, "3028.TW": {"n": "增你強", "cat": "電子通路業"}, "3029.TW": {"n": "零壹", "cat": "資訊服務業"}, "3030.TW": {"n": "德律", "cat": "其他電子業"}, "3031.TW": {"n": "佰鴻", "cat": "光電業"}, "3032.TW": {"n": "偉訓", "cat": "電子零組件業"}, "3033.TW": {"n": "威健", "cat": "電子通路業"}, "3034.TW": {"n": "聯詠", "cat": "半導體業"}, "3035.TW": {"n": "智原", "cat": "半導體業"}, "3036.TW": {"n": "文曄", "cat": "電子通路業"}, "3037.TW": {"n": "欣興", "cat": "電子零組件業"}, "3038.TW": {"n": "全台", "cat": "光電業"}, "3040.TW": {"n": "遠見", "cat": "其他業"}, "3041.TW": {"n": "揚智", "cat": "半導體業"}, "3042.TW": {"n": "晶技", "cat": "電子零組件業"}, "3043.TW": {"n": "科風", "cat": "其他電子業"}, "3044.TW": {"n": "健鼎", "cat": "電子零組件業"}, "3045.TW": {"n": "台灣大", "cat": "通信網路業"}, "3046.TW": {"n": "建碁", "cat": "電腦及週邊設備業"}, "3047.TW": {"n": "訊舟", "cat": "通信網路業"}, "3048.TW": {"n": "益登", "cat": "電子通路業"}, "3049.TW": {"n": "精金", "cat": "光電業"}, "3050.TW": {"n": "鈺德", "cat": "光電業"}, "3051.TW": {"n": "力特", "cat": "光電業"}, "3052.TW": {"n": "夆典", "cat": "建材營造業"}, "3054.TW": {"n": "立萬利", "cat": "電子通路業"}, "3055.TW": {"n": "蔚華科", "cat": "電子通路業"}, "3056.TW": {"n": "富華新", "cat": "建材營造業"}, "3057.TW": {"n": "喬鼎", "cat": "電腦及週邊設備業"}, "3058.TW": {"n": "立德", "cat": "電子零組件業"}, "3059.TW": {"n": "華晶科", "cat": "光電業"}, "3060.TW": {"n": "銘異", "cat": "電腦及週邊設備業"}, "3062.TW": {"n": "建漢", "cat": "通信網路業"}, "3090.TW": {"n": "日電貿", "cat": "電子零組件業"}, "3092.TW": {"n": "鴻碩", "cat": "電子零組件業"}, "3094.TW": {"n": "聯傑", "cat": "半導體業"}, "3130.TW": {"n": "一零四", "cat": "數位雲端"}, "3135.TW": {"n": "凌航", "cat": "半導體業"}, "3138.TW": {"n": "耀登", "cat": "通信網路業"}, "3149.TW": {"n": "正達", "cat": "光電業"}, "3164.TW": {"n": "景岳", "cat": "生技醫療業"}, "3167.TW": {"n": "大量", "cat": "電機機械"}, "3168.TW": {"n": "眾福科", "cat": "光電業"}, "3189.TW": {"n": "景碩", "cat": "半導體業"}, "3209.TW": {"n": "全科", "cat": "電子通路業"}, "3229.TW": {"n": "晟鈦", "cat": "電子零組件業"}, "3231.TW": {"n": "緯創", "cat": "電腦及週邊設備業"}, "3257.TW": {"n": "虹冠電", "cat": "半導體業"}, "3266.TW": {"n": "昇陽", "cat": "建材營造業"}, "3296.TW": {"n": "勝德", "cat": "電子零組件業"}, "3305.TW": {"n": "昇貿", "cat": "其他電子業"}, "3308.TW": {"n": "聯德", "cat": "電子零組件業"}, "3311.TW": {"n": "閎暉", "cat": "通信網路業"}, "3312.TW": {"n": "弘憶股", "cat": "電子通路業"}, "3321.TW": {"n": "同泰", "cat": "電子零組件業"}, "3338.TW": {"n": "泰碩", "cat": "電子零組件業"}, "3346.TW": {"n": "麗清", "cat": "汽車工業"}, "3356.TW": {"n": "奇偶", "cat": "光電業"}, "3376.TW": {"n": "新日興", "cat": "電子零組件業"}, "3380.TW": {"n": "明泰", "cat": "通信網路業"}, "3406.TW": {"n": "玉晶光", "cat": "光電業"}, "3413.TW": {"n": "京鼎", "cat": "半導體業"}, "3416.TW": {"n": "融程電", "cat": "電腦及週邊設備業"}, "3419.TW": {"n": "譁裕", "cat": "通信網路業"}, "3432.TW": {"n": "台端", "cat": "電子零組件業"}, "3437.TW": {"n": "榮創", "cat": "光電業"}, "3443.TW": {"n": "創意", "cat": "半導體業"}, "3447.TW": {"n": "展達", "cat": "通信網路業"}, "3450.TW": {"n": "聯鈞", "cat": "半導體業"}, "3481.TW": {"n": "群創", "cat": "光電業"}, "3494.TW": {"n": "誠研", "cat": "電腦及週邊設備業"}, "3501.TW": {"n": "維熹", "cat": "電子零組件業"}, "3504.TW": {"n": "揚明光", "cat": "光電業"}, "3515.TW": {"n": "華擎", "cat": "電腦及週邊設備業"}, "3518.TW": {"n": "柏騰", "cat": "其他電子業"}, "3528.TW": {"n": "安馳", "cat": "電子通路業"}, "3530.TW": {"n": "晶相光", "cat": "半導體業"}, "3532.TW": {"n": "台勝科", "cat": "半導體業"}, "3533.TW": {"n": "嘉澤", "cat": "電子零組件業"}, "3535.TW": {"n": "晶彩科", "cat": "光電業"}, "3543.TW": {"n": "州巧", "cat": "光電業"}, "3545.TW": {"n": "敦泰", "cat": "半導體業"}, "3550.TW": {"n": "聯穎", "cat": "電子零組件業"}, "3557.TW": {"n": "嘉威", "cat": "居家生活"}, "3563.TW": {"n": "牧德", "cat": "光電業"}, "3576.TW": {"n": "聯合再生", "cat": "光電業"}, "3583.TW": {"n": "辛耘", "cat": "半導體業"}, "3588.TW": {"n": "通嘉", "cat": "半導體業"}, "3591.TW": {"n": "艾笛森", "cat": "光電業"}, "3592.TW": {"n": "瑞鼎", "cat": "半導體業"}, "3593.TW": {"n": "力銘", "cat": "電子零組件業"}, "3596.TW": {"n": "智易", "cat": "通信網路業"}, "3605.TW": {"n": "宏致", "cat": "電子零組件業"}, "3607.TW": {"n": "谷崧", "cat": "電子零組件業"}, "3617.TW": {"n": "碩天", "cat": "其他電子業"}, "3622.TW": {"n": "洋華", "cat": "光電業"}, "3645.TW": {"n": "達邁", "cat": "電子零組件業"}, "3652.TW": {"n": "精聯", "cat": "電腦及週邊設備業"}, "3653.TW": {"n": "健策", "cat": "電子零組件業"}, "3661.TW": {"n": "世芯-KY", "cat": "半導體業"}, "3665.TW": {"n": "貿聯-KY", "cat": "其他電子業"}, "3669.TW": {"n": "圓展", "cat": "通信網路業"}, "3673.TW": {"n": "TPK-KY", "cat": "光電業"}, "3679.TW": {"n": "新至陞", "cat": "電子零組件業"}, "3686.TW": {"n": "達能", "cat": "半導體業"}, "3694.TW": {"n": "海華", "cat": "通信網路業"}, "3701.TW": {"n": "大眾控", "cat": "電腦及週邊設備業"}, "3702.TW": {"n": "大聯大", "cat": "電子通路業"}, "3703.TW": {"n": "欣陸", "cat": "建材營造業"}, "3704.TW": {"n": "合勤控", "cat": "通信網路業"}, "3705.TW": {"n": "永信", "cat": "生技醫療業"}, "3706.TW": {"n": "神達", "cat": "電腦及週邊設備業"}, "3708.TW": {"n": "上緯投控", "cat": "綠能環保"}, "3711.TW": {"n": "日月光投控", "cat": "半導體業"}, "3712.TW": {"n": "永崴投控", "cat": "電腦及週邊設備業"}, "3714.TW": {"n": "富采", "cat": "光電業"}, "3715.TW": {"n": "定穎投控", "cat": "電子零組件業"}, "3716.TW": {"n": "中化控股", "cat": "生技醫療業"}, "3717.TW": {"n": "聯嘉投控", "cat": "汽車工業"}, "4104.TW": {"n": "佳醫", "cat": "生技醫療業"}, "4106.TW": {"n": "雃博", "cat": "生技醫療業"}, "4108.TW": {"n": "懷特", "cat": "生技醫療業"}, "4119.TW": {"n": "旭富", "cat": "生技醫療業"}, "4133.TW": {"n": "亞諾法", "cat": "生技醫療業"}, "4137.TW": {"n": "麗豐-KY", "cat": "生技醫療業"}, "4142.TW": {"n": "國光生", "cat": "生技醫療業"}, "4148.TW": {"n": "全宇生技-KY", "cat": "生技醫療業"}, "4155.TW": {"n": "訊映", "cat": "生技醫療業"}, "4164.TW": {"n": "承業醫", "cat": "生技醫療業"}, "4169.TW": {"n": "泰宗", "cat": "生技醫療業"}, "4178.TW": {"n": "永笙-KY", "cat": "生技醫療業"}, "4190.TW": {"n": "佐登-KY", "cat": "生技醫療業"}, "4306.TW": {"n": "炎洲", "cat": "塑膠工業"}, "4414.TW": {"n": "如興", "cat": "紡織纖維"}, "4426.TW": {"n": "利勤", "cat": "紡織纖維"}, "4438.TW": {"n": "廣越", "cat": "紡織纖維"}, "4439.TW": {"n": "冠星-KY", "cat": "紡織纖維"}, "4440.TW": {"n": "宜新實業", "cat": "紡織纖維"}, "4441.TW": {"n": "振大環球", "cat": "紡織纖維"}, "4526.TW": {"n": "東台", "cat": "電機機械"}, "4532.TW": {"n": "瑞智", "cat": "電機機械"}, "4536.TW": {"n": "拓凱", "cat": "運動休閒"}, "4540.TW": {"n": "全球傳動", "cat": "電機機械"}, "4545.TW": {"n": "銘鈺", "cat": "電子零組件業"}, "4551.TW": {"n": "智伸科", "cat": "汽車工業"}, "4552.TW": {"n": "力達-KY", "cat": "電機機械"}, "4555.TW": {"n": "氣立", "cat": "電機機械"}, "4557.TW": {"n": "永新-KY", "cat": "汽車工業"}, "4560.TW": {"n": "強信-KY", "cat": "電機機械"}, "4562.TW": {"n": "穎漢", "cat": "電機機械"}, "4564.TW": {"n": "元翎", "cat": "電機機械"}, "4566.TW": {"n": "時碩工業", "cat": "電機機械"}, "4569.TW": {"n": "六方科-KY", "cat": "汽車工業"}, "4571.TW": {"n": "鈞興-KY", "cat": "電機機械"}, "4572.TW": {"n": "駐龍", "cat": "電機機械"}, "4576.TW": {"n": "大銀微系統", "cat": "電機機械"}, "4581.TW": {"n": "光隆精密-KY", "cat": "汽車工業"}, "4583.TW": {"n": "台灣精銳", "cat": "電機機械"}, "4585.TW": {"n": "達明", "cat": "其他電子業"}, "4588.TW": {"n": "玖鼎電力", "cat": "其他電子業"}, "4720.TW": {"n": "德淵", "cat": "化學工業"}, "4722.TW": {"n": "國精化", "cat": "化學工業"}, "4736.TW": {"n": "泰博", "cat": "生技醫療業"}, "4737.TW": {"n": "華廣", "cat": "生技醫療業"}, "4739.TW": {"n": "康普", "cat": "化學工業"}, "4746.TW": {"n": "台耀", "cat": "生技醫療業"}, "4755.TW": {"n": "三福化", "cat": "化學工業"}, "4763.TW": {"n": "材料*-KY", "cat": "化學工業"}, "4764.TW": {"n": "雙鍵", "cat": "化學工業"}, "4766.TW": {"n": "南寶", "cat": "化學工業"}, "4770.TW": {"n": "上品", "cat": "化學工業"}, "4771.TW": {"n": "望隼", "cat": "生技醫療業"}, "4807.TW": {"n": "日成-KY", "cat": "貿易百貨業"}, "4904.TW": {"n": "遠傳", "cat": "通信網路業"}, "4906.TW": {"n": "正文", "cat": "通信網路業"}, "4912.TW": {"n": "聯德控股-KY", "cat": "電子零組件業"}, "4915.TW": {"n": "致伸", "cat": "電子零組件業"}, "4916.TW": {"n": "事欣科", "cat": "電腦及週邊設備業"}, "4919.TW": {"n": "新唐", "cat": "半導體業"}, "4927.TW": {"n": "泰鼎-KY", "cat": "電子零組件業"}, "4930.TW": {"n": "燦星網", "cat": "電器電纜"}, "4934.TW": {"n": "太極", "cat": "光電業"}, "4935.TW": {"n": "茂林-KY", "cat": "光電業"}, "4938.TW": {"n": "和碩", "cat": "電腦及週邊設備業"}, "4942.TW": {"n": "嘉彰", "cat": "光電業"}, "4943.TW": {"n": "康控-KY", "cat": "電子零組件業"}, "4949.TW": {"n": "有成精密", "cat": "光電業"}, "4952.TW": {"n": "凌通", "cat": "半導體業"}, "4956.TW": {"n": "光鋐", "cat": "光電業"}, "4958.TW": {"n": "臻鼎-KY", "cat": "電子零組件業"}, "4960.TW": {"n": "誠美材", "cat": "光電業"}, "4961.TW": {"n": "天鈺", "cat": "半導體業"}, "4967.TW": {"n": "十銓", "cat": "半導體業"}, "4968.TW": {"n": "立積", "cat": "半導體業"}, "4976.TW": {"n": "佳凌", "cat": "光電業"}, "4977.TW": {"n": "眾達-KY", "cat": "通信網路業"}, "4989.TW": {"n": "榮科", "cat": "電子零組件業"}, "4994.TW": {"n": "傳奇", "cat": "資訊服務業"}, "4999.TW": {"n": "鑫禾", "cat": "電子零組件業"}, "5007.TW": {"n": "三星", "cat": "鋼鐵工業"}, "5203.TW": {"n": "訊連", "cat": "資訊服務業"}, "5215.TW": {"n": "科嘉-KY", "cat": "電腦及週邊設備業"}, "5222.TW": {"n": "全訊", "cat": "半導體業"}, "5225.TW": {"n": "東科-KY", "cat": "其他電子業"}, "5234.TW": {"n": "達興材料", "cat": "光電業"}, "5236.TW": {"n": "凌陽創新", "cat": "半導體業"}, "5243.TW": {"n": "乙盛-KY", "cat": "光電業"}, "5244.TW": {"n": "弘凱", "cat": "光電業"}, "5258.TW": {"n": "虹堡", "cat": "電腦及週邊設備業"}, "5269.TW": {"n": "祥碩", "cat": "半導體業"}, "5283.TW": {"n": "禾聯碩", "cat": "電器電纜"}, "5284.TW": {"n": "jpp-KY", "cat": "其他業"}, "5285.TW": {"n": "界霖", "cat": "半導體業"}, "5288.TW": {"n": "豐祥-KY", "cat": "電機機械"}, "5292.TW": {"n": "華懋", "cat": "綠能環保"}, "5306.TW": {"n": "桂盟", "cat": "運動休閒"}, "5388.TW": {"n": "中磊", "cat": "通信網路業"}, "5434.TW": {"n": "崇越", "cat": "電子通路業"}, "5469.TW": {"n": "瀚宇博", "cat": "電子零組件業"}, "5471.TW": {"n": "松翰", "cat": "半導體業"}, "5484.TW": {"n": "慧友", "cat": "光電業"}, "5515.TW": {"n": "建國", "cat": "建材營造業"}, "5519.TW": {"n": "隆大", "cat": "建材營造業"}, "5521.TW": {"n": "工信", "cat": "建材營造業"}, "5522.TW": {"n": "遠雄", "cat": "建材營造業"}, "5525.TW": {"n": "順天", "cat": "建材營造業"}, "5531.TW": {"n": "鄉林", "cat": "建材營造業"}, "5533.TW": {"n": "皇鼎", "cat": "建材營造業"}, "5534.TW": {"n": "長虹", "cat": "建材營造業"}, "5538.TW": {"n": "東明-KY", "cat": "鋼鐵工業"}, "5546.TW": {"n": "永固-KY", "cat": "建材營造業"}, "5607.TW": {"n": "遠雄港", "cat": "航運業"}, "5608.TW": {"n": "四維航", "cat": "航運業"}, "5706.TW": {"n": "鳳凰", "cat": "觀光餐旅"}, "5871.TW": {"n": "中租-KY", "cat": "其他業"}, "5876.TW": {"n": "上海商銀", "cat": "金融保險業"}, "5880.TW": {"n": "合庫金", "cat": "金融保險業"}, "5906.TW": {"n": "台南-KY", "cat": "貿易百貨業"}, "5907.TW": {"n": "大洋-KY", "cat": "貿易百貨業"}, "6005.TW": {"n": "群益證", "cat": "金融保險業"}, "6024.TW": {"n": "群益期", "cat": "金融保險業"}, "6108.TW": {"n": "競國", "cat": "電子零組件業"}, "6112.TW": {"n": "邁達特", "cat": "資訊服務業"}, "6115.TW": {"n": "鎰勝", "cat": "電子零組件業"}, "6116.TW": {"n": "彩晶", "cat": "光電業"}, "6117.TW": {"n": "迎廣", "cat": "電腦及週邊設備業"}, "6120.TW": {"n": "達運", "cat": "光電業"}, "6128.TW": {"n": "上福", "cat": "電腦及週邊設備業"}, "6133.TW": {"n": "金橋", "cat": "電子零組件業"}, "6136.TW": {"n": "富爾特", "cat": "通信網路業"}, "6139.TW": {"n": "亞翔", "cat": "其他電子業"}, "6141.TW": {"n": "柏承", "cat": "電子零組件業"}, "6142.TW": {"n": "友勁", "cat": "通信網路業"}, "6152.TW": {"n": "百一", "cat": "通信網路業"}, "6153.TW": {"n": "嘉聯益", "cat": "電子零組件業"}, "6155.TW": {"n": "鈞寶", "cat": "電子零組件業"}, "6164.TW": {"n": "華興", "cat": "光電業"}, "6165.TW": {"n": "浪凡", "cat": "數位雲端"}, "6166.TW": {"n": "凌華", "cat": "電腦及週邊設備業"}, "6168.TW": {"n": "宏齊", "cat": "光電業"}, "6176.TW": {"n": "瑞儀", "cat": "光電業"}, "6177.TW": {"n": "達麗", "cat": "建材營造業"}, "6183.TW": {"n": "關貿", "cat": "資訊服務業"}, "6184.TW": {"n": "大豐電", "cat": "其他業"}, "6189.TW": {"n": "豐藝", "cat": "電子通路業"}, "6191.TW": {"n": "精成科", "cat": "電子零組件業"}, "6192.TW": {"n": "巨路", "cat": "其他電子業"}, "6196.TW": {"n": "帆宣", "cat": "其他電子業"}, "6197.TW": {"n": "佳必琪", "cat": "電子零組件業"}, "6201.TW": {"n": "亞弘電", "cat": "其他電子業"}, "6202.TW": {"n": "盛群", "cat": "半導體業"}, "6205.TW": {"n": "詮欣", "cat": "電子零組件業"}, "6206.TW": {"n": "飛捷", "cat": "電腦及週邊設備業"}, "6209.TW": {"n": "今國光", "cat": "光電業"}, "6213.TW": {"n": "聯茂", "cat": "電子零組件業"}, "6214.TW": {"n": "精誠", "cat": "資訊服務業"}, "6215.TW": {"n": "和椿", "cat": "其他電子業"}, "6216.TW": {"n": "居易", "cat": "通信網路業"}, "6224.TW": {"n": "聚鼎", "cat": "電子零組件業"}, "6225.TW": {"n": "天瀚", "cat": "光電業"}, "6226.TW": {"n": "光鼎", "cat": "光電業"}, "6230.TW": {"n": "尼得科超眾", "cat": "電腦及週邊設備業"}, "6235.TW": {"n": "華孚", "cat": "電腦及週邊設備業"}, "6239.TW": {"n": "力成", "cat": "半導體業"}, "6243.TW": {"n": "迅杰", "cat": "半導體業"}, "6257.TW": {"n": "矽格", "cat": "半導體業"}, "6269.TW": {"n": "台郡", "cat": "電子零組件業"}, "6271.TW": {"n": "同欣電", "cat": "半導體業"}, "6272.TW": {"n": "驊陞", "cat": "電子零組件業"}, "6277.TW": {"n": "宏正", "cat": "電腦及週邊設備業"}, "6278.TW": {"n": "台表科", "cat": "光電業"}, "6281.TW": {"n": "全國電", "cat": "電子通路業"}, "6282.TW": {"n": "康舒", "cat": "電子零組件業"}, "6283.TW": {"n": "淳安", "cat": "其他電子業"}, "6285.TW": {"n": "啟碁", "cat": "通信網路業"}, "6405.TW": {"n": "悅城", "cat": "光電業"}, "6409.TW": {"n": "旭隼", "cat": "其他電子業"}, "6412.TW": {"n": "群電", "cat": "電子零組件業"}, "6414.TW": {"n": "樺漢", "cat": "電腦及週邊設備業"}, "6415.TW": {"n": "矽力*-KY", "cat": "半導體業"}, "6416.TW": {"n": "瑞祺電通", "cat": "通信網路業"}, "6426.TW": {"n": "統新", "cat": "通信網路業"}, "6431.TW": {"n": "光麗-KY", "cat": "生技醫療業"}, "6438.TW": {"n": "迅得", "cat": "其他電子業"}, "6442.TW": {"n": "光聖", "cat": "通信網路業"}, "6443.TW": {"n": "元晶", "cat": "光電業"}, "6446.TW": {"n": "藥華藥", "cat": "生技醫療業"}, "6449.TW": {"n": "鈺邦", "cat": "電子零組件業"}, "6451.TW": {"n": "訊芯-KY", "cat": "半導體業"}, "6456.TW": {"n": "GIS-KY", "cat": "光電業"}, "6464.TW": {"n": "台數科", "cat": "其他業"}, "6472.TW": {"n": "保瑞", "cat": "生技醫療業"}, "6477.TW": {"n": "安集", "cat": "光電業"}, "6491.TW": {"n": "晶碩", "cat": "生技醫療業"}, "6504.TW": {"n": "南六", "cat": "其他業"}, "6505.TW": {"n": "台塑化", "cat": "油電燃氣業"}, "6515.TW": {"n": "穎崴", "cat": "半導體業"}, "6525.TW": {"n": "捷敏-KY", "cat": "半導體業"}, "6526.TW": {"n": "達發", "cat": "半導體業"}, "6531.TW": {"n": "愛普*", "cat": "半導體業"}, "6533.TW": {"n": "晶心科", "cat": "半導體業"}, "6541.TW": {"n": "泰福-KY", "cat": "生技醫療業"}, "6550.TW": {"n": "北極星藥業-KY", "cat": "生技醫療業"}, "6552.TW": {"n": "易華電", "cat": "半導體業"}, "6558.TW": {"n": "興能高", "cat": "其他電子業"}, "6573.TW": {"n": "虹揚-KY", "cat": "半導體業"}, "6579.TW": {"n": "研揚", "cat": "電腦及週邊設備業"}, "6581.TW": {"n": "鋼聯", "cat": "綠能環保"}, "6582.TW": {"n": "申豐", "cat": "橡膠工業"}, "6585.TW": {"n": "鼎基", "cat": "其他業"}, "6589.TW": {"n": "台康生技", "cat": "生技醫療業"}, "6591.TW": {"n": "動力-KY", "cat": "電腦及週邊設備業"}, "6592.TW": {"n": "和潤企業", "cat": "其他業"}, "6598.TW": {"n": "ABC-KY", "cat": "生技醫療業"}, "6605.TW": {"n": "帝寶", "cat": "汽車工業"}, "6606.TW": {"n": "建德工業", "cat": "電機機械"}, "6614.TW": {"n": "資拓宏宇", "cat": "數位雲端"}, "6625.TW": {"n": "必應", "cat": "其他業"}, "6641.TW": {"n": "基士德-KY", "cat": "綠能環保"}, "6655.TW": {"n": "科定", "cat": "其他業"}, "6657.TW": {"n": "華安", "cat": "生技醫療業"}, "6658.TW": {"n": "聯策", "cat": "其他電子業"}, "6666.TW": {"n": "羅麗芬-KY", "cat": "生技醫療業"}, "6668.TW": {"n": "中揚光", "cat": "光電業"}, "6669.TW": {"n": "緯穎", "cat": "電腦及週邊設備業"}, "6670.TW": {"n": "復盛應用", "cat": "運動休閒"}, "6671.TW": {"n": "三能-KY", "cat": "居家生活"}, "6672.TW": {"n": "騰輝電子-KY", "cat": "電子零組件業"}, "6674.TW": {"n": "鋐寶科技", "cat": "通信網路業"}, "6689.TW": {"n": "伊雲谷", "cat": "數位雲端"}, "6691.TW": {"n": "洋基工程", "cat": "其他電子業"}, "6695.TW": {"n": "芯鼎", "cat": "半導體業"}, "6698.TW": {"n": "旭暉應材", "cat": "其他電子業"}, "6706.TW": {"n": "惠特", "cat": "光電業"}, "6715.TW": {"n": "嘉基", "cat": "電子零組件業"}, "6719.TW": {"n": "力智", "cat": "半導體業"}, "6722.TW": {"n": "輝創", "cat": "其他電子業"}, "6742.TW": {"n": "澤米", "cat": "光電業"}, "6743.TW": {"n": "安普新", "cat": "其他電子業"}, "6753.TW": {"n": "龍德造船", "cat": "航運業"}, "6754.TW": {"n": "匯僑設計", "cat": "居家生活"}, "6756.TW": {"n": "威鋒電子", "cat": "半導體業"}, "6757.TW": {"n": "台灣虎航", "cat": "航運業"}, "6768.TW": {"n": "志強-KY", "cat": "運動休閒"}, "6770.TW": {"n": "力積電", "cat": "半導體業"}, "6776.TW": {"n": "展碁國際", "cat": "電子通路業"}, "6781.TW": {"n": "AES-KY", "cat": "電子零組件業"}, "6782.TW": {"n": "視陽", "cat": "生技醫療業"}, "6789.TW": {"n": "采鈺", "cat": "半導體業"}, "6790.TW": {"n": "永豐實", "cat": "造紙工業"}, "6792.TW": {"n": "詠業", "cat": "通信網路業"}, "6794.TW": {"n": "向榮生技", "cat": "生技醫療業"}, "6796.TW": {"n": "晉弘", "cat": "生技醫療業"}, "6799.TW": {"n": "來頡", "cat": "半導體業"}, "6805.TW": {"n": "富世達", "cat": "電子零組件業"}, "6807.TW": {"n": "峰源-KY", "cat": "居家生活"}, "6830.TW": {"n": "汎銓", "cat": "其他電子業"}, "6831.TW": {"n": "邁科", "cat": "電腦及週邊設備業"}, "6834.TW": {"n": "天二科技", "cat": "電子零組件業"}, "6835.TW": {"n": "圓裕", "cat": "電子零組件業"}, "6838.TW": {"n": "台新藥", "cat": "生技醫療業"}, "6861.TW": {"n": "睿生光電", "cat": "生技醫療業"}, "6862.TW": {"n": "三集瑞-KY", "cat": "電子零組件業"}, "6863.TW": {"n": "永道-KY", "cat": "通信網路業"}, "6869.TW": {"n": "雲豹能源", "cat": "綠能環保"}, "6873.TW": {"n": "泓德能源", "cat": "綠能環保"}, "6885.TW": {"n": "全福生技", "cat": "生技醫療業"}, "6887.TW": {"n": "寶綠特-KY", "cat": "綠能環保"}, "6890.TW": {"n": "來億-KY", "cat": "運動休閒"}, "6901.TW": {"n": "鑽石投資", "cat": "其他業"}, "6902.TW": {"n": "GOGOLOOK", "cat": "數位雲端"}, "6906.TW": {"n": "現觀科", "cat": "數位雲端"}, "6909.TW": {"n": "創控", "cat": "半導體業"}, "6914.TW": {"n": "阜爾運通", "cat": "其他業"}, "6916.TW": {"n": "華凌", "cat": "光電業"}, "6918.TW": {"n": "愛派司", "cat": "生技醫療業"}, "6919.TW": {"n": "康霈*", "cat": "生技醫療業"}, "6923.TW": {"n": "中台", "cat": "綠能環保"}, "6928.TW": {"n": "攸泰科技", "cat": "電腦及週邊設備業"}, "6931.TW": {"n": "青松健康", "cat": "生技醫療業"}, "6933.TW": {"n": "AMAX-KY", "cat": "電腦及週邊設備業"}, "6934.TW": {"n": "心誠鎂", "cat": "生技醫療業"}, "6936.TW": {"n": "永鴻生技", "cat": "生技醫療業"}, "6937.TW": {"n": "天虹", "cat": "半導體業"}, "6944.TW": {"n": "兆聯實業", "cat": "綠能環保"}, "6947.TW": {"n": "台鎔科技", "cat": "綠能環保"}, "6952.TW": {"n": "大武山", "cat": "其他業"}, "6957.TW": {"n": "裕慶-KY", "cat": "其他業"}, "6958.TW": {"n": "日盛台駿", "cat": "其他業"}, "6962.TW": {"n": "奕力-KY", "cat": "半導體業"}, "6965.TW": {"n": "中傑-KY", "cat": "運動休閒"}, "6994.TW": {"n": "富威電力", "cat": "綠能環保"}, "7689.TW": {"n": "大鵬科CLMX", "cat": "通信網路業"}, "7705.TW": {"n": "三商餐飲", "cat": "觀光餐旅"}, "7711.TW": {"n": "永擎", "cat": "電腦及週邊設備業"}, "7721.TW": {"n": "微程式", "cat": "數位雲端"}, "7722.TW": {"n": "LINEPAY", "cat": "數位雲端"}, "7732.TW": {"n": "金興精密", "cat": "汽車工業"}, "7736.TW": {"n": "虎山", "cat": "汽車工業"}, "7749.TW": {"n": "意騰-KY", "cat": "半導體業"}, "7750.TW": {"n": "新代", "cat": "電機機械"}, "7760.TW": {"n": "享溫馨", "cat": "觀光餐旅"}, "7765.TW": {"n": "中華資安", "cat": "數位雲端"}, "7768.TW": {"n": "頌勝科技", "cat": "半導體業"}, "7769.TW": {"n": "鴻勁", "cat": "半導體業"}, "7780.TW": {"n": "大研生醫*", "cat": "食品工業"}, "7786.TW": {"n": "東方風能", "cat": "綠能環保"}, "7788.TW": {"n": "松川精密", "cat": "電子零組件業"}, "7791.TW": {"n": "皇家可口", "cat": "食品工業"}, "7795.TW": {"n": "長廣", "cat": "電子零組件業"}, "7799.TW": {"n": "禾榮科", "cat": "生技醫療業"}, "7818.TW": {"n": "溢泰實業", "cat": "綠能環保"}, "7821.TW": {"n": "神數", "cat": "汽車工業"}, "7822.TW": {"n": "倍利科", "cat": "半導體業"}, "7855.TW": {"n": "和運租車", "cat": "其他業"}, "8011.TW": {"n": "台通", "cat": "通信網路業"}, "8016.TW": {"n": "矽創", "cat": "半導體業"}, "8021.TW": {"n": "尖點", "cat": "其他電子業"}, "8028.TW": {"n": "昇陽半導體", "cat": "半導體業"}, "8033.TW": {"n": "雷虎", "cat": "其他業"}, "8039.TW": {"n": "台虹", "cat": "電子零組件業"}, "8045.TW": {"n": "達運光電", "cat": "通信網路業"}, "8046.TW": {"n": "南電", "cat": "電子零組件業"}, "8070.TW": {"n": "長華*", "cat": "電子通路業"}, "8072.TW": {"n": "陞泰", "cat": "電子通路業"}, "8081.TW": {"n": "致新", "cat": "半導體業"}, "8101.TW": {"n": "華冠", "cat": "通信網路業"}, "8103.TW": {"n": "瀚荃", "cat": "電子零組件業"}, "8104.TW": {"n": "錸寶", "cat": "光電業"}, "8105.TW": {"n": "凌巨", "cat": "光電業"}, "8110.TW": {"n": "華東", "cat": "半導體業"}, "8112.TW": {"n": "至上", "cat": "電子通路業"}, "8114.TW": {"n": "振樺電", "cat": "電腦及週邊設備業"}, "8131.TW": {"n": "福懋科", "cat": "半導體業"}, "8150.TW": {"n": "南茂", "cat": "半導體業"}, "8163.TW": {"n": "達方", "cat": "電腦及週邊設備業"}, "8201.TW": {"n": "無敵", "cat": "其他電子業"}, "8210.TW": {"n": "勤誠", "cat": "電腦及週邊設備業"}, "8213.TW": {"n": "志超", "cat": "電子零組件業"}, "8215.TW": {"n": "明基材", "cat": "光電業"}, "8222.TW": {"n": "寶一", "cat": "電機機械"}, "8249.TW": {"n": "菱光", "cat": "電子零組件業"}, "8261.TW": {"n": "富鼎", "cat": "半導體業"}, "8271.TW": {"n": "宇瞻", "cat": "半導體業"}, "8341.TW": {"n": "日友", "cat": "綠能環保"}, "8367.TW": {"n": "建新國際", "cat": "航運業"}, "8374.TW": {"n": "羅昇", "cat": "電機機械"}, "8404.TW": {"n": "百和興業-KY", "cat": "其他業"}, "8411.TW": {"n": "福貞-KY", "cat": "其他業"}, "8422.TW": {"n": "可寧衛*", "cat": "綠能環保"}, "8429.TW": {"n": "金麗-KY", "cat": "貿易百貨業"}, "8438.TW": {"n": "昶昕", "cat": "綠能環保"}, "8442.TW": {"n": "威宏-KY", "cat": "其他業"}, "8443.TW": {"n": "阿瘦", "cat": "貿易百貨業"}, "8454.TW": {"n": "富邦媒", "cat": "數位雲端"}, "8462.TW": {"n": "柏文", "cat": "運動休閒"}, "8463.TW": {"n": "潤泰材", "cat": "其他業"}, "8464.TW": {"n": "億豐", "cat": "居家生活"}, "8466.TW": {"n": "美吉吉-KY", "cat": "其他業"}, "8467.TW": {"n": "波力-KY", "cat": "運動休閒"}, "8473.TW": {"n": "山林水", "cat": "綠能環保"}, "8476.TW": {"n": "台境*", "cat": "綠能環保"}, "8478.TW": {"n": "東哥遊艇", "cat": "運動休閒"}, "8481.TW": {"n": "政伸", "cat": "其他業"}, "8482.TW": {"n": "商億-KY", "cat": "居家生活"}, "8488.TW": {"n": "吉源-KY", "cat": "其他業"}, "8499.TW": {"n": "鼎炫-KY", "cat": "其他電子業"}, "8926.TW": {"n": "台汽電", "cat": "油電燃氣業"}, "8940.TW": {"n": "新天地", "cat": "觀光餐旅"}, "8996.TW": {"n": "高力", "cat": "電機機械"}, "9802.TW": {"n": "鈺齊-KY", "cat": "運動休閒"}, "9902.TW": {"n": "台火", "cat": "其他業"}, "9904.TW": {"n": "寶成", "cat": "運動休閒"}, "9905.TW": {"n": "大華", "cat": "其他業"}, "9906.TW": {"n": "欣巴巴", "cat": "建材營造業"}, "9907.TW": {"n": "統一實", "cat": "其他業"}, "9908.TW": {"n": "大台北", "cat": "油電燃氣業"}, "9910.TW": {"n": "豐泰", "cat": "運動休閒"}, "9911.TW": {"n": "櫻花", "cat": "居家生活"}, "9912.TW": {"n": "偉聯", "cat": "電腦及週邊設備業"}, "9914.TW": {"n": "美利達", "cat": "運動休閒"}, "9917.TW": {"n": "中保科", "cat": "其他業"}, "9918.TW": {"n": "欣天然", "cat": "油電燃氣業"}, "9919.TW": {"n": "康那香", "cat": "其他業"}, "9921.TW": {"n": "巨大", "cat": "運動休閒"}, "9924.TW": {"n": "福興", "cat": "居家生活"}, "9925.TW": {"n": "新保", "cat": "其他業"}, "9926.TW": {"n": "新海", "cat": "油電燃氣業"}, "9927.TW": {"n": "泰銘", "cat": "其他業"}, "9928.TW": {"n": "中視", "cat": "其他業"}, "9929.TW": {"n": "秋雨", "cat": "其他業"}, "9930.TW": {"n": "中聯資源", "cat": "綠能環保"}, "9931.TW": {"n": "欣高", "cat": "油電燃氣業"}, "9933.TW": {"n": "中鼎", "cat": "其他業"}, "9934.TW": {"n": "成霖", "cat": "居家生活"}, "9935.TW": {"n": "慶豐富", "cat": "居家生活"}, "9937.TW": {"n": "全國", "cat": "油電燃氣業"}, "9938.TW": {"n": "百和", "cat": "其他業"}, "9939.TW": {"n": "宏全", "cat": "其他業"}, "9940.TW": {"n": "信義", "cat": "其他業"}, "9941.TW": {"n": "裕融", "cat": "其他業"}, "9942.TW": {"n": "茂順", "cat": "其他業"}, "9943.TW": {"n": "好樂迪", "cat": "觀光餐旅"}, "9944.TW": {"n": "新麗", "cat": "其他業"}, "9945.TW": {"n": "潤泰新", "cat": "其他業"}, "9946.TW": {"n": "三發地產", "cat": "建材營造業"}, "9955.TW": {"n": "佳龍", "cat": "綠能環保"}, "9958.TW": {"n": "世紀鋼", "cat": "鋼鐵工業"}, "2237.TW": {"n": "華德動能-創", "cat": "汽車工業"}, "2254.TW": {"n": "巨鎧精密-創", "cat": "汽車工業"}, "2258.TW": {"n": "鴻華先進-創", "cat": "汽車工業"}, "2432.TW": {"n": "倚天酷碁-創", "cat": "電腦及週邊設備業"}, "3150.TW": {"n": "鈺寶-創", "cat": "半導體業"}, "4195.TW": {"n": "基米-創", "cat": "生技醫療業"}, "4582.TW": {"n": "聚恆-創", "cat": "綠能環保"}, "4590.TW": {"n": "富田-創", "cat": "電機機械"}, "6534.TW": {"n": "正瀚-創", "cat": "生技醫療業"}, "6645.TW": {"n": "金萬林-創", "cat": "生技醫療業"}, "6771.TW": {"n": "平和環保-創", "cat": "綠能環保"}, "6854.TW": {"n": "錼創科技-KY創", "cat": "半導體業"}, "6908.TW": {"n": "宏碁遊戲-創", "cat": "電子通路業"}, "6921.TW": {"n": "嘉雨思-創", "cat": "半導體業"}, "6924.TW": {"n": "榮惠-KY創", "cat": "電子零組件業"}, "6949.TW": {"n": "沛爾生醫*-創", "cat": "生技醫療業"}, "6951.TW": {"n": "青新-創", "cat": "綠能環保"}, "6955.TW": {"n": "邦睿生技-創", "cat": "生技醫療業"}, "6969.TW": {"n": "成信實業*-創", "cat": "綠能環保"}, "6988.TW": {"n": "威力暘-創", "cat": "汽車工業"}, "7610.TW": {"n": "聯友金屬-創", "cat": "綠能環保"}, "7631.TW": {"n": "聚賢研發-創", "cat": "其他電子業"}, "7730.TW": {"n": "暉盛-創", "cat": "半導體業"}, "7740.TW": {"n": "熙特爾-創", "cat": "綠能環保"}, "7803.TW": {"n": "雲象科技-創", "cat": "生技醫療業"}, "7812.TW": {"n": "稜研科技*-創", "cat": "通信網路業"}, "7823.TW": {"n": "奧義賽博-KY創", "cat": "數位雲端"}, "7827.TW": {"n": "漢康-KY創", "cat": "生技醫療業"}, "7835.TW": {"n": "永悅健康-創", "cat": "數位雲端"}, "8162.TW": {"n": "微矽電子-創", "cat": "半導體業"}, "8487.TW": {"n": "愛爾達-創", "cat": "數位雲端"}, "0050.TW": {"n": "元大台灣50", "cat": "上市股票"}, "0051.TW": {"n": "元大中型100", "cat": "上市股票"}, "0052.TW": {"n": "富邦科技", "cat": "上市股票"}, "0053.TW": {"n": "元大電子", "cat": "上市股票"}, "0055.TW": {"n": "元大MSCI金融", "cat": "上市股票"}, "0056.TW": {"n": "元大高股息", "cat": "上市股票"}, "0057.TW": {"n": "富邦摩台", "cat": "上市股票"}, "0061.TW": {"n": "元大寶滬深", "cat": "上市股票"}, "9103.TW": {"n": "美德醫療-DR", "cat": "上市股票"}, "9105.TW": {"n": "泰金寶-DR", "cat": "上市股票"}, "9110.TW": {"n": "越南控-DR", "cat": "上市股票"}, "9136.TW": {"n": "巨騰-DR", "cat": "上市股票"}, "1240.TWO": {"n": "茂生農經", "cat": "農業科技業"}, "1259.TWO": {"n": "安心", "cat": "觀光餐旅"}, "1264.TWO": {"n": "德麥", "cat": "食品工業"}, "1268.TWO": {"n": "漢來美食", "cat": "觀光餐旅"}, "1294.TWO": {"n": "漢田生技", "cat": "食品工業"}, "1295.TWO": {"n": "生合", "cat": "食品工業"}, "1336.TWO": {"n": "台翰", "cat": "電子零組件業"}, "1565.TWO": {"n": "精華", "cat": "生技醫療業"}, "1569.TWO": {"n": "濱川", "cat": "電腦及週邊設備業"}, "1570.TWO": {"n": "力肯", "cat": "電機機械"}, "1580.TWO": {"n": "新麥", "cat": "電機機械"}, "1584.TWO": {"n": "精剛", "cat": "其他業"}, "1586.TWO": {"n": "和勤", "cat": "電機機械"}, "1591.TWO": {"n": "駿吉-KY", "cat": "電機機械"}, "1593.TWO": {"n": "祺驊", "cat": "運動休閒"}, "1595.TWO": {"n": "川寶", "cat": "半導體業"}, "1599.TWO": {"n": "宏佳騰", "cat": "電機機械"}, "1742.TWO": {"n": "台蠟", "cat": "化學工業"}, "1777.TWO": {"n": "生泰", "cat": "生技醫療業"}, "1780.TWO": {"n": "立弘", "cat": "食品工業"}, "1781.TWO": {"n": "合世", "cat": "生技醫療業"}, "1784.TWO": {"n": "訊聯", "cat": "生技醫療業"}, "1785.TWO": {"n": "光洋科", "cat": "其他電子業"}, "1788.TWO": {"n": "杏昌", "cat": "生技醫療業"}, "1796.TWO": {"n": "金穎生技", "cat": "食品工業"}, "1799.TWO": {"n": "易威", "cat": "生技醫療業"}, "1813.TWO": {"n": "寶利徠", "cat": "生技醫療業"}, "1815.TWO": {"n": "富喬", "cat": "電子零組件業"}, "2035.TWO": {"n": "唐榮", "cat": "鋼鐵工業"}, "2061.TWO": {"n": "風青", "cat": "電器電纜"}, "2063.TWO": {"n": "世鎧", "cat": "鋼鐵工業"}, "2064.TWO": {"n": "晉椿", "cat": "鋼鐵工業"}, "2065.TWO": {"n": "世豐", "cat": "鋼鐵工業"}, "2066.TWO": {"n": "世德", "cat": "電機機械"}, "2067.TWO": {"n": "嘉鋼", "cat": "電機機械"}, "2070.TWO": {"n": "精湛", "cat": "電機機械"}, "2073.TWO": {"n": "雄順", "cat": "鋼鐵工業"}, "2221.TWO": {"n": "大甲", "cat": "其他業"}, "2230.TWO": {"n": "泰茂", "cat": "居家生活"}, "2235.TWO": {"n": "謚源", "cat": "電機機械"}, "2596.TWO": {"n": "綠意", "cat": "建材營造業"}, "2640.TWO": {"n": "大車隊", "cat": "數位雲端"}, "2641.TWO": {"n": "正德", "cat": "航運業"}, "2643.TWO": {"n": "捷迅", "cat": "航運業"}, "2718.TWO": {"n": "全心投控", "cat": "建材營造業"}, "2719.TWO": {"n": "燦星旅", "cat": "觀光餐旅"}, "2724.TWO": {"n": "藝舍-KY", "cat": "其他業"}, "2726.TWO": {"n": "雅茗-KY", "cat": "觀光餐旅"}, "2729.TWO": {"n": "瓦城", "cat": "觀光餐旅"}, "2732.TWO": {"n": "六角", "cat": "觀光餐旅"}, "2734.TWO": {"n": "易飛網", "cat": "觀光餐旅"}, "2736.TWO": {"n": "富野", "cat": "觀光餐旅"}, "2740.TWO": {"n": "華軒", "cat": "觀光餐旅"}, "2743.TWO": {"n": "山富", "cat": "觀光餐旅"}, "2745.TWO": {"n": "五福", "cat": "觀光餐旅"}, "2751.TWO": {"n": "王座", "cat": "觀光餐旅"}, "2752.TWO": {"n": "豆府", "cat": "觀光餐旅"}, "2754.TWO": {"n": "亞洲藏壽司", "cat": "觀光餐旅"}, "2755.TWO": {"n": "揚秦", "cat": "觀光餐旅"}, "2756.TWO": {"n": "聯發國際", "cat": "觀光餐旅"}, "2916.TWO": {"n": "滿心", "cat": "居家生活"}, "2924.TWO": {"n": "宏太-KY", "cat": "居家生活"}, "2926.TWO": {"n": "誠品生活", "cat": "文化創意業"}, "2937.TWO": {"n": "集雅社", "cat": "居家生活"}, "2938.TWO": {"n": "床的世界", "cat": "居家生活"}, "2941.TWO": {"n": "米斯特", "cat": "居家生活"}, "2947.TWO": {"n": "振宇五金", "cat": "居家生活"}, "2948.TWO": {"n": "寶陞", "cat": "居家生活"}, "2949.TWO": {"n": "欣新網", "cat": "數位雲端"}, "3064.TWO": {"n": "泰偉", "cat": "文化創意業"}, "3066.TWO": {"n": "李洲", "cat": "光電業"}, "3067.TWO": {"n": "全域", "cat": "居家生活"}, "3071.TWO": {"n": "協禧", "cat": "電腦及週邊設備業"}, "3073.TWO": {"n": "天方能源", "cat": "綠能環保"}, "3078.TWO": {"n": "僑威", "cat": "電子零組件業"}, "3081.TWO": {"n": "聯亞", "cat": "通信網路業"}, "3083.TWO": {"n": "網龍", "cat": "文化創意業"}, "3085.TWO": {"n": "新零售", "cat": "數位雲端"}, "3086.TWO": {"n": "華義*", "cat": "文化創意業"}, "3088.TWO": {"n": "艾訊", "cat": "電腦及週邊設備業"}, "3093.TWO": {"n": "港建*", "cat": "其他電子業"}, "3095.TWO": {"n": "及成", "cat": "通信網路業"}, "3105.TWO": {"n": "穩懋", "cat": "半導體業"}, "3114.TWO": {"n": "好德", "cat": "電子零組件業"}, "3115.TWO": {"n": "富榮綱", "cat": "電子零組件業"}, "3118.TWO": {"n": "進階", "cat": "生技醫療業"}, "3122.TWO": {"n": "笙泉", "cat": "半導體業"}, "3128.TWO": {"n": "昇銳", "cat": "光電業"}, "3131.TWO": {"n": "弘塑", "cat": "半導體業"}, "3141.TWO": {"n": "晶宏", "cat": "半導體業"}, "3147.TWO": {"n": "大綜", "cat": "資訊服務業"}, "3152.TWO": {"n": "璟德", "cat": "通信網路業"}, "3158.TWO": {"n": "嘉實", "cat": "資訊服務業"}, "3162.TWO": {"n": "精確", "cat": "電機機械"}, "3163.TWO": {"n": "波若威", "cat": "通信網路業"}, "3169.TWO": {"n": "亞信", "cat": "半導體業"}, "3171.TWO": {"n": "炎洲流通", "cat": "居家生活"}, "3176.TWO": {"n": "基亞", "cat": "生技醫療業"}, "3178.TWO": {"n": "公準", "cat": "半導體業"}, "3188.TWO": {"n": "鑫龍騰", "cat": "建材營造業"}, "3191.TWO": {"n": "雲嘉南", "cat": "電子零組件業"}, "3205.TWO": {"n": "佰研", "cat": "生技醫療業"}, "3206.TWO": {"n": "志豐", "cat": "電子零組件業"}, "3207.TWO": {"n": "耀勝", "cat": "電子零組件業"}, "3211.TWO": {"n": "順達", "cat": "電腦及週邊設備業"}, "3213.TWO": {"n": "茂訊", "cat": "電腦及週邊設備業"}, "3217.TWO": {"n": "優群", "cat": "電子零組件業"}, "3218.TWO": {"n": "大學光", "cat": "生技醫療業"}, "3219.TWO": {"n": "倚強科", "cat": "其他電子業"}, "3221.TWO": {"n": "台嘉碩", "cat": "通信網路業"}, "3224.TWO": {"n": "三顧", "cat": "電子通路業"}, "3226.TWO": {"n": "龍鋒", "cat": "電機機械"}, "3227.TWO": {"n": "原相", "cat": "半導體業"}, "3228.TWO": {"n": "金麗科", "cat": "半導體業"}, "3230.TWO": {"n": "錦明", "cat": "光電業"}, "3232.TWO": {"n": "昱捷", "cat": "電子通路業"}, "3234.TWO": {"n": "光環", "cat": "通信網路業"}, "3236.TWO": {"n": "千如", "cat": "電子零組件業"}, "3252.TWO": {"n": "海灣", "cat": "觀光餐旅"}, "3259.TWO": {"n": "鑫創", "cat": "半導體業"}, "3260.TWO": {"n": "威剛", "cat": "半導體業"}, "3264.TWO": {"n": "欣銓", "cat": "半導體業"}, "3265.TWO": {"n": "台星科", "cat": "半導體業"}, "3268.TWO": {"n": "海德威", "cat": "半導體業"}, "3272.TWO": {"n": "東碩", "cat": "電腦及週邊設備業"}, "3276.TWO": {"n": "宇環", "cat": "電子零組件業"}, "3284.TWO": {"n": "太普高", "cat": "其他業"}, "3285.TWO": {"n": "微端", "cat": "其他電子業"}, "3287.TWO": {"n": "廣寰科", "cat": "電腦及週邊設備業"}, "3288.TWO": {"n": "點晶", "cat": "電子零組件業"}, "3289.TWO": {"n": "宜特", "cat": "其他電子業"}, "3290.TWO": {"n": "東浦", "cat": "電子零組件業"}, "3293.TWO": {"n": "鈊象", "cat": "文化創意業"}, "3294.TWO": {"n": "英濟", "cat": "電子零組件業"}, "3297.TWO": {"n": "杭特", "cat": "光電業"}, "3303.TWO": {"n": "岱稜", "cat": "其他電子業"}, "3306.TWO": {"n": "鼎天", "cat": "通信網路業"}, "3310.TWO": {"n": "佳穎", "cat": "電子零組件業"}, "3313.TWO": {"n": "斐成", "cat": "建材營造業"}, "3317.TWO": {"n": "尼克森", "cat": "半導體業"}, "3322.TWO": {"n": "建舜電", "cat": "電子零組件業"}, "3323.TWO": {"n": "加百裕", "cat": "電腦及週邊設備業"}, "3324.TWO": {"n": "雙鴻", "cat": "其他電子業"}, "3325.TWO": {"n": "旭品", "cat": "電腦及週邊設備業"}, "3332.TWO": {"n": "幸康", "cat": "電子零組件業"}, "3339.TWO": {"n": "泰谷", "cat": "光電業"}, "3349.TWO": {"n": "寶德", "cat": "電腦及週邊設備業"}, "3354.TWO": {"n": "律勝", "cat": "電子零組件業"}, "3357.TWO": {"n": "臺慶科", "cat": "電子零組件業"}, "3360.TWO": {"n": "尚立", "cat": "電子通路業"}, "3362.TWO": {"n": "先進光", "cat": "光電業"}, "3363.TWO": {"n": "上詮", "cat": "通信網路業"}, "3372.TWO": {"n": "典範", "cat": "半導體業"}, "3373.TWO": {"n": "熱映", "cat": "其他電子業"}, "3374.TWO": {"n": "精材", "cat": "半導體業"}, "3379.TWO": {"n": "彬台", "cat": "電機機械"}, "3388.TWO": {"n": "崇越電", "cat": "電子零組件業"}, "3390.TWO": {"n": "旭軟", "cat": "電子零組件業"}, "3402.TWO": {"n": "漢科", "cat": "其他電子業"}, "3430.TWO": {"n": "奇鈦科", "cat": "化學工業"}, "3434.TWO": {"n": "哲固", "cat": "光電業"}, "3438.TWO": {"n": "類比科", "cat": "半導體業"}, "3441.TWO": {"n": "聯一光", "cat": "光電業"}, "3444.TWO": {"n": "利機", "cat": "電子通路業"}, "3455.TWO": {"n": "由田", "cat": "光電業"}, "3465.TWO": {"n": "進泰電子", "cat": "其他電子業"}, "3466.TWO": {"n": "德晉", "cat": "通信網路業"}, "3467.TWO": {"n": "台灣精材", "cat": "半導體業"}, "3479.TWO": {"n": "安勤", "cat": "電腦及週邊設備業"}, "3483.TWO": {"n": "力致", "cat": "電腦及週邊設備業"}, "3484.TWO": {"n": "崧騰", "cat": "電子零組件業"}, "3485.TWO": {"n": "敘豐", "cat": "電子零組件業"}, "3489.TWO": {"n": "森寶", "cat": "建材營造業"}, "3490.TWO": {"n": "單井", "cat": "光電業"}, "3491.TWO": {"n": "昇達科", "cat": "通信網路業"}, "3492.TWO": {"n": "長盛", "cat": "電子零組件業"}, "3498.TWO": {"n": "陽程", "cat": "其他電子業"}, "3499.TWO": {"n": "環天科", "cat": "通信網路業"}, "3508.TWO": {"n": "位速", "cat": "其他電子業"}, "3511.TWO": {"n": "矽瑪", "cat": "電子零組件業"}, "3512.TWO": {"n": "皇龍", "cat": "建材營造業"}, "3516.TWO": {"n": "亞帝歐", "cat": "光電業"}, "3520.TWO": {"n": "華盈", "cat": "電子零組件業"}, "3521.TWO": {"n": "台鋼建設", "cat": "建材營造業"}, "3522.TWO": {"n": "御嵿", "cat": "觀光餐旅"}, "3523.TWO": {"n": "迎輝", "cat": "光電業"}, "3526.TWO": {"n": "凡甲", "cat": "電子零組件業"}, "3527.TWO": {"n": "聚積", "cat": "半導體業"}, "3529.TWO": {"n": "力旺", "cat": "半導體業"}, "3531.TWO": {"n": "先益", "cat": "光電業"}, "3537.TWO": {"n": "堡達", "cat": "電子零組件業"}, "3540.TWO": {"n": "曜越", "cat": "電腦及週邊設備業"}, "3541.TWO": {"n": "西柏", "cat": "其他電子業"}, "3546.TWO": {"n": "宇峻", "cat": "文化創意業"}, "3548.TWO": {"n": "兆利", "cat": "電子零組件業"}, "3551.TWO": {"n": "世禾", "cat": "綠能環保"}, "3552.TWO": {"n": "同致", "cat": "其他電子業"}, "3555.TWO": {"n": "博士旺", "cat": "半導體業"}, "3556.TWO": {"n": "禾瑞亞", "cat": "半導體業"}, "3558.TWO": {"n": "神準", "cat": "通信網路業"}, "3564.TWO": {"n": "其陽", "cat": "通信網路業"}, "3567.TWO": {"n": "逸昌", "cat": "半導體業"}, "3570.TWO": {"n": "大塚", "cat": "資訊服務業"}, "3577.TWO": {"n": "泓格", "cat": "電腦及週邊設備業"}, "3580.TWO": {"n": "友威科", "cat": "其他電子業"}, "3581.TWO": {"n": "博磊", "cat": "半導體業"}, "3587.TWO": {"n": "閎康", "cat": "其他電子業"}, "3594.TWO": {"n": "磐儀", "cat": "電腦及週邊設備業"}, "3597.TWO": {"n": "映興", "cat": "電子零組件業"}, "3609.TWO": {"n": "三一東林", "cat": "電子零組件業"}, "3611.TWO": {"n": "鼎翰", "cat": "電腦及週邊設備業"}, "3615.TWO": {"n": "安可", "cat": "光電業"}, "3623.TWO": {"n": "富晶通", "cat": "光電業"}, "3624.TWO": {"n": "光頡", "cat": "電子零組件業"}, "3625.TWO": {"n": "西勝", "cat": "電腦及週邊設備業"}, "3628.TWO": {"n": "盈正", "cat": "其他電子業"}, "3629.TWO": {"n": "地心引力", "cat": "文化創意業"}, "3630.TWO": {"n": "新鉅科", "cat": "光電業"}, "3631.TWO": {"n": "晟楠", "cat": "電子零組件業"}, "3632.TWO": {"n": "研勤", "cat": "通信網路業"}, "3646.TWO": {"n": "艾恩特", "cat": "電子零組件業"}, "3663.TWO": {"n": "鑫科", "cat": "其他電子業"}, "3664.TWO": {"n": "安瑞-KY", "cat": "通信網路業"}, "3666.TWO": {"n": "光耀", "cat": "光電業"}, "3672.TWO": {"n": "康聯訊", "cat": "通信網路業"}, "3675.TWO": {"n": "德微", "cat": "半導體業"}, "3680.TWO": {"n": "家登", "cat": "半導體業"}, "3684.TWO": {"n": "榮昌", "cat": "通信網路業"}, "3685.TWO": {"n": "元創精密", "cat": "電機機械"}, "3687.TWO": {"n": "歐買尬", "cat": "數位雲端"}, "3689.TWO": {"n": "湧德", "cat": "電子零組件業"}, "3691.TWO": {"n": "碩禾", "cat": "光電業"}, "3693.TWO": {"n": "營邦", "cat": "電腦及週邊設備業"}, "3707.TWO": {"n": "漢磊", "cat": "半導體業"}, "3709.TWO": {"n": "鑫聯大投控", "cat": "電腦及週邊設備業"}, "3710.TWO": {"n": "連展投控", "cat": "電子零組件業"}, "3713.TWO": {"n": "新晶投控", "cat": "綠能環保"}, "3718.TWO": {"n": "中光電投控", "cat": "光電業"}, "4102.TWO": {"n": "永日", "cat": "生技醫療業"}, "4105.TWO": {"n": "東洋", "cat": "生技醫療業"}, "4107.TWO": {"n": "邦特", "cat": "生技醫療業"}, "4109.TWO": {"n": "加捷生醫", "cat": "生技醫療業"}, "4111.TWO": {"n": "濟生", "cat": "生技醫療業"}, "4113.TWO": {"n": "聯上", "cat": "建材營造業"}, "4114.TWO": {"n": "健喬", "cat": "生技醫療業"}, "4116.TWO": {"n": "明基醫", "cat": "生技醫療業"}, "4120.TWO": {"n": "友華", "cat": "生技醫療業"}, "4121.TWO": {"n": "優盛", "cat": "生技醫療業"}, "4123.TWO": {"n": "晟德", "cat": "生技醫療業"}, "4126.TWO": {"n": "太醫", "cat": "生技醫療業"}, "4127.TWO": {"n": "天良", "cat": "生技醫療業"}, "4128.TWO": {"n": "中天", "cat": "生技醫療業"}, "4129.TWO": {"n": "聯合", "cat": "生技醫療業"}, "4131.TWO": {"n": "浩泰", "cat": "生技醫療業"}, "4138.TWO": {"n": "曜亞", "cat": "生技醫療業"}, "4139.TWO": {"n": "馬光-KY", "cat": "生技醫療業"}, "4147.TWO": {"n": "中裕", "cat": "生技醫療業"}, "4153.TWO": {"n": "鈺緯", "cat": "生技醫療業"}, "4154.TWO": {"n": "樂威科-KY", "cat": "其他業"}, "4157.TWO": {"n": "太景*-KY", "cat": "生技醫療業"}, "4160.TWO": {"n": "訊聯基因", "cat": "生技醫療業"}, "4161.TWO": {"n": "聿新科", "cat": "生技醫療業"}, "4162.TWO": {"n": "智擎", "cat": "生技醫療業"}, "4163.TWO": {"n": "鐿鈦", "cat": "生技醫療業"}, "4166.TWO": {"n": "友霖", "cat": "生技醫療業"}, "4167.TWO": {"n": "松瑞藥", "cat": "生技醫療業"}, "4168.TWO": {"n": "醣聯", "cat": "生技醫療業"}, "4171.TWO": {"n": "瑞基", "cat": "農業科技業"}, "4173.TWO": {"n": "久裕", "cat": "生技醫療業"}, "4174.TWO": {"n": "浩鼎", "cat": "生技醫療業"}, "4175.TWO": {"n": "杏一", "cat": "生技醫療業"}, "4183.TWO": {"n": "福永生技", "cat": "生技醫療業"}, "4188.TWO": {"n": "安克", "cat": "生技醫療業"}, "4192.TWO": {"n": "杏國", "cat": "生技醫療業"}, "4198.TWO": {"n": "欣大健康", "cat": "生技醫療業"}, "4205.TWO": {"n": "中華食", "cat": "食品工業"}, "4207.TWO": {"n": "環泰", "cat": "食品工業"}, "4303.TWO": {"n": "信立", "cat": "塑膠工業"}, "4304.TWO": {"n": "勝昱", "cat": "塑膠工業"}, "4305.TWO": {"n": "世坤", "cat": "塑膠工業"}, "4401.TWO": {"n": "東隆興", "cat": "紡織纖維"}, "4402.TWO": {"n": "郡都開發", "cat": "紡織纖維"}, "4406.TWO": {"n": "新昕纖", "cat": "紡織纖維"}, "4413.TWO": {"n": "飛寶企業", "cat": "紡織纖維"}, "4416.TWO": {"n": "三圓", "cat": "建材營造業"}, "4417.TWO": {"n": "金洲", "cat": "紡織纖維"}, "4419.TWO": {"n": "皇家美食", "cat": "觀光餐旅"}, "4420.TWO": {"n": "光明", "cat": "紡織纖維"}, "4430.TWO": {"n": "耀億", "cat": "其他業"}, "4432.TWO": {"n": "銘旺實", "cat": "紡織纖維"}, "4433.TWO": {"n": "興采", "cat": "紡織纖維"}, "4442.TWO": {"n": "竣邦-KY", "cat": "紡織纖維"}, "4502.TWO": {"n": "健信", "cat": "電機機械"}, "4503.TWO": {"n": "金雨", "cat": "電機機械"}, "4506.TWO": {"n": "崇友", "cat": "電機機械"}, "4510.TWO": {"n": "高鋒", "cat": "電機機械"}, "4513.TWO": {"n": "福裕", "cat": "電機機械"}, "4523.TWO": {"n": "永彰", "cat": "電機機械"}, "4527.TWO": {"n": "方土霖", "cat": "電機機械"}, "4528.TWO": {"n": "江興鍛", "cat": "電機機械"}, "4529.TWO": {"n": "淳紳", "cat": "其他業"}, "4530.TWO": {"n": "天意能創", "cat": "觀光餐旅"}, "4533.TWO": {"n": "協易機", "cat": "電機機械"}, "4534.TWO": {"n": "慶騰", "cat": "電機機械"}, "4535.TWO": {"n": "至興", "cat": "電機機械"}, "4538.TWO": {"n": "大詠城", "cat": "電機機械"}, "4541.TWO": {"n": "晟田", "cat": "其他業"}, "4542.TWO": {"n": "科嶠", "cat": "電子零組件業"}, "4543.TWO": {"n": "萬在", "cat": "電機機械"}, "4549.TWO": {"n": "桓達", "cat": "電機機械"}, "4550.TWO": {"n": "長佳", "cat": "電機機械"}, "4554.TWO": {"n": "橙的", "cat": "其他電子業"}, "4556.TWO": {"n": "旭然", "cat": "其他業"}, "4558.TWO": {"n": "寶緯", "cat": "電機機械"}, "4561.TWO": {"n": "健椿", "cat": "電機機械"}, "4563.TWO": {"n": "百德", "cat": "電機機械"}, "4568.TWO": {"n": "科際精密", "cat": "電機機械"}, "4577.TWO": {"n": "達航科技", "cat": "其他電子業"}, "4580.TWO": {"n": "捷流閥業", "cat": "電機機械"}, "4584.TWO": {"n": "君帆", "cat": "電機機械"}, "4609.TWO": {"n": "唐鋒", "cat": "居家生活"}, "4702.TWO": {"n": "中美實", "cat": "居家生活"}, "4706.TWO": {"n": "大恭", "cat": "化學工業"}, "4707.TWO": {"n": "磐亞", "cat": "化學工業"}, "4711.TWO": {"n": "永純", "cat": "化學工業"}, "4714.TWO": {"n": "永捷", "cat": "化學工業"}, "4716.TWO": {"n": "大立", "cat": "化學工業"}, "4721.TWO": {"n": "美琪瑪", "cat": "化學工業"}, "4726.TWO": {"n": "永昕", "cat": "生技醫療業"}, "4728.TWO": {"n": "雙美", "cat": "生技醫療業"}, "4729.TWO": {"n": "熒茂", "cat": "光電業"}, "4735.TWO": {"n": "豪展", "cat": "生技醫療業"}, "4741.TWO": {"n": "泓瀚", "cat": "化學工業"}, "4743.TWO": {"n": "合一", "cat": "生技醫療業"}, "4744.TWO": {"n": "皇將", "cat": "生技醫療業"}, "4745.TWO": {"n": "合富-KY", "cat": "生技醫療業"}, "4747.TWO": {"n": "強生*", "cat": "生技醫療業"}, "4749.TWO": {"n": "新應材", "cat": "半導體業"}, "4754.TWO": {"n": "國碳科", "cat": "化學工業"}, "4760.TWO": {"n": "勤凱", "cat": "其他電子業"}, "4767.TWO": {"n": "誠泰科技", "cat": "化學工業"}, "4768.TWO": {"n": "晶呈科技", "cat": "化學工業"}, "4772.TWO": {"n": "台特化", "cat": "化學工業"}, "4804.TWO": {"n": "大略-KY", "cat": "觀光餐旅"}, "4806.TWO": {"n": "桂田文創", "cat": "文化創意業"}, "4903.TWO": {"n": "聯光通", "cat": "通信網路業"}, "4905.TWO": {"n": "台聯電", "cat": "生技醫療業"}, "4907.TWO": {"n": "富宇", "cat": "建材營造業"}, "4908.TWO": {"n": "前鼎", "cat": "通信網路業"}, "4909.TWO": {"n": "新復興", "cat": "通信網路業"}, "4911.TWO": {"n": "德英", "cat": "生技醫療業"}, "4923.TWO": {"n": "力士", "cat": "半導體業"}, "4924.TWO": {"n": "欣厚-KY", "cat": "綠能環保"}, "4931.TWO": {"n": "新盛力", "cat": "電腦及週邊設備業"}, "4933.TWO": {"n": "友輝", "cat": "光電業"}, "4939.TWO": {"n": "亞電", "cat": "電子零組件業"}, "4946.TWO": {"n": "辣椒", "cat": "文化創意業"}, "4950.TWO": {"n": "金耘國際", "cat": "鋼鐵工業"}, "4951.TWO": {"n": "精拓科", "cat": "半導體業"}, "4953.TWO": {"n": "緯致", "cat": "資訊服務業"}, "4966.TWO": {"n": "譜瑞-KY", "cat": "半導體業"}, "4971.TWO": {"n": "IET-KY", "cat": "半導體業"}, "4972.TWO": {"n": "湯石照明", "cat": "光電業"}, "4973.TWO": {"n": "廣穎", "cat": "半導體業"}, "4974.TWO": {"n": "亞泰", "cat": "電子零組件業"}, "4979.TWO": {"n": "華星光", "cat": "通信網路業"}, "4991.TWO": {"n": "環宇-KY", "cat": "半導體業"}, "4995.TWO": {"n": "晶達", "cat": "光電業"}, "5009.TWO": {"n": "榮剛", "cat": "鋼鐵工業"}, "5011.TWO": {"n": "久陽", "cat": "鋼鐵工業"}, "5013.TWO": {"n": "強新", "cat": "鋼鐵工業"}, "5014.TWO": {"n": "建錩", "cat": "鋼鐵工業"}, "5015.TWO": {"n": "華祺", "cat": "鋼鐵工業"}, "5016.TWO": {"n": "松和", "cat": "鋼鐵工業"}, "5201.TWO": {"n": "凱衛", "cat": "資訊服務業"}, "5202.TWO": {"n": "力新", "cat": "資訊服務業"}, "5205.TWO": {"n": "中茂", "cat": "綠能環保"}, "5206.TWO": {"n": "坤悅", "cat": "建材營造業"}, "5209.TWO": {"n": "新鼎", "cat": "其他業"}, "5210.TWO": {"n": "寶碩", "cat": "資訊服務業"}, "5211.TWO": {"n": "蒙恬", "cat": "資訊服務業"}, "5212.TWO": {"n": "凌網", "cat": "資訊服務業"}, "5213.TWO": {"n": "亞昕", "cat": "建材營造業"}, "5220.TWO": {"n": "萬達光電", "cat": "光電業"}, "5223.TWO": {"n": "安力-KY", "cat": "電腦及週邊設備業"}, "5227.TWO": {"n": "立凱-KY", "cat": "電子零組件業"}, "5228.TWO": {"n": "鈺鎧", "cat": "電子零組件業"}, "5230.TWO": {"n": "雷笛克光學", "cat": "光電業"}, "5245.TWO": {"n": "智晶", "cat": "光電業"}, "5251.TWO": {"n": "天鉞電", "cat": "光電業"}, "5263.TWO": {"n": "智崴", "cat": "文化創意業"}, "5272.TWO": {"n": "笙科", "cat": "半導體業"}, "5274.TWO": {"n": "信驊", "cat": "半導體業"}, "5276.TWO": {"n": "達輝-KY", "cat": "其他業"}, "5278.TWO": {"n": "尚凡*", "cat": "數位雲端"}, "5287.TWO": {"n": "數字", "cat": "數位雲端"}, "5289.TWO": {"n": "宜鼎", "cat": "電腦及週邊設備業"}, "5291.TWO": {"n": "邑昇", "cat": "電子零組件業"}, "5299.TWO": {"n": "杰力", "cat": "半導體業"}, "5301.TWO": {"n": "寶得利", "cat": "觀光餐旅"}, "5302.TWO": {"n": "太欣", "cat": "半導體業"}, "5309.TWO": {"n": "系統電", "cat": "電子零組件業"}, "5310.TWO": {"n": "天剛", "cat": "資訊服務業"}, "5312.TWO": {"n": "寶島科", "cat": "生技醫療業"}, "5314.TWO": {"n": "世紀*", "cat": "其他業"}, "5315.TWO": {"n": "光聯", "cat": "光電業"}, "5321.TWO": {"n": "美而快", "cat": "數位雲端"}, "5324.TWO": {"n": "士開", "cat": "建材營造業"}, "5328.TWO": {"n": "華容", "cat": "電子零組件業"}, "5340.TWO": {"n": "建榮", "cat": "電子零組件業"}, "5344.TWO": {"n": "立衛", "cat": "半導體業"}, "5345.TWO": {"n": "馥鴻", "cat": "其他業"}, "5347.TWO": {"n": "世界", "cat": "半導體業"}, "5348.TWO": {"n": "正能量智能", "cat": "運動休閒"}, "5351.TWO": {"n": "鈺創", "cat": "半導體業"}, "5353.TWO": {"n": "台林", "cat": "通信網路業"}, "5355.TWO": {"n": "佳總", "cat": "電子零組件業"}, "5356.TWO": {"n": "協益", "cat": "電腦及週邊設備業"}, "5364.TWO": {"n": "力麗店", "cat": "觀光餐旅"}, "5381.TWO": {"n": "光譜", "cat": "電機機械"}, "5386.TWO": {"n": "青雲", "cat": "電腦及週邊設備業"}, "5392.TWO": {"n": "能率", "cat": "光電業"}, "5398.TWO": {"n": "慕康生醫", "cat": "其他業"}, "5403.TWO": {"n": "中菲", "cat": "資訊服務業"}, "5410.TWO": {"n": "國眾", "cat": "資訊服務業"}, "5425.TWO": {"n": "台半", "cat": "半導體業"}, "5426.TWO": {"n": "振發", "cat": "電腦及週邊設備業"}, "5432.TWO": {"n": "新門", "cat": "綠能環保"}, "5438.TWO": {"n": "東友", "cat": "電腦及週邊設備業"}, "5439.TWO": {"n": "高技", "cat": "電子零組件業"}, "5443.TWO": {"n": "均豪", "cat": "半導體業"}, "5450.TWO": {"n": "南良", "cat": "其他業"}, "5452.TWO": {"n": "佶優", "cat": "其他電子業"}, "5455.TWO": {"n": "昇益", "cat": "建材營造業"}, "5457.TWO": {"n": "宣德", "cat": "電子零組件業"}, "5460.TWO": {"n": "同協", "cat": "電子零組件業"}, "5464.TWO": {"n": "霖宏", "cat": "電子零組件業"}, "5465.TWO": {"n": "富驊", "cat": "電腦及週邊設備業"}, "5468.TWO": {"n": "凱鈺", "cat": "半導體業"}, "5474.TWO": {"n": "聰泰", "cat": "電腦及週邊設備業"}, "5475.TWO": {"n": "德宏", "cat": "電子零組件業"}, "5478.TWO": {"n": "智冠", "cat": "文化創意業"}, "5481.TWO": {"n": "新華", "cat": "其他業"}, "5483.TWO": {"n": "中美晶", "cat": "半導體業"}, "5487.TWO": {"n": "通泰", "cat": "半導體業"}, "5488.TWO": {"n": "松普", "cat": "電子零組件業"}, "5489.TWO": {"n": "彩富", "cat": "其他電子業"}, "5490.TWO": {"n": "同亨", "cat": "電腦及週邊設備業"}, "5493.TWO": {"n": "三聯", "cat": "其他電子業"}, "5498.TWO": {"n": "凱崴", "cat": "電子零組件業"}, "5508.TWO": {"n": "永信建", "cat": "建材營造業"}, "5511.TWO": {"n": "德昌", "cat": "建材營造業"}, "5512.TWO": {"n": "力麒", "cat": "建材營造業"}, "5514.TWO": {"n": "三豐", "cat": "建材營造業"}, "5516.TWO": {"n": "雙喜", "cat": "建材營造業"}, "5520.TWO": {"n": "力泰", "cat": "建材營造業"}, "5523.TWO": {"n": "豐謙", "cat": "建材營造業"}, "5529.TWO": {"n": "鉅陞", "cat": "建材營造業"}, "5530.TWO": {"n": "龍巖", "cat": "其他業"}, "5536.TWO": {"n": "聖暉*", "cat": "其他電子業"}, "5543.TWO": {"n": "桓鼎-KY", "cat": "建材營造業"}, "5547.TWO": {"n": "久舜", "cat": "建材營造業"}, "5548.TWO": {"n": "安倉", "cat": "建材營造業"}, "5601.TWO": {"n": "台聯櫃", "cat": "航運業"}, "5603.TWO": {"n": "陸海", "cat": "航運業"}, "5604.TWO": {"n": "中連", "cat": "其他業"}, "5609.TWO": {"n": "中菲行", "cat": "航運業"}, "5701.TWO": {"n": "劍湖山", "cat": "觀光餐旅"}, "5703.TWO": {"n": "亞都", "cat": "觀光餐旅"}, "5704.TWO": {"n": "老爺知", "cat": "觀光餐旅"}, "5864.TWO": {"n": "致和證", "cat": "金融保險業"}, "5878.TWO": {"n": "台名", "cat": "金融保險業"}, "5902.TWO": {"n": "德記", "cat": "居家生活"}, "5903.TWO": {"n": "全家", "cat": "居家生活"}, "5904.TWO": {"n": "寶雅*", "cat": "居家生活"}, "5905.TWO": {"n": "南仁湖", "cat": "觀光餐旅"}, "6015.TWO": {"n": "宏遠證", "cat": "金融保險業"}, "6016.TWO": {"n": "康和證", "cat": "金融保險業"}, "6020.TWO": {"n": "大展證", "cat": "金融保險業"}, "6021.TWO": {"n": "美好證", "cat": "金融保險業"}, "6023.TWO": {"n": "元大期", "cat": "金融保險業"}, "6026.TWO": {"n": "福邦證", "cat": "金融保險業"}, "6028.TWO": {"n": "公勝保經", "cat": "金融保險業"}, "6101.TWO": {"n": "寬魚國際", "cat": "文化創意業"}, "6103.TWO": {"n": "合邦", "cat": "半導體業"}, "6104.TWO": {"n": "創惟", "cat": "半導體業"}, "6109.TWO": {"n": "亞元", "cat": "通信網路業"}, "6111.TWO": {"n": "光聚晶電", "cat": "文化創意業"}, "6113.TWO": {"n": "亞矽", "cat": "電子通路業"}, "6114.TWO": {"n": "久威", "cat": "電子零組件業"}, "6118.TWO": {"n": "建達", "cat": "電子通路業"}, "6121.TWO": {"n": "新普", "cat": "電腦及週邊設備業"}, "6122.TWO": {"n": "擎邦", "cat": "電機機械"}, "6123.TWO": {"n": "上奇", "cat": "資訊服務業"}, "6124.TWO": {"n": "業強", "cat": "電子零組件業"}, "6125.TWO": {"n": "廣運", "cat": "電機機械"}, "6126.TWO": {"n": "信音", "cat": "電子零組件業"}, "6127.TWO": {"n": "九豪", "cat": "電子零組件業"}, "6129.TWO": {"n": "普誠", "cat": "半導體業"}, "6130.TWO": {"n": "上亞科技", "cat": "生技醫療業"}, "6134.TWO": {"n": "萬旭", "cat": "電子零組件業"}, "6138.TWO": {"n": "茂達", "cat": "半導體業"}, "6140.TWO": {"n": "訊達", "cat": "資訊服務業"}, "6143.TWO": {"n": "振曜", "cat": "通信網路業"}, "6144.TWO": {"n": "得利影", "cat": "文化創意業"}, "6146.TWO": {"n": "耕興", "cat": "其他電子業"}, "6147.TWO": {"n": "頎邦", "cat": "半導體業"}, "6148.TWO": {"n": "驊宏資", "cat": "資訊服務業"}, "6150.TWO": {"n": "撼訊", "cat": "電腦及週邊設備業"}, "6151.TWO": {"n": "晉倫", "cat": "其他電子業"}, "6154.TWO": {"n": "順發", "cat": "電子通路業"}, "6156.TWO": {"n": "松上", "cat": "電子零組件業"}, "6158.TWO": {"n": "禾昌", "cat": "電子零組件業"}, "6160.TWO": {"n": "欣技", "cat": "電腦及週邊設備業"}, "6161.TWO": {"n": "捷波", "cat": "電腦及週邊設備業"}, "6163.TWO": {"n": "華電網", "cat": "資訊服務業"}, "6167.TWO": {"n": "久正", "cat": "光電業"}, "6169.TWO": {"n": "昱泉", "cat": "文化創意業"}, "6170.TWO": {"n": "統振", "cat": "通信網路業"}, "6171.TWO": {"n": "大城地產", "cat": "建材營造業"}, "6173.TWO": {"n": "信昌電", "cat": "電子零組件業"}, "6174.TWO": {"n": "安碁", "cat": "電子零組件業"}, "6175.TWO": {"n": "立敦", "cat": "電子零組件業"}, "6179.TWO": {"n": "亞通", "cat": "其他業"}, "6180.TWO": {"n": "橘子", "cat": "文化創意業"}, "6182.TWO": {"n": "合晶", "cat": "半導體業"}, "6185.TWO": {"n": "幃翔", "cat": "電子零組件業"}, "6186.TWO": {"n": "新潤", "cat": "建材營造業"}, "6187.TWO": {"n": "萬潤", "cat": "半導體業"}, "6188.TWO": {"n": "廣明", "cat": "電腦及週邊設備業"}, "6190.TWO": {"n": "萬泰科", "cat": "通信網路業"}, "6194.TWO": {"n": "育富", "cat": "電子零組件業"}, "6195.TWO": {"n": "詩肯", "cat": "居家生活"}, "6198.TWO": {"n": "瑞築", "cat": "建材營造業"}, "6199.TWO": {"n": "天品", "cat": "其他業"}, "6203.TWO": {"n": "海韻電", "cat": "電子零組件業"}, "6204.TWO": {"n": "艾華", "cat": "電子零組件業"}, "6207.TWO": {"n": "雷科", "cat": "電子零組件業"}, "6208.TWO": {"n": "日揚", "cat": "半導體業"}, "6210.TWO": {"n": "慶生", "cat": "電子零組件業"}, "6212.TWO": {"n": "理銘", "cat": "建材營造業"}, "6217.TWO": {"n": "中探針", "cat": "電子零組件業"}, "6218.TWO": {"n": "豪勉", "cat": "通信網路業"}, "6219.TWO": {"n": "富旺", "cat": "建材營造業"}, "6220.TWO": {"n": "岳豐", "cat": "電子零組件業"}, "6221.TWO": {"n": "晉泰", "cat": "資訊服務業"}, "6222.TWO": {"n": "立軒", "cat": "光電業"}, "6223.TWO": {"n": "旺矽", "cat": "半導體業"}, "6227.TWO": {"n": "茂綸", "cat": "電子通路業"}, "6228.TWO": {"n": "全譜", "cat": "電腦及週邊設備業"}, "6229.TWO": {"n": "研通", "cat": "半導體業"}, "6231.TWO": {"n": "系微", "cat": "資訊服務業"}, "6233.TWO": {"n": "旺玖", "cat": "半導體業"}, "6234.TWO": {"n": "高僑", "cat": "光電業"}, "6236.TWO": {"n": "中湛", "cat": "數位雲端"}, "6237.TWO": {"n": "驊訊", "cat": "半導體業"}, "6240.TWO": {"n": "松崗", "cat": "資訊服務業"}, "6241.TWO": {"n": "鑫永洋", "cat": "通信網路業"}, "6242.TWO": {"n": "立康", "cat": "生技醫療業"}, "6244.TWO": {"n": "茂迪", "cat": "光電業"}, "6245.TWO": {"n": "立端", "cat": "通信網路業"}, "6246.TWO": {"n": "臺龍", "cat": "光電業"}, "6248.TWO": {"n": "沛波", "cat": "鋼鐵工業"}, "6259.TWO": {"n": "百徽", "cat": "電子零組件業"}, "6261.TWO": {"n": "久元", "cat": "半導體業"}, "6263.TWO": {"n": "普萊德", "cat": "通信網路業"}, "6264.TWO": {"n": "富裔", "cat": "建材營造業"}, "6265.TWO": {"n": "方土昶", "cat": "電子通路業"}, "6266.TWO": {"n": "泰詠", "cat": "電子零組件業"}, "6270.TWO": {"n": "倍微", "cat": "電子通路業"}, "6274.TWO": {"n": "台燿", "cat": "電子零組件業"}, "6275.TWO": {"n": "元山", "cat": "電子零組件業"}, "6276.TWO": {"n": "安鈦克", "cat": "電腦及週邊設備業"}, "6279.TWO": {"n": "胡連", "cat": "電子零組件業"}, "6284.TWO": {"n": "佳邦", "cat": "電子零組件業"}, "6290.TWO": {"n": "良維", "cat": "電子零組件業"}, "6291.TWO": {"n": "沛亨", "cat": "半導體業"}, "6292.TWO": {"n": "迅德", "cat": "電子零組件業"}, "6294.TWO": {"n": "智基", "cat": "文化創意業"}, "6411.TWO": {"n": "晶焱", "cat": "半導體業"}, "6417.TWO": {"n": "韋僑", "cat": "通信網路業"}, "6418.TWO": {"n": "詠昇", "cat": "電子零組件業"}, "6419.TWO": {"n": "京晨科", "cat": "光電業"}, "6423.TWO": {"n": "億而得", "cat": "半導體業"}, "6425.TWO": {"n": "易發", "cat": "電機機械"}, "6432.TWO": {"n": "今展科", "cat": "電子零組件業"}, "6435.TWO": {"n": "大中", "cat": "半導體業"}, "6441.TWO": {"n": "廣錠", "cat": "電腦及週邊設備業"}, "6461.TWO": {"n": "益得", "cat": "生技醫療業"}, "6462.TWO": {"n": "神盾", "cat": "半導體業"}, "6465.TWO": {"n": "威潤", "cat": "通信網路業"}, "6469.TWO": {"n": "大樹", "cat": "生技醫療業"}, "6470.TWO": {"n": "宇智", "cat": "通信網路業"}, "6474.TWO": {"n": "華豫寧", "cat": "電子通路業"}, "6482.TWO": {"n": "弘煜科", "cat": "文化創意業"}, "6485.TWO": {"n": "點序", "cat": "半導體業"}, "6486.TWO": {"n": "互動", "cat": "通信網路業"}, "6488.TWO": {"n": "環球晶", "cat": "半導體業"}, "6492.TWO": {"n": "生華科", "cat": "生技醫療業"}, "6494.TWO": {"n": "九齊", "cat": "半導體業"}, "6496.TWO": {"n": "科懋", "cat": "生技醫療業"}, "6498.TWO": {"n": "久禾光", "cat": "光電業"}, "6499.TWO": {"n": "益安", "cat": "生技醫療業"}, "6506.TWO": {"n": "雙邦", "cat": "紡織纖維"}, "6508.TWO": {"n": "惠光", "cat": "農業科技業"}, "6509.TWO": {"n": "聚和", "cat": "化學工業"}, "6510.TWO": {"n": "精測", "cat": "半導體業"}, "6512.TWO": {"n": "啟發電", "cat": "其他電子業"}, "6516.TWO": {"n": "勤崴國際", "cat": "資訊服務業"}, "6517.TWO": {"n": "保勝光學", "cat": "光電業"}, "6523.TWO": {"n": "達爾膚", "cat": "生技醫療業"}, "6527.TWO": {"n": "明達醫", "cat": "生技醫療業"}, "6530.TWO": {"n": "創威", "cat": "通信網路業"}, "6532.TWO": {"n": "瑞耘", "cat": "半導體業"}, "6535.TWO": {"n": "順藥", "cat": "生技醫療業"}, "6538.TWO": {"n": "倉和", "cat": "電子零組件業"}, "6542.TWO": {"n": "隆中", "cat": "文化創意業"}, "6546.TWO": {"n": "正基", "cat": "通信網路業"}, "6547.TWO": {"n": "高端疫苗", "cat": "生技醫療業"}, "6548.TWO": {"n": "長科*", "cat": "半導體業"}, "6556.TWO": {"n": "勝品", "cat": "光電業"}, "6560.TWO": {"n": "欣普羅", "cat": "光電業"}, "6561.TWO": {"n": "是方", "cat": "通信網路業"}, "6568.TWO": {"n": "宏觀", "cat": "半導體業"}, "6569.TWO": {"n": "醫揚", "cat": "生技醫療業"}, "6570.TWO": {"n": "維田", "cat": "電腦及週邊設備業"}, "6574.TWO": {"n": "霈方", "cat": "生技醫療業"}, "6576.TWO": {"n": "逸達", "cat": "生技醫療業"}, "6577.TWO": {"n": "勁豐", "cat": "電腦及週邊設備業"}, "6578.TWO": {"n": "達邦蛋白", "cat": "農業科技業"}, "6584.TWO": {"n": "南俊國際", "cat": "電子零組件業"}, "6588.TWO": {"n": "東典光電", "cat": "通信網路業"}, "6590.TWO": {"n": "普鴻", "cat": "資訊服務業"}, "6593.TWO": {"n": "台灣銘板", "cat": "資訊服務業"}, "6596.TWO": {"n": "寬宏藝術", "cat": "文化創意業"}, "6597.TWO": {"n": "立誠", "cat": "電子零組件業"}, "6603.TWO": {"n": "富強鑫", "cat": "電機機械"}, "6609.TWO": {"n": "瀧澤科", "cat": "電機機械"}, "6612.TWO": {"n": "奈米醫材", "cat": "生技醫療業"}, "6613.TWO": {"n": "朋億*", "cat": "其他電子業"}, "6615.TWO": {"n": "慧智", "cat": "生技醫療業"}, "6616.TWO": {"n": "特昇-KY", "cat": "居家生活"}, "6617.TWO": {"n": "共信-KY", "cat": "生技醫療業"}, "6620.TWO": {"n": "漢達", "cat": "生技醫療業"}, "6624.TWO": {"n": "萬年清", "cat": "綠能環保"}, "6629.TWO": {"n": "泰金-KY", "cat": "居家生活"}, "6637.TWO": {"n": "醫影", "cat": "生技醫療業"}, "6640.TWO": {"n": "均華", "cat": "半導體業"}, "6642.TWO": {"n": "富致", "cat": "電子零組件業"}, "6643.TWO": {"n": "M31", "cat": "半導體業"}, "6649.TWO": {"n": "台生材", "cat": "生技醫療業"}, "6651.TWO": {"n": "全宇昕", "cat": "半導體業"}, "6654.TWO": {"n": "天正國際", "cat": "其他電子業"}, "6661.TWO": {"n": "威健生技", "cat": "生技醫療業"}, "6662.TWO": {"n": "樂斯科", "cat": "生技醫療業"}, "6664.TWO": {"n": "群翊", "cat": "電子零組件業"}, "6667.TWO": {"n": "信紘科", "cat": "其他電子業"}, "6679.TWO": {"n": "鈺太", "cat": "半導體業"}, "6680.TWO": {"n": "鑫創電子", "cat": "電腦及週邊設備業"}, "6683.TWO": {"n": "雍智科技", "cat": "半導體業"}, "6684.TWO": {"n": "安格", "cat": "半導體業"}, "6690.TWO": {"n": "安碁資訊", "cat": "數位雲端"}, "6692.TWO": {"n": "進能服", "cat": "綠能環保"}, "6693.TWO": {"n": "廣閎科", "cat": "半導體業"}, "6697.TWO": {"n": "東捷資訊", "cat": "資訊服務業"}, "6703.TWO": {"n": "軒郁", "cat": "生技醫療業"}, "6708.TWO": {"n": "天擎", "cat": "半導體業"}, "6712.TWO": {"n": "長聖", "cat": "生技醫療業"}, "6716.TWO": {"n": "應廣", "cat": "半導體業"}, "6720.TWO": {"n": "久昌", "cat": "半導體業"}, "6721.TWO": {"n": "信實", "cat": "其他業"}, "6725.TWO": {"n": "矽科宏晟", "cat": "其他電子業"}, "6727.TWO": {"n": "亞泰金屬", "cat": "電子零組件業"}, "6728.TWO": {"n": "上洋", "cat": "居家生活"}, "6730.TWO": {"n": "常廣", "cat": "生技醫療業"}, "6732.TWO": {"n": "昇佳電子", "cat": "半導體業"}, "6733.TWO": {"n": "博晟生醫", "cat": "生技醫療業"}, "6735.TWO": {"n": "美達科技", "cat": "其他電子業"}, "6739.TWO": {"n": "竹陞科技", "cat": "其他電子業"}, "6741.TWO": {"n": "91APP*-KY", "cat": "數位雲端"}, "6751.TWO": {"n": "智聯服務", "cat": "資訊服務業"}, "6752.TWO": {"n": "叡揚", "cat": "資訊服務業"}, "6761.TWO": {"n": "穩得", "cat": "電子零組件業"}, "6762.TWO": {"n": "達亞", "cat": "生技醫療業"}, "6763.TWO": {"n": "綠界科技*", "cat": "數位雲端"}, "6767.TWO": {"n": "台微醫", "cat": "生技醫療業"}, "6785.TWO": {"n": "昱展新藥", "cat": "生技醫療業"}, "6788.TWO": {"n": "華景電", "cat": "半導體業"}, "6791.TWO": {"n": "虎門科技", "cat": "資訊服務業"}, "6803.TWO": {"n": "崑鼎", "cat": "綠能環保"}, "6804.TWO": {"n": "明係", "cat": "運動休閒"}, "6811.TWO": {"n": "宏碁資訊", "cat": "數位雲端"}, "6821.TWO": {"n": "聯寶", "cat": "電子零組件業"}, "6823.TWO": {"n": "濾能", "cat": "半導體業"}, "6829.TWO": {"n": "千附精密", "cat": "半導體業"}, "6840.TWO": {"n": "東研信超", "cat": "其他電子業"}, "6841.TWO": {"n": "長佳智能", "cat": "生技醫療業"}, "6843.TWO": {"n": "進典", "cat": "電機機械"}, "6844.TWO": {"n": "諾貝兒", "cat": "生技醫療業"}, "6846.TWO": {"n": "綠茵", "cat": "食品工業"}, "6855.TWO": {"n": "數泓科", "cat": "其他電子業"}, "6856.TWO": {"n": "鑫傳", "cat": "文化創意業"}, "6859.TWO": {"n": "伯特光", "cat": "光電業"}, "6865.TWO": {"n": "偉康科技", "cat": "數位雲端"}, "6870.TWO": {"n": "騰雲", "cat": "數位雲端"}, "6872.TWO": {"n": "浩宇生醫", "cat": "生技醫療業"}, "6874.TWO": {"n": "倍力", "cat": "資訊服務業"}, "6875.TWO": {"n": "國邑*", "cat": "生技醫療業"}, "6877.TWO": {"n": "鏵友益", "cat": "其他電子業"}, "6881.TWO": {"n": "潤德", "cat": "其他業"}, "6884.TWO": {"n": "海柏特", "cat": "資訊服務業"}, "6894.TWO": {"n": "衛司特", "cat": "綠能環保"}, "6895.TWO": {"n": "宏碩系統", "cat": "半導體業"}, "6899.TWO": {"n": "創為精密", "cat": "光電業"}, "6903.TWO": {"n": "巨漢", "cat": "其他電子業"}, "6904.TWO": {"n": "伯鑫", "cat": "其他業"}, "6907.TWO": {"n": "雅特力-KY", "cat": "半導體業"}, "6910.TWO": {"n": "德鴻", "cat": "數位雲端"}, "6913.TWO": {"n": "鴻呈", "cat": "電子零組件業"}, "6922.TWO": {"n": "宸曜", "cat": "電腦及週邊設備業"}, "6925.TWO": {"n": "意藍", "cat": "數位雲端"}, "6929.TWO": {"n": "佑全", "cat": "生技醫療業"}, "6945.TWO": {"n": "圓祥生技", "cat": "生技醫療業"}, "6953.TWO": {"n": "家碩", "cat": "半導體業"}, "6961.TWO": {"n": "旅天下", "cat": "觀光餐旅"}, "6967.TWO": {"n": "汎瑋材料", "cat": "電子零組件業"}, "6968.TWO": {"n": "萬達寵物", "cat": "居家生活"}, "6971.TWO": {"n": "惠民實業", "cat": "綠能環保"}, "6982.TWO": {"n": "大井泵浦", "cat": "電機機械"}, "6983.TWO": {"n": "華洋精機", "cat": "其他電子業"}, "6986.TWO": {"n": "和迅", "cat": "生技醫療業"}, "6996.TWO": {"n": "力領科技", "cat": "半導體業"}, "6997.TWO": {"n": "博弘", "cat": "數位雲端"}, "7402.TWO": {"n": "邑錡", "cat": "光電業"}, "7547.TWO": {"n": "碩網", "cat": "數位雲端"}, "7556.TWO": {"n": "意德士", "cat": "半導體業"}, "7584.TWO": {"n": "樂意", "cat": "文化創意業"}, "7642.TWO": {"n": "昶瑞機電", "cat": "電機機械"}, "7703.TWO": {"n": "銳澤", "cat": "其他電子業"}, "7704.TWO": {"n": "明遠精密", "cat": "半導體業"}, "7708.TWO": {"n": "全家餐飲", "cat": "觀光餐旅"}, "7709.TWO": {"n": "榮田", "cat": "電機機械"}, "7712.TWO": {"n": "博盛半導體", "cat": "半導體業"}, "7713.TWO": {"n": "威力德生醫", "cat": "生技醫療業"}, "7714.TWO": {"n": "創泓科技", "cat": "數位雲端"}, "7715.TWO": {"n": "裕山", "cat": "綠能環保"}, "7716.TWO": {"n": "昱臺國際", "cat": "航運業"}, "7717.TWO": {"n": "萊德光電-KY", "cat": "通信網路業"}, "7718.TWO": {"n": "友鋮", "cat": "電機機械"}, "7723.TWO": {"n": "築間", "cat": "觀光餐旅"}, "7728.TWO": {"n": "光焱科技", "cat": "其他電子業"}, "7734.TWO": {"n": "印能科技", "cat": "半導體業"}, "7738.TWO": {"n": "東聯互動", "cat": "數位雲端"}, "7743.TWO": {"n": "金利食安", "cat": "食品工業"}, "7744.TWO": {"n": "崴寶", "cat": "電子零組件業"}, "7747.TWO": {"n": "昕奇雲端", "cat": "數位雲端"}, "7751.TWO": {"n": "竑騰", "cat": "半導體業"}, "7753.TWO": {"n": "星亞", "cat": "光電業"}, "7757.TWO": {"n": "金色三麥", "cat": "觀光餐旅"}, "7767.TWO": {"n": "仁大資訊", "cat": "資訊服務業"}, "7770.TWO": {"n": "君曜", "cat": "半導體業"}, "7772.TWO": {"n": "耀穎", "cat": "半導體業"}, "7777.TWO": {"n": "能率亞洲", "cat": "其他業"}, "7782.TWO": {"n": "光速火箭", "cat": "居家生活"}, "7792.TWO": {"n": "安葆", "cat": "其他電子業"}, "7794.TWO": {"n": "宏碁智新", "cat": "居家生活"}, "7805.TWO": {"n": "威聯通", "cat": "數位雲端"}, "7810.TWO": {"n": "捷創科技", "cat": "半導體業"}, "7811.TWO": {"n": "民盛", "cat": "運動休閒"}, "7814.TWO": {"n": "海昌生技", "cat": "生技醫療業"}, "7819.TWO": {"n": "精誠金融", "cat": "資訊服務業"}, "7820.TWO": {"n": "立盈", "cat": "綠能環保"}, "7825.TWO": {"n": "和亞智慧", "cat": "其他電子業"}, "7828.TWO": {"n": "創新服務", "cat": "半導體業"}, "7839.TWO": {"n": "達人網", "cat": "數位雲端"}, "7842.TWO": {"n": "天能綠電", "cat": "綠能環保"}, "7856.TWO": {"n": "漢測", "cat": "半導體業"}, "8024.TWO": {"n": "佑華", "cat": "半導體業"}, "8027.TWO": {"n": "鈦昇", "cat": "電機機械"}, "8032.TWO": {"n": "光菱", "cat": "電子通路業"}, "8034.TWO": {"n": "榮群", "cat": "通信網路業"}, "8038.TWO": {"n": "長園科", "cat": "電子零組件業"}, "8040.TWO": {"n": "九暘", "cat": "半導體業"}, "8042.TWO": {"n": "金山電", "cat": "電子零組件業"}, "8043.TWO": {"n": "蜜望實", "cat": "電子零組件業"}, "8044.TWO": {"n": "網家", "cat": "數位雲端"}, "8047.TWO": {"n": "星雲", "cat": "其他電子業"}, "8048.TWO": {"n": "德勝", "cat": "通信網路業"}, "8049.TWO": {"n": "晶采", "cat": "光電業"}, "8050.TWO": {"n": "廣積", "cat": "電腦及週邊設備業"}, "8054.TWO": {"n": "安國", "cat": "半導體業"}, "8059.TWO": {"n": "凱碩", "cat": "通信網路業"}, "8064.TWO": {"n": "東捷", "cat": "光電業"}, "8066.TWO": {"n": "來思達", "cat": "居家生活"}, "8067.TWO": {"n": "志旭", "cat": "電子通路業"}, "8068.TWO": {"n": "全達", "cat": "電子通路業"}, "8069.TWO": {"n": "元太", "cat": "光電業"}, "8071.TWO": {"n": "能率網通", "cat": "電子零組件業"}, "8074.TWO": {"n": "鉅橡", "cat": "電子零組件業"}, "8076.TWO": {"n": "伍豐", "cat": "電腦及週邊設備業"}, "8077.TWO": {"n": "洛碁", "cat": "觀光餐旅"}, "8080.TWO": {"n": "泰霖", "cat": "建材營造業"}, "8083.TWO": {"n": "瑞穎", "cat": "電機機械"}, "8084.TWO": {"n": "巨虹", "cat": "電子通路業"}, "8085.TWO": {"n": "福華", "cat": "其他電子業"}, "8086.TWO": {"n": "宏捷科", "cat": "半導體業"}, "8087.TWO": {"n": "麗升能源", "cat": "綠能環保"}, "8088.TWO": {"n": "品安", "cat": "半導體業"}, "8089.TWO": {"n": "康全電訊", "cat": "通信網路業"}, "8091.TWO": {"n": "翔名", "cat": "半導體業"}, "8092.TWO": {"n": "建暐", "cat": "其他電子業"}, "8093.TWO": {"n": "保銳", "cat": "電子零組件業"}, "8096.TWO": {"n": "擎亞", "cat": "電子通路業"}, "8097.TWO": {"n": "常珵", "cat": "通信網路業"}, "8099.TWO": {"n": "大世科", "cat": "資訊服務業"}, "8102.TWO": {"n": "傑霖科技", "cat": "半導體業"}, "8107.TWO": {"n": "大億金茂", "cat": "電機機械"}, "8109.TWO": {"n": "博大", "cat": "電子零組件業"}, "8111.TWO": {"n": "立碁", "cat": "光電業"}, "8121.TWO": {"n": "越峰", "cat": "電子零組件業"}, "8147.TWO": {"n": "正淩", "cat": "電子零組件業"}, "8155.TWO": {"n": "博智", "cat": "電子零組件業"}, "8171.TWO": {"n": "天宇", "cat": "綠能環保"}, "8176.TWO": {"n": "智捷", "cat": "通信網路業"}, "8182.TWO": {"n": "加高", "cat": "電子零組件業"}, "8183.TWO": {"n": "精星", "cat": "其他電子業"}, "8227.TWO": {"n": "巨有科技", "cat": "半導體業"}, "8234.TWO": {"n": "新漢", "cat": "電腦及週邊設備業"}, "8240.TWO": {"n": "華宏", "cat": "光電業"}, "8255.TWO": {"n": "朋程", "cat": "電機機械"}, "8272.TWO": {"n": "全景軟體", "cat": "資訊服務業"}, "8277.TWO": {"n": "商丞", "cat": "半導體業"}, "8279.TWO": {"n": "生展", "cat": "生技醫療業"}, "8284.TWO": {"n": "三竹", "cat": "資訊服務業"}, "8289.TWO": {"n": "泰藝", "cat": "電子零組件業"}, "8291.TWO": {"n": "尚茂", "cat": "電子零組件業"}, "8299.TWO": {"n": "群聯", "cat": "半導體業"}, "8342.TWO": {"n": "益張", "cat": "其他業"}, "8349.TWO": {"n": "恒耀", "cat": "鋼鐵工業"}, "8354.TWO": {"n": "冠好", "cat": "其他業"}, "8358.TWO": {"n": "金居", "cat": "電子零組件業"}, "8383.TWO": {"n": "千附", "cat": "半導體業"}, "8390.TWO": {"n": "金益鼎", "cat": "綠能環保"}, "8401.TWO": {"n": "白紗科", "cat": "其他業"}, "8403.TWO": {"n": "盛弘", "cat": "生技醫療業"}, "8409.TWO": {"n": "商之器", "cat": "生技醫療業"}, "8410.TWO": {"n": "森田", "cat": "電腦及週邊設備業"}, "8415.TWO": {"n": "大國鋼", "cat": "鋼鐵工業"}, "8416.TWO": {"n": "實威", "cat": "資訊服務業"}, "8421.TWO": {"n": "旭源", "cat": "其他業"}, "8423.TWO": {"n": "保綠-KY", "cat": "綠能環保"}, "8424.TWO": {"n": "惠普", "cat": "建材營造業"}, "8426.TWO": {"n": "紅木-KY", "cat": "其他業"}, "8431.TWO": {"n": "匯鑽科", "cat": "其他電子業"}, "8432.TWO": {"n": "東生華", "cat": "生技醫療業"}, "8433.TWO": {"n": "弘帆", "cat": "居家生活"}, "8435.TWO": {"n": "鉅邁", "cat": "其他業"}, "8436.TWO": {"n": "大江", "cat": "生技醫療業"}, "8437.TWO": {"n": "大地-KY", "cat": "其他業"}, "8440.TWO": {"n": "綠電", "cat": "綠能環保"}, "8444.TWO": {"n": "綠河-KY", "cat": "其他業"}, "8446.TWO": {"n": "華研", "cat": "文化創意業"}, "8450.TWO": {"n": "霹靂", "cat": "文化創意業"}, "8455.TWO": {"n": "大拓-KY", "cat": "其他電子業"}, "8472.TWO": {"n": "納維康", "cat": "數位雲端"}, "8477.TWO": {"n": "創業家", "cat": "數位雲端"}, "8489.TWO": {"n": "三貝德", "cat": "其他業"}, "8905.TWO": {"n": "裕國", "cat": "其他業"}, "8906.TWO": {"n": "花王", "cat": "其他業"}, "8908.TWO": {"n": "欣雄", "cat": "油電燃氣業"}, "8916.TWO": {"n": "光隆", "cat": "其他業"}, "8917.TWO": {"n": "欣泰", "cat": "油電燃氣業"}, "8921.TWO": {"n": "沈氏", "cat": "其他業"}, "8923.TWO": {"n": "時報", "cat": "文化創意業"}, "8924.TWO": {"n": "大田", "cat": "運動休閒"}, "8927.TWO": {"n": "北基", "cat": "油電燃氣業"}, "8928.TWO": {"n": "鉅明", "cat": "運動休閒"}, "8929.TWO": {"n": "富堡", "cat": "其他業"}, "8930.TWO": {"n": "青鋼", "cat": "鋼鐵工業"}, "8931.TWO": {"n": "大汽電", "cat": "油電燃氣業"}, "8932.TWO": {"n": "智通*", "cat": "數位雲端"}, "8933.TWO": {"n": "愛地雅", "cat": "運動休閒"}, "8935.TWO": {"n": "邦泰", "cat": "其他業"}, "8936.TWO": {"n": "國統", "cat": "其他業"}, "8937.TWO": {"n": "合騏*", "cat": "其他業"}, "8938.TWO": {"n": "明安", "cat": "運動休閒"}, "8941.TWO": {"n": "關中", "cat": "居家生活"}, "8942.TWO": {"n": "森鉅", "cat": "其他業"}, "9949.TWO": {"n": "琉園", "cat": "文化創意業"}, "9950.TWO": {"n": "萬國通", "cat": "塑膠工業"}, "9951.TWO": {"n": "皇田", "cat": "電機機械"}, "9960.TWO": {"n": "邁達康", "cat": "運動休閒"}, "9962.TWO": {"n": "有益", "cat": "鋼鐵工業"}};
+    const THEME_STOCKS_LIST = ["4123.TWO", "5388.TW", "3036.TW", "1477.TW", "4915.TW", "3413.TW", "3293.TWO", "6919.TW", "4566.TW", "2406.TW", "3209.TW", "3227.TWO", "2101.TW", "2548.TW", "2912.TW", "2493.TW", "5439.TWO", "2645.TW", "2106.TW", "3354.TWO", "3596.TW", "4919.TW", "6176.TW", "5243.TW", "3689.TWO", "4906.TW", "6739.TWO", "6217.TWO", "5475.TWO", "3013.TW", "8074.TWO", "2501.TW", "3339.TWO", "1582.TW", "2345.TW", "3030.TW", "6415.TW", "1514.TW", "6449.TW", "2515.TW", "3702.TW", "3078.TWO", "1476.TW", "3028.TW", "4909.TWO", "3529.TWO", "4949.TW", "8069.TWO", "8110.TW", "2439.TW", "3048.TW", "4772.TWO", "4749.TWO", "5299.TWO", "4966.TWO", "6215.TW", "3583.TW", "3645.TW", "6291.TWO", "6284.TWO", "6531.TW", "2402.TW", "2355.TW", "2458.TW", "3551.TWO", "6451.TW", "6282.TW", "4551.TW", "8096.TWO", "2360.TW", "3653.TW", "2330.TW", "6182.TWO", "5371.TWO", "5483.TWO", "2425.TW", "2337.TW", "8046.TW", "3037.TW", "3231.TW"];
+
+    // 全域狀態
+    let currentScope = 'theme70';
+    let currentSelectedTicker = '3653.TW';
+    let scanResults = [];
+    let isScanning = false;
+    let stockCache = {};
+
+    // 常用股票代碼取名輔助
+    function getMeta(ticker) {
+      if (ALL_STOCKS_MAP[ticker]) return ALL_STOCKS_MAP[ticker];
+      const code = ticker.split('.')[0];
+      return { n: code, cat: '一般產業' };
+    }
+
+    // 初始化頁面
+    window.addEventListener('DOMContentLoaded', () => {
+      initDefaultDate();
+      setScope('theme70');
+      // 預設先載入示範股健策
+      loadAndRenderStock('3653.TW');
+    });
+
+    // 預設日期為最近交易日 (若為週末則往前推)
+    function initDefaultDate() {
+      const d = new Date();
+      const day = d.getDay();
+      if (day === 0) d.setDate(d.getDate() - 2); // 週日移至週五
+      else if (day === 6) d.setDate(d.getDate() - 1); // 週六移至週五
+      
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      document.getElementById('selected-date').value = `${yyyy}-${mm}-${dd}`;
+      updateDateHint();
+    }
+
+    function setTodayDate() {
+      initDefaultDate();
+      if (scanResults.length > 0) startScanning();
+    }
+
+    document.getElementById('selected-date').addEventListener('change', updateDateHint);
+
+    function updateDateHint() {
+      const inputDateStr = document.getElementById('selected-date').value;
+      const todayStr = new Date().toISOString().split('T')[0];
+      const hintElem = document.getElementById('date-mode-hint');
+      if (inputDateStr >= todayStr) {
+        hintElem.innerHTML = '<span class="text-cyan-400 font-bold">🔮 模式：當日即時預測 (尋找今天起漲/洗盤股)</span>';
+      } else {
+        hintElem.innerHTML = '<span class="text-rose-400 font-bold">🏆 模式：歷史回測驗證 (回溯檢驗5日大漲20%命中率)</span>';
+      }
+    }
+
+    // 切換股票範圍
+    function setScope(scope) {
+      currentScope = scope;
+      const buttons = ['theme70', 'active300', 'all', 'custom'];
+      buttons.forEach(b => {
+        const elem = document.getElementById(`scope-${b}`);
+        if (b === scope) {
+          elem.className = "px-3 py-1 rounded-lg font-bold text-xs bg-emerald-600 text-white shadow";
+        } else {
+          elem.className = "px-3 py-1 rounded-lg text-slate-400 hover:text-white";
+        }
+      });
+
+      const customBox = document.getElementById('custom-code-box');
+      if (scope === 'custom') {
+        customBox.classList.remove('hidden');
+      } else {
+        customBox.classList.add('hidden');
+      }
+    }
+
+    // 核心資料取得 (支援 Cloudflare Worker API 代理，若本地 file:// 則連線已部署的 Worker 或直接讀取)
+    async function fetchStockBars(ticker) {
+      if (stockCache[ticker]) return stockCache[ticker];
+
+      // 若在 Cloudflare Workers 環境中，同源直連 /api/quote；若在本地 file: 打開，則連至 Cloudflare 雲端代理
+      const isHttp = (window.location.protocol === 'http:' || window.location.protocol === 'https:');
+      const apiBase = isHttp ? '' : 'https://fourkingkong.vicky741114.workers.dev';
+      const quoteUrl = `${apiBase}/api/quote?ticker=${encodeURIComponent(ticker)}`;
+
+      try {
+        const resp = await fetch(quoteUrl);
+        if (!resp.ok) return null;
+        const rawJson = await resp.json();
+        const res = rawJson?.chart?.result?.[0];
+        if (!res) return null;
+
+        const timestamps = res.timestamp || [];
+        const q = res.indicators?.quote?.[0] || {};
+        const opens = q.open || [];
+        const highs = q.high || [];
+        const lows = q.low || [];
+        const closes = q.close || [];
+        const volumes = q.volume || [];
+
+        const validBars = [];
+        for (let i = 0; i < timestamps.length; i++) {
+          if (closes[i] != null && highs[i] != null && lows[i] != null && opens[i] != null) {
+            validBars.push({
+              time: timestamps[i] * 1000,
+              dateStr: new Date(timestamps[i] * 1000).toISOString().split('T')[0],
+              open: opens[i],
+              high: highs[i],
+              low: lows[i],
+              close: closes[i],
+              volume: volumes[i] || 0
+            });
+          }
+        }
+        stockCache[ticker] = validBars;
+        return validBars;
+      } catch (err) {
+        console.warn(`Fetch error for ${ticker}:`, err);
+        return null;
+      }
+    }
+
+    // ================================= 四大金剛項目1 量化指標與評分核心 =================================
+    function computeItem1Strategy(bars, ticker, targetDateStr) {
+      if (!bars || bars.length < 30) return null;
+
+      // 截取至目標日期切片
+      let baseIdx = bars.length - 1;
+      if (targetDateStr) {
+        const targetMs = new Date(targetDateStr + "T23:59:59Z").getTime();
+        for (let i = bars.length - 1; i >= 0; i--) {
+          if (bars[i].time <= targetMs) {
+            baseIdx = i;
+            break;
+          }
+        }
+      }
+
+      if (baseIdx < 20) return null; // 歷史數據不足
+
+      const historyBars = bars.slice(0, baseIdx + 1);
+      const n = historyBars.length;
+      const todayBar = historyBars[n - 1];
+      const yestBar = historyBars[n - 2];
+
+      // 未來 5 日回測表現 (5-day runup)
+      let hasFutureData = false;
+      let maxRunupPct = null;
+      let maxHighPrice = null;
+      let close5dPct = null;
+
+      if (baseIdx + 1 < bars.length) {
+        const futureBars = bars.slice(baseIdx + 1, Math.min(bars.length, baseIdx + 6));
+        if (futureBars.length > 0) {
+          hasFutureData = true;
+          maxHighPrice = Math.max(...futureBars.map(b => b.high));
+          maxRunupPct = ((maxHighPrice - todayBar.close) / todayBar.close) * 100;
+          const finalClose = futureBars[futureBars.length - 1].close;
+          close5dPct = ((finalClose - todayBar.close) / todayBar.close) * 100;
+        }
+      }
+
+      const closes = historyBars.map(b => b.close);
+      const highs = historyBars.map(b => b.high);
+      const lows = historyBars.map(b => b.low);
+      const opens = historyBars.map(b => b.open);
+      const volumes = historyBars.map(b => b.volume);
+
+      // 1. 指數移動平均 EMA
+      function calcEMA(arr, span) {
+        const alpha = 2.0 / (span + 1.0);
+        const res = new Array(arr.length);
+        res[0] = arr[0];
+        for (let i = 1; i < arr.length; i++) {
+          res[i] = arr[i] * alpha + res[i - 1] * (1.0 - alpha);
+        }
+        return res;
+      }
+
+      // 2. 簡單移動平均 SMA
+      function calcSMA(arr, span) {
+        const res = new Array(arr.length).fill(0);
+        for (let i = 0; i < arr.length; i++) {
+          const start = Math.max(0, i - span + 1);
+          let s = 0;
+          for (let j = start; j <= i; j++) s += arr[j];
+          res[i] = s / (i - start + 1);
+        }
+        return res;
+      }
+
+      // 5EMA、20EMA、60EMA
+      const ema5 = calcEMA(closes, 5);
+      const ema20 = calcEMA(closes, 20);
+      const ema60 = calcEMA(closes, 60);
+
+      // 成交量 5MA / 20MA
+      const mv5 = calcSMA(volumes, 5);
+      const mv20 = calcSMA(volumes, 20);
+
+      // 布林通道 (20, 2)
+      const bbMid = calcSMA(closes, 20);
+      const bbUpper = new Array(n).fill(0);
+      const bbLower = new Array(n).fill(0);
+      const bbWidth = new Array(n).fill(0);
+
+      for (let i = 0; i < n; i++) {
+        const start = Math.max(0, i - 19);
+        const len = i - start + 1;
+        const mean = bbMid[i];
+        let sumSq = 0;
+        for (let j = start; j <= i; j++) sumSq += Math.pow(closes[j] - mean, 2);
+        const std = Math.sqrt(sumSq / len);
+        bbUpper[i] = mean + 2.0 * std;
+        bbLower[i] = mean - 2.0 * std;
+        bbWidth[i] = mean > 0 ? (bbUpper[i] - bbLower[i]) / mean : 0.2;
+      }
+
+      // KDJ (9, 3, 3)
+      const kArr = new Array(n).fill(50);
+      const dArr = new Array(n).fill(50);
+      const jArr = new Array(n).fill(50);
+      for (let i = 0; i < n; i++) {
+        const start = Math.max(0, i - 8);
+        let lowest = Infinity, highest = -Infinity;
+        for (let j = start; j <= i; j++) {
+          if (lows[j] < lowest) lowest = lows[j];
+          if (highs[j] > highest) highest = highs[j];
+        }
+        const rsv = (highest === lowest) ? 50 : ((closes[i] - lowest) / (highest - lowest)) * 100;
+        const prevK = i > 0 ? kArr[i - 1] : 50;
+        const prevD = i > 0 ? dArr[i - 1] : 50;
+        kArr[i] = (2 / 3) * prevK + (1 / 3) * rsv;
+        dArr[i] = (2 / 3) * prevD + (1 / 3) * kArr[i];
+        jArr[i] = 3 * kArr[i] - 2 * dArr[i];
+      }
+
+      // MACD (12, 26, 9)
+      const ema12 = calcEMA(closes, 12);
+      const ema26 = calcEMA(closes, 26);
+      const dif = new Array(n);
+      for (let i = 0; i < n; i++) dif[i] = ema12[i] - ema26[i];
+      const dea = calcEMA(dif, 9);
+      const osc = new Array(n);
+      for (let i = 0; i < n; i++) osc[i] = 2 * (dif[i] - dea[i]);
+
+      // Parabolic SAR
+      const sar = new Array(n).fill(0);
+      const sarTrend = new Array(n).fill(1); // 1 = 多頭, -1 = 空頭
+      let isBull = true, af = 0.02, ep = highs[0];
+      sar[0] = lows[0];
+      for (let i = 1; i < n; i++) {
+        let prevSAR = sar[i - 1];
+        let curSAR = prevSAR + af * (ep - prevSAR);
+        if (isBull) {
+          if (i >= 2) curSAR = Math.min(curSAR, lows[i - 1], lows[i - 2]);
+          else curSAR = Math.min(curSAR, lows[i - 1]);
+          if (lows[i] < curSAR) {
+            isBull = false; curSAR = ep; ep = lows[i]; af = 0.02;
+          } else {
+            if (highs[i] > ep) { ep = highs[i]; af = Math.min(0.2, af + 0.02); }
+          }
+        } else {
+          if (i >= 2) curSAR = Math.max(curSAR, highs[i - 1], highs[i - 2]);
+          else curSAR = Math.max(curSAR, highs[i - 1]);
+          if (highs[i] > curSAR) {
+            isBull = true; curSAR = ep; ep = highs[i]; af = 0.02;
+          } else {
+            if (lows[i] < ep) { ep = lows[i]; af = Math.min(0.2, af + 0.02); }
+          }
+        }
+        sar[i] = curSAR;
+        sarTrend[i] = isBull ? 1 : -1;
+      }
+
+      // 週線趨勢翻揚計算
+      const weeklyBars = [];
+      let curWeekKey = null, curWeekBar = null;
+      for (let i = 0; i < n; i++) {
+        const b = historyBars[i];
+        const d = new Date(b.time);
+        const day = d.getUTCDay() || 7;
+        const thursday = new Date(d);
+        thursday.setUTCDate(d.getUTCDate() + 4 - day);
+        const yearStart = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1));
+        const weekNo = Math.ceil((((thursday - yearStart) / 86400000) + 1) / 7);
+        const wKey = `${thursday.getUTCFullYear()}-W${weekNo}`;
+
+        if (wKey !== curWeekKey) {
+          if (curWeekBar) weeklyBars.push(curWeekBar);
+          curWeekKey = wKey;
+          curWeekBar = { open: b.open, high: b.high, low: b.low, close: b.close, time: b.time };
+        } else {
+          curWeekBar.high = Math.max(curWeekBar.high, b.high);
+          curWeekBar.low = Math.min(curWeekBar.low, b.low);
+          curWeekBar.close = b.close;
+        }
+      }
+      if (curWeekBar) weeklyBars.push(curWeekBar);
+
+      const wn = weeklyBars.length;
+      let isAboveWeeklyMA20 = false, isWeeklyMA20Up = false;
+      if (wn >= 20) {
+        const wCloses = weeklyBars.map(w => w.close);
+        const wMA20 = calcSMA(wCloses, 20);
+        isAboveWeeklyMA20 = wCloses[wn - 1] > wMA20[wn - 1];
+        isWeeklyMA20Up = wMA20[wn - 1] > wMA20[wn - 2];
+      } else {
+        isAboveWeeklyMA20 = todayBar.close > ema20[n - 1];
+        isWeeklyMA20Up = ema20[n - 1] > ema20[n - 2];
+      }
+
+      // ======================== 四大金剛項目1做多評分引擎 (0~100) ========================
+      let score = 0;
+      const logs = [];
+
+      // 1. 週線趨勢保護 (30分)
+      if (isAboveWeeklyMA20 && isWeeklyMA20Up) {
+        score += 30; logs.push("🛡️ 20周線翻揚強保護");
+      } else if (isAboveWeeklyMA20) {
+        score += 18; logs.push("🛡️ 站上20周線保護");
+      } else {
+        score -= 10; logs.push("⚠️ 跌破20周線");
+      }
+
+      // 2. 布林帶寬壓縮蓄勢 (25分)
+      const currentBBWidth = bbWidth[n - 1];
+      if (currentBBWidth < 0.15) {
+        score += 25; logs.push("🎯 帶寬極度壓縮蓄勢(<0.15)");
+      } else if (currentBBWidth < 0.20) {
+        score += 18; logs.push("🎯 帶寬壓縮蓄勢(<0.20)");
+      } else if (currentBBWidth > 0.40) {
+        score -= 5; logs.push("⚠️ 帶寬已大幅發散");
+      }
+
+      // 3. 量能結構與籌碼沉澱 (25分)
+      const vol5 = mv5[n - 1];
+      const vol20 = mv20[n - 1];
+      const isVolContraction = todayBar.volume < vol5 && todayBar.volume < vol20;
+      const isMildVol = todayBar.volume >= vol5 && todayBar.volume <= vol5 * 1.6;
+      const isVolBurst = todayBar.volume > vol5 * 2.2;
+
+      if (isVolContraction) {
+        score += 25; logs.push("💤 窒息量縮洗盤沉澱");
+      } else if (isMildVol) {
+        score += 18; logs.push("⚡ 溫和出量起步");
+      } else if (isVolBurst) {
+        score -= 10; logs.push("⚠️ 成交爆量追高警訊");
+      }
+
+      // 4. K線型態與洗盤 (20分)
+      const isRed = todayBar.close > todayBar.open;
+      const isCloseGtBBUpper = todayBar.close > bbUpper[n - 1];
+      const range = todayBar.high - todayBar.low;
+      const closePos = range > 0 ? (todayBar.close - todayBar.low) / range : 0.5;
+
+      if (isCloseGtBBUpper) {
+        logs.push("⚠️ 已突破上軌(避免追高)");
+      } else if (isRed && ((todayBar.close - todayBar.open) / todayBar.open > 0.03)) {
+        score += 20; logs.push("⚡ 低檔強勢紅K起漲");
+      } else if (isRed) {
+        score += 12; logs.push("🔴 溫和洗盤紅K");
+      } else if (!isRed && closePos <= 0.35) {
+        score += 15; logs.push("🟢 實體黑K壓低洗盤");
+      }
+
+      // 5. 5EMA / 20EMA / 60EMA 均線結構加分
+      const isEMABullAlignment = ema5[n - 1] > ema20[n - 1] && ema20[n - 1] > ema60[n - 1];
+      const isEMA20Up = ema20[n - 1] > ema20[n - 2];
+      const nearEMA20 = Math.abs(todayBar.close - ema20[n - 1]) / ema20[n - 1] <= 0.04;
+      const isOversoldRebound = todayBar.close <= bbLower[n - 1] * 1.03 || kArr[n - 1] < 25;
+
+      if (isEMABullAlignment) {
+        score += 12; logs.push("📈 5>20>60EMA 標準多頭排列");
+      } else if (isEMA20Up && nearEMA20) {
+        score += 8; logs.push("📈 月生命線翻揚支撐");
+      } else if (isOversoldRebound) {
+        score += 10; logs.push("💥 極度跌深反彈");
+      }
+
+      // 6. SAR 趨勢與 KDJ / MACD 金叉加分
+      if (sarTrend[n - 1] === 1) {
+        score += 8; logs.push("🔴 SAR多頭趨勢保護");
+      }
+      if (kArr[n - 1] > dArr[n - 1]) {
+        score += 6; logs.push("🌀 KDJ多頭向上");
+      }
+      if (osc[n - 1] > 0 || dif[n - 1] > dea[n - 1]) {
+        score += 6; logs.push("📶 MACD多方紅柱");
+      }
+
+      score = Math.min(100, Math.max(0, score));
+
+      // 評級
+      let rating = "🟢 空方修正整理";
+      if (score >= 85) rating = "🔥 飆股型態/扭轉爆發";
+      else if (score >= 65) rating = "📈 活潑多方轉強";
+      else if (score >= 45) rating = "🟡 題材橫盤震盪";
+
+      // 趨勢過濾特徵檢查 (月線支撐 / 多頭 / 跌深反彈)
+      const trendSupportMatched = (
+        isEMABullAlignment ||
+        (isEMA20Up && todayBar.close >= ema20[n - 1] * 0.98) ||
+        (todayBar.close >= ema20[n - 1]) ||
+        isOversoldRebound
+      );
+
+      // 型態洗盤過濾檢查
+      const patternWashMatched = (
+        logs.some(l => l.includes("實體黑K") || l.includes("溫和洗盤紅K") || l.includes("紅K"))
+      );
+
+      const meta = getMeta(ticker);
+      const priceChange = todayBar.close - yestBar.close;
+      const pctChange = ((priceChange / yestBar.close) * 100).toFixed(2);
+
+      return {
+        ticker,
+        name: meta.n || ticker.split('.')[0],
+        category: meta.cat || '一般產業',
+        dateStr: todayBar.dateStr,
+        price: todayBar.close,
+        priceChange,
+        pctChange: (pctChange > 0 ? '+' : '') + pctChange + '%',
+        score: Math.round(score),
+        rating,
+        diagnostics: logs,
+        trendSupportMatched,
+        patternWashMatched,
+        hasFutureData,
+        maxRunupPct: maxRunupPct != null ? Math.round(maxRunupPct * 10) / 10 : null,
+        close5dPct: close5dPct != null ? Math.round(close5dPct * 10) / 10 : null,
+        maxHighPrice,
+        // 技術指標即時值
+        indicators: {
+          ema5: ema5[n - 1],
+          ema20: ema20[n - 1],
+          ema60: ema60[n - 1],
+          isEMABullAlignment,
+          sar: sar[n - 1],
+          sarTrend: sarTrend[n - 1],
+          k: kArr[n - 1],
+          d: dArr[n - 1],
+          j: jArr[n - 1],
+          dif: dif[n - 1],
+          dea: dea[n - 1],
+          osc: osc[n - 1],
+          vol: todayBar.volume,
+          mv5: mv5[n - 1],
+          mv20: mv20[n - 1],
+          bbMid: bbMid[n - 1],
+          bbUpper: bbUpper[n - 1],
+          bbLower: bbLower[n - 1]
+        },
+        // 用於繪製 Plotly 圖表的完整歷史序列 (最近 120 根 K 棒)
+        chartData: {
+          dates: historyBars.slice(-120).map(b => b.dateStr),
+          opens: historyBars.slice(-120).map(b => b.open),
+          highs: historyBars.slice(-120).map(b => b.high),
+          lows: historyBars.slice(-120).map(b => b.low),
+          closes: historyBars.slice(-120).map(b => b.close),
+          volumes: historyBars.slice(-120).map(b => b.volume),
+          ema5: ema5.slice(-120),
+          ema20: ema20.slice(-120),
+          ema60: ema60.slice(-120),
+          sar: sar.slice(-120),
+          sarTrend: sarTrend.slice(-120),
+          bbMid: bbMid.slice(-120),
+          bbUpper: bbUpper.slice(-120),
+          bbLower: bbLower.slice(-120),
+          mv5: mv5.slice(-120),
+          mv20: mv20.slice(-120),
+          k: kArr.slice(-120),
+          d: dArr.slice(-120),
+          j: jArr.slice(-120),
+          dif: dif.slice(-120),
+          dea: dea.slice(-120),
+          osc: osc.slice(-120)
+        }
+      };
+    }
+
+    // ================================= 執行大掃描邏輯 =================================
+    async function startScanning() {
+      if (isScanning) return;
+      isScanning = true;
+
+      const btn = document.getElementById('btn-scan');
+      const btnText = document.getElementById('scan-btn-text');
+      const progressWrap = document.getElementById('scan-progress-wrapper');
+      const progressBar = document.getElementById('scan-progress-bar');
+      const statusText = document.getElementById('status-text');
+      const statusDot = document.getElementById('status-dot');
+
+      btn.classList.add('opacity-70', 'pointer-events-none');
+      btnText.innerText = '正在掃描台股...';
+      progressWrap.classList.remove('hidden');
+      statusDot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-ping';
+
+      // 決定掃描標的
+      let tickersToScan = [];
+      if (currentScope === 'theme70') {
+        tickersToScan = THEME_STOCKS_LIST;
+      } else if (currentScope === 'active300') {
+        tickersToScan = Object.keys(ALL_STOCKS_MAP).slice(0, 300);
+      } else if (currentScope === 'all') {
+        tickersToScan = Object.keys(ALL_STOCKS_MAP);
+      } else {
+        const customInput = document.getElementById('custom-stocks-input').value;
+        tickersToScan = customInput.split(/[,，\s]+/).filter(Boolean).map(s => {
+          s = s.trim().toUpperCase();
+          if (!s.includes('.')) s += (s.startsWith('6') || s.startsWith('5') || s.startsWith('8') ? '.TWO' : '.TW');
+          return s;
+        });
+        if (tickersToScan.length === 0) tickersToScan = ['3653.TW', '2330.TW', '6182.TWO', '5371.TWO'];
+      }
+
+      const selectedDate = document.getElementById('selected-date').value;
+      const minScore = parseFloat(document.getElementById('min-score').value) || 55;
+      const targetReturn = parseFloat(document.getElementById('target-return').value) || 20;
+      const applyTrend = document.getElementById('filter-trend').checked;
+      const applyWash = document.getElementById('filter-wash').checked;
+
+      scanResults = [];
+      const total = tickersToScan.length;
+      let completed = 0;
+
+      // 批次並行拉取 (每次 8 檔)
+      const batchSize = 8;
+      for (let i = 0; i < total; i += batchSize) {
+        const batch = tickersToScan.slice(i, i + batchSize);
+        await Promise.all(batch.map(async (ticker) => {
+          const bars = await fetchStockBars(ticker);
+          if (bars) {
+            const result = computeItem1Strategy(bars, ticker, selectedDate);
+            if (result) {
+              // 篩選過濾：最低量化分數 55 分
+              if (result.score >= minScore) {
+                // 趨勢支撐過濾 (月線支撐、多頭、跌深反彈)
+                if (!applyTrend || result.trendSupportMatched) {
+                  // 型態洗盤過濾 (若使用者有打勾)
+                  if (!applyWash || result.patternWashMatched) {
+                    // 若有未來回測資料，則檢驗是否達成目標漲幅 (回測模式優先顯示 5日 20% 飆股)
+                    scanResults.push(result);
+                  }
+                }
+              }
+            }
+          }
+          completed++;
+        }));
+
+        const pct = Math.round((completed / total) * 100);
+        progressBar.style.width = `${pct}%`;
+        statusText.innerText = `掃描進度: ${completed}/${total} 檔 (${pct}%) · 已篩出 ${scanResults.length} 檔`;
+      }
+
+      // 排序：若有回測數據且要求20%，依 5日內最高漲幅 排序；否則依 量化總分 排序
+      scanResults.sort((a, b) => {
+        if (a.hasFutureData && b.hasFutureData && a.maxRunupPct != null && b.maxRunupPct != null) {
+          return b.maxRunupPct - a.maxRunupPct;
+        }
+        return b.score - a.score;
+      });
+
+      renderScanResults(scanResults);
+
+      // 重設狀態列
+      btn.classList.remove('opacity-70', 'pointer-events-none');
+      btnText.innerText = '開始做多篩選 / 回測';
+      statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+      statusText.innerText = `掃描完成！共發現 ${scanResults.length} 檔符合四大金剛項目1條件`;
+      isScanning = false;
+
+      // 若有篩選結果，自動在右側載入第一檔
+      if (scanResults.length > 0) {
+        selectStock(scanResults[0].ticker);
+      }
+    }
+
+    // 渲染左側篩選結果清單
+    function renderScanResults(results) {
+      const container = document.getElementById('stock-list-container');
+      const countBadge = document.getElementById('res-count-badge');
+      const avgScoreEl = document.getElementById('stat-avg-score');
+      const winRateEl = document.getElementById('stat-win-rate');
+      const maxRunupEl = document.getElementById('stat-max-runup');
+
+      countBadge.innerText = `${results.length} 檔符合`;
+
+      if (results.length === 0) {
+        container.innerHTML = `
+          <div class="p-8 text-center text-slate-500 text-xs">
+            查無符合條件個股。建議可切換至「精選題材股 (70檔)」或將門檻設為 55 分再試！
+          </div>
+        `;
+        avgScoreEl.innerText = '--';
+        winRateEl.innerText = '--';
+        maxRunupEl.innerText = '--';
+        return;
+      }
+
+      // 計算統計
+      const avgScore = results.reduce((s, r) => s + r.score, 0) / results.length;
+      avgScoreEl.innerText = `${avgScore.toFixed(1)}分`;
+
+      const withFuture = results.filter(r => r.hasFutureData && r.maxRunupPct != null);
+      if (withFuture.length > 0) {
+        const hits = withFuture.filter(r => r.maxRunupPct >= 20.0).length;
+        const winRate = (hits / withFuture.length) * 100;
+        winRateEl.innerText = `${winRate.toFixed(1)}%`;
+        const maxRunup = Math.max(...withFuture.map(r => r.maxRunupPct));
+        maxRunupEl.innerText = `+${maxRunup.toFixed(1)}%`;
+      } else {
+        winRateEl.innerText = '即時預測中';
+        maxRunupEl.innerText = '等待開獎';
+      }
+
+      // 產生清單卡片
+      let html = '';
+      results.forEach((item, idx) => {
+        const isSelected = (item.ticker === currentSelectedTicker);
+        let badgeColor = 'bg-slate-800 text-slate-300 border-slate-700';
+        if (item.score >= 85) badgeColor = 'bg-rose-950/80 text-rose-400 border-rose-800';
+        else if (item.score >= 65) badgeColor = 'bg-emerald-950/80 text-emerald-400 border-emerald-800';
+        else badgeColor = 'bg-amber-950/80 text-amber-400 border-amber-800';
+
+        const runupTag = item.maxRunupPct != null
+          ? `<span class="text-xs font-mono font-bold ${item.maxRunupPct >= 20 ? 'text-rose-400 bg-rose-950/60' : 'text-emerald-400 bg-emerald-950/60'} px-2 py-0.5 rounded border border-slate-700">5日最高 ${item.maxRunupPct >= 0 ? '+' : ''}${item.maxRunupPct}%</span>`
+          : `<span class="text-xs font-mono text-slate-400">當日收: $${item.price.toFixed(1)}</span>`;
+
+        html += `
+          <div onclick="selectStock('${item.ticker}')" id="card-${item.ticker}" class="p-3 rounded-xl border cursor-pointer transition-all duration-150 ${isSelected ? 'border-emerald-500 bg-emerald-500/10 neon-border' : 'border-slate-800/90 bg-slate-950/70 hover:border-slate-700 hover:bg-slate-900'}">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold px-2 py-0.5 rounded-md border ${badgeColor} font-mono">${item.score}分</span>
+                <span class="text-sm font-black text-white hover:text-emerald-400 transition">${item.name}</span>
+                <span class="text-[11px] font-mono text-slate-400">${item.ticker.split('.')[0]}</span>
+              </div>
+              <div>${runupTag}</div>
+            </div>
+            
+            <div class="mt-2 flex flex-wrap gap-1 text-[10px]">
+              <span class="px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800">${item.category}</span>
+              ${item.diagnostics.slice(0, 2).map(d => `<span class="px-1.5 py-0.5 rounded bg-emerald-950/50 text-emerald-300 border border-emerald-800/40">${d}</span>`).join('')}
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    // 點選左側股票名稱
+    async function selectStock(ticker) {
+      currentSelectedTicker = ticker;
+
+      // 更新左側卡片選中樣式
+      document.querySelectorAll('#stock-list-container > div').forEach(card => {
+        card.classList.remove('border-emerald-500', 'bg-emerald-500/10', 'neon-border');
+        card.classList.add('border-slate-800/90', 'bg-slate-950/70');
+      });
+      const activeCard = document.getElementById(`card-${ticker}`);
+      if (activeCard) {
+        activeCard.classList.add('border-emerald-500', 'bg-emerald-500/10', 'neon-border');
+        activeCard.classList.remove('border-slate-800/90', 'bg-slate-950/70');
+      }
+
+      await loadAndRenderStock(ticker);
+    }
+
+    // 載入並在右側繪製 8 大指標多軸聯動圖表
+    async function loadAndRenderStock(ticker) {
+      const selectedDate = document.getElementById('selected-date').value;
+      const bars = await fetchStockBars(ticker);
+      if (!bars) return;
+
+      const data = computeItem1Strategy(bars, ticker, selectedDate);
+      if (!data) return;
+
+      // 1. 更新頂部個股基本資訊
+      document.getElementById('view-stock-name').innerText = data.name;
+      document.getElementById('view-stock-ticker').innerText = data.ticker;
+      document.getElementById('view-stock-cat').innerText = data.category;
+      document.getElementById('view-stock-price').innerText = `$${data.price.toFixed(2)}`;
+      document.getElementById('view-stock-change').innerText = `${data.pctChange}`;
+      document.getElementById('view-stock-rating').innerText = `${data.rating}`;
+      document.getElementById('view-score').innerText = `${data.score} 分`;
+
+      const runupEl = document.getElementById('view-stock-runup');
+      if (data.maxRunupPct != null) {
+        runupEl.innerText = `5日最高: +${data.maxRunupPct}% (收盤: ${data.close5dPct > 0 ? '+' : ''}${data.close5dPct}%)`;
+        runupEl.className = "text-xs font-mono font-bold text-rose-400 bg-rose-950/60 px-2.5 py-0.5 rounded border border-rose-800/40";
+      } else {
+        runupEl.innerText = '當日訊號預測中 (無未來數據)';
+        runupEl.className = "text-xs font-mono text-cyan-400 bg-cyan-950/60 px-2.5 py-0.5 rounded border border-cyan-800/40";
+      }
+
+      // 指標速查膠囊
+      const isEMABull = data.indicators.isEMABullAlignment;
+      document.getElementById('view-ema-status').innerText = isEMABull ? "5>20>60 多頭排列" : "均線整理蓄勢";
+      document.getElementById('view-sar-status').innerText = data.indicators.sarTrend === 1 ? "🔴 多頭趨勢保護" : "🟢 空頭壓力防守";
+      document.getElementById('view-kd-macd-status').innerText = (data.indicators.k > data.indicators.d && data.indicators.osc > 0) ? "雙金叉偏多" : "多空震盪整理";
+
+      // 診斷標籤
+      const diagBar = document.getElementById('view-diagnostics-bar');
+      diagBar.innerHTML = data.diagnostics.map(d => `
+        <span class="text-xs px-2.5 py-0.5 rounded-full bg-slate-900 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 shadow-sm">
+          ${d}
+        </span>
+      `).join('');
+
+      // 2. 使用 Plotly.js 繪製 4 軸聯動高解析度圖表
+      renderPlotlyChart(data);
+    }
+
+    // 繪製 Plotly.js 四圖聯動圖表 (日K + 5/20/60EMA + SAR + 布林 + 成交量 + KDJ + MACD)
+    function renderPlotlyChart(data) {
+      const cd = data.chartData;
+
+      // SAR 多空分群繪製
+      const sarBullX = [], sarBullY = [];
+      const sarBearX = [], sarBearY = [];
+      for (let i = 0; i < cd.dates.length; i++) {
+        if (cd.sarTrend[i] === 1) {
+          sarBullX.push(cd.dates[i]);
+          sarBullY.push(cd.sar[i]);
+        } else {
+          sarBearX.push(cd.dates[i]);
+          sarBearY.push(cd.sar[i]);
+        }
+      }
+
+      // 1. 日K線主圖 (Row 1)
+      const traceCandle = {
+        type: 'candlestick',
+        x: cd.dates,
+        open: cd.opens,
+        high: cd.highs,
+        low: cd.lows,
+        close: cd.closes,
+        name: '日K棒',
+        increasing: { line: { color: '#FF3860' }, fillcolor: '#FF3860' }, // 台股紅漲
+        decreasing: { line: { color: '#23D160' }, fillcolor: '#23D160' }, // 台股綠跌
+        xaxis: 'x',
+        yaxis: 'y'
+      };
+
+      // 5EMA (金黃色)
+      const traceEMA5 = {
+        type: 'scatter',
+        mode: 'lines',
+        x: cd.dates,
+        y: cd.ema5,
+        line: { color: '#FFD700', width: 1.5 },
+        name: '5EMA',
+        xaxis: 'x',
+        yaxis: 'y'
+      };
+
+      // 20EMA (青綠色 / 生命線)
+      const traceEMA20 = {
+        type: 'scatter',
+        mode: 'lines',
+        x: cd.dates,
+        y: cd.ema20,
+        line: { color: '#00FFCC', width: 1.8 },
+        name: '20EMA (月線)',
+        xaxis: 'x',
+        yaxis: 'y'
+      };
+
+      // 60EMA (紫色 / 季趨勢線)
+      const traceEMA60 = {
+        type: 'scatter',
+        mode: 'lines',
+        x: cd.dates,
+        y: cd.ema60,
+        line: { color: '#CC66FF', width: 1.8 },
+        name: '60EMA (季線)',
+        xaxis: 'x',
+        yaxis: 'y'
+      };
+
+      // SAR 多頭紅點 (菱形點)
+      const traceSARBull = {
+        type: 'scatter',
+        mode: 'markers',
+        x: sarBullX,
+        y: sarBullY,
+        marker: { color: '#FF3860', size: 4, symbol: 'diamond' },
+        name: 'SAR多頭',
+        xaxis: 'x',
+        yaxis: 'y'
+      };
+
+      // SAR 空頭綠點 (菱形點)
+      const traceSARBear = {
+        type: 'scatter',
+        mode: 'markers',
+        x: sarBearX,
+        y: sarBearY,
+        marker: { color: '#23D160', size: 4, symbol: 'diamond' },
+        name: 'SAR空頭',
+        xaxis: 'x',
+        yaxis: 'y'
+      };
+
+      // 布林上軌與下軌
+      const traceBBUpper = {
+        type: 'scatter',
+        mode: 'lines',
+        x: cd.dates,
+        y: cd.bbUpper,
+        line: { color: 'rgba(255, 255, 255, 0.15)', width: 1, dash: 'dash' },
+        name: '布林上軌',
+        showlegend: false,
+        xaxis: 'x',
+        yaxis: 'y'
+      };
+
+      const traceBBLower = {
+        type: 'scatter',
+        mode: 'lines',
+        x: cd.dates,
+        y: cd.bbLower,
+        line: { color: 'rgba(255, 255, 255, 0.15)', width: 1, dash: 'dash' },
+        fill: 'tonexty',
+        fillcolor: 'rgba(0, 255, 204, 0.03)',
+        name: '布林下軌',
+        showlegend: false,
+        xaxis: 'x',
+        yaxis: 'y'
+      };
+
+      // 2. 成交量能 (Row 2)
+      const volColors = cd.closes.map((c, i) => c >= cd.opens[i] ? '#FF3860' : '#23D160');
+      const traceVol = {
+        type: 'bar',
+        x: cd.dates,
+        y: cd.volumes.map(v => v / 1000.0), // 換算千張
+        marker: { color: volColors, opacity: 0.8 },
+        name: '成交量(千張)',
+        xaxis: 'x',
+        yaxis: 'y2'
+      };
+
+      const traceMV5 = {
+        type: 'scatter',
+        mode: 'lines',
+        x: cd.dates,
+        y: cd.mv5.map(v => v / 1000.0),
+        line: { color: '#FFD700', width: 1 },
+        name: '5日均量',
+        xaxis: 'x',
+        yaxis: 'y2'
+      };
+
+      const traceMV20 = {
+        type: 'scatter',
+        mode: 'lines',
+        x: cd.dates,
+        y: cd.mv20.map(v => v / 1000.0),
+        line: { color: '#00FFCC', width: 1 },
+        name: '20日均量',
+        xaxis: 'x',
+        yaxis: 'y2'
+      };
+
+      // 3. KDJ 指標 (Row 3)
+      const traceK = {
+        type: 'scatter',
+        mode: 'lines',
+        x: cd.dates,
+        y: cd.k,
+        line: { color: '#FFFFFF', width: 1.5 },
+        name: 'K線(9,3)',
+        xaxis: 'x',
+        yaxis: 'y3'
+      };
+
+      const traceD = {
+        type: 'scatter',
+        mode: 'lines',
+        x: cd.dates,
+        y: cd.d,
+        line: { color: '#FFD700', width: 1.5 },
+        name: 'D線',
+        xaxis: 'x',
+        yaxis: 'y3'
+      };
+
+      const traceJ = {
+        type: 'scatter',
+        mode: 'lines',
+        x: cd.dates,
+        y: cd.j,
+        line: { color: '#FF00FF', width: 1.5 },
+        name: 'J線',
+        xaxis: 'x',
+        yaxis: 'y3'
+      };
+
+      // 4. MACD 指標 (Row 4)
+      const oscColors = cd.osc.map(v => v >= 0 ? '#FF3860' : '#23D160');
+      const traceOSC = {
+        type: 'bar',
+        x: cd.dates,
+        y: cd.osc,
+        marker: { color: oscColors },
+        name: 'MACD柱(OSC)',
+        xaxis: 'x',
+        yaxis: 'y4'
+      };
+
+      const traceDIF = {
+        type: 'scatter',
+        mode: 'lines',
+        x: cd.dates,
+        y: cd.dif,
+        line: { color: '#FFD700', width: 1.2 },
+        name: 'DIF(12,26)',
+        xaxis: 'x',
+        yaxis: 'y4'
+      };
+
+      const traceDEA = {
+        type: 'scatter',
+        mode: 'lines',
+        x: cd.dates,
+        y: cd.dea,
+        line: { color: '#00FFFF', width: 1.2 },
+        name: 'DEA(9)',
+        xaxis: 'x',
+        yaxis: 'y4'
+      };
+
+      const layout = {
+        template: 'plotly_dark',
+        paper_bgcolor: '#0E1526',
+        plot_bgcolor: '#0E1526',
+        margin: { l: 45, r: 25, t: 15, b: 20 },
+        showlegend: true,
+        legend: { orientation: 'h', yanchor: 'bottom', y: 1.01, xanchor: 'left', x: 0, font: { size: 10 } },
+        hovermode: 'x unified',
+        // 4 個子圖表的 Y 軸網格切分
+        grid: {
+          rows: 4,
+          columns: 1,
+          subplots: [['xy'], ['xy2'], ['xy3'], ['xy4']],
+          roworder: 'top to bottom'
+        },
+        // 主圖 日K (佔 46%)
+        yaxis: {
+          domain: [0.54, 1.0],
+          title: { text: '價格(元)', font: { size: 11, color: '#94A3B8' } },
+          gridcolor: 'rgba(255, 255, 255, 0.05)',
+          tickfont: { size: 10, color: '#94A3B8' }
+        },
+        // 成交量 (佔 15%)
+        yaxis2: {
+          domain: [0.37, 0.51],
+          title: { text: '量(千張)', font: { size: 10, color: '#94A3B8' } },
+          gridcolor: 'rgba(255, 255, 255, 0.05)',
+          tickfont: { size: 9, color: '#94A3B8' }
+        },
+        // KDJ (佔 15%)
+        yaxis3: {
+          domain: [0.19, 0.34],
+          title: { text: 'KDJ', font: { size: 10, color: '#94A3B8' } },
+          gridcolor: 'rgba(255, 255, 255, 0.05)',
+          tickvals: [20, 50, 80],
+          tickfont: { size: 9, color: '#94A3B8' }
+        },
+        // MACD (佔 16%)
+        yaxis4: {
+          domain: [0.0, 0.16],
+          title: { text: 'MACD', font: { size: 10, color: '#94A3B8' } },
+          gridcolor: 'rgba(255, 255, 255, 0.05)',
+          tickfont: { size: 9, color: '#94A3B8' }
+        },
+        // X 軸設定 (共享同一 X 軸，全同步)
+        xaxis: {
+          anchor: 'y4',
+          rangeslider: { visible: false },
+          gridcolor: 'rgba(255, 255, 255, 0.05)',
+          tickfont: { size: 10, color: '#94A3B8' },
+          type: 'category' // 消除非交易日空白間距
+        }
+      };
+
+      const chartTraces = [
+        traceCandle, traceEMA5, traceEMA20, traceEMA60, traceBBUpper, traceBBLower, traceSARBull, traceSARBear,
+        traceVol, traceMV5, traceMV20,
+        traceK, traceD, traceJ,
+        traceOSC, traceDIF, traceDEA
+      ];
+
+      Plotly.react('plotly-chart-container', chartTraces, layout, { responsive: true, displayModeBar: false });
+    }
+  </script>
+</body>
+</html>

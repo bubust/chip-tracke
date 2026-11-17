@@ -1,0 +1,21 @@
+{
+  "name": "四大金剛 · 項目9 KSAR戰情室",
+  "short_name": "KSAR 項目9",
+  "description": "60分K KSAR動能趨勢合一指標即時戰情室",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B1120",
+  "theme_color": "#1E293B",
+  "icons": [
+    {
+      "src": "https://api.iconify.design/heroicons:bolt-20-solid.svg?color=%2338bdf8",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "https://api.iconify.design/heroicons:bolt-20-solid.svg?color=%2338bdf8",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
