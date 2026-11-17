@@ -1,0 +1,18 @@
+{
+ "https://fourkingkong.vicky741114.workers.dev/": {
+  "status": 200,
+  "len": 171872,
+  "title": [
+   "四大金剛 · 項目1 做多選股戰情室 (含5日漲幅20%回測 & 8大技術指標)"
+  ],
+  "links": [
+   "https://fourkingkong.vicky741114.workers.dev"
+  ],
+  "hrefs": [
+   "https://api.iconify.design/heroicons:arrow-trending-up-20-solid.svg?color=%2310b981",
+   "manifest.json"
+  ]
+ },
+ "https://vicky741114.workers.dev/": "ConnectError('[Errno -5] No address associated with hostname')",
+ "https://fengyuan55961585.workers.dev/": "ConnectError('[Errno -5] No address associated with hostname')"
+}
