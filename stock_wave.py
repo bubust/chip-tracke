@@ -1030,6 +1030,90 @@ METHOD = ("她的進出場（從 11/2～11/11 的對帳單推敲）：價位事�
 EXIT = "出場：賺到跟停損一樣多的點數先出一口，剩下的停損拉到成本，之後一口一口出（她 11/11 的三口：+622、+805、+1,068 點）"
 
 
+def _map52(t: dict, sb: dict, price: float) -> Optional[dict]:
+    """B122 用戶 11/18：結論卡改成她的圖卡樣子——一條折線把每個轉折標價位（母圖）＋幾種發展並排的小圖＋最下面「共同事實｜真正分歧」，文字說明另外放。
+    回 {title, sub, path:[{p, label, now?}], lines:[{p, label, kind}], versions:[{title, tag, now, pts:[{p, label}], notes:[...]}], common, fork}"""
+    p0, top, a_low, b_hi, stage = sb["p0"], sb["top"], sb["a_low"], sb.get("b_hi"), sb["stage"]
+    cg, fk, z7, z80 = sb.get("cleg") or {}, sb.get("fork") or {}, sb.get("z786"), sb.get("z80")
+    path = [{"p": p0, "label": "5-1 起點"}, {"p": top, "label": "5-1 高點"}]
+    if stage == "3":
+        path += [{"p": sb.get("end52") or sb["pb"], "label": "5-2 低點"}, {"p": price, "label": "現在", "now": True}]
+        return {"title": f"{_fmt(p0)} 起漲｜日線第 5 大波", "sub": f"5-1 {_fmt(p0)}→{_fmt(top)}；5-2 走完、5-3 啟動", "path": path,
+                "lines": [{"p": top, "label": "5-1 高點（回測要踩穩）", "kind": "key"}], "versions": [],
+                "common": f"共同事實｜站上 5-1 高點 {_fmt(top)}", "fork": f"真正分歧｜回測踩穩（5-3）vs 跌回 {_fmt(top)} 下面（假突破）"}
+    path.append({"p": a_low, "label": "5-2-A"})
+    if b_hi is not None:
+        path.append({"p": b_hi, "label": "5-2-B"})
+    legs = cg.get("legs") or fk.get("legs") or []
+    if cg.get("phase") == "ext":                                      # C-5 先到、反彈站上 C-4 又跌破：三個點都畫出來
+        for x in legs[:4]:
+            path.append({"p": x["p"], "label": f"C-{x['k']}"})
+        path += [{"p": cg["c5a"], "label": "C-5?"}, {"p": cg["reb"], "label": "反彈"}, {"p": legs[4]["p"], "label": "C-5 延伸"}]
+    else:
+        for x in legs:
+            path.append({"p": x["p"], "label": f"C-{x['k']}"})
+    if abs(path[-1]["p"] - price) > 1:
+        path.append({"p": price, "label": "現在", "now": True})
+    else:
+        path[-1]["now"] = True
+    lines, versions, common, fork = [], [], None, None
+    depth = sb.get("depth")
+    title = f"{_fmt(p0)}→{_fmt(top)}｜日線 5-1 之後的 5-2 修正"
+    sub = f"5-1 漲 {_fmt(top - p0)} 點；5-2 " + ("A-B-C 的 C 段" if stage == "C" else f"在 {stage} 段") + (f"，已回撤 {depth:.1%}" if depth else "")
+    if stage == "C" and sb.get("dev") and depth is not None and depth >= 0.618 and z80 is not None:
+        c5a, reb, cl = cg.get("c5a") or cg.get("legs", [{}])[-1].get("p"), cg.get("reb"), sb["pb"]
+        ma5 = t.get("ma5")
+        strong = sorted(x for x in (ma5, reb) if x)
+        lines = [{"p": z80, "label": f"0.8 極限防線 {_fmt(z80)}", "kind": "down"}, {"p": p0, "label": f"多頭總底線 {_fmt(p0)}", "kind": "down2"}]
+        if c5a and c5a > price:
+            lines.append({"p": c5a, "label": f"站回＝買點 {_fmt(c5a)}", "kind": "up"})
+        if strong:
+            lines.append({"p": strong[-1], "label": "轉強 " + "～".join(_fmt(x) for x in strong), "kind": "up2"})
+        up1 = strong[0] if strong else (reb or top)
+        versions = [
+            {"title": "第一種｜守住 0.8", "tag": "5-2 極限洗盤 → 直接 5-3", "now": sb["dev"] == 1,
+             "pts": [{"p": cl, "label": _fmt(cl)}] + ([{"p": c5a, "label": f"站回 {_fmt(c5a)}"}] if c5a else [])
+                    + [{"p": (c5a or cl) - 0.25 * ((c5a or cl) - cl), "label": ""}, {"p": up1, "label": "轉強"}, {"p": top, "label": "5-3"}],
+             "notes": [f"日線收盤守住 {_fmt(z80)}", f"60 分收復 {_fmt(c5a)}" if c5a else "", "帶量站穩 " + "～".join(_fmt(x) for x in strong) if strong else ""]},
+            {"title": "第二種｜跌破 0.8", "tag": "日線第二隻大腳（W 底）", "now": sb["dev"] == 2,
+             "pts": [{"p": cl, "label": _fmt(cl)}, {"p": cl + 0.35 * (top - cl) * 0.5, "label": ""}, {"p": p0, "label": f"回測 {_fmt(p0)}"},
+                     {"p": cl + 0.2 * (top - cl), "label": "重算 5-1"}],
+             "notes": [f"跌破 {_fmt(z80)}，修正時間拉長", f"回測 {_fmt(p0)} 不破或假跌破收回＝雙底", "第二隻腳低點才重算 5-1"]},
+            {"title": f"第三種｜{_fmt(p0)} 失守", "tag": "4-C 真 C-5 主跌段", "now": sb["dev"] == 3,
+             "pts": [{"p": cl, "label": _fmt(cl)}, {"p": cl - 0.25 * (cl - p0), "label": ""}, {"p": cl + 0.08 * (top - cl), "label": "反抽無力"},
+                     {"p": p0 - 0.12 * (top - p0), "label": "破底"}],
+             "notes": [f"帶量長黑收盤跌破 {_fmt(p0)}", f"反抽收不回 {_fmt(c5a)}、5 均" if c5a else "反抽收不回 5 均", "風險邊界，沒觸發前別自己嚇自己"]},
+        ]
+        for v in versions:
+            v["notes"] = [x for x in v["notes"] if x]
+        common = f"共同事實｜{_fmt(top)} 起 5-2 回檔，最低 {_fmt(cl)}（回撤 {depth:.1%}）"
+        fork = f"真正分歧｜守住 {_fmt(z80)}（洗盤）vs 跌破（第二隻腳）vs {_fmt(p0)} 失守（主跌）"
+    elif fk:                                                          # B110 她 11/15：主追蹤 vs 強替代
+        g2 = fk.get("g2") or b_hi
+        lines = [{"p": g["lo"], "label": f"往上第 {g['k']} 關 {_fmt(g['lo'])}", "kind": "up"} for g in fk["up"][:2]] + \
+                [{"p": fk["c_lo"], "label": f"C-3 低點 {_fmt(fk['c_lo'])}", "kind": "down"}]
+        deep = fk["deep"]
+        versions = [
+            {"title": "主追蹤｜重疊型 5-2-C", "tag": "還欠 C-5 破底", "now": fk["where"] in ("mid", "ctrl", "above", "fall"),
+             "pts": [{"p": fk["c_lo"], "label": _fmt(fk["c_lo"])}, {"p": fk["rb_hi"], "label": "C-4"}, {"p": deep["hi"], "label": "C-5"}],
+             "notes": [f"上不過 {_fmt(g2)}", f"跌破 {_fmt(fk['c_lo'])} 往 {_fmt(a_low)}、{_fmt(deep['lo'])}～{_fmt(deep['hi'])}"]},
+            {"title": "強替代｜較大的 5-2-B", "tag": "B-b 落底、B-c 往上", "now": fk["where"] == "bc",
+             "pts": [{"p": fk["c_lo"], "label": _fmt(fk["c_lo"])}, {"p": g2, "label": "站穩"}, {"p": b_hi, "label": "B-c"}, {"p": top, "label": "5-3?"}],
+             "notes": [f"60 分實體站穩 {_fmt(g2)}", f"突破 {_fmt(b_hi)}／{_fmt(top)} 回測踩穩＝5-3"]},
+        ]
+        common = f"共同事實｜5-2-A {_fmt(top)}→{_fmt(a_low)}、B 彈到 {_fmt(b_hi)}"
+        fork = f"真正分歧｜重疊型 C 還欠一腳 vs 較大 B 補時間"
+    elif stage == "C" and cg.get("phase") == "done":
+        lines = [{"p": g["lo"], "label": f"5-3 第 {g['k']} 關 {_fmt(g['lo'])}", "kind": "up"} for g in cg.get("gates53") or []] + \
+                [{"p": cg["c5a"], "label": f"C-5 低點 {_fmt(cg['c5a'])}", "kind": "down"}]
+        common = f"共同事實｜C 段在 {_fmt(cg['c5a'])} 走完"
+        fork = "真正分歧｜三關都過（5-3）vs 跌破 C-5 低點（C-5 還沒走完）"
+    else:
+        zs = sb.get("z52") or []
+        lines = [{"p": z["v"], "label": f"5-2 大買點 {z['r']:g} {_fmt(z['v'])}", "kind": "down"} for z in zs]
+    return {"title": title, "sub": sub, "path": path, "lines": lines, "versions": versions, "common": common, "fork": fork}
+
+
 def plan_card(t: dict, price: float, bars15: Optional[list] = None, atr15: Optional[float] = None,
               atr60: Optional[float] = None) -> Optional[dict]:
     """B108 結論卡（用戶：簡單說現在的位階、在哪個波形裡，然後怎麼試單、怎麼進出場）。
@@ -1322,7 +1406,13 @@ def plan_card(t: dict, price: float, bars15: Optional[list] = None, atr15: Optio
         cands = [x for x in (pierce_reclaim(bars15, longs, 1, atr15, atr60) if longs else None,
                              pierce_reclaim(bars15, shorts, -1, atr15, atr60) if shorts else None) if x]
         sig = min(cands, key=lambda x: x["ago"]) if cands else None
+    mp = None
+    try:
+        mp = _map52(t, sb, price) if t["tag"] == "52" and sb.get("done") and u > 0 else None
+    except Exception:     # noqa: BLE001
+        mp = None
     return {"pos": pos, "shape": shape, "plays": plays, "exit": EXIT, "flip": flip, "method": METHOD, "tiles": tiles, "signal": sig, "steps": steps,
+            "map": mp,
             "watch": {"long": [(round(v, 2), nm_) for v, nm_ in longs], "short": [(round(v, 2), nm_) for v, nm_ in shorts]}}
 
 

@@ -443,7 +443,7 @@
     }
     // B108 她的結論卡（台指期）：現在位階、在哪個波形裡 → 怎麼做（照她的進出場推敲）；系統自己的數浪收到下面
     const hc = S.sym === 'TX' ? (((((S.nest || {})['60m'] || {}).tiers) || {}).card || null) : null;
-    let herTop = '', herPlay = '';
+    let herTop = '', herPlay = '', sigBox = '';
     if (hc) {
       const lab = t => { const k = String(t).indexOf('：'); return k > 0 && k <= 6 ? `<b class="lab">${esc(t.slice(0, k))}</b>：${esc(t.slice(k + 1))}` : esc(t); };
       herTop = `<div class="wv-head">📍 現在位階 <span class="wv-dim" style="font-size:.85rem;font-weight:400">她的數法（日線＋60 分）；切哪個週期都一樣</span></div>
@@ -453,6 +453,7 @@
       const sigTxt = sg
         ? `✅ <b>訊號出現</b>（${esc(sg.label || '')} 那根 15 分 K）：刺過 <b>${fmt(sg.line)}</b>（${esc(sg.name)}）到 ${fmt(sg.tip)}、又收回 ${fmt(sg.close)} → 試${sg.side > 0 ? '多' : '空'}參考 <b>${fmt(sg.close)}</b> 附近、停損 <b>${fmt(sg.stop)}</b>（約 ${fmt(sg.risk)} 點）、先出一口 <b>${fmt(sg.t1)}</b>`
         : `⏳ 現在還沒有「刺穿又收回」的訊號。盯這幾條線：${[wl(w.short, '試空'), wl(w.long, '做多')].filter(Boolean).join('｜') || '—'}`;
+      sigBox = `<div class="wv-sig${sg ? ' on' : ''}">${sigTxt}</div>`;
       herPlay = `<div class="wv-h3" style="margin:12px 0 4px">🎯 怎麼做 <span class="wv-dim" style="font-size:.85rem;font-weight:400">照她的進出場推敲；回測 △，只當紀律，不是她的實際下單</span></div>
         <ul class="wv-plays">${(hc.plays || []).map(x => `<li><span class="wv-pt ${esc(x.k)}">${esc(x.tag)}</span>${esc(x.t)}</li>`).join('')}</ul>
         ${stepsHtml(hc.steps, true)}
@@ -466,11 +467,13 @@
         <div class="wv-sub">${esc(hc.method || '')}</div>
         <div class="wv-sub" style="margin-top:6px"><b>系統數浪</b>　${head}<br>${sub.join('<br>')}${sl ? `<br><b>系統價位梯的試單</b>　${sl}` : ''}</div></details>`;
     const tl = top.her ? ['⬆ 上方', '⬇ 下方', '🔁 改判線'] : null;
+    const mm = hc && hc.map ? motherMap(hc.map) : '';
+    const herText = mm ? `<details class="wv-who mm-text"><summary>📖 文字說明（現在位階、怎麼做、出場、改判）</summary>${herTop}${herPlay}</details>` : '';
     $('wv-sum').innerHTML = `
-      ${hc ? herTop : `<div class="wv-head">${head}</div>
+      ${mm ? mm : hc ? herTop : `<div class="wv-head">${head}</div>
       <div class="wv-sub">${sub.join('<br>')}</div>`}
       ${intraNote}
-      ${hc ? `<div class="wv-tiles${top.stop ? '' : ' two'}">${tileHtml(tl[0], top.up, 'var(--up)')}${tileHtml(tl[1], top.down, 'var(--down)')}${top.stop ? tileHtml(tl[2], top.stop, 'var(--warn)') : ''}</div>${herPlay}${sysBox}` : ''}
+      ${hc ? `<div class="wv-tiles${top.stop ? '' : ' two'}">${tileHtml(tl[0], top.up, 'var(--up)')}${tileHtml(tl[1], top.down, 'var(--down)')}${top.stop ? tileHtml(tl[2], top.stop, 'var(--warn)') : ''}</div>${mm ? sigBox + herText : herPlay}${sysBox}` : ''}
       <div class="wv-tiles${top.stop ? '' : ' two'}"${hc ? ' style="display:none"' : ''}>
         ${tileHtml(top.stop_same === 'up' ? '⬆ 上方關鍵（也是停損）' : '⬆ 上方關鍵', top.up, 'var(--up)')}
         ${tileHtml(top.stop_same === 'down' ? '⬇ 下方關鍵（也是停損）' : '⬇ 下方關鍵', top.down, 'var(--down)')}
@@ -655,6 +658,62 @@
     const far = up.slice(0, -6).concat(dn.slice(6));
     return `<table class="wv-tbl wv-lad">${near.map(g => g ? row(g) : `<tr class="wv-now"><td colspan="3">▶ 現在 ${fmt(price)}</td></tr>`).join('')}</table>
       ${far.length ? `<details class="wv-who"><summary>更遠的 ${far.length} 個價位</summary><table class="wv-tbl wv-lad">${far.map(row).join('')}</table></details>` : ''}`;
+  }
+
+  // B122 用戶 11/18：她的圖卡樣子——母圖（一條折線、每個轉折標價位和浪名、關鍵線）＋幾種發展並排的小圖＋共同事實／真正分歧
+  function zigSvg(pts, lines, W, H, fs, opt) {
+    opt = opt || {};
+    const vals = pts.map(x => x.p).concat((lines || []).map(x => x.p));
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    const pad = (hi - lo) * 0.08 || 1;
+    lo -= pad; hi += pad;
+    const top = fs * 2.6, bot = fs * 2.6, left = fs * 0.8, right = opt.right || fs * 0.8;
+    const X = i => left + (pts.length > 1 ? i * (W - left - right) / (pts.length - 1) : (W - left - right) / 2);
+    const Y = v => top + (hi - v) / (hi - lo) * (H - top - bot);
+    let out = '';
+    (lines || []).forEach(l => {
+      const c = l.kind === 'up' || l.kind === 'up2' ? 'var(--mm-up)' : 'var(--mm-dn)';
+      const y = Y(l.p).toFixed(1);
+      out += `<line x1="${left}" x2="${W - right + fs * 0.4}" y1="${y}" y2="${y}" stroke="${c}" stroke-width="1.2" stroke-dasharray="${l.kind.endsWith('2') ? '2 4' : '6 4'}" opacity=".75"/>`
+        + (opt.inline ? ''
+                      : `<text x="${W - right + fs * 0.7}" y="${(+y + fs * 0.35).toFixed(1)}" font-size="${fs * 0.82}" fill="${c}">${esc(l.label)}</text>`);
+    });
+    for (let i = 1; i < pts.length; i++) {
+      const up = pts[i].p > pts[i - 1].p;
+      out += `<line x1="${X(i - 1).toFixed(1)}" y1="${Y(pts[i - 1].p).toFixed(1)}" x2="${X(i).toFixed(1)}" y2="${Y(pts[i].p).toFixed(1)}" stroke="${up ? 'var(--mm-legup)' : 'var(--mm-legdn)'}" stroke-width="${fs * 0.2}" stroke-linecap="round"${opt.dash && i >= opt.dash ? ' stroke-dasharray="5 5"' : ''}/>`;
+    }
+    pts.forEach((q, i) => {
+      const prev = pts[i - 1], next = pts[i + 1];
+      const isHi = (prev ? q.p >= prev.p : true) && (next ? q.p >= next.p : !prev || q.p >= prev.p);
+      const x = X(i), y = Y(q.p);
+      const c = q.now ? 'var(--mm-now)' : 'var(--mm-pt)';
+      out += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${fs * (q.now ? 0.42 : 0.3)}" fill="var(--bg, #0b0f17)" stroke="${c}" stroke-width="${fs * 0.16}"/>`;
+      if (opt.noPrice && !q.label) return;
+      const t1 = opt.noPrice ? q.label : fmt(q.p), t2 = opt.noPrice ? '' : q.label;
+      const anc = i === 0 ? 'start' : i === pts.length - 1 ? 'end' : 'middle';
+      const dy1 = isHi ? -fs * (t2 ? 1.45 : 0.6) : fs * 1.35, dy2 = isHi ? -fs * 0.45 : fs * 2.4;
+      out += `<text x="${x.toFixed(1)}" y="${(y + dy1).toFixed(1)}" text-anchor="${anc}" font-size="${fs}" font-weight="700" fill="${q.now ? 'var(--mm-now)' : 'var(--text)'}">${esc(t1)}</text>`;
+      if (t2) out += `<text x="${x.toFixed(1)}" y="${(y + dy2).toFixed(1)}" text-anchor="${anc}" font-size="${fs * 0.78}" fill="${q.now ? 'var(--mm-now)' : 'var(--muted)'}">${esc(t2)}</text>`;
+    });
+    return `<svg class="mm-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img">${out}</svg>`;
+  }
+  function motherMap(m) {
+    if (!m || !(m.path || []).length) return '';
+    const vs = m.versions || [];
+    return `<div class="mm">
+      <div class="mm-tag">T3 DAILY MOTHER MAP <span>她的數法・網站照價位算</span></div>
+      <div class="mm-title">${esc(m.title)}</div><div class="mm-sub">${esc(m.sub || '')}</div>
+      ${window.innerWidth < 720 ? zigSvg(m.path, m.lines, 440, 380, 15, { right: 6, inline: true })
+          + `<div class="mm-leg">${(m.lines || []).map(l => `<span class="${l.kind.startsWith('up') ? 'u' : 'd'}${l.kind.endsWith('2') ? ' dot' : ''}">${esc(l.label)}</span>`).join('')}</div>`
+        : zigSvg(m.path, m.lines, 760, 300, 15, { right: 175 })}
+      ${vs.length ? `<div class="mm-q">— ${vs.length === 3 ? '接下來三種發展' : '兩種看法競爭'} —</div>
+        <div class="mm-vs n${vs.length}">${vs.map(v => `<div class="mm-v${v.now ? ' now' : ''}">
+          <div class="mm-vt">${esc(v.title)}${v.now ? ' <span class="mm-nowtag">現在</span>' : ''}</div>
+          <div class="mm-vb">${zigSvg(v.pts, [], 260, 130, 15, { dash: 1, noPrice: true })}
+          <div><div class="mm-vtag">${esc(v.tag)}</div>
+          ${(v.notes || []).map(t => `<div class="mm-vn">${esc(t)}</div>`).join('')}</div></div></div>`).join('')}</div>` : ''}
+      ${m.common || m.fork ? `<div class="mm-foot">${m.common ? `<div class="mm-common">${esc(m.common)}</div>` : ''}${m.fork ? `<div class="mm-fork">${esc(m.fork)}</div>` : ''}</div>` : ''}
+      <div class="mm-note">波浪標記皆為候選｜先辨認級數，再等市場裁決（△ 沒有回測）</div></div>`;
   }
 
   // B110 她 11/15：往上三關、往下三道防線、接下來三種走法（結論卡和劇本分頁共用）
