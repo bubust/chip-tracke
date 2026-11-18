@@ -67,3 +67,13 @@ def test_b120_depth_and_three_developments():
     assert c["tiles"]["stop"]["price"] == 41828                                              # 沒給 5 均：轉強關卡＝C-5 後反彈高點
     o2 = _o(39000.0, C.TAIL + H + [{"p": 39000, "t": "L"}])                                  # 跌破 0.8＝第二隻大腳
     assert B._sb(o2)["dev"] == 2 and W.plan_card(o2, 39000.0, None, 190.0, 464.0)["tiles"]["down"]["price"] == 37694
+
+
+def test_b122_mother_map():
+    """B122 用戶 11/18：結論卡改成她的圖卡樣子——母圖折線、關鍵線、三種發展小圖、共同事實／真正分歧"""
+    o = _o(40285.0, C.TAIL + H + [{"p": 39537, "t": "L"}])
+    m = W.plan_card(o, 40285.0, None, 190.0, 464.0)["map"]
+    assert [x["p"] for x in m["path"][:4]] == [37694, 44911, 42371, 44824] and m["path"][-1]["now"] and m["path"][-1]["p"] == 40285
+    assert [x["label"] for x in m["path"][-4:-1]] == ["C-5?", "反彈", "C-5 延伸"]
+    assert [v["title"] for v in m["versions"]] == ["第一種｜守住 0.8", "第二種｜跌破 0.8", "第三種｜37,694 失守"] and m["versions"][0]["now"]
+    assert {round(x["p"]) for x in m["lines"]} >= {39137, 37694, 40616} and "74.5%" in m["common"]
