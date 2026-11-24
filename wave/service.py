@@ -914,6 +914,37 @@ def _full_from(waves: dict, sm: dict, big: list) -> Optional[float]:
     return next((float(q["p"]) for q in reversed(bp) if str(q.get("date")) < td and q["t"] != T["t"]), None)
 
 
+def _frame_for(t: dict, waves: dict, sm: dict, price: float) -> Optional[dict]:
+    """B123：big_frame 要的東西——全波段起點（17,015）、日線前面的大低點（31,740）、月線級低點（8,268、12,652）、最近一段 15 分上漲"""
+    import stock_wave as SW
+    T = t["big"]["T"]
+    mid = list((waves.get("mid") or {}).get("pivots") or [])
+    k = next((j for j in range(len(mid) - 1, -1, -1) if mid[j]["t"] == "H" and abs(float(mid[j]["p"]) / T - 1) < 1e-6), None)
+    lows = [float(q["p"]) for q in (mid[:k] if k is not None else []) if q["t"] == "L"]
+    bp = list((waves.get("big") or {}).get("pivots") or [])
+    cyc = None
+    bl = [j for j, q in enumerate(bp) if q["t"] == "L"]
+    if bl:
+        ja = min(bl, key=lambda j: float(bp[j]["p"]))
+        rest = [float(q["p"]) for q in bp[ja + 2:] if q["t"] == "L"]
+        if rest:
+            cyc = [float(bp[ja]["p"]), min(rest)]
+    w15 = waves.get("intra15") or {}
+    pv = [{"p": float(q["p"]), "t": q["t"]} for q in w15.get("pivots") or []]
+    if w15.get("tentative"):
+        pv.append({"p": float(w15["tentative"]["p"]), "t": w15["tentative"]["t"]})
+    leg = None
+    ls = [j for j, q in enumerate(pv) if q["t"] == "L"]
+    j0 = min(ls, key=lambda j: pv[j]["p"]) if ls else 0                # 從最低點之後算
+    hs = [j for j, q in enumerate(pv) if q["t"] == "H" and j > j0]
+    if hs:
+        jh = max(hs, key=lambda j: (pv[j]["p"], -j))
+        lo = [q["p"] for q in pv[:jh] if q["t"] == "L"]
+        if lo:
+            leg = (lo[-1], pv[jh]["p"])
+    return SW.big_frame(t, price, full=t.get("full"), lows=lows, cyc=cyc, leg=leg)
+
+
 def _tiers_inputs(big: list, n60: dict, P: dict, sm: dict, a60: Optional[dict]):
     """兩道關卡用哪一組（日線轉折, 60 分轉折）：
     ① 原本（B93）：60 分的起點＝日線這一段的起點（日線倒數第 2 個轉折），60 分轉折用多層浪名的 marks；
@@ -996,6 +1027,7 @@ def _tiers(snap: dict, waves: dict, closes, price: float, a60: Optional[dict] = 
     big = [{"p": float(q["p"]), "t": q["t"]} for q in sm["pivots"]]
     if sm.get("tentative"):
         big.append({"p": float(sm["tentative"]["p"]), "t": sm["tentative"]["t"]})
+    big = SW.merge_pause(big)                                         # B123 她 11/22：50,265→37,694 併成同一筆
     c = [float(x) for x in closes]
     ma5 = sum(c[-5:]) / 5 if len(c) >= 5 else None
     ma10 = sum(c[-10:]) / 10 if len(c) >= 10 else None
@@ -1012,6 +1044,15 @@ def _tiers(snap: dict, waves: dict, closes, price: float, a60: Optional[dict] = 
             t = x
     if not t:
         return
+    try:
+        fr = _frame_for(t, waves, sm, price) if _tiers_rank(t) < 3 and t.get("tag") not in ("up5", "52") else None
+    except Exception as e:     # noqa: BLE001
+        log.warning(f"[wave] 兩道牆失敗：{e}")
+        fr = None
+    if fr:                                                            # B123：狀態、文字改成她 11/22～11/23 的兩道牆
+        t["frame"] = fr
+        t["status"] = fr["status"]
+        t["lines"] = fr["lines"] + [x for x in t["lines"][3:] if x.startswith("等") or x.startswith("進場")][:1]
     try:                                                              # B108 結論卡：現在位階＋照她的進出場怎麼做＋「刺穿再收回」有沒有出現
         ch, it = snap.get("chart") or {}, snap.get("intra") or {}
         b15 = [b for b in ch.get("i15") or [] if not b.get("partial")]

@@ -676,6 +676,11 @@ def _nest_prices(snap: dict) -> list:
                 out += [o["gate"]["lo"], o["gate"]["hi"], o["gate"]["mid"]] + list(o["gate"]["stop"]) + list(o.get("b") or [])
                 out += [v for c in o.get("c") or [] for v in (c["lo"], c["hi"])] + list(t.get("down") or []) + list(t.get("flat") or [])
         tz = nz.get("tiers") or {}                       # B93 兩道關卡
+        fr = tz.get("frame") or {}                       # B123 她 11/22～11/23：兩道牆、尋底帶、延伸區、月線起點、短線 0.236
+        if fr:
+            out += [fr[k] for k in ("T", "L1", "H2", "ext", "rb")] + [v for _, v in fr["w2"]] + list(fr.get("band") or []) + list(fr.get("ext_band") or [])
+            out += [x for x in (fr.get("full"), (fr.get("d236") or {}).get("v"), (fr.get("d236") or {}).get("lo")) if x]
+            out += list((fr.get("mo") or {}).values())
         if tz.get("gate1"):
             out += [v for v, _ in tz["gate1"]["lv"]] + [v for v, _ in ((tz.get("gate2") or {}).get("lv") or [])]
             out += [float(v) for v in (tz.get("fib") or {}).values()] + list(((tz.get("entry") or {}).get("zone")) or [])
