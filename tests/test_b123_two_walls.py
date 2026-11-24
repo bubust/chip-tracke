@@ -147,3 +147,19 @@ def test_b125_trapped_zone():
     assert any(x.startswith("套牢區") and "現價就在裡面" in x for x in fr["lines"])
     c = W.plan_card({**tt, "frame": fr}, 40324.0)
     assert "套牢賣壓" in [p["tag"] for p in c["plays"]] and c["map"]["when"][-1].startswith("🧱 ")
+
+
+def test_b126_tf_cards():
+    """B126 用戶：切週期，結論卡也要跟著換——週 K 月線格局、60 分反彈、15／30 分短線鎖利線"""
+    tt = _t(40324.0)
+    fr = W.big_frame(tt, 40324.0, 17015.0, lows=[31740.0, 39442.0], cyc=[8268.0, 12652.0], leg=(36280.0, 40324.0))
+    pw = [{"p": p, "t": t} for p, t in ((17015, "L"), (28594, "H"), (26247, "L"), (49240, "H"), (39442, "L"), (50265, "H"), (37694, "L"),
+                                         (44911, "H"), (33719, "L"))]
+    p60 = [{"p": p, "t": t} for p, t in ((44824, "H"), (39010, "L"), (41071, "H"), (38403, "L"), (39765, "H"), (33719, "L"), (40324, "H"))]
+    p15 = [{"p": p, "t": t} for p, t in ((36396, "H"), (33719, "L"), (36786, "H"), (35634, "L"), (37195, "H"), (36280, "L"), (40324, "H"))]
+    o = W.frame_tfs(fr, 40324.0, {"1wk": pw, "60m": p60, "15m": p15}, {"15m": 40224.0})
+    assert set(o) == {"1wk", "60m", "15m"}
+    assert o["1wk"]["map"]["tag"] == "T3 MONTHLY MOTHER MAP" and [v["title"].split("｜")[0] for v in o["1wk"]["map"]["versions"]] == ["從 8,268 起算", "從 12,652 起算"]
+    assert (o["1wk"]["tiles"]["up"]["price"], o["1wk"]["tiles"]["down"]["price"], W._fmt(o["1wk"]["tiles"]["stop"]["price"])) == (44911, 33640, "29,717")
+    assert o["60m"]["map"]["path"][0]["p"] == 44911 and round(o["60m"]["tiles"]["down"]["price"]) == 37801   # 60 分窗口沒有 44,911 → 接在最前面
+    assert o["15m"]["tiles"]["down"]["price"] == 40224.0 and "36,280→40,324" in o["15m"]["map"]["title"]
