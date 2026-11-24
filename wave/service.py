@@ -954,7 +954,23 @@ def _frame_for(t: dict, waves: dict, sm: dict, price: float, snap: Optional[dict
             clock = SW.frame_clock(bars, ch.get("weekly") or [], dd("L1", "L"), dd("H2", "H"), dd("ext", "L"), str(bars[-1]["time"])[:10])
     except Exception as e:     # noqa: BLE001
         log.warning(f"[wave] 兩道牆的時間失敗：{e}")
-    return SW.big_frame(t, price, full=t.get("full"), lows=lows, cyc=cyc, leg=leg, clock=clock)
+    supply = None
+    try:                                                              # B125 套牢區：H2→ext 這段 60 分 K 的成交分布
+        from wave import volume as VO
+        b60 = [b for b in ((snap or {}).get("chart") or {}).get("i60") or [] if b.get("volume")]
+        H2, ext = float(t["big"]["H2"]), float(t["big"]["ext"])
+        k = next((i for i, b in enumerate(b60) if abs(float(b["high"]) - H2) <= 0.0005 * H2), None)
+        if k is not None:
+            m = min(range(k, len(b60)), key=lambda i: float(b60[i]["low"]))
+            if abs(float(b60[m]["low"]) - ext) <= 0.0005 * ext:
+                supply = VO.trapped(b60[k:m + 1], price)
+                for z in supply:
+                    for key in ("first", "last"):
+                        if z.get(key):
+                            z[key] = FD.tw_dt(z[key]).strftime("%-m/%-d")
+    except Exception as e:     # noqa: BLE001
+        log.warning(f"[wave] 套牢區失敗：{e}")
+    return SW.big_frame(t, price, full=t.get("full"), lows=lows, cyc=cyc, leg=leg, clock=clock, supply=supply)
 
 
 def _tiers_inputs(big: list, n60: dict, P: dict, sm: dict, a60: Optional[dict]):
