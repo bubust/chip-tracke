@@ -712,7 +712,7 @@
           <div class="mm-vb">${zigSvg(v.pts, [], 260, 130, 15, { dash: 1, noPrice: true })}
           <div><div class="mm-vtag">${esc(v.tag)}</div>
           ${(v.notes || []).map(t => `<div class="mm-vn">${esc(t)}</div>`).join('')}</div></div></div>`).join('')}</div>` : ''}
-      ${m.common || m.fork ? `<div class="mm-foot">${m.common ? `<div class="mm-common">${esc(m.common)}</div>` : ''}${m.fork ? `<div class="mm-fork">${esc(m.fork)}</div>` : ''}</div>` : ''}
+      ${m.common || m.fork ? `<div class="mm-foot">${m.common ? `<div class="mm-common">${esc(m.common)}</div>` : ''}${m.fork ? `<div class="mm-fork">${esc(m.fork)}</div>` : ''}${(m.when || []).map(x => `<div class="mm-when">${esc(x)}</div>`).join('')}</div>` : ''}
       <div class="mm-note">波浪標記皆為候選｜先辨認級數，再等市場裁決（△ 沒有回測）</div></div>`;
   }
 

@@ -1007,7 +1007,7 @@ def merge_pause(big: list) -> list:
 
 
 def big_frame(t: dict, price: float, full: Optional[float] = None, lows: Optional[list] = None,
-              cyc: Optional[list] = None, leg: Optional[tuple] = None) -> Optional[dict]:
+              cyc: Optional[list] = None, leg: Optional[tuple] = None, clock: Optional[dict] = None) -> Optional[dict]:
     """B123 她 11/22～11/23（T3 MONTHLY／DAILY MOTHER MAP 四張）：日線 T→L1→H2→ext 三筆跌完（ext 破 L1）之後的反彈怎麼看。
     - 第一道牆＝L1（37,694，1、4 重疊魔咒）；第二道牆＝T→ext 的 0.382／0.5／0.618（40,040／41,992／43,944）；再上去前高 H2（44,911）
     - 尋底帶＝full→T 的 0.5（33,640）～H2 往下等幅 T−L1（32,340）；破了看延伸區＝前一個日線大低點（31,740）～full→T 的 0.618（29,717）
@@ -1061,9 +1061,85 @@ def big_frame(t: dict, price: float, full: Optional[float] = None, lows: Optiona
                      f"（{f(full)}→{f(T)} 的 0.618）；連 {f(ext_band[1])} 都灌破、反彈又壓在 {f(L1)} 下＝六年大頂")
     lines.append(f"兩道牆：第一道 {f(L1)}（帶量實體站穩＝止跌確認）；第二道 " + "→".join(f"{f(v)}（{r:g}）" for r, v in w2)
                  + f"，過第一道卻在第二道量縮折返＝大頂之後的大 B 波（彈完再殺大 C）；連過兩道並站穩 {f(H2)}＝月線大四浪完成")
-    return {"T": T, "L1": L1, "H2": H2, "ext": ext, "rb": rb, "w2": [(r, round(v, 2)) for r, v in w2],
+    fr = {"L1": L1, "ext": ext, "band": band, "stage": stage, "clock": clock}
+    cl = _clock_lines(fr) if clock else []
+    if cl:
+        lines[-1:-1] = cl
+        if clock.get("up_days"):
+            lines[1 if mo else 0] = lines[1 if mo else 0].replace("第一個有效反彈（", f"第一個有效反彈（{clock['up_days']} 天 ")
+    return {"T": T, "L1": L1, "H2": H2, "ext": ext, "rb": rb, "w2": [(r, round(v, 2)) for r, v in w2], "clock": clock,
             "band": [round(v, 2) for v in band] if band else None, "ext_band": [round(v, 2) for v in ext_band] if ext_band else None,
             "full": full, "mo": mo, "stage": stage, "dev": dev, "d236": d236, "status": st, "lines": lines}
+
+
+def frame_clock(bars: list, weekly: list, d_l1: str, d_h2: str, d_ext: str, today: str) -> dict:
+    """B124 用戶 11/24「你注意一下時間」：她的判斷都帶時間——
+    ① 37,694→44,911「只花 4 天」；② 五波版的第 4 浪「止跌後只彈 5～10 天」；③「下週同時收週線與 11 月月線」（11/27 週線、11/30 月 K 長下影、守住月 20T）；
+    ④ 換手量要比 11/06（231,828 口）、3 月（302,178 口）那種日線天量。
+    bars＝日 K [{time 'YYYY-MM-DD', open, high, low, close, volume}]（最後一根可能是今天還沒收完）；weekly＝週 K（time＝那週第一天）；日期都是 'YYYY-MM-DD'"""
+    import datetime as _dt
+    days = [str(b["time"])[:10] for b in bars]
+    td = _dt.date.fromisoformat(today)
+    wk = td + _dt.timedelta(days=(4 - td.weekday()) % 7)              # 這週五
+    nm = (td.replace(day=28) + _dt.timedelta(days=4)).replace(day=1)
+    me = nm - _dt.timedelta(days=1)
+    while me.weekday() >= 5:
+        me -= _dt.timedelta(days=1)
+    out = {"today": today, "wk_close": wk.isoformat(), "mo_close": me.isoformat(),
+           "up_days": sum(1 for d in days if d_l1 < d <= d_h2) if d_l1 and d_h2 else None,
+           "reb_days": sum(1 for d in days if d_ext < d <= today) if d_ext else None}
+    vol = {d: float(b.get("volume") or 0) for d, b in zip(days, bars)}
+    if d_ext and vol:
+        prev = [(v, d) for d, v in vol.items() if d < d_ext and d >= (_dt.date.fromisoformat(d_ext) - _dt.timedelta(days=365)).isoformat()]
+        mx = max(prev) if prev else (0, None)
+        reb = [(v, d) for d, v in vol.items() if d >= d_ext]
+        rb = max(reb) if reb else (0, None)
+        out["vol"] = {"l1": vol.get(d_l1), "l1_date": d_l1, "max": mx[0], "max_date": mx[1], "reb": rb[0], "reb_date": rb[1],
+                      "big": bool(vol.get(d_l1) and rb[0] >= vol[d_l1])}
+    mon = today[:7]
+    mb = [b for d, b in zip(days, bars) if d.startswith(mon)]
+    if mb:
+        o, lo, c = float(mb[0]["open"]), min(float(b["low"]) for b in mb), float(mb[-1]["close"])
+        out["month"] = {"open": o, "low": lo, "close": c, "shadow": round(min(o, c) - lo, 2)}
+    mc = {}                                                            # 月收盤：週 K 用那週週五落在哪個月；本月用日 K 現價
+    for w in weekly or []:
+        d = _dt.date.fromisoformat(str(w["time"])[:10]) + _dt.timedelta(days=4)
+        mc[d.isoformat()[:7]] = float(w["close"])
+    if mb:
+        mc[mon] = float(mb[-1]["close"])
+    ks = sorted(mc)
+    if len(ks) >= 20:
+        out["m20"] = round(sum(mc[k] for k in ks[-20:]) / 20, 2)
+    return out
+
+
+def _clock_lines(fr: dict) -> list:
+    """B124：時間、量能兩句（給 big_frame 的文字和結論卡）"""
+    ck = fr.get("clock") or {}
+    if not ck:
+        return []
+    f = _fmt
+    md = lambda d: f"{int(d[5:7])}/{int(d[8:10])}"                    # noqa: E731
+    wd = lambda d: "一二三四五六日"[__import__("datetime").date.fromisoformat(d).weekday()]   # noqa: E731
+    L1, ext, band = fr["L1"], fr["ext"], fr.get("band")
+    out = []
+    t = []
+    if ck.get("reb_days") is not None:
+        t.append(f"{f(ext)} 之後第 {ck['reb_days']} 個交易日" + ("（五波版的第 4 浪只彈 5～10 天、頂過不了 " + f(L1) + "）" if fr["stage"] in ("w0", "w1") or ck["reb_days"] <= 10 else ""))
+    mo = ck.get("month")
+    m20 = ck.get("m20")
+    t.append(f"{md(ck['wk_close'])}（{wd(ck['wk_close'])}）收週線、{md(ck['mo_close'])}（{wd(ck['mo_close'])}）收月線："
+             + (f"月 K 要在尋底帶 {f(band[0])}～{f(band[1])} 之上止跌" if band else "月 K 要止跌")
+             + "、留長下影線" + (f"、守住月 20T（約 {f(m20)}）" if m20 else "")
+             + (f"；這個月開 {f(mo['open'])}、最低 {f(mo['low'])}、現在 {f(mo['close'])}，下影線 {f(mo['shadow'])} 點" if mo else "")
+             + (("（月 20T 現在" + ("守住" if mo and mo["close"] >= m20 else "還沒站回") + "）") if m20 and mo else ""))
+    out.append("時間：" + "；".join(t))
+    v = ck.get("vol")
+    if v and v.get("l1"):
+        out.append(f"量：反彈以來最大 {f(v['reb'])} 口（{md(v['reb_date'])}）" + ("，已超過" if v["big"] else "，還沒超過")
+                   + f" {md(v['l1_date'])} 的 {f(v['l1'])} 口" + (f"、一年最大 {f(v['max'])} 口（{md(v['max_date'])}）" if v.get("max") else "")
+                   + ("——有換手量" if v["big"] else "——還不算日線級換手天量，「帶量站穩」要再看"))
+    return out
 
 
 def _frame_card(t: dict, fr: dict, price: float, bars15: Optional[list], atr15: Optional[float], atr60: Optional[float]) -> dict:
@@ -1077,7 +1153,7 @@ def _frame_card(t: dict, fr: dict, price: float, bars15: Optional[list], atr15: 
     cl = [float(b["close"]) for b in (bars15 or []) if b.get("close") is not None]
     if len(cl) >= 5:
         ma15 = round(sum(cl[-5:]) / 5, 2)
-    pos = [x for x in fr["lines"][:-2 if fr["band"] else -1]]
+    pos = [x for x in fr["lines"] if not x.startswith(("尋底帶", "兩道牆"))]
     walls = [(w382, "第二道牆 0.382"), (w5, "第二道牆 0.5"), (w618, "第二道牆 0.618"), (H2, "前高")]
     up_v = next(((v, n) for v, n in walls if v > price), None)
     band, eb = fr["band"], fr["ext_band"]
@@ -1144,7 +1220,7 @@ def _mapframe(fr: dict, price: float) -> dict:
     versions = [
         {"title": "第一類｜五波下跌", "tag": "第 3 浪主殺 → 第 4 浪 → 第 5 浪破底", "now": dev == 1,
          "pts": [{"p": ext, "label": f(ext)}, {"p": L1 - 0.3 * (L1 - ext), "label": "第 4 浪"}, {"p": bot, "label": f"第 5 浪 {f(bot)}" if eb else "第 5 浪"}],
-         "notes": [f"弱彈 5～10 天、頂過不了 {f(L1)}", "再殺第 5 浪破底" + (f"，考驗 {f(bot)}" if eb else ""),
+         "notes": [f"弱彈 5～10 天、頂過不了 {f(L1)}" + (f"（現在第 {(fr.get('clock') or {}).get('reb_days')} 天）" if (fr.get("clock") or {}).get("reb_days") else ""), "再殺第 5 浪破底" + (f"，考驗 {f(bot)}" if eb else ""),
                    f"現價已站上 {f(L1)}：收盤守住就淘汰" if price >= L1 else ""]},
         {"title": "第二類｜過第一道、卡第二道", "tag": "六年大頂之後的大 B 波", "now": dev == 2 and price < w618,
          "pts": [{"p": ext, "label": f(ext)}, {"p": L1, "label": "站上"}, {"p": w5, "label": "量縮遇壓"}, {"p": ext - 0.06 * (T - ext), "label": "大 C 破底"}],
@@ -1160,7 +1236,8 @@ def _mapframe(fr: dict, price: float) -> dict:
             "sub": f"第一道牆 {f(L1)}；第二道牆 {f(w382)}～{f(w618)}（{f(T)}→{f(ext)} 的 0.382～0.618）；前高 {f(H2)}",
             "path": path, "lines": lines, "versions": versions,
             "common": f"共同事實｜{f(T)}→{f(ext)} 跌 {f(T - ext)} 點，反彈最高 {f(rb)}",
-            "fork": f"真正分歧｜第二道牆 {f(w382)}～{f(w618)} 量縮折返（大 B 波）vs 站穩 {f(H2)}（大四浪完成）"}
+            "fork": f"真正分歧｜第二道牆 {f(w382)}～{f(w618)} 量縮折返（大 B 波）vs 站穩 {f(H2)}（大四浪完成）",
+            "when": [x.replace("時間：", "⏱ ", 1).replace("量：", "🔊 ", 1) for x in _clock_lines(fr)]}
 
 
 def pierce_reclaim(bars: list, lines: list, side: int, atr15: Optional[float], atr60: Optional[float],

@@ -914,7 +914,7 @@ def _full_from(waves: dict, sm: dict, big: list) -> Optional[float]:
     return next((float(q["p"]) for q in reversed(bp) if str(q.get("date")) < td and q["t"] != T["t"]), None)
 
 
-def _frame_for(t: dict, waves: dict, sm: dict, price: float) -> Optional[dict]:
+def _frame_for(t: dict, waves: dict, sm: dict, price: float, snap: Optional[dict] = None) -> Optional[dict]:
     """B123：big_frame 要的東西——全波段起點（17,015）、日線前面的大低點（31,740）、月線級低點（8,268、12,652）、最近一段 15 分上漲"""
     import stock_wave as SW
     T = t["big"]["T"]
@@ -942,7 +942,19 @@ def _frame_for(t: dict, waves: dict, sm: dict, price: float) -> Optional[dict]:
         lo = [q["p"] for q in pv[:jh] if q["t"] == "L"]
         if lo:
             leg = (lo[-1], pv[jh]["p"])
-    return SW.big_frame(t, price, full=t.get("full"), lows=lows, cyc=cyc, leg=leg)
+    clock = None
+    try:                                                              # B124 她的時間條件：幾天、週線／月線哪天收、換手量
+        ch = (snap or {}).get("chart") or {}
+        bars = ch.get("bars") or []
+        dts = {}
+        for q in list(sm.get("pivots") or []) + ([sm["tentative"]] if sm.get("tentative") else []):
+            dts.setdefault((round(float(q["p"]), 2), q["t"]), str(q.get("date") or "")[:10])
+        dd = lambda k, tt: dts.get((round(float(t["big"][k]), 2), tt)) or ""   # noqa: E731
+        if bars:
+            clock = SW.frame_clock(bars, ch.get("weekly") or [], dd("L1", "L"), dd("H2", "H"), dd("ext", "L"), str(bars[-1]["time"])[:10])
+    except Exception as e:     # noqa: BLE001
+        log.warning(f"[wave] 兩道牆的時間失敗：{e}")
+    return SW.big_frame(t, price, full=t.get("full"), lows=lows, cyc=cyc, leg=leg, clock=clock)
 
 
 def _tiers_inputs(big: list, n60: dict, P: dict, sm: dict, a60: Optional[dict]):
@@ -1045,7 +1057,7 @@ def _tiers(snap: dict, waves: dict, closes, price: float, a60: Optional[dict] = 
     if not t:
         return
     try:
-        fr = _frame_for(t, waves, sm, price) if _tiers_rank(t) < 3 and t.get("tag") not in ("up5", "52") else None
+        fr = _frame_for(t, waves, sm, price, snap) if _tiers_rank(t) < 3 and t.get("tag") not in ("up5", "52") else None
     except Exception as e:     # noqa: BLE001
         log.warning(f"[wave] 兩道牆失敗：{e}")
         fr = None

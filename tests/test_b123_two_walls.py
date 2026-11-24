@@ -86,3 +86,34 @@ def test_no_frame_for_her_52():
     assert t is None or W.big_frame(t, 42500.0) is None
     t2 = _t(40324.0)                                          # 沒跌破起漲點（只給到 31,740 之前的低點）→ 不升級
     assert W.big_frame(t2, 40324.0, 17015.0, lows=[31740.0, 39442.0]) and W.big_frame(t2, 40324.0, 17015.0, lows=[31740.0, 33000.0]) is None
+
+
+def _bars():
+    """日 K：11/06 37,694（232,573 口）、11/12 44,911、11/23 33,719（205,533 口）、11/24 還沒收"""
+    import datetime as dt
+    out, d = [], dt.date(2026, 10, 1)
+    while d <= dt.date(2026, 11, 24):
+        if d.weekday() < 5:
+            k = d.isoformat()
+            v = {"2026-11-06": 232573, "2026-11-23": 205533, "2026-10-15": 150000}.get(k, 100000)
+            lo = {"2026-11-23": 33719, "2026-11-06": 37694}.get(k, 40000)
+            out.append({"time": k, "open": 45395 if k == "2026-11-02" else 41000, "high": 42000, "low": lo, "close": 40324 if k == "2026-11-24" else 41000, "volume": v})
+        d += dt.timedelta(days=1)
+    out = [b for b in out if b["time"] not in ("2026-11-09",)] + []
+    return out
+
+
+def test_b124_clock():
+    """B124 用戶：注意時間——她的條件都帶天數、收線日期、換手量"""
+    wk = [{"time": f"{2025 + (m - 1) // 12}-{(m - 1) % 12 + 1:02d}-01", "close": 30000.0} for m in range(1, 24)]
+    ck = W.frame_clock(_bars(), wk, "2026-11-06", "2026-11-12", "2026-11-23", "2026-11-24")
+    assert ck["wk_close"] == "2026-11-27" and ck["mo_close"] == "2026-11-30"          # 她：11/27 收週線、11/30 月 K
+    assert ck["reb_days"] == 1 and ck["up_days"] == 3                                   # 合成資料拿掉了 11/9（4 天→3 天）
+    assert ck["vol"]["l1"] == 232573 and ck["vol"]["reb"] == 205533 and not ck["vol"]["big"]
+    assert ck["month"]["low"] == 33719 and ck["month"]["shadow"] == 40324 - 33719 and ck["m20"] is not None
+    t = _t(40324.0)
+    fr = W.big_frame(t, 40324.0, 17015.0, lows=[31740.0, 39442.0], clock=ck)
+    assert any(x.startswith("時間：") and "11/27（五）收週線" in x and "11/30（一）收月線" in x for x in fr["lines"])
+    assert any(x.startswith("量：") and "還沒超過" in x for x in fr["lines"])
+    c = W.plan_card({**t, "frame": fr}, 40324.0)
+    assert any(x.startswith("時間：") for x in c["pos"]) and "現在第 1 天" in c["map"]["versions"][0]["notes"][0]
