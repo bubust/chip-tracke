@@ -983,10 +983,184 @@ def structure(big: list, small: list, price: float, ma5: Optional[float] = None,
     else:
         lines.append(f"進場：先看 0.382 {_fmt(fib[0.382])} 有沒有真的{'過' if d < 0 else '破'}，之後壓回的第二隻腳（{s_up}的 0.382～0.5）才考慮；"
                      "現在追沒有肉")
-    return {"dir": d, "case": case, "tag": tag, "labels": lb, "ma5": ma5,
+    return {"dir": d, "case": case, "tag": tag, "labels": lb, "ma5": ma5, "full": full,
             "big": {"T": T["p"], "L1": L1["p"], "H2": H2["p"], "ext": ext},
             "small": small_out, "fib": {str(r): round(v, 2) for r, v in fib.items()}, "rebound": round(R, 2),
             "gate1": gate1, "gate2": gate2, "fork": fork, "ext3": ext3, "entry": entry, "status": status, "lines": lines}
+
+
+def merge_pause(big: list) -> list:
+    """B123 她 11/22：50,265→37,694 中間雖有 45,523→47,607 的小停頓，但日線 5T／12T 下壓斜率沒被切開＝同一筆日線下跌。
+    最後一段又創新極值（33,719 破 37,694）時，往前看 a(50,265) b(45,523) c(47,607) d(37,694)：c 沒過 a、d 破 b，
+    而且停頓 b→c 不到 a→b 的一半 → 拿掉 b、c，日線變成 a→d→H2→現在。沒有創新極值（例：42,371 沒破 37,694）就不動"""
+    if len(big) < 6:
+        return big
+    a, b, c, d, h2, x = big[-6:]
+    if not (a["t"] == c["t"] == h2["t"] != b["t"] == d["t"] == x["t"]):
+        return big
+    s = 1 if a["t"] == "H" else -1                                    # 1＝a 是高點（一路往下）
+    if (d["p"] - x["p"]) * s <= 0 or (a["p"] - c["p"]) * s <= 0 or (b["p"] - d["p"]) * s <= 0:
+        return big
+    if abs(c["p"] - b["p"]) >= 0.5 * abs(a["p"] - b["p"]):
+        return big
+    return big[:-5] + big[-3:]
+
+
+def big_frame(t: dict, price: float, full: Optional[float] = None, lows: Optional[list] = None,
+              cyc: Optional[list] = None, leg: Optional[tuple] = None) -> Optional[dict]:
+    """B123 她 11/22～11/23（T3 MONTHLY／DAILY MOTHER MAP 四張）：日線 T→L1→H2→ext 三筆跌完（ext 破 L1）之後的反彈怎麼看。
+    - 第一道牆＝L1（37,694，1、4 重疊魔咒）；第二道牆＝T→ext 的 0.382／0.5／0.618（40,040／41,992／43,944）；再上去前高 H2（44,911）
+    - 尋底帶＝full→T 的 0.5（33,640）～H2 往下等幅 T−L1（32,340）；破了看延伸區＝前一個日線大低點（31,740）～full→T 的 0.618（29,717）
+    - 三種發展：① 五波下跌（反彈壓在 L1 下面＝第 4 浪，再殺第 5 浪）② 過第一道、卡第二道＝大 B 波（之後大 C 破底）③ 兩道都站穩、攻回 H2＝月線大四浪完成
+    t＝structure()；full＝全波段起點（17,015）；lows＝T 之前的日線低點（最後一個＝T 的起漲點 39,442，現在這段要跌破它才算升級；也拿來找 31,740）；cyc＝月線級的低點（8,268、12,652）；
+    leg＝最近一段 15 分上漲 (lo, hi)（短線鎖利的 0.236，她 11/23：36,280→40,324 的 0.236＝39,370）。不是這種結構回 None"""
+    if not t or t.get("dir") != -1 or t.get("case") != "3":
+        return None
+    T, L1, H2, ext = (float(t["big"][k]) for k in ("T", "L1", "H2", "ext"))
+    price = float(price)
+    if not (T > H2 > L1 > ext) or price <= ext:
+        return None
+    if not lows or ext >= float(lows[-1]):                            # 她：幾乎把起漲那段吐回（33,719 破 50,265 的起漲點 39,442）＝修正跨級數升級
+        return None
+    span = T - ext
+    w2 = [(r, ext + r * span) for r in (0.382, 0.5, 0.618)]
+    w382, w5, w618 = (v for _, v in w2)
+    band = ext_band = None
+    if full and full < ext:
+        b5, ca = full + 0.5 * (T - full), H2 - (T - L1)
+        e618 = T - 0.618 * (T - full)
+        band = sorted([b5, ca], reverse=True)
+        pl = [float(v) for v in (lows or []) if e618 < float(v) < band[-1]]
+        ext_band = [pl[-1] if pl else band[-1], e618]
+    rb = max(price, float(t.get("rebound") or price))                 # 反彈最高到哪
+    stage = ("top" if price >= H2 else "w2p" if price >= w618 else "w0" if price < L1 else
+             "w2" if price >= w382 or rb >= w382 else "w1")                      # 碰過第二道牆又跌回第一道牆下面＝w0
+    dev = 3 if stage == "top" else 1 if stage == "w0" else 2
+    d236 = None
+    if leg and leg[1] > leg[0] and leg[1] > price - 1e-9 * price:
+        d236 = {"lo": float(leg[0]), "hi": float(leg[1]), "v": round(leg[1] - 0.236 * (leg[1] - leg[0]), 2)}
+    mo = None
+    if cyc and len(cyc) >= 2:
+        mo = {"a": float(cyc[0]), "b": float(cyc[1])}
+    f = _fmt
+    w2t = f"{f(w382)}～{f(w618)}"
+    st = {"w0": f"反彈還在第一道牆 {f(L1)} 下面：五波下跌的第 4 浪（頂過不了 {f(L1)}、之後再殺第 5 浪），還是三波末端已經跌完（要帶量實體站穩 {f(L1)} 才算），還分不出來",
+          "w1": f"站上第一道牆 {f(L1)}（要帶量實體收盤站穩才算）＝打破 1、4 重疊，五波下跌的看法淘汰；{f(T)}→{f(ext)} 這一段結束，下一關第二道牆 {w2t}",
+          "w2": f"{f(T)}→{f(ext)} 這一段正式結束；站上第一道牆 {f(L1)}、碰到第二道牆 {w2t}（最高 {f(rb)}）——先當反彈大 B 波，"
+                f"之後在 {w2t} 的發展才是分辨大 B 波還是重新啟動的關鍵",
+          "w2p": f"過了第二道牆 0.618 {f(w618)}，剩前高 {f(H2)}：站穩就是月線大四浪完成",
+          "top": f"連過兩道牆並站上前高 {f(H2)}＝月線大四浪完成，轉看第五大浪創高（要守穩 {f(H2)}）"}[stage]
+    lines = [f"日線：{f(T)}→{f(L1)} 是同一筆下跌（中間的小停頓不算，5T、12T 下壓斜率沒切開），{f(L1)}→{f(H2)} 是第一個有效反彈"
+             f"（+{f(H2 - L1)} 點），{f(H2)}→{f(ext)} 再跌 {f(H2 - ext)} 點",
+             f"現在 {f(price)}：{st}"]
+    if mo:
+        lines.insert(0, f"月線：{f(T)} 是從 {f(mo['a'])} 起算走完五浪的六年大頂，還是從 {f(mo['b'])} 起算、大三浪之後的大四浪洗盤？"
+                        + (f"大四浪的底線 {f(band[0])}～{f(band[1])}（極限 {f(ext_band[1])}）" if band else ""))
+    if band:
+        lines.append(f"尋底帶 {f(band[0])}～{f(band[1])}（{f(full)}→{f(T)} 的 0.5、{f(H2)} 往下等幅）；跌破看延伸區 {f(ext_band[0])}～{f(ext_band[1])}"
+                     f"（{f(full)}→{f(T)} 的 0.618）；連 {f(ext_band[1])} 都灌破、反彈又壓在 {f(L1)} 下＝六年大頂")
+    lines.append(f"兩道牆：第一道 {f(L1)}（帶量實體站穩＝止跌確認）；第二道 " + "→".join(f"{f(v)}（{r:g}）" for r, v in w2)
+                 + f"，過第一道卻在第二道量縮折返＝大頂之後的大 B 波（彈完再殺大 C）；連過兩道並站穩 {f(H2)}＝月線大四浪完成")
+    return {"T": T, "L1": L1, "H2": H2, "ext": ext, "rb": rb, "w2": [(r, round(v, 2)) for r, v in w2],
+            "band": [round(v, 2) for v in band] if band else None, "ext_band": [round(v, 2) for v in ext_band] if ext_band else None,
+            "full": full, "mo": mo, "stage": stage, "dev": dev, "d236": d236, "status": st, "lines": lines}
+
+
+def _frame_card(t: dict, fr: dict, price: float, bars15: Optional[list], atr15: Optional[float], atr60: Optional[float]) -> dict:
+    """B123：big_frame 的結論卡（位階、怎麼做、上方／下方／改判、母圖）"""
+    f = _fmt
+    T, L1, H2, ext, rb, stage, d236 = fr["T"], fr["L1"], fr["H2"], fr["ext"], fr["rb"], fr["stage"], fr["d236"]
+    w382, w5, w618 = (v for _, v in fr["w2"])
+    pct = lambda v: round((v / price - 1) * 100, 2)                   # noqa: E731
+    tile = lambda v, name, act: {"price": round(v, 2), "dist_pct": pct(v), "name": name, "act": act}   # noqa: E731
+    ma15 = None
+    cl = [float(b["close"]) for b in (bars15 or []) if b.get("close") is not None]
+    if len(cl) >= 5:
+        ma15 = round(sum(cl[-5:]) / 5, 2)
+    pos = [x for x in fr["lines"][:-2 if fr["band"] else -1]]
+    walls = [(w382, "第二道牆 0.382"), (w5, "第二道牆 0.5"), (w618, "第二道牆 0.618"), (H2, "前高")]
+    up_v = next(((v, n) for v, n in walls if v > price), None)
+    band, eb = fr["band"], fr["ext_band"]
+    longs = [(v, n) for v, n in ([(L1, "第一道牆")] + ([(d236["v"], "短線 0.236")] if d236 else [])) if v < price]
+    shorts = [(v, n) for v, n in walls if v > price]
+    if stage == "w0":
+        shape = "日線第三筆跌完後的反彈：五波下跌的第 4 浪，還是三波末端已經跌完，要看能不能帶量站穩第一道牆"
+        plays = [{"k": "wait", "tag": "不追", "t": f"反彈 5～10 天壓在 {f(L1)} 下面＝第 4 浪，之後再殺第 5 浪；追多沒有保障"},
+                 {"k": "long", "tag": "做多等確認",
+                  "t": f"帶量實體站穩 {f(L1)} 才算止跌確認、展開多週反彈" + (f"；或尋底帶 {f(band[0])}～{f(band[1])} 止跌拉下影線" if band else "")}]
+        tiles = {"up": tile(L1, "第一道牆", "帶量實體站穩＝止跌確認"),
+                 "down": tile(band[0], "尋底帶上緣", "止跌拉下影線") if band and band[0] < price else tile(ext, "低點", "跌破＝還在跌"),
+                 "stop": tile(ext, f"{f(ext)} 低點", "跌破＝第 3 浪還沒完") if ext < price else None}
+        flip = f"改判：帶量實體站穩 {f(L1)}＝三波末端已經跌完、五波看法淘汰；跌破 {f(ext)}＝第 3 浪還在走" + (f"，看 {f(band[1])}、{f(eb[0])}～{f(eb[1])}" if band else "")
+    else:
+        shape = "日線三筆跌完後的多週反彈：先當大 B 波；第二道牆量縮折返＝大 B 波，連過兩道並站穩前高＝大四浪完成"
+        lk = []
+        if ma15:
+            lk.append(f"15 分 K 跌破 5 均（現在 {f(ma15)}）")
+        if d236:
+            lk.append(f"跌破 0.236 {f(d236['v'])}（{f(d236['lo'])}→{f(d236['hi'])}）")
+        plays = [{"k": "long", "tag": "波段多單", "t": f"成本比現價低 3,000 點以上的波段多單照抱、做防守；防守線第一道牆 {f(L1)}（收盤跌回下面＝反彈失敗）"},
+                 {"k": "long", "tag": "短線鎖利", "t": ("、或".join(lk) or f"跌回 {f(w382)} 下面") + "，先鎖利"},
+                 {"k": "wait", "tag": "第二道牆",
+                  "t": (f"可以去拼 {f(w5)}～{f(w618)}；" if stage in ("w1", "w2") else "")
+                       + f"在 {f(w382)}～{f(w618)} 量縮折返＝大 B 波，彈完提防大 C 浪再破底；連過兩道並站穩 {f(H2)}＝月線大四浪完成"}]
+        if stage == "top":
+            plays[2] = {"k": "long", "tag": "大四浪完成", "t": f"站穩 {f(H2)}＝月線大四浪完成、轉看第五大浪創高；跌回 {f(H2)} 下面＝假突破"}
+        dn = (tile(d236["v"], "短線 0.236", "跌破先鎖利") if d236 and d236["v"] < price else
+              tile(w382, "第二道牆 0.382", "跌回下面＝站不穩") if w382 < price else tile(L1, "第一道牆", "收盤跌回＝反彈失敗"))
+        tiles = {"up": tile(up_v[0], up_v[1], "量縮折返＝大 B 波" if up_v[0] < H2 else "站穩＝大四浪完成") if up_v else None,
+                 "down": dn, "stop": tile(L1, "第一道牆", "收盤跌回＝回到五波下跌")}
+        flip = (f"改判：日線收盤跌回 {f(L1)} 下面＝站穩失敗，回到五波下跌（第 4 浪）的看法，之後看第 5 浪破底"
+                + (f"、{f(eb[1])}" if eb else "") + f"；連過兩道牆並站穩 {f(H2)}＝月線大四浪完成")
+    sig = None
+    if bars15:
+        cands = [x for x in (pierce_reclaim(bars15, longs, 1, atr15, atr60) if longs else None,
+                             pierce_reclaim(bars15, shorts, -1, atr15, atr60) if shorts else None) if x]
+        sig = min(cands, key=lambda x: x["ago"]) if cands else None
+    try:
+        mp = _mapframe(fr, price)
+    except Exception:     # noqa: BLE001
+        mp = None
+    return {"pos": pos, "shape": shape, "plays": plays, "exit": EXIT, "flip": flip, "method": METHOD, "tiles": tiles, "signal": sig,
+            "steps": None, "map": mp, "ma15": ma15,
+            "watch": {"long": [(round(v, 2), n) for v, n in longs], "short": [(round(v, 2), n) for v, n in shorts]}}
+
+
+def _mapframe(fr: dict, price: float) -> dict:
+    """B123 母圖：T→L1→H2→ext→（反彈高）→現在，兩道牆畫虛線，三種發展並排（她 11/22 的 02～04 張）"""
+    f = _fmt
+    T, L1, H2, ext, rb, dev, d236 = fr["T"], fr["L1"], fr["H2"], fr["ext"], fr["rb"], fr["dev"], fr["d236"]
+    w382, w5, w618 = (v for _, v in fr["w2"])
+    eb = fr["ext_band"]
+    path = [{"p": T, "label": "大頂？"}, {"p": L1, "label": "第 1 筆低點"}, {"p": H2, "label": "第一個反彈"}, {"p": ext, "label": "第 3 筆"}]
+    if rb - price > 0.1 * (rb - ext):
+        path.append({"p": rb, "label": "反彈高"})
+    path.append({"p": price, "label": "現在", "now": True})
+    lines = [{"p": w618, "label": f"第二道牆 0.618 {f(w618)}", "kind": "up2"}, {"p": w382, "label": f"第二道牆 0.382 {f(w382)}", "kind": "up"},
+             {"p": L1, "label": f"第一道牆 {f(L1)}", "kind": "down2"}]
+    if d236 and dev == 2 and d236["v"] < price:
+        lines.insert(2, {"p": d236["v"], "label": f"短線鎖利 0.236 {f(d236['v'])}", "kind": "down"})
+    bot = eb[1] if eb else ext - 0.25 * (T - ext)
+    versions = [
+        {"title": "第一類｜五波下跌", "tag": "第 3 浪主殺 → 第 4 浪 → 第 5 浪破底", "now": dev == 1,
+         "pts": [{"p": ext, "label": f(ext)}, {"p": L1 - 0.3 * (L1 - ext), "label": "第 4 浪"}, {"p": bot, "label": f"第 5 浪 {f(bot)}" if eb else "第 5 浪"}],
+         "notes": [f"弱彈 5～10 天、頂過不了 {f(L1)}", "再殺第 5 浪破底" + (f"，考驗 {f(bot)}" if eb else ""),
+                   f"現價已站上 {f(L1)}：收盤守住就淘汰" if price >= L1 else ""]},
+        {"title": "第二類｜過第一道、卡第二道", "tag": "六年大頂之後的大 B 波", "now": dev == 2 and price < w618,
+         "pts": [{"p": ext, "label": f(ext)}, {"p": L1, "label": "站上"}, {"p": w5, "label": "量縮遇壓"}, {"p": ext - 0.06 * (T - ext), "label": "大 C 破底"}],
+         "notes": [f"{f(w382)}～{f(w618)} 量縮鈍化", "前面三筆＝A-a／A-b／A-c", "彈完提防大 C 浪再破底"]},
+        {"title": "第三類｜兩道牆都站穩", "tag": "月線大四浪完成", "now": dev == 3 or price >= w618,
+         "pts": [{"p": ext, "label": f(ext)}, {"p": L1, "label": ""}, {"p": w618, "label": "站穩"}, {"p": H2, "label": f(H2)},
+                 {"p": H2 + 0.12 * (T - ext), "label": "第五大浪"}],
+         "notes": [f"強勢站穩 {f(w5)}～{f(w618)}", f"攻回 {f(H2)}", "Y-a／Y-b／Y-c 完成，轉看創高"]},
+    ]
+    for v in versions:
+        v["notes"] = [x for x in v["notes"] if x]
+    return {"title": f"{f(T)}→{f(ext)}｜三筆跌完，反彈要闖兩道牆",
+            "sub": f"第一道牆 {f(L1)}；第二道牆 {f(w382)}～{f(w618)}（{f(T)}→{f(ext)} 的 0.382～0.618）；前高 {f(H2)}",
+            "path": path, "lines": lines, "versions": versions,
+            "common": f"共同事實｜{f(T)}→{f(ext)} 跌 {f(T - ext)} 點，反彈最高 {f(rb)}",
+            "fork": f"真正分歧｜第二道牆 {f(w382)}～{f(w618)} 量縮折返（大 B 波）vs 站穩 {f(H2)}（大四浪完成）"}
 
 
 def pierce_reclaim(bars: list, lines: list, side: int, atr15: Optional[float], atr60: Optional[float],
@@ -1120,6 +1294,8 @@ def plan_card(t: dict, price: float, bars15: Optional[list] = None, atr15: Optio
     t＝structure() 的結果。回 {pos: [兩句位階], shape: 波形, plays: [{k, tag, t}], exit, flip, method, tiles, signal, watch}"""
     if not t:
         return None
+    if t.get("frame"):                                                # B123 她 11/22～11/23：三筆跌完、反彈闖兩道牆
+        return _frame_card(t, t["frame"], float(price), bars15, atr15, atr60)
     lb, u = t["labels"], -t["dir"]
     pu = ((t.get("ext3") or {}).get("paths") or {}).get("push") or {}
     sb = pu.get("sub") or {}
