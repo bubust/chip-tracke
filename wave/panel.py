@@ -681,6 +681,7 @@ def _nest_prices(snap: dict) -> list:
             out += [fr[k] for k in ("T", "L1", "H2", "ext", "rb")] + [v for _, v in fr["w2"]] + list(fr.get("band") or []) + list(fr.get("ext_band") or [])
             out += [x for x in (fr.get("full"), (fr.get("d236") or {}).get("v"), (fr.get("d236") or {}).get("lo")) if x]
             out += list((fr.get("mo") or {}).values())
+            out += [z[k] for z in fr.get("supply") or [] for k in ("lo", "hi", "vwap")]           # B125 套牢區
         if tz.get("gate1"):
             out += [v for v, _ in tz["gate1"]["lv"]] + [v for v, _ in ((tz.get("gate2") or {}).get("lv") or [])]
             out += [float(v) for v in (tz.get("fib") or {}).values()] + list(((tz.get("entry") or {}).get("zone")) or [])

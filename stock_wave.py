@@ -1007,7 +1007,8 @@ def merge_pause(big: list) -> list:
 
 
 def big_frame(t: dict, price: float, full: Optional[float] = None, lows: Optional[list] = None,
-              cyc: Optional[list] = None, leg: Optional[tuple] = None, clock: Optional[dict] = None) -> Optional[dict]:
+              cyc: Optional[list] = None, leg: Optional[tuple] = None, clock: Optional[dict] = None,
+              supply: Optional[list] = None) -> Optional[dict]:
     """B123 她 11/22～11/23（T3 MONTHLY／DAILY MOTHER MAP 四張）：日線 T→L1→H2→ext 三筆跌完（ext 破 L1）之後的反彈怎麼看。
     - 第一道牆＝L1（37,694，1、4 重疊魔咒）；第二道牆＝T→ext 的 0.382／0.5／0.618（40,040／41,992／43,944）；再上去前高 H2（44,911）
     - 尋底帶＝full→T 的 0.5（33,640）～H2 往下等幅 T−L1（32,340）；破了看延伸區＝前一個日線大低點（31,740）～full→T 的 0.618（29,717）
@@ -1063,11 +1064,14 @@ def big_frame(t: dict, price: float, full: Optional[float] = None, lows: Optiona
                  + f"，過第一道卻在第二道量縮折返＝大頂之後的大 B 波（彈完再殺大 C）；連過兩道並站穩 {f(H2)}＝月線大四浪完成")
     fr = {"L1": L1, "ext": ext, "band": band, "stage": stage, "clock": clock}
     cl = _clock_lines(fr) if clock else []
+    sl = _supply_line(supply, H2, ext, price)
+    if sl:
+        cl.append(sl)
     if cl:
         lines[-1:-1] = cl
-        if clock.get("up_days"):
+        if clock and clock.get("up_days"):
             lines[1 if mo else 0] = lines[1 if mo else 0].replace("第一個有效反彈（", f"第一個有效反彈（{clock['up_days']} 天 ")
-    return {"T": T, "L1": L1, "H2": H2, "ext": ext, "rb": rb, "w2": [(r, round(v, 2)) for r, v in w2], "clock": clock,
+    return {"T": T, "L1": L1, "H2": H2, "ext": ext, "rb": rb, "w2": [(r, round(v, 2)) for r, v in w2], "clock": clock, "supply": supply or [],
             "band": [round(v, 2) for v in band] if band else None, "ext_band": [round(v, 2) for v in ext_band] if ext_band else None,
             "full": full, "mo": mo, "stage": stage, "dev": dev, "d236": d236, "status": st, "lines": lines}
 
@@ -1142,6 +1146,19 @@ def _clock_lines(fr: dict) -> list:
     return out
 
 
+def _supply_line(supply: Optional[list], H2: float, ext: float, price: float) -> Optional[str]:
+    """B125 用戶 11/24「把量能分析加進來」：她 11/23 的 39,500～41,500 套牢賣壓＝44,911→33,719 這段下跌的成交分布最密的地方"""
+    if not supply:
+        return None
+    f = _fmt
+    sd = {"up": "在現價上面＝反彈到這裡會湧出解套賣壓", "at": "現價就在裡面＝正在消化解套賣壓", "down": "已經站上＝這段的換手成本，回測要守"}
+    parts = []
+    for z in supply[:2]:
+        when = f"，{z['first']}～{z['last']} 在這裡換手" if z.get("first") and z.get("last") and z["first"] != z["last"] else ""
+        parts.append(f"{f(z['lo'])}～{f(z['hi'])} 占 {z['share']:.0%}（平均成本 {f(z['vwap'])}{when}）{sd[z['side']]}")
+    return f"套牢區（{f(H2)}→{f(ext)} 這段下跌的成交分布，60 分 K 的量攤到每個價位）：" + "；".join(parts)
+
+
 def _frame_card(t: dict, fr: dict, price: float, bars15: Optional[list], atr15: Optional[float], atr60: Optional[float]) -> dict:
     """B123：big_frame 的結論卡（位階、怎麼做、上方／下方／改判、母圖）"""
     f = _fmt
@@ -1180,8 +1197,15 @@ def _frame_card(t: dict, fr: dict, price: float, bars15: Optional[list], atr15: 
                  {"k": "wait", "tag": "第二道牆",
                   "t": (f"可以去拼 {f(w5)}～{f(w618)}；" if stage in ("w1", "w2") else "")
                        + f"在 {f(w382)}～{f(w618)} 量縮折返＝大 B 波，彈完提防大 C 浪再破底；連過兩道並站穩 {f(H2)}＝月線大四浪完成"}]
+        sup = [z for z in fr.get("supply") or [] if z["side"] in ("up", "at")]
+        if sup:
+            z = min(sup, key=lambda z: z["lo"])
+            plays.insert(2, {"k": "wait", "tag": "套牢賣壓",
+                             "t": f"{f(z['lo'])}～{f(z['hi'])}（{f(H2)} 下來這段 {z['share']:.0%} 的量在這裡成交、平均成本 {f(z['vwap'])}）"
+                                  + ("：現價就在裡面，開高容易湧出解套賣壓，不追高" if z["side"] == "at" else "：反彈到這裡容易遇到解套賣壓")
+                                  + (f"；再上面 {f(sup[1]['lo'])}～{f(sup[1]['hi'])}" if len(sup) > 1 and sup[1] is not z else "")})
         if stage == "top":
-            plays[2] = {"k": "long", "tag": "大四浪完成", "t": f"站穩 {f(H2)}＝月線大四浪完成、轉看第五大浪創高；跌回 {f(H2)} 下面＝假突破"}
+            plays[-1] = {"k": "long", "tag": "大四浪完成", "t": f"站穩 {f(H2)}＝月線大四浪完成、轉看第五大浪創高；跌回 {f(H2)} 下面＝假突破"}
         dn = (tile(d236["v"], "短線 0.236", "跌破先鎖利") if d236 and d236["v"] < price else
               tile(w382, "第二道牆 0.382", "跌回下面＝站不穩") if w382 < price else tile(L1, "第一道牆", "收盤跌回＝反彈失敗"))
         tiles = {"up": tile(up_v[0], up_v[1], "量縮折返＝大 B 波" if up_v[0] < H2 else "站穩＝大四浪完成") if up_v else None,
@@ -1237,7 +1261,8 @@ def _mapframe(fr: dict, price: float) -> dict:
             "path": path, "lines": lines, "versions": versions,
             "common": f"共同事實｜{f(T)}→{f(ext)} 跌 {f(T - ext)} 點，反彈最高 {f(rb)}",
             "fork": f"真正分歧｜第二道牆 {f(w382)}～{f(w618)} 量縮折返（大 B 波）vs 站穩 {f(H2)}（大四浪完成）",
-            "when": [x.replace("時間：", "⏱ ", 1).replace("量：", "🔊 ", 1) for x in _clock_lines(fr)]}
+            "when": [x.replace("時間：", "⏱ ", 1).replace("量：", "🔊 ", 1) for x in _clock_lines(fr)]
+                    + [("🧱 " + x.split("：", 1)[1]) for x in [_supply_line(fr.get("supply"), H2, ext, price)] if x]}
 
 
 def pierce_reclaim(bars: list, lines: list, side: int, atr15: Optional[float], atr60: Optional[float],

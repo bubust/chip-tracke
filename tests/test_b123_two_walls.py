@@ -117,3 +117,33 @@ def test_b124_clock():
     assert any(x.startswith("量：") and "還沒超過" in x for x in fr["lines"])
     c = W.plan_card({**t, "frame": fr}, 40324.0)
     assert any(x.startswith("時間：") for x in c["pos"]) and "現在第 1 天" in c["map"]["versions"][0]["notes"][0]
+
+
+def test_b125_trapped_zone():
+    """B125 她 11/23：開高會湧出 39,500～41,500 的套牢賣壓＝44,911→33,719 這段下跌成交最密的地方"""
+    from wave import volume as V
+    bars, t = [], 0
+    def leg(a, b, n, vol):
+        nonlocal t
+        for k in range(n):
+            p = a + (b - a) * k / n
+            q = a + (b - a) * (k + 1) / n
+            bars.append({"time": t, "high": max(p, q) + 50, "low": min(p, q) - 50, "volume": vol})
+            t += 1
+    leg(44911, 43200, 10, 3000)          # 高檔先換手一陣
+    for _ in range(4):
+        leg(43200, 44300, 3, 3000)
+        leg(44300, 43200, 3, 3000)
+    leg(43200, 41400, 4, 1500)           # 急殺
+    for _ in range(8):                   # 39,000～41,400 箱體來回（量大）
+        leg(41400, 39000, 4, 4000)
+        leg(39000, 41400, 4, 4000)
+    leg(41400, 33719, 12, 2000)          # 再急殺到底
+    z = V.trapped(bars, 40324.0)
+    assert z[0]["side"] == "at" and 38800 <= z[0]["lo"] <= 39300 and 41200 <= z[0]["hi"] <= 41700 and z[0]["share"] > 0.3
+    assert any(x["side"] == "up" and x["lo"] > 42500 for x in z)
+    tt = _t(40324.0)
+    fr = W.big_frame(tt, 40324.0, 17015.0, lows=[31740.0, 39442.0], supply=z)
+    assert any(x.startswith("套牢區") and "現價就在裡面" in x for x in fr["lines"])
+    c = W.plan_card({**tt, "frame": fr}, 40324.0)
+    assert "套牢賣壓" in [p["tag"] for p in c["plays"]] and c["map"]["when"][-1].startswith("🧱 ")

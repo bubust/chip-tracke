@@ -286,3 +286,51 @@ def describe(vx: Optional[dict], tfn: str = "") -> str:
         k = {"vol": "帶量", "dry": "沒量", "mid": "量普通"}.get(e.get("kind"), "")
         s.append(f"{e.get('t') or ''} {k}{'突破' if e['dir'] == 1 else '跌破'} {e['level']:,.0f}".strip())   # 原始 breakouts() 沒有 t（審查 R2 F1）
     return f"{tfn}：" + "；".join(s) if s else f"{tfn}：量能沒有特別訊號"
+
+
+# ── B125 套牢區（她 11/23：明早現貨開高勢必湧出 39,500～41,500 的巨量套牢解套賣壓）──────────────
+TRAP_TH, TRAP_SMOOTH, TRAP_MIN = 0.6, 5, 0.05   # 平滑後 ≥ 高峰 60% 的連續格子＝一區；占這段總量 <5% 不列
+
+
+def trapped(bars: list, price: float, width: Optional[float] = None) -> list:
+    """一段下跌（從高點那根到低點那根）的成交分布：每根的量平均攤到最低～最高經過的格子，5 格平滑後 ≥ 高峰 60% 的連續格子＝一區。
+    在現價上面＝套牢賣壓（反彈到這裡有人等解套）、包住現價＝正在消化、在下面＝這段的換手成本。
+    bars＝[{time, high, low, volume}]（舊→新）；width＝格子寬（點），沒給＝整段幅度 ÷110 取整到 10 點。
+    回 [{lo, hi, share, vwap, first, last, side}]，依占量大到小"""
+    bs = [b for b in bars if vol_of(b) and b.get("high") is not None and b.get("low") is not None]
+    if len(bs) < 5:
+        return []
+    lo0, hi0 = min(float(b["low"]) for b in bs), max(float(b["high"]) for b in bs)
+    w = float(width or max(10.0, round((hi0 - lo0) / 110 / 10) * 10))
+    nb = int((hi0 - lo0) / w) + 1
+    if nb < 8:
+        return []
+    bins, px = np.zeros(nb), np.zeros(nb)
+    who = [[] for _ in range(nb)]
+    for b in bs:
+        j0, j1 = int((float(b["low"]) - lo0) / w), int((float(b["high"]) - lo0) / w)
+        v = float(vol_of(b)) / (j1 - j0 + 1)
+        bins[j0:j1 + 1] += v
+        for j in range(j0, j1 + 1):
+            px[j] += v * (lo0 + (j + 0.5) * w)
+            who[j].append(b.get("time"))
+    tot = bins.sum()
+    sm = np.convolve(bins, np.ones(TRAP_SMOOTH) / TRAP_SMOOTH, "same")
+    on = sm >= TRAP_TH * sm.max()
+    out, i = [], 0
+    while i < nb:
+        if not on[i]:
+            i += 1
+            continue
+        s = i
+        while i < nb and on[i]:
+            i += 1
+        sh = float(bins[s:i].sum() / tot)
+        if sh < TRAP_MIN:
+            continue
+        lo, hi = lo0 + s * w, lo0 + i * w
+        ts = [t for j in range(s, i) for t in who[j] if t is not None]
+        out.append({"lo": round(lo, 2), "hi": round(hi, 2), "share": round(sh, 3), "vwap": round(float(px[s:i].sum() / bins[s:i].sum()), 2),
+                    "first": min(ts) if ts else None, "last": max(ts) if ts else None,
+                    "side": "up" if lo > price else "down" if hi < price else "at"})
+    return sorted(out, key=lambda z: -z["share"])
