@@ -1085,6 +1085,18 @@ def _tiers(snap: dict, waves: dict, closes, price: float, a60: Optional[dict] = 
         ch, it = snap.get("chart") or {}, snap.get("intra") or {}
         b15 = [b for b in ch.get("i15") or [] if not b.get("partial")]
         card = SW.plan_card(t, price, b15, (it.get("m15") or {}).get("atr"), it.get("atr"))
+        if card and t.get("frame"):                                   # B126 切週期，結論卡跟著換
+            pv, m5 = {}, {}
+            for tf, wk, ck_ in (("1wk", "mid", None), ("60m", "intra", "i60"), ("30m", "intra30", "i30"), ("15m", "intra15", "i15")):
+                w_ = waves.get(wk) or {}
+                ps = [{"p": float(q["p"]), "t": q["t"]} for q in w_.get("pivots") or []]
+                if w_.get("tentative"):
+                    ps.append({"p": float(w_["tentative"]["p"]), "t": w_["tentative"]["t"]})
+                pv[tf] = ps
+                cl = [float(b["close"]) for b in ch.get(ck_) or [] if b.get("close") is not None] if ck_ else []
+                if len(cl) >= 5:
+                    m5[tf] = round(sum(cl[-5:]) / 5, 2)
+            card["tfs"] = SW.frame_tfs(t["frame"], price, pv, m5)
         if card and card.get("signal") and card["signal"].get("time"):
             card["signal"]["label"] = FD.tw_dt(card["signal"]["time"]).strftime("%m/%d %H:%M")
         t["card"] = card

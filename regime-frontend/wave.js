@@ -446,7 +446,7 @@
     let herTop = '', herPlay = '', sigBox = '';
     if (hc) {
       const lab = t => { const k = String(t).indexOf('：'); return k > 0 && k <= 6 ? `<b class="lab">${esc(t.slice(0, k))}</b>：${esc(t.slice(k + 1))}` : esc(t); };
-      herTop = `<div class="wv-head">📍 現在位階 <span class="wv-dim" style="font-size:.85rem;font-weight:400">她的數法（日線＋60 分）；切哪個週期都一樣</span></div>
+      herTop = `<div class="wv-head">📍 現在位階 <span class="wv-dim" style="font-size:.85rem;font-weight:400">她的數法（日線＋60 分）</span></div>
         <div class="wv-pos">${(hc.pos || []).map(t => `<div>${lab(t)}</div>`).join('')}${hc.shape ? `<div><b class="lab">波形</b>：<b>${esc(hc.shape)}</b></div>` : ''}</div>`;
       const sg = hc.signal, w = hc.watch || {};
       const wl = (xs, nm) => (xs || []).length ? `${nm} ${xs.slice(0, 3).map(x => fmt(x[0])).join('、')}` : '';
@@ -459,7 +459,9 @@
         ${stepsHtml(hc.steps, true)}
         <div class="wv-sig${sg ? ' on' : ''}">${sigTxt}</div>
         <div class="wv-sub">${[hc.exit, hc.flip].filter(Boolean).map(esc).join('<br>')}</div>`;
-      if (hc.tiles) top = { up: hc.tiles.up, down: hc.tiles.down, stop: hc.tiles.stop, her: true };
+      const tv0 = (hc.tfs || {})[st.tf];                              // B126 切週期：週 K／60 分／30 分／15 分各自一張
+      const tl0 = (tv0 && tv0.tiles) || hc.tiles;
+      if (tl0) top = { up: tl0.up, down: tl0.down, stop: tl0.stop, her: true };
       const k = lines.findIndex(x => x[0] === '🎯 試單');
       if (k >= 0) lines.splice(k, 1);
     }
@@ -467,7 +469,8 @@
         <div class="wv-sub">${esc(hc.method || '')}</div>
         <div class="wv-sub" style="margin-top:6px"><b>系統數浪</b>　${head}<br>${sub.join('<br>')}${sl ? `<br><b>系統價位梯的試單</b>　${sl}` : ''}</div></details>`;
     const tl = top.her ? ['⬆ 上方', '⬇ 下方', '🔁 改判線'] : null;
-    const mm = hc && hc.map ? motherMap(hc.map) : '';
+    const tvm = hc && (hc.tfs || {})[st.tf];
+    const mm = hc && (tvm ? tvm.map : hc.map) ? motherMap(tvm ? tvm.map : hc.map) : '';
     const herText = mm ? `<details class="wv-who mm-text"><summary>📖 文字說明（現在位階、怎麼做、出場、改判）</summary>${herTop}${herPlay}</details>` : '';
     $('wv-sum').innerHTML = `
       ${mm ? mm : hc ? herTop : `<div class="wv-head">${head}</div>
@@ -701,7 +704,7 @@
     if (!m || !(m.path || []).length) return '';
     const vs = m.versions || [];
     return `<div class="mm">
-      <div class="mm-tag">T3 DAILY MOTHER MAP <span>她的數法・網站照價位算</span></div>
+      <div class="mm-tag">${esc(m.tag || 'T3 DAILY MOTHER MAP')} <span>她的數法・網站照價位算</span></div>
       <div class="mm-title">${esc(m.title)}</div><div class="mm-sub">${esc(m.sub || '')}</div>
       ${window.innerWidth < 720 ? zigSvg(m.path, m.lines, 440, 380, 15, { right: 6, inline: true })
           + `<div class="mm-leg">${(m.lines || []).map(l => `<span class="${l.kind.startsWith('up') ? 'u' : 'd'}${l.kind.endsWith('2') ? ' dot' : ''}">${esc(l.label)}</span>`).join('')}</div>`

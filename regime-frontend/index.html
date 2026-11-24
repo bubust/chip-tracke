@@ -175,7 +175,7 @@
   .mm-leg span::before { content: ''; display: inline-block; width: 18px; border-top: 2px dashed currentColor; vertical-align: middle; margin-right: 5px; }
   .mm-leg span.dot::before { border-top-style: dotted; }
   .mm-leg .u { color: #5eead4; } .mm-leg .d { color: #f87171; }
-  @media (max-width: 720px) { .mm-vs.n3 { grid-template-columns: 1fr; } .mm-v { border-left: 0; border-top: 1px solid var(--border); padding-top: 8px; }
+  @media (max-width: 720px) { .mm-vs.n3, .mm-vs.n2 { grid-template-columns: 1fr; } .mm-v { border-left: 0; border-top: 1px solid var(--border); padding-top: 8px; }
     .mm-v:first-child { border-top: 0; } .mm-title { font-size: 1.12rem; }
     .mm-vb { display: grid; grid-template-columns: 44% 1fr; gap: 8px; align-items: center; }
     .mm-v .mm-svg { max-height: 110px; } }
@@ -1194,6 +1194,6 @@ setInterval(() => { if (_regimeVisible() && Date.now() - _lastLoad >= 300000) { 
 // 視窗 resize 時重繪圖表
 window.addEventListener('resize', () => { window.__regimeRedraw(); });
 </script>
-<script src="/regime/static/wave.js?v=20261124b124"></script>
+<script src="/regime/static/wave.js?v=20261124b126"></script>
 </body>
 </html>
