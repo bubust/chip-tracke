@@ -993,6 +993,10 @@ def merge_pause(big: list) -> list:
     """B123 她 11/22：50,265→37,694 中間雖有 45,523→47,607 的小停頓，但日線 5T／12T 下壓斜率沒被切開＝同一筆日線下跌。
     最後一段又創新極值（33,719 破 37,694）時，往前看 a(50,265) b(45,523) c(47,607) d(37,694)：c 沒過 a、d 破 b，
     而且停頓 b→c 不到 a→b 的一半 → 拿掉 b、c，日線變成 a→d→H2→現在。沒有創新極值（例：42,371 沒破 37,694）就不動"""
+    if len(big) >= 7:                                                 # B127：最後多了一個反向的暫定轉折（33,719 確認、40,324 暫定高點）→ 先拿掉再併
+        r = merge_pause(big[:-1])
+        if len(r) < len(big) - 1:
+            return r + big[-1:]
     if len(big) < 6:
         return big
     a, b, c, d, h2, x = big[-6:]
@@ -1071,7 +1075,24 @@ def big_frame(t: dict, price: float, full: Optional[float] = None, lows: Optiona
         lines[-1:-1] = cl
         if clock and clock.get("up_days"):
             lines[1 if mo else 0] = lines[1 if mo else 0].replace("第一個有效反彈（", f"第一個有效反彈（{clock['up_days']} 天 ")
-    return {"T": T, "L1": L1, "H2": H2, "ext": ext, "rb": rb, "w2": [(r, round(v, 2)) for r, v in w2], "clock": clock, "supply": supply or [],
+    pull = None
+    if stage in ("w0", "w1", "w2") and rb >= w382 and d236 and price < d236["hi"] - 0.382 * (d236["hi"] - d236["lo"]):
+        # B127 她 11/25：33,719→40,900 完成第一大段推進，首次壓回打「右腳底座」——A 健康壓回 vs B 失速（複製 44,911）
+        ck = clock or {}
+        base = d236["lo"]
+        ml = (ck.get("mid_lows") or [])
+        pull = {"r5": round(rb - 0.5 * (rb - ext), 2), "r618": round(rb - 0.618 * (rb - ext), 2), "base": base,
+                "ma5": ck.get("ma5"), "ma12": ck.get("ma12"), "prev_low": ml[-1] if ml else None, "state": "A" if price >= base else "B"}
+        p_ = pull
+        ki = next(i for i, x in enumerate(lines) if x.startswith("現在 "))
+        lines.insert(ki + 1, f"壓回（她 11/25）：{f(ext)}→{f(rb)} 完成第一大段推進，現在首次壓回打右腳底座——A 健康壓回（日線 5-1-2 初升回測或週線 B-b）："
+                        f"60 分 a-b-c 減速量縮，回踩" + (f"日線 5T {f(p_['ma5'])}、" if p_["ma5"] else "") + f"頸線 {f(L1)} 或 0.5～0.618 {f(p_['r5'])}～{f(p_['r618'])} 收腳承接，"
+                        f"絕不有效跌破起推底座 {f(base)}；多方確認＝第二波帶量實體收上" + (f"日線 12T {f(p_['ma12'])} 與 " if p_["ma12"] else "") + f"{f(w382)}。"
+                        f"B 失速（複製 {f(H2)} 遇壓折返）：長黑灌破 {f(L1)}、{f(base)} 反抽站不回，回測" + (f"{f(p_['prev_low'])} 甚至 " if p_["prev_low"] else "") + f"{f(ext)}")
+        st = (f"{f(ext)}→{f(rb)} 完成第一大段推進，現在壓回到 {f(price)}"
+              + ("：還在健康壓回的範圍（守住起推底座 " + f(base) + "）" if price >= base else f"：跌破起推底座 {f(base)}＝失速，回測" + (f(p_["prev_low"]) + "、" if p_["prev_low"] else "") + f(ext)))
+        lines[ki] = f"現在 {f(price)}：{st}"
+    return {"T": T, "L1": L1, "H2": H2, "ext": ext, "rb": rb, "w2": [(r, round(v, 2)) for r, v in w2], "clock": clock, "supply": supply or [], "pull": pull,
             "band": [round(v, 2) for v in band] if band else None, "ext_band": [round(v, 2) for v in ext_band] if ext_band else None,
             "full": full, "mo": mo, "stage": stage, "dev": dev, "d236": d236, "status": st, "lines": lines}
 
@@ -1132,12 +1153,14 @@ def _clock_lines(fr: dict) -> list:
         t.append(f"{f(ext)} 之後第 {ck['reb_days']} 個交易日" + ("（五波版的第 4 浪只彈 5～10 天、頂過不了 " + f(L1) + "）" if fr["stage"] in ("w0", "w1") or ck["reb_days"] <= 10 else ""))
     mo = ck.get("month")
     m20 = ck.get("m20")
-    t.append(f"{md(ck['wk_close'])}（{wd(ck['wk_close'])}）收週線、{md(ck['mo_close'])}（{wd(ck['mo_close'])}）收月線："
-             + (f"月 K 要在尋底帶 {f(band[0])}～{f(band[1])} 之上止跌" if band else "月 K 要止跌")
-             + "、留長下影線" + (f"、守住月 20T（約 {f(m20)}）" if m20 else "")
-             + (f"；這個月開 {f(mo['open'])}、最低 {f(mo['low'])}、現在 {f(mo['close'])}，下影線 {f(mo['shadow'])} 點" if mo else "")
-             + (("（月 20T 現在" + ("守住" if mo and mo["close"] >= m20 else "還沒站回") + "）") if m20 and mo else ""))
-    out.append("時間：" + "；".join(t))
+    if ck.get("wk_close") and ck.get("mo_close"):
+        t.append(f"{md(ck['wk_close'])}（{wd(ck['wk_close'])}）收週線、{md(ck['mo_close'])}（{wd(ck['mo_close'])}）收月線："
+                 + (f"月 K 要在尋底帶 {f(band[0])}～{f(band[1])} 之上止跌" if band else "月 K 要止跌")
+                 + "、留長下影線" + (f"、守住月 20T（約 {f(m20)}）" if m20 else "")
+                 + (f"；這個月開 {f(mo['open'])}、最低 {f(mo['low'])}、現在 {f(mo['close'])}，下影線 {f(mo['shadow'])} 點" if mo else "")
+                 + (("（月 20T 現在" + ("守住" if mo and mo["close"] >= m20 else "還沒站回") + "）") if m20 and mo else ""))
+    if t:
+        out.append("時間：" + "；".join(t))
     v = ck.get("vol")
     if v and v.get("l1"):
         out.append(f"量：反彈以來最大 {f(v['reb'])} 口（{md(v['reb_date'])}）" + ("，已超過" if v["big"] else "，還沒超過")
@@ -1182,8 +1205,9 @@ def frame_tfs(fr: dict, price: float, piv: dict, ma5: dict) -> dict:
     def path_of(pv, start_p, n, lab, fb=False):
         k = max((j for j, q in enumerate(pv) if abs(q["p"] - start_p) <= 0.0005 * start_p), default=None)
         if k is None and fb and pv:                                   # 分 K 窗口比起點短（60 分只存約 3 週）→ 起點接在最前面
-            j0 = next((j for j, q in enumerate(pv) if q["t"] != pv[0]["t"]), 0) if pv[0]["t"] == "H" else 0
-            pv = [{"p": start_p, "t": "H"}] + pv[j0:]
+            st_ = "H" if start_p > pv[0]["p"] else "L"                   # 起點是高點還是低點
+            j0 = next((j for j, q in enumerate(pv) if q["t"] != st_), 0)
+            pv = [{"p": start_p, "t": st_}] + pv[j0:]
             k = 0
         if k is None:
             return None
@@ -1200,7 +1224,7 @@ def frame_tfs(fr: dict, price: float, piv: dict, ma5: dict) -> dict:
     full = fr.get("full")
     if pw and full:
         lab = {round(full): "全波段起點", round(T): "大頂？", round(ext): "現在這段低點"}
-        pts = path_of(pw, full, 10, lab)
+        pts = path_of(pw, full, 10, lab, fb=True)
         if pts:
             lines = []
             if band:
@@ -1300,7 +1324,119 @@ def frame_tfs(fr: dict, price: float, piv: dict, ma5: dict) -> dict:
                    "tiles": {"up": tile(ups[0][0], ups[0][1], "過不去＝短線先休息") if ups else None,
                              "down": tile(below[0][0], below[0][1], "跌破先鎖利") if below else None,
                              "stop": tile(L1, "第一道牆", "收在下面＝反彈失敗")}}
+    # B127：每個週期一句位置＋怎麼進出場＋詳細解說（給三段版面）
+    pull = fr.get("pull")
+    lines = fr["lines"]
+    pick = lambda *ks: [x for x in lines if x.startswith(ks)]          # noqa: E731
+    if "1wk" in out:
+        m20, mo_ = ck.get("m20"), ck.get("month") or {}
+        ok20 = mo_ and m20 and mo_.get("close", price) >= m20
+        md = lambda d: f"{int(d[5:7])}/{int(d[8:10])}" if d else ""   # noqa: E731
+        out["1wk"]["where"] = (f"月線：{f(T)} 起修正、最低 {f(ext)}，現在 {f(price)}"
+                               + (f"；這個月下影線 {f(mo_['shadow'])} 點" if mo_ else "")
+                               + (f"、月 20T {f(m20)} {'守住' if ok20 else '跌破'}" if m20 else "")
+                               + (f"——{md(ck.get('mo_close'))} 收月線才定案" if ck.get("mo_close") else ""))
+        out["1wk"]["plays"] = [
+            {"k": "wait", "tag": "看月 K", "t": f"{md(ck.get('mo_close')) or '月底'} 收月線：留長下影、守住月 20T" + (f"、在 {f(band[0])}～{f(band[1])} 之上" if band else "") + "＝大四浪洗盤成立"},
+            {"k": "long", "tag": "波段分批", "t": "大四浪成立的話，日線拉回到支撐分批（進出場看日 K 那張）"},
+            {"k": "short", "tag": "不接", "t": f"{f(eb[1]) if eb else '極限'} 灌破、日線反彈又壓在 {f(L1)} 下＝六年大頂，不要接"}]
+        out["1wk"]["detail"] = pick("月線", "尋底帶", "時間")
+    if "60m" in out:
+        o6 = out["60m"]
+        if pull:
+            base, r5, r618, pl = pull["base"], pull["r5"], pull["r618"], pull["prev_low"]
+            o6["map"]["title"] = f"{f(rb)} 下來的壓回｜60 分 a-b-c 還是失速"
+            o6["map"]["lines"] = [{"p": L1, "label": f"頸線 {f(L1)}", "kind": "up"}, {"p": r5, "label": f"0.5 {f(r5)}", "kind": "down"},
+                                  {"p": r618, "label": f"0.618 {f(r618)}", "kind": "down2"}, {"p": base, "label": f"起推底座 {f(base)}", "kind": "down2"}]
+            o6["map"]["versions"] = [
+                {"title": "60 分 a-b-c 洗盤", "tag": "她偏向這個；減速量縮、收腳承接", "now": price >= base,
+                 "pts": [{"p": rb, "label": ""}, {"p": (rb + r5) / 2, "label": "a"}, {"p": (rb + r5) / 2 + 0.3 * (rb - r5), "label": "b"}, {"p": r618, "label": "c"},
+                         {"p": rb, "label": ""}],
+                 "notes": [f"c 腳落在 {f(r5)}～{f(r618)}", f"守住 {f(base)}（主力底倉護盤）"]},
+                {"title": "失速", "tag": f"複製 {f(H2)} 遇壓折返", "now": price < base,
+                 "pts": [{"p": rb, "label": ""}, {"p": base - 0.03 * (rb - ext), "label": "破底座"}, {"p": base, "label": "站不回"}, {"p": ext, "label": f(ext)}],
+                 "notes": [f"長黑灌破 {f(base)}、反抽站不回", "回測" + (f" {f(pl)}、" if pl else " ") + f(ext)]}]
+            o6["map"]["fork"] = f"真正分歧｜{f(r618)}～{f(base)} 有沒有人護盤"
+            sups = sorted([v for v in (L1, r5, r618, base) if v < price], reverse=True)
+            o6["tiles"] = {"up": tile(L1, "頸線（第一道牆）", "60 分站回＝止跌") if L1 > price else tile(w382, "第二道牆 0.382", "收上＝多方確認"),
+                           "down": tile(sups[0], "壓回支撐", "60 分收腳才接") if sups else None, "stop": tile(base, "起推底座", "有效跌破＝失速")}
+            o6["where"] = f"60 分：{f(ext)}→{f(rb)} 之後壓回到 {f(price)}（{f(rb)} 下來 {f(rb - price)} 點）；她偏向 60 分 a-b-c 洗盤"
+            o6["plays"] = [{"k": "long", "tag": "等收腳", "t": f"{f(r5)}～{f(r618)}、{f(base)} 出現 60 分收腳（長下影、站回 5 均）才接；停損放 {f(base)} 下面"},
+                           {"k": "short", "tag": "失速不接", "t": f"60 分收在 {f(base)} 下面、反抽站不回＝失速"}]
+        else:
+            o6["where"] = f"60 分：{f(ext)} 起反彈到 {f(rb)}，現在 {f(price)}"
+            o6["plays"] = [{"k": "long", "tag": "等第二隻腳", "t": o6["map"]["versions"][0]["notes"][0] + "，出現收腳再進"},
+                           {"k": "short", "tag": "失敗", "t": o6["map"]["versions"][1]["notes"][0]}]
+        o6["detail"] = pick("壓回", "套牢區")
+    for tf in ("30m", "15m"):
+        if tf not in out:
+            continue
+        o = out[tf]
+        nm = "30 分" if tf == "30m" else "15 分"
+        broke = bool(d236) and price < d236["v"]
+        o["where"] = (f"{nm}：{f(d236['lo'])}→{f(d236['hi'])} 這段短線，現在 {f(price)}" if d236 else f"{nm}：現在 {f(price)}") + \
+                     ("——已跌破鎖利線" if broke else "——還在鎖利線上面")
+        o["plays"] = ([{"k": "wait", "tag": "已鎖利", "t": "短線多單照她的方法已經該先下車；等壓回 0.382～0.5 止穩、或回到日 K 的支撐收腳再接"}] if broke else
+                      [{"k": "long", "tag": "續抱", "t": f"守住 {nm} 5 均／0.236 就續抱"}, {"k": "wait", "tag": "鎖利", "t": f"{nm} K 收破 5 均或跌破 0.236 先下車"}])
+        o["detail"] = pick("套牢區")
     return out
+
+
+def frame_views(card: dict, fr: dict, price: float) -> dict:
+    """B127 用戶 11/25「版面太複雜」：每個週期整理成三段——① where＋plays＋tiles（現在位置、怎麼進出場）② scen＋common／fork（可能劇本）
+    ③ map＋when＋detail（圖、詳細解說）。回 {tf: view}；前端照目前的週期挑，沒有就用 '1d'"""
+    f = _fmt
+    price = float(price)
+    T, L1, H2, ext, rb = fr["T"], fr["L1"], fr["H2"], fr["ext"], fr["rb"]
+    w382 = fr["w2"][0][1]
+    pct = lambda v: round((v / price - 1) * 100, 2)                   # noqa: E731
+    tile = lambda v, name, act: {"price": round(v, 2), "dist_pct": pct(v), "name": name, "act": act}   # noqa: E731
+    now_line = next((x for x in fr["lines"] if x.startswith("現在 ")), "")
+    rest = [x for x in fr["lines"] if not x.startswith(("現在 ", "時間：", "量：", "套牢區"))]   # 時間、量、套牢區已經在圖下面
+    mp = dict(card.get("map") or {})
+    pull = fr.get("pull")
+    v1 = {"where": now_line.split("：", 1)[-1], "plays": card.get("plays") or [], "tiles": card.get("tiles"),
+          "scen": mp.get("versions") or [], "common": mp.get("common"), "fork": mp.get("fork"), "map": mp, "when": mp.get("when") or [],
+          "detail": rest, "flip": card.get("flip")}
+    if pull:
+        base, r5, r618, m5, m12, pl = pull["base"], pull["r5"], pull["r618"], pull["ma5"], pull["ma12"], pull["prev_low"]
+        sups = sorted([(v, n) for v, n in ((m5, "日線 5T"), (L1, "頸線（第一道牆）"), (r5, "0.5"), (r618, "0.618"), (base, "起推底座")) if v and v < price],
+                      key=lambda x: -x[0])
+        ups = sorted([(v, n) for v, n in ((m5, "日線 5T"), (L1, "頸線（第一道牆）"), (m12, "日線 12T"), (w382, "第二道牆 0.382")) if v and v > price])
+        conf = " 與 ".join(x for x in ((f"12T {f(m12)}" if m12 else ""), f(w382)) if x)
+        v1["plays"] = [
+            {"k": "long", "tag": "做多等收腳", "t": f"回踩" + ("、".join(f"{n} {f(v)}" for v, n in sups[:3]) if sups else f"起推底座 {f(base)}")
+             + f" 出現收腳承接（60 分減速量縮、長下影）才進；停損放 {f(base)} 下面"},
+            {"k": "short", "tag": "失速不接", "t": f"有效跌破 {f(base)}、反抽站不回＝劇本 B，往" + (f" {f(pl)}、" if pl else " ") + f"{f(ext)}，不要接刀"},
+            {"k": "wait", "tag": "多方確認", "t": f"第二波帶量實體收上 {conf}，才是多方轉移確認"}]
+        v1["tiles"] = {"up": tile(ups[0][0], ups[0][1], "收上＝反彈續攻") if ups else None,
+                       "down": tile(sups[0][0], sups[0][1], "收腳承接才做多") if sups else None,
+                       "stop": tile(base, "起推底座", "有效跌破＝失速")}
+        v1["scen"] = [
+            {"title": "劇本 A｜健康壓回", "tag": "日線 5-1-2 初升回測，或週線大 B-b", "now": price >= base,
+             "pts": [{"p": ext, "label": ""}, {"p": rb, "label": ""}, {"p": r5, "label": "收腳"}, {"p": rb + 0.15 * (rb - ext), "label": "第二波"}],
+             "notes": ["60 分 a-b-c 減速量縮", "回踩" + "、".join(f(v) for v, _ in sups[:3]) + " 收腳" if sups else "回踩收腳",
+                       f"不破 {f(base)}；收上 {conf} 確認"]},
+            {"title": "劇本 B｜失速", "tag": f"日線仍空方主導，複製 {f(H2)} 遇壓折返", "now": price < base,
+             "pts": [{"p": ext, "label": ""}, {"p": rb, "label": ""}, {"p": base - 0.05 * (rb - ext), "label": "破底座"}, {"p": ext, "label": f(ext)}],
+             "notes": [f"長黑灌破 {f(L1)}、{f(base)}", "反抽站不回、日線動能死叉", "回測" + (f" {f(pl)} 甚至" if pl else "") + f" {f(ext)}"]}]
+        v1["common"] = f"共同事實｜{f(ext)}→{f(rb)} 完成第一大段推進，正在首次壓回"
+        v1["fork"] = f"真正分歧｜起推底座 {f(base)} 守不守（她：要看 11/23 晚上 {f(base)} 進場的主力底倉護不護盤）"
+        v1["flip"] = f"改判：有效跌破 {f(base)}＝劇本 B 失速；收上 {conf}＝多方確認"
+        v1["map"] = {**mp, "title": f"{f(ext)}→{f(rb)}｜第一大段推進後的首次壓回", "sub": f"右腳底座 {f(base)}；0.5～0.618 {f(r5)}～{f(r618)}",
+                     "path": [x for x in mp.get("path") or [] if not x.get("now")]
+                             + ([{"p": rb, "label": "反彈高"}] if all(abs(x["p"] - rb) > 1 for x in mp.get("path") or []) else [])
+                             + [{"p": price, "label": "現在", "now": True}],
+                     "lines": [x for x in ([{"p": m12, "label": f"日線 12T {f(m12)}", "kind": "up2"}] if m12 else [])
+                               + [{"p": w382, "label": f"第二道牆 {f(w382)}", "kind": "up"}, {"p": L1, "label": f"頸線 {f(L1)}", "kind": "down"},
+                                  {"p": base, "label": f"起推底座 {f(base)}", "kind": "down2"}]]}
+    views = {"1d": v1}
+    for tf, tv in (card.get("tfs") or {}).items():
+        m = tv["map"]
+        views[tf] = {"where": tv.get("where") or m.get("sub"), "plays": tv.get("plays") or [], "tiles": tv.get("tiles"),
+                     "scen": m.get("versions") or [], "common": m.get("common"), "fork": m.get("fork"), "map": m, "when": m.get("when") or [],
+                     "detail": tv.get("detail") or [], "flip": tv.get("flip")}
+    return views
 
 
 def _frame_card(t: dict, fr: dict, price: float, bars15: Optional[list], atr15: Optional[float], atr60: Optional[float]) -> dict:

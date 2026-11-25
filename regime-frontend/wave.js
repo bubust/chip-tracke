@@ -486,10 +486,48 @@
       </div>
       <div class="wv-lines">${lines.map(([k, v, c]) => `<span class="k${c ? ' ' + c : ''}">${k}</span><span${c ? ` class="${c}"` : ''}>${v}</span>`).join('')}</div>
       ${lines.some(x => x[2]) ? '<button type="button" class="wv-more-btn">更多（風險、AI）▾</button>' : ''}`;
+    const V = hc && hc.views ? (hc.views[st.tf] || hc.views['1d']) : null;
+    if (V) $('wv-sum').innerHTML = threeParts(V, T, hc, lines, sysBox) + intraNote;   // B127 用戶：版面太複雜 → 三段
     $('wv-sum').querySelectorAll('[data-goto-tab]').forEach(x => x.onclick = () => setTab(x.dataset.gotoTab));
     $('wv-sum').querySelectorAll('.wv-tile').forEach(x => x.onclick = () => x.classList.toggle('open'));   // 手機：點開看完整說明
     const mb = $('wv-sum').querySelector('.wv-more-btn');
     if (mb) mb.onclick = () => { const on = $('wv-sum').classList.toggle('more'); mb.textContent = on ? '收起 ▴' : '更多（風險、AI）▾'; };
+  }
+
+  // B127 用戶 11/25「版面太複雜，請優化」：① 現在位置、怎麼進出場 ② 可能劇本 ③ 圖跟詳細解說——三段都跟著週期換
+  function threeParts(V, T, hc, lines, sysBox) {
+    const lab = t => { const k = String(t).indexOf('：'); return k > 0 && k <= 12 ? `<b class="lab">${esc(t.slice(0, k))}</b>：${esc(t.slice(k + 1))}` : esc(t); };
+    const tl = V.tiles || {};
+    const tiles = `<div class="wv-tiles${tl.stop ? '' : ' two'}">${tileHtml('⬆ 上方', tl.up, 'var(--up)')}${tileHtml('⬇ 下方', tl.down, 'var(--down)')}${tl.stop ? tileHtml('🔁 改判線', tl.stop, 'var(--warn)') : ''}</div>`;
+    const sg = hc.signal;
+    const sig = sg ? `<div class="wv-sig on">✅ <b>訊號</b>（${esc(sg.label || '')} 15 分 K）：刺過 <b>${fmt(sg.line)}</b>（${esc(sg.name)}）又收回 ${fmt(sg.close)} → 試${sg.side > 0 ? '多' : '空'}，停損 <b>${fmt(sg.stop)}</b>、先出一口 <b>${fmt(sg.t1)}</b></div>` : '';
+    const sc = (V.scen || []).map(v => `<div class="hv-sc${v.now ? ' now' : ''}">
+        <div class="hv-sct">${esc(v.title)}${v.now ? ' <span class="mm-nowtag">現在</span>' : ''}</div>
+        ${v.tag ? `<div class="hv-sctag">${esc(v.tag)}</div>` : ''}${(v.notes || []).map(t => `<div class="hv-scn">${esc(t)}</div>`).join('')}</div>`).join('');
+    const m = V.map || {};
+    const narrow = window.innerWidth < 720;
+    const chart = !(m.path || []).length ? '' : narrow
+      ? zigSvg(m.path, m.lines, 440, 360, 15, { right: 6, inline: true })
+        + `<div class="mm-leg">${(m.lines || []).map(l => `<span class="${l.kind.startsWith('up') ? 'u' : 'd'}${l.kind.endsWith('2') ? ' dot' : ''}">${esc(l.label)}</span>`).join('')}</div>`
+      : zigSvg(m.path, m.lines, 760, 300, 15, { right: 175 });
+    const other = lines.filter(x => !/試單/.test(x[0]));
+    return `
+      <section class="hv"><div class="hv-h"><b>①</b> 現在位置・怎麼進出場 <span class="hv-tf">${esc(T.name)}</span></div>
+        <div class="hv-where">${esc(V.where || '')}</div>${tiles}
+        <ul class="wv-plays">${(V.plays || []).map(x => `<li><span class="wv-pt ${esc(x.k)}">${esc(x.tag)}</span>${esc(x.t)}</li>`).join('')}</ul>
+        ${sig}${V.flip ? `<div class="wv-sub hv-flip">${esc(V.flip)}</div>` : ''}</section>
+      <section class="hv"><div class="hv-h"><b>②</b> 可能劇本 <span class="hv-tf">${esc(T.name)}</span></div>
+        <div class="hv-scs n${(V.scen || []).length}">${sc}</div>
+        ${V.common || V.fork ? `<div class="hv-cf">${V.common ? `<div class="mm-common">${esc(V.common)}</div>` : ''}${V.fork ? `<div class="mm-fork">${esc(V.fork)}</div>` : ''}</div>` : ''}</section>
+      <section class="hv"><div class="hv-h"><b>③</b> 圖與詳細解說 <span class="hv-tf">${esc(T.name)}</span></div>
+        <div class="mm"><div class="mm-tag">${esc(m.tag || 'T3 DAILY MOTHER MAP')} <span>她的數法・網站照價位算</span></div>
+          <div class="mm-title">${esc(m.title || '')}</div><div class="mm-sub">${esc(m.sub || '')}</div>${chart}
+          ${(V.when || []).map(x => `<div class="mm-when">${esc(x)}</div>`).join('')}
+          ${(V.detail || []).length ? `<ul class="hv-detail">${V.detail.map(x => `<li>${lab(x)}</li>`).join('')}</ul>` : ''}
+          <div class="mm-note">波浪標記皆為候選｜先辨認級數，再等市場裁決（△ 沒有回測）</div></div>
+        <details class="wv-who"><summary>其他：量能、持股建議、今天、AI、系統自己的數浪</summary>
+          <div class="wv-lines more">${other.map(([k, v]) => `<span class="k">${k}</span><span>${v}</span>`).join('')}</div>
+          <div class="wv-sub">${esc(hc.exit || '')}</div>${sysBox}</details></section>`;
   }
 
   // ── 📈 價位梯 ──

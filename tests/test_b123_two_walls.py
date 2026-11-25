@@ -163,3 +163,30 @@ def test_b126_tf_cards():
     assert (o["1wk"]["tiles"]["up"]["price"], o["1wk"]["tiles"]["down"]["price"], W._fmt(o["1wk"]["tiles"]["stop"]["price"])) == (44911, 33640, "29,717")
     assert o["60m"]["map"]["path"][0]["p"] == 44911 and round(o["60m"]["tiles"]["down"]["price"]) == 37801   # 60 分窗口沒有 44,911 → 接在最前面
     assert o["15m"]["tiles"]["down"]["price"] == 40224.0 and "36,280→40,324" in o["15m"]["map"]["title"]
+
+
+def test_b127_after_33719_confirmed_and_pullback():
+    """B127 11/25：33,719 確認成日線低點、多了暫定高點 40,324 → 還是要併停頓；33,719→40,900 之後壓回 → 她的劇本 A／B；三段版面"""
+    m = W.merge_pause(DAILY + [{"p": 40324, "t": "H"}])
+    assert [q["p"] for q in m[-5:]] == [50265, 37694, 44911, 33719, 40324]
+    small = H60 + [{"p": 40900, "t": "H"}]
+    t = W.structure(W.merge_pause(DAILY), small, 37807.0, 37846.0, 39000.0, LB, full=17015.0)
+    ck = {"ma5": 37846.2, "ma12": 40328.33, "mid_lows": [35634.0, 35712.0]}
+    fr = W.big_frame(t, 37807.0, 17015.0, lows=[31740.0, 39442.0], cyc=[8268.0, 12652.0], leg=(36280.0, 40900.0), clock=ck)
+    pl = fr["pull"]
+    assert (round(pl["r5"]), round(pl["r618"]), pl["base"], pl["prev_low"], pl["state"]) == (37310, 36462, 36280, 35712, "A")   # 她：37,310～36,462、36,280、35,712
+    assert any(x.startswith("壓回（她 11/25）") for x in fr["lines"]) and "健康壓回" in fr["status"]
+    t["frame"] = fr
+    c = W.plan_card(t, 37807.0)
+    pw = [{"p": p, "t": tt} for p, tt in ((28594, "H"), (26247, "L"), (49240, "H"), (39442, "L"), (50265, "H"), (37694, "L"), (44911, "H"), (33719, "L"))]
+    c["tfs"] = W.frame_tfs(fr, 37807.0, {"1wk": pw, "60m": [{"p": 41000, "t": "H"}] + small[1:], "15m": small[5:]}, {})
+    assert c["tfs"]["1wk"]["map"]["path"][0]["p"] == 17015                         # 週 K 窗口沒有 17,015 → 接在最前面
+    v = W.frame_views(c, fr, 37807.0)
+    assert set(v) >= {"1d", "1wk", "60m"}
+    d = v["1d"]
+    assert [s_["title"] for s_ in d["scen"]] == ["劇本 A｜健康壓回", "劇本 B｜失速"] and d["scen"][0]["now"]
+    assert d["tiles"]["stop"]["price"] == 36280 and "40,328" in d["plays"][2]["t"] and "40,040" in d["plays"][2]["t"]
+    assert all(not x.startswith(("時間：", "量：", "套牢區")) for x in d["detail"])
+    assert v["60m"]["scen"][0]["title"] == "60 分 a-b-c 洗盤" and v["60m"]["where"].startswith("60 分：")
+    b = W.big_frame(t, 36000.0, 17015.0, lows=[31740.0, 39442.0], leg=(36280.0, 40900.0), clock=ck)
+    assert b["pull"]["state"] == "B" and "失速" in b["status"]

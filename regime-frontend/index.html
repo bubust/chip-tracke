@@ -167,6 +167,27 @@
   .mm-vn { color: var(--muted); font-size: .84rem; line-height: 1.45; }
   .mm-foot { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin-top: 10px; padding: 8px 0; text-align: center; }
   .mm-common { color: #f59e0b; font-weight: 800; }
+  /* B127 三段版面 */
+  .hv { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin: 0 0 12px; background: var(--card, transparent); }
+  .hv-h { font-weight: 800; font-size: 1.02rem; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .hv-h b { color: #f59e0b; }
+  .hv-tf { margin-left: auto; font-size: .78rem; font-weight: 600; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
+  .hv-where { font-size: 1.05rem; font-weight: 700; line-height: 1.55; margin-bottom: 8px; }
+  .hv-flip { margin-top: 6px; }
+  .hv-scs { display: grid; grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr)); gap: 8px; }
+  .hv-scs.n2 { --n: 2; } .hv-scs.n3 { --n: 3; }
+  .hv-sc { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; opacity: .78; }
+  .hv-sc.now { opacity: 1; border-color: #f59e0b; background: rgba(245,158,11,.08); }
+  .hv-sct { font-weight: 800; color: #f59e0b; margin-bottom: 2px; }
+  .hv-sctag { font-weight: 700; margin-bottom: 4px; }
+  .hv-scn { font-size: .9rem; color: var(--muted); line-height: 1.5; }
+  .hv-scn::before { content: '・'; }
+  .hv-cf { margin-top: 10px; text-align: center; line-height: 1.6; }
+  .hv-detail { margin: 10px 0 0; padding-left: 18px; font-size: .92rem; line-height: 1.6; }
+  .hv-detail li { margin: 4px 0; }
+  .hv .mm { border: 0; padding: 0; margin: 0; background: none; }
+  .wv-lines.more .mh { display: initial; }
+  @media (max-width: 720px) { .hv-scs.n2, .hv-scs.n3 { grid-template-columns: 1fr; } .hv { padding: 10px; } }
   .mm-when{font-size:.82rem;color:var(--muted);margin-top:6px;text-align:left}
     .mm-fork { font-weight: 700; font-size: .92rem; }
   .mm-note { text-align: right; color: var(--muted); font-size: .75rem; margin-top: 6px; }
@@ -1194,6 +1215,6 @@ setInterval(() => { if (_regimeVisible() && Date.now() - _lastLoad >= 300000) { 
 // 視窗 resize 時重繪圖表
 window.addEventListener('resize', () => { window.__regimeRedraw(); });
 </script>
-<script src="/regime/static/wave.js?v=20261124b126"></script>
+<script src="/regime/static/wave.js?v=20261125b127"></script>
 </body>
 </html>
