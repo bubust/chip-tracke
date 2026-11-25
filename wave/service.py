@@ -939,9 +939,11 @@ def _frame_for(t: dict, waves: dict, sm: dict, price: float, snap: Optional[dict
     hs = [j for j, q in enumerate(pv) if q["t"] == "H" and j > j0]
     if hs:
         jh = max(hs, key=lambda j: (pv[j]["p"], -j))
-        lo = [q["p"] for q in pv[:jh] if q["t"] == "L"]
+        hi_, lo0 = pv[jh]["p"], pv[j0]["p"]
+        # B127：起推底座＝最高點之前、拉到最高點至少走了這段反彈一半的那個低點（她：36,280→40,900，不是途中 40,330 那種小回檔）
+        lo = [q["p"] for q in pv[j0:jh] if q["t"] == "L" and hi_ - q["p"] >= 0.5 * (hi_ - lo0)]
         if lo:
-            leg = (lo[-1], pv[jh]["p"])
+            leg = (lo[-1], hi_)
     clock = None
     try:                                                              # B124 她的時間條件：幾天、週線／月線哪天收、換手量
         ch = (snap or {}).get("chart") or {}
@@ -952,6 +954,9 @@ def _frame_for(t: dict, waves: dict, sm: dict, price: float, snap: Optional[dict
         dd = lambda k, tt: dts.get((round(float(t["big"][k]), 2), tt)) or ""   # noqa: E731
         if bars:
             clock = SW.frame_clock(bars, ch.get("weekly") or [], dd("L1", "L"), dd("H2", "H"), dd("ext", "L"), str(bars[-1]["time"])[:10])
+            cl_ = [float(b["close"]) for b in bars if b.get("close") is not None]
+            if len(cl_) >= 12:                                        # B127 她 11/25：日線 5T、12T
+                clock["ma5"], clock["ma12"] = round(sum(cl_[-5:]) / 5, 2), round(sum(cl_[-12:]) / 12, 2)
     except Exception as e:     # noqa: BLE001
         log.warning(f"[wave] 兩道牆的時間失敗：{e}")
     supply = None
@@ -970,6 +975,8 @@ def _frame_for(t: dict, waves: dict, sm: dict, price: float, snap: Optional[dict
                             z[key] = FD.tw_dt(z[key]).strftime("%-m/%-d")
     except Exception as e:     # noqa: BLE001
         log.warning(f"[wave] 套牢區失敗：{e}")
+    if clock is not None and leg:                                     # B127 底座下面、低點上面的前低（她：回測 35,712 甚至 33,719）
+        clock["mid_lows"] = [q["p"] for q in pv[j0 + 1:] if q["t"] == "L" and q["p"] < leg[0]]
     return SW.big_frame(t, price, full=t.get("full"), lows=lows, cyc=cyc, leg=leg, clock=clock, supply=supply)
 
 
@@ -1064,19 +1071,29 @@ def _tiers(snap: dict, waves: dict, closes, price: float, a60: Optional[dict] = 
     fine = [{"p": float(q["p"]), "t": q["t"]} for q in (w30.get("pivots") or [])]   # B107：30 分前低（5-2 大買點旁邊）
     if w30.get("tentative"):                                          # B110：5-2-B 高點之後的腳（C-4 反彈到哪）要連暫定的一起看
         fine.append({"p": float(w30["tentative"]["p"]), "t": w30["tentative"]["t"]})
+    cands = []
     for bg, small in _tiers_inputs(big, n60, P, sm, a60):
         first = _first_leg(a60, bg[-4], bg[-3])
         x = SW.structure(bg, small, price, ma5, ma10, {"big": "日線", "small": "60 分"}, first_leg=first, full=_full_from(waves, sm, bg),
                          fine=fine)
         if _tiers_rank(x) > _tiers_rank(t):                           # B110：挑有她那套「大中小／5-2」的那一組
             t = x
+        if x and x.get("dir") == -1 and x.get("case") == "3":
+            cands.append(x)
     if not t:
         return
-    try:
-        fr = _frame_for(t, waves, sm, price, snap) if _tiers_rank(t) < 3 and t.get("tag") not in ("up5", "52") else None
-    except Exception as e:     # noqa: BLE001
-        log.warning(f"[wave] 兩道牆失敗：{e}")
-        fr = None
+    fr = None
+    if _tiers_rank(t) < 3 and t.get("tag") not in ("up5", "52"):
+        # B127：33,719 確認成日線低點、後面多了暫定高點以後，第一組會變成「33,719 起漲」那組 → 兩道牆的框架要從所有候選裡找
+        for x in [t] + [c for c in cands if c is not t]:
+            try:
+                fr = _frame_for(x, waves, sm, price, snap)
+            except Exception as e:     # noqa: BLE001
+                log.warning(f"[wave] 兩道牆失敗：{e}")
+                fr = None
+            if fr:
+                t = x
+                break
     if fr:                                                            # B123：狀態、文字改成她 11/22～11/23 的兩道牆
         t["frame"] = fr
         t["status"] = fr["status"]
@@ -1097,6 +1114,7 @@ def _tiers(snap: dict, waves: dict, closes, price: float, a60: Optional[dict] = 
                 if len(cl) >= 5:
                     m5[tf] = round(sum(cl[-5:]) / 5, 2)
             card["tfs"] = SW.frame_tfs(t["frame"], price, pv, m5)
+            card["views"] = SW.frame_views(card, t["frame"], price)   # B127 三段版面
         if card and card.get("signal") and card["signal"].get("time"):
             card["signal"]["label"] = FD.tw_dt(card["signal"]["time"]).strftime("%m/%d %H:%M")
         t["card"] = card
