@@ -38,7 +38,7 @@ TWSE_BASE = "https://www.twse.com.tw/rwd/zh"
 ENDPOINTS = {
     "t86":       f"{TWSE_BASE}/fund/T86",
     "margin":    f"{TWSE_BASE}/marginTrading/MI_MARGN",
-    "sbl":       f"{TWSE_BASE}/SBL/TWT93U",           # 備用（目前 TWSE 有時重導向）
+    "sbl":       f"{TWSE_BASE}/marginTrading/TWT93U", # B129：舊的 /SBL/TWT93U 已經 404（2026-11 實測）
     "day_trade": f"{TWSE_BASE}/dayTrading/TWTB4U",    # 2026 新路徑
 }
 
@@ -447,26 +447,30 @@ def parse_margin(data: dict, stock_id: str) -> dict:
     return result
 
 
-def parse_sbl_day(today_data: dict, prev_data: dict, stock_id: str) -> dict:
-    """借券：今日 - 昨日 = 增減（股）"""
-    result = {"sbl_chg": 0.0}
+# B129 證交所「信用額度總量管制餘額表」TWT93U：15 欄，第 9～13 欄是借券賣出的
+# 前日餘額、當日賣出、當日還券、當日調整、當日餘額（股）。欄名只寫「前日餘額」「當日餘額」（融券那幾欄也有同名的），
+# 所以照位置讀、先核對欄名；同一張表就有前日餘額，增減＝當日餘額 − 前日餘額，不用再抓前一天
+SBL_PREV_COL, SBL_BAL_COL = 8, 12
 
-    def get_balance(data: dict) -> float:
-        if not data or data.get("stat") != "OK":
-            return 0.0
-        rows = data.get("data", [])
-        fields = data.get("fields", [])
-        for row in rows:
-            if not row or row[0] != stock_id:
-                continue
-            v = find_field(row, ["借券賣出餘額", "借券賣出數量"], fields)
-            return v or 0.0
-        return 0.0
 
-    today_bal = get_balance(today_data)
-    prev_bal  = get_balance(prev_data)
-    result["sbl_chg"] = today_bal - prev_bal
-    return result
+def sbl_changes(data: dict) -> dict[str, float]:
+    """TWT93U JSON → {stock_id: 借券賣出餘額增減（股）}；格式不對回 {}"""
+    if not data or str(data.get("stat", "")).upper() != "OK":
+        return {}
+    fields = data.get("fields") or []
+    if len(fields) <= SBL_BAL_COL or "前日餘額" not in fields[SBL_PREV_COL] or "當日餘額" not in fields[SBL_BAL_COL]:
+        return {}
+    out: dict[str, float] = {}
+    for row in data.get("data") or []:
+        if not row or len(row) <= SBL_BAL_COL:
+            continue
+        out[str(row[0]).strip()] = _to_float(row[SBL_BAL_COL]) - _to_float(row[SBL_PREV_COL])
+    return out
+
+
+def parse_sbl_day(today_data: dict, stock_id: str) -> dict:
+    """借券：當日餘額 − 前日餘額 = 增減（股）"""
+    return {"sbl_chg": sbl_changes(today_data).get(stock_id, 0.0)}
 
 
 def parse_day_trade(data: dict, stock_id: str) -> dict:
@@ -853,27 +857,9 @@ def parse_margin_all(data: dict) -> dict[str, dict]:
     return result
 
 
-def parse_sbl_all(today_data: dict, prev_data: dict) -> dict[str, dict]:
-    """批量解析借券賣出，回傳 {stock_id: {sbl_chg}}"""
-    def _build_map(data: dict) -> dict[str, float]:
-        m: dict[str, float] = {}
-        if not data or data.get("stat") != "OK":
-            return m
-        fields = data.get("fields", [])
-        col = next((i for i, f in enumerate(fields)
-                    if "借券賣出餘額" in f or "借券賣出數量" in f), None)
-        if col is None:
-            return m
-        for row in data.get("data", []):
-            if not row or len(row) <= col:
-                continue
-            m[str(row[0]).strip()] = _to_float(row[col])
-        return m
-
-    t_map = _build_map(today_data)
-    p_map = _build_map(prev_data)
-    sids  = set(t_map) | set(p_map)
-    return {sid: {"sbl_chg": t_map.get(sid, 0.0) - p_map.get(sid, 0.0)} for sid in sids}
+def parse_sbl_all(today_data: dict) -> dict[str, dict]:
+    """批量解析借券賣出，回傳 {stock_id: {sbl_chg}}（股）"""
+    return {sid: {"sbl_chg": v} for sid, v in sbl_changes(today_data).items()}
 
 
 def parse_day_trade_all(data: dict) -> dict[str, dict]:
@@ -909,7 +895,6 @@ async def scan_market_today(dt: date = None) -> tuple[list[dict], str]:
     t86_data = {}
     margin_data = {}
     sbl_today = {}
-    sbl_prev = {}
     day_trade_data = {}
     dt_str = ""
 
@@ -942,11 +927,6 @@ async def scan_market_today(dt: date = None) -> tuple[list[dict], str]:
         if not t86_data or t86_data.get("stat") != "OK":
             return [], ""
 
-        prev_dt = dt - timedelta(days=1)
-        while not is_trading_day(prev_dt):
-            prev_dt -= timedelta(days=1)
-        prev_str = to_twse_date(prev_dt)
-
         async def _get(url, params):
             try:
                 r = await client.get(url, params=params, headers=TWSE_HEADERS, timeout=20)
@@ -954,18 +934,17 @@ async def scan_market_today(dt: date = None) -> tuple[list[dict], str]:
             except Exception:
                 return {}
 
-        margin_data, sbl_today, sbl_prev, day_trade_data = await asyncio.gather(
+        margin_data, sbl_today, day_trade_data = await asyncio.gather(
             _get("https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN",
                  {"response": "json", "date": dt_str, "selectType": "ALL"}),
-            _get("https://www.twse.com.tw/rwd/zh/SBL/TWT93U", {"response": "json", "date": dt_str}),
-            _get("https://www.twse.com.tw/rwd/zh/SBL/TWT93U", {"response": "json", "date": prev_str}),
+            _get(ENDPOINTS["sbl"], {"response": "json", "date": dt_str}),
             _get("https://www.twse.com.tw/rwd/zh/dayTrading/TWTB4U",
                  {"response": "json", "date": dt_str, "selectType": "ALL"}),
         )
 
     t86_map  = parse_t86_all(t86_data)
     marg_map = parse_margin_all(margin_data)
-    sbl_map  = parse_sbl_all(sbl_today, sbl_prev)
+    sbl_map  = parse_sbl_all(sbl_today)
     dt_map   = parse_day_trade_all(day_trade_data)
 
     print(f"[SCAN] T86 股票數={len(t86_map)}")
