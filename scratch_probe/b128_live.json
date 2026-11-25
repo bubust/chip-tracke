@@ -1,0 +1,36 @@
+{
+ "first": {
+  "generated": "2026-11-25 19:16:56",
+  "asof": {
+   "date": "2026-11-25",
+   "live": null,
+   "ts": 1795605417,
+   "stale": false,
+   "stale_reason": null,
+   "session": "休市"
+  },
+  "sbl": {
+   "ok": false,
+   "note": "借券資料還沒抓到（每天 16:30、21:40 跟著籌碼一起抓）",
+   "series": [],
+   "n_series": 0
+  }
+ },
+ "after5m": {
+  "generated": "2026-11-25 19:16:56",
+  "asof": {
+   "date": "2026-11-25",
+   "live": null,
+   "ts": 1795605417,
+   "stale": false,
+   "stale_reason": null,
+   "session": "休市"
+  },
+  "sbl": {
+   "ok": false,
+   "note": "借券資料還沒抓到（每天 16:30、21:40 跟著籌碼一起抓）",
+   "series": [],
+   "n_series": 0
+  }
+ }
+}
