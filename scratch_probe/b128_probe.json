@@ -1,0 +1,262 @@
+{
+ "twse_TWT93U": {
+  "status": 200,
+  "url": "https://www.twse.com.tw/page-not-found.html",
+  "body": "<!DOCTYPE html>\n<html lang=\"zh-Hant-tw\">\n<head>\n\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>404</title>\n<meta name=\"layout\" content=\"blank\"/>\n  <link href=\"/res/css/error.css?fQP1\" rel=\"stylesheet\">\n</head>\n<body class=\"\">\n\n  <article class=\"error-box\">\n    <h1 class=\"twse-logo\">\n        <i class=\"font-icon font-icon-title2-zh\" style=\"font-size:1.5rem\"></i>\n    </h1>\n    <div class=\"text\">\n        <p>\n            此網頁不存在 請回到本公司 <a href=\"/zh\">首頁</a>,查找您所需要的資訊 <br><br>\n            This page does not exist. Please return to our <a href=\"/en\">homepage</a> to find the information you need.\n        </p>\n    </div>\n  </article>\n  \n\n\n</body>\n</html>"
+ },
+ "twse_TWT93U_prev": {
+  "status": 200,
+  "url": "https://www.twse.com.tw/page-not-found.html",
+  "body": "<!DOCTYPE html>\n<html lang=\"zh-Hant-tw\">\n<head>\n\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>404</title>\n<meta name=\"layout\" content=\"blank\"/>\n  <link href=\"/res/css/error.css?fQP1\" rel=\"stylesheet\">\n</head>\n<body class=\"\">\n\n  <article class=\"error-box\">\n    <h1 class=\"twse-logo\">\n        <i class=\"font-icon font-icon-title2-zh\" style=\"font-size:1.5rem\"></i>\n    </h1>\n    <div class=\"text\">\n        <p>\n            此網頁不存在 請回到本公司 <a href=\"/zh\">首頁</a>,查找您所需要的資訊 <br><br>\n            This page does not exist. Please return to our <a href=\"/en\">homepage</a> to find the information you need.\n        </p>\n    </div>\n  </article>\n  \n\n\n</body>\n</html>"
+ },
+ "twse_TWT72U": {
+  "status": 200,
+  "url": "https://www.twse.com.tw/page-not-found.html",
+  "body": "<!DOCTYPE html>\n<html lang=\"zh-Hant-tw\">\n<head>\n\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>404</title>\n<meta name=\"layout\" content=\"blank\"/>\n  <link href=\"/res/css/error.css?fQP1\" rel=\"stylesheet\">\n</head>\n<body class=\"\">\n\n  <article class=\"error-box\">\n    <h1 class=\"twse-logo\">\n        <i class=\"font-icon font-icon-title2-zh\" style=\"font-size:1.5rem\"></i>\n    </h1>\n    <div class=\"text\">\n        <p>\n            此網頁不存在 請回到本公司 <a href=\"/zh\">首頁</a>,查找您所需要的資訊 <br><br>\n            This page does not exist. Please return to our <a href=\"/en\">homepage</a> to find the information you need.\n        </p>\n    </div>\n  </article>\n  \n\n\n</body>\n</html>"
+ },
+ "twse_TWT96U": {
+  "status": 200,
+  "url": "https://www.twse.com.tw/page-not-found.html",
+  "body": "<!DOCTYPE html>\n<html lang=\"zh-Hant-tw\">\n<head>\n\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>404</title>\n<meta name=\"layout\" content=\"blank\"/>\n  <link href=\"/res/css/error.css?fQP1\" rel=\"stylesheet\">\n</head>\n<body class=\"\">\n\n  <article class=\"error-box\">\n    <h1 class=\"twse-logo\">\n        <i class=\"font-icon font-icon-title2-zh\" style=\"font-size:1.5rem\"></i>\n    </h1>\n    <div class=\"text\">\n        <p>\n            此網頁不存在 請回到本公司 <a href=\"/zh\">首頁</a>,查找您所需要的資訊 <br><br>\n            This page does not exist. Please return to our <a href=\"/en\">homepage</a> to find the information you need.\n        </p>\n    </div>\n  </article>\n  \n\n\n</body>\n</html>"
+ },
+ "twse_open_TWT96U": {
+  "status": 200,
+  "url": "https://openapi.twse.com.tw/v1/SBL/TWT96U",
+  "body": [
+   {
+    "TWSECode": "00400A",
+    "TWSEAvailableVolume": "568,987",
+    "GRETAICode": "00411A",
+    "GRETAIAvailableVolume": "113,362"
+   },
+   {
+    "TWSECode": "00401A",
+    "TWSEAvailableVolume": "115,578",
+    "GRETAICode": "006201",
+    "GRETAIAvailableVolume": "6,714"
+   },
+   {
+    "TWSECode": "00402A",
+    "TWSEAvailableVolume": "28,880",
+    "GRETAICode": "00679B",
+    "GRETAIAvailableVolume": "343,271"
+   },
+   {
+    "TWSECode": "00403A",
+    "TWSEAvailableVolume": "2,569,491",
+    "GRETAICode": "00687B",
+    "GRETAIAvailableVolume": "263,142"
+   },
+   "...共 1254 筆"
+  ]
+ },
+ "twse_open_TWT93U": {
+  "status": 200,
+  "url": "https://openapi.twse.com.tw/404.html",
+  "body": "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\n<html xmlns=\"http://www.w3.org/1999/xhtml\">\n<head>\n<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" />\n<meta name=\"keywords\" content=\"\" />\n<meta name=\"description\" content=\"\" />\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title></title>\n\n<style>\n\tbody{\n\t\tdisplay: flex;\n\t\talign-items: center;\n\t\tjustify-content: center;\n\t\theight: 100vh;\n\t\tmargin: 0;\n\t}\n\n\timg{max-width: 100%;}\n\t\n</style>\n\n<!--支援IE9以下 依序為 html5shiv css3選擇器 media Bootsrap3-->\n<!--[if lt IE 9]>\n    <script type=\"text/javascript\" src=\"js/support_ie/ie8tag.js\"></script>\n\t<script src=\"js/support_ie/html5shiv.js\"></script>\n\t<script src=\"js/support_ie/ie9.js\"></script>\n\t"
+ },
+ "twse_dash_sbl": {
+  "status": 200,
+  "url": "https://www.twse.com.tw/rwd/zh/marginTrading/BFIJ3U?response=json",
+  "body": {
+   "stat": "OK",
+   "date": "20261124",
+   "crdAmt": 60706772260,
+   "keepRate": 172.39,
+   "belowAccNum": 192,
+   "callAccNum": 32,
+   "callAmt": 11929000,
+   "exeAccNum": 2,
+   "exeAmt": 10390550,
+   "marginAccNum": 41526,
+   "marginAccRate": 0.15
+  }
+ },
+ "tpex_new_sbl": {
+  "status": 200,
+  "url": "https://www.tpex.org.tw/www/zh-tw/margin/sbl",
+  "body": {
+   "date": "20261124",
+   "tables": [
+    {
+     "title": "信用額度總量管制餘額表",
+     "date": "115/11/24",
+     "totalCount": 935,
+     "fields": [
+      "股票代號",
+      "股票名稱",
+      "前日餘額",
+      "賣出",
+      "...共 15 筆"
+     ],
+     "data": [
+      [
+       "00411A",
+       "主動統一前沿科技",
+       "1,000",
+       "0",
+       "...共 15 筆"
+      ],
+      [
+       "006201",
+       "元大富櫃50",
+       "9,000",
+       "0",
+       "...共 15 筆"
+      ],
+      [
+       "00679B",
+       "元大美債20年",
+       "12,000",
+       "5,000",
+       "...共 15 筆"
+      ],
+      [
+       "00687B",
+       "國泰20年美債",
+       "0",
+       "2,000",
+       "...共 15 筆"
+      ],
+      "...共 935 筆"
+     ],
+     "notes": []
+    }
+   ],
+   "stat": "ok"
+  }
+ },
+ "tpex_old_sbl": {
+  "status": 200,
+  "url": "https://www.tpex.org.tw/web/stock/margin_trading/margin_sbl/margin_sbl_result.php?l=zh-tw&d=115%2F11%2F24&o=json",
+  "body": {
+   "date": "20261124",
+   "tables": [
+    {
+     "title": "信用額度總量管制餘額表",
+     "date": "115/11/24",
+     "totalCount": 935,
+     "fields": [
+      "股票代號",
+      "股票名稱",
+      "前日餘額",
+      "賣出",
+      "...共 15 筆"
+     ],
+     "data": [
+      [
+       "00411A",
+       "主動統一前沿科技",
+       "1,000",
+       "0",
+       "...共 15 筆"
+      ],
+      [
+       "006201",
+       "元大富櫃50",
+       "9,000",
+       "0",
+       "...共 15 筆"
+      ],
+      [
+       "00679B",
+       "元大美債20年",
+       "12,000",
+       "5,000",
+       "...共 15 筆"
+      ],
+      [
+       "00687B",
+       "國泰20年美債",
+       "0",
+       "2,000",
+       "...共 15 筆"
+      ],
+      "...共 935 筆"
+     ],
+     "notes": []
+    }
+   ],
+   "stat": "ok"
+  }
+ },
+ "tpex_open_sbl": {
+  "status": 200,
+  "url": "https://www.tpex.org.tw/openapi/v1/tpex_margin_sbl",
+  "body": [
+   {
+    "Date": "1151124",
+    "SecuritiesCompanyCode": "00411A",
+    "CompanyName": "主動統一前沿科技",
+    "SaleBalancePreviousDay": "1000",
+    "SaleSell": "0",
+    "SaleBuy": "1000",
+    "SaleSpotSecurities": "0",
+    "SaleBalanceOfTheMarketDay": "0",
+    "SaleAvailableVolumes": "121519000",
+    "SecuritiesBorrowingBalancePreviousDay": "2391000",
+    "SecuritiesBorrowingSale": "1052000",
+    "SecuritiesBorrowingReturn": "1000",
+    "SecuritiesBorrowingAdjustment": "0",
+    "SecuritiesBorrowingBalanceOfTheMarketDay": "3442000",
+    "AvailableVolumesForSBLShortSale": "113362",
+    "Note": ""
+   },
+   {
+    "Date": "1151124",
+    "SecuritiesCompanyCode": "00679B",
+    "CompanyName": "元大美債20年",
+    "SaleBalancePreviousDay": "12000",
+    "SaleSell": "5000",
+    "SaleBuy": "10000",
+    "SaleSpotSecurities": "0",
+    "SaleBalanceOfTheMarketDay": "7000",
+    "SaleAvailableVolumes": "1444673000",
+    "SecuritiesBorrowingBalancePreviousDay": "99765000",
+    "SecuritiesBorrowingSale": "0",
+    "SecuritiesBorrowingReturn": "1600000",
+    "SecuritiesBorrowingAdjustment": "0",
+    "SecuritiesBorrowingBalanceOfTheMarketDay": "98165000",
+    "AvailableVolumesForSBLShortSale": "343271",
+    "Note": ""
+   },
+   {
+    "Date": "1151124",
+    "SecuritiesCompanyCode": "00687B",
+    "CompanyName": "國泰20年美債",
+    "SaleBalancePreviousDay": "0",
+    "SaleSell": "2000",
+    "SaleBuy": "0",
+    "SaleSpotSecurities": "0",
+    "SaleBalanceOfTheMarketDay": "2000",
+    "SaleAvailableVolumes": "955470095",
+    "SecuritiesBorrowingBalancePreviousDay": "28974000",
+    "SecuritiesBorrowingSale": "1371000",
+    "SecuritiesBorrowingReturn": "0",
+    "SecuritiesBorrowingAdjustment": "0",
+    "SecuritiesBorrowingBalanceOfTheMarketDay": "30345000",
+    "AvailableVolumesForSBLShortSale": "263142",
+    "Note": ""
+   },
+   {
+    "Date": "1151124",
+    "SecuritiesCompanyCode": "00694B",
+    "CompanyName": "富邦美債1-3",
+    "SaleBalancePreviousDay": "0",
+    "SaleSell": "0",
+    "SaleBuy": "0",
+    "SaleSpotSecurities": "0",
+    "SaleBalanceOfTheMarketDay": "0",
+    "SaleAvailableVolumes": "8269000",
+    "SecuritiesBorrowingBalancePreviousDay": "111000",
+    "SecuritiesBorrowingSale": "0",
+    "SecuritiesBorrowingReturn": "0",
+    "SecuritiesBorrowingAdjustment": "0",
+    "SecuritiesBorrowingBalanceOfTheMarketDay": "111000",
+    "AvailableVolumesForSBLShortSale": "4010",
+    "Note": ""
+   },
+   "...共 935 筆"
+  ]
+ }
+}
