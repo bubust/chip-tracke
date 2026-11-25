@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS fut_daily (date TEXT, sess TEXT, contract TEXT, o REA
 CREATE TABLE IF NOT EXISTS fut_settle (date TEXT PRIMARY KEY, settle REAL, src TEXT);
 CREATE TABLE IF NOT EXISTS credit_keep (date TEXT PRIMARY KEY, keep REAL, below_acc REAL, call_acc REAL, call_amt REAL, exe_acc REAL,
     exe_amt REAL, credit_acc REAL, credit_rate REAL, crd_amt REAL);
+CREATE TABLE IF NOT EXISTS sbl_stock (date TEXT, sid TEXT, mkt TEXT, name TEXT, prev REAL, sell REAL, ret REAL, adj REAL, bal REAL,
+    PRIMARY KEY (date, sid));
 CREATE TABLE IF NOT EXISTS bars5 (sym TEXT, ts INTEGER, o REAL, h REAL, l REAL, c REAL, v REAL, src TEXT, PRIMARY KEY (sym, ts));
 CREATE TABLE IF NOT EXISTS fut_chips (date TEXT PRIMARY KEY, mtx_oi REAL, mtx_inst_long REAL, mtx_inst_short REAL,
     retail_ratio REAL, opt_f_bull REAL, src TEXT);
@@ -455,6 +457,109 @@ def update_credit_keep(days: int = 120, get=None) -> int:
     except Exception as e:     # noqa: BLE001
         mark("twse_credit_keep", False, repr(e)[:200])
         return 0
+
+
+# ── B128 借券賣出餘額（證交所 TWT93U＋櫃買「信用額度總量管制餘額表」，逐檔、單位：股）─────────────
+# 兩邊表格一樣 15 欄：代號、名稱、融券 6 欄、借券賣出 6 欄（前日餘額、當日賣出、當日還券、當日調整、當日餘額、次一營業日可限額）、備註
+TWT93U = "https://www.twse.com.tw/rwd/zh/marginTrading/TWT93U"          # 舊的 /rwd/zh/SBL/TWT93U 已經 404（2026-11 實測）
+TPEX_SBL = "https://www.tpex.org.tw/www/zh-tw/margin/sbl"
+SBL_KEEP_DAYS = 90         # 逐檔資料留幾個交易日
+SBL_MAX_FETCH = 15         # 一次最多補幾天（每天上市＋上櫃各 1 次請求、間隔 2 秒；第一次上線分幾次排程慢慢補到 60 天）
+
+
+def _n(v) -> Optional[float]:
+    try:
+        t = str(v).replace(",", "").strip()
+        return float(t) if t not in ("", "-", "--") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_sbl(j: dict, mkt: str) -> list:
+    """TWT93U／櫃買 sbl 的 JSON → [{sid, mkt, name, prev, sell, ret, adj, bal}]（股）；沒資料或格式不對回 []"""
+    if not isinstance(j, dict) or str(j.get("stat", "")).lower() != "ok":
+        return []
+    t = (j.get("tables") or [j])[0] if isinstance(j.get("tables"), list) else j
+    fields, data = t.get("fields") or [], t.get("data") or []
+    if len(fields) < 13 or "前日餘額" not in fields[8] or "當日餘額" not in fields[12]:
+        return []
+    out = []
+    for r in data:
+        if not isinstance(r, list) or len(r) < 13:
+            continue
+        sid = str(r[0]).strip()
+        bal = _n(r[12])
+        if not sid or bal is None:
+            continue
+        out.append({"sid": sid, "mkt": mkt, "name": str(r[1]).strip(), "prev": _n(r[8]), "sell": _n(r[9]), "ret": _n(r[10]),
+                    "adj": _n(r[11]), "bal": bal})
+    return out
+
+
+def _sbl_get(mkt: str, d: str):
+    """d＝YYYY-MM-DD"""
+    if mkt == "twse":
+        return httpx.get(TWT93U, params={"response": "json", "date": d.replace("-", "")}, headers=UA, timeout=30).json()
+    return httpx.post(TPEX_SBL, data={"date": d.replace("-", "/"), "response": "json"}, headers=UA, timeout=30).json()
+
+
+def update_sbl(days: int = 60, max_fetch: int = SBL_MAX_FETCH, get=None, pause: float = 2.0) -> int:
+    """近 days 個交易日（看加權日 K 有哪幾天）裡還沒抓到的，從最新的開始補，一次最多 max_fetch 天。回傳補到幾天"""
+    get = get or _sbl_get
+    try:
+        with db() as c:
+            dates = [r[0] for r in c.execute("SELECT date FROM idx_daily WHERE sym='TWII' AND c IS NOT NULL ORDER BY date DESC LIMIT ?",
+                                             (int(days),))]
+            have = {(d, m) for d, m in c.execute("SELECT DISTINCT date, mkt FROM sbl_stock")}
+    except Exception as e:     # noqa: BLE001
+        mark("sbl", False, repr(e)[:200])
+        return 0
+    got, tried, err = 0, 0, ""
+    for d in dates:
+        todo = [m for m in ("twse", "tpex") if (d, m) not in have]
+        if not todo:
+            continue
+        if tried >= max_fetch:
+            break
+        tried += 1
+        rows = []
+        for m in todo:
+            try:
+                rows += parse_sbl(get(m, d), m)
+            except Exception as e:     # noqa: BLE001
+                err = repr(e)[:200]
+            if pause:
+                time.sleep(pause)
+        if rows:
+            with db() as c:
+                c.executemany("INSERT OR REPLACE INTO sbl_stock(date,sid,mkt,name,prev,sell,ret,adj,bal) VALUES (?,?,?,?,?,?,?,?,?)",
+                              [(d, r["sid"], r["mkt"], r["name"], r["prev"], r["sell"], r["ret"], r["adj"], r["bal"]) for r in rows])
+            got += 1
+    try:
+        with db() as c:
+            keep = c.execute("SELECT DISTINCT date FROM sbl_stock ORDER BY date DESC LIMIT 1 OFFSET ?", (SBL_KEEP_DAYS,)).fetchone()
+            if keep:
+                c.execute("DELETE FROM sbl_stock WHERE date<=?", (keep[0],))
+    except Exception:     # noqa: BLE001
+        pass
+    if tried:
+        mark("sbl", got > 0 or not err, err)
+    return got
+
+
+def load_sbl(n: int = 61) -> dict:
+    """{date: [{sid, mkt, name, sell, ret, bal}]}，最近 n 個交易日"""
+    try:
+        with db() as c:
+            ds = [r[0] for r in c.execute("SELECT DISTINCT date FROM sbl_stock ORDER BY date DESC LIMIT ?", (int(n),))]
+            if not ds:
+                return {}
+            out: dict = {d: [] for d in sorted(ds)}
+            for r in c.execute("SELECT date,sid,mkt,name,sell,ret,bal FROM sbl_stock WHERE date>=?", (min(ds),)):
+                out[r[0]].append({"sid": r[1], "mkt": r[2], "name": r[3], "sell": r[4] or 0, "ret": r[5] or 0, "bal": r[6] or 0})
+        return out
+    except Exception:     # noqa: BLE001
+        return {}
 
 
 def load_credit_keep(n: int = 120) -> list:

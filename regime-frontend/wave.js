@@ -185,6 +185,7 @@
     renderRules();
     renderComposite();
     renderMargin();
+    renderSbl();
     renderChips();
     renderGlobal();
     renderForecast();
@@ -1132,7 +1133,9 @@
         結論：<b>只有台指期夜盤、前一晚費半對「隔天」有效</b>；其他籌碼對隔天（扣掉夜盤已經反映的）、1～2 週、1～3 個月都沒有預測力。</div>`);
   }
 
-  function spark(hist) {
+  // o：unit 單位、nd 小數位、inv＝增加算偏空（借券：增加畫綠）、label 無障礙說明
+  function spark(hist, o = {}) {
+    const unit = o.unit || '億', nd = o.nd == null ? 1 : o.nd;
     if (!hist || hist.length < 2) return '';
     const W = 600, Hh = 70, n = hist.length, bw = W / n;
     const mx = Math.max(...hist.map(x => Math.abs(num(x.chg) || 0)), 1);
@@ -1141,10 +1144,10 @@
     const bars = hist.map((x, i) => {
       const v = num(x.chg) || 0, h = Math.abs(v) / mx * (Hh / 2 - 2);
       const y = v >= 0 ? Hh / 2 - h : Hh / 2;
-      return `<rect x="${(i * bw + 1).toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1, bw - 2).toFixed(1)}" height="${Math.max(0.5, h).toFixed(1)}" fill="${v >= 0 ? C.up : C.down}" opacity=".8"><title>${esc(md(x.date))} ${sgn(v, 1)} 億（餘額 ${fmt(x.amt)} 億）</title></rect>`;
+      return `<rect x="${(i * bw + 1).toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1, bw - 2).toFixed(1)}" height="${Math.max(0.5, h).toFixed(1)}" fill="${(v >= 0) !== !!o.inv ? C.up : C.down}" opacity=".8"><title>${esc(md(x.date))} ${sgn(v, nd)} ${unit}（餘額 ${fmt(x.amt)} ${unit}）</title></rect>`;
     }).join('');
     const line = hi > lo ? hist.map((x, i) => `${(i * bw + bw / 2).toFixed(1)},${(Hh - 4 - ((num(x.amt) - lo) / (hi - lo)) * (Hh - 8)).toFixed(1)}`).join(' ') : '';
-    return `<svg class="wv-spark" viewBox="0 0 ${W} ${Hh}" preserveAspectRatio="none" role="img" aria-label="近 60 天融資每天增減">
+    return `<svg class="wv-spark" viewBox="0 0 ${W} ${Hh}" preserveAspectRatio="none" role="img" aria-label="${esc(o.label || '近 60 天融資每天增減')}">
       <line x1="0" y1="${Hh / 2}" x2="${W}" y2="${Hh / 2}" stroke="rgba(148,163,184,.3)" stroke-width="1"/>${bars}
       ${line ? `<polyline points="${line}" fill="none" stroke="#facc15" stroke-width="1.5" opacity=".9"/>` : ''}</svg>`;
   }
@@ -1229,6 +1232,44 @@
       <div class="wv-dim" style="font-size:.84rem">柱子＝近 60 天每天增減（紅＝增加、綠＝減少，滑過看數字）；黃線＝餘額走勢</div>
       <div class="wv-what">融資＝散戶借錢買股票。<b>增加</b>代表散戶加碼（漲多時大增要小心過熱），<b>減少</b>代表散戶退場或斷頭。
         回測：融資 5 天、20 天的變化對大盤之後 1～4 週<b>沒有預測力</b>，只當描述。每天晚上 21:30 後更新。</div>`);
+  }
+
+  // B128 借券賣出餘額（證交所＋櫃買「信用額度總量管制餘額表」，只算普通股）：增加＝法人借股票來放空（偏空，畫綠）
+  function sblTop(rows, title) {
+    if (!rows || !rows.length) return '';
+    return `<div style="margin-top:8px"><b>${title}</b>
+      <table class="wv-tbl"><tr><th>股票</th><th>增減（張）</th><th>約（億）</th><th>餘額（張）</th></tr>
+      ${rows.map(r => `<tr><td>${esc(r.sid)} ${esc(r.name)}<span class="wv-dim">${r.mkt === 'tpex' ? '（櫃）' : ''}</span></td>
+        <td class="n" style="color:${colorOf(-r.chg)};font-weight:700">${sgn(r.chg, 0)}</td>
+        <td class="n">${num(r.chg_yi) == null ? '—' : sgn(r.chg_yi, 2)}</td><td class="n">${fmt(r.bal, 0)}</td></tr>`).join('')}</table></div>`;
+  }
+
+  function renderSbl() {
+    const b = S.sbl || {};
+    const el = $('wv-sbl');
+    if (!el) return;
+    if (!b.ok) { keepOpen(el, `<summary>🔻 借券賣出餘額<span class="s">${esc(b.note || '資料暫缺')}</span></summary>`); return; }
+    const stk = b.streak > 0 ? `連增 ${b.streak} 天` : b.streak < 0 ? `連減 ${-b.streak} 天` : '';
+    const ch = (n, y) => `<b style="color:${colorOf(-n)}">${sgn(n, 0)} 張</b>${num(y) == null ? '' : `（約 ${sgn(y, 1)} 億）`}`;
+    const amt = num(b.amt_yi) == null ? `${fmt(b.lots / 10, 0)} 萬張` : `${fmt(b.amt_yi, 0)} 億`;
+    const hist = (b.series || []).slice(1).map(r => ({ date: r.date, chg: r.chg, amt: r.lots }));
+    keepOpen(el, `<summary>🔻 借券賣出餘額 ${amt}<span class="wv-dim">（上市＋上櫃、普通股）</span>：${md(b.date)} ${sgn(b.chg1, 0)} 張${stk ? '，' + stk : ''}
+        <span class="s">5 天 ${sgn(b.chg5, 0)} 張、20 天 ${sgn(b.chg20, 0)} 張；增加＝借股票來放空</span></summary>
+      <div class="wv-kv">
+        <span class="k">餘額（${md(b.date)}）</span><span><b>${fmt(b.lots, 0)} 張</b>${num(b.amt_yi) == null ? '' : `，約 <b>${fmt(b.amt_yi, 0)} 億</b>
+          <span class="wv-dim">（上市 ${fmt(b.twse_yi, 0)} 億、上櫃 ${fmt(b.tpex_yi, 0)} 億；用收盤價換算${b.cover < 0.95 ? `，有收盤價的占 ${Math.round(b.cover * 100)}%` : ''}）</span>`}</span>
+        <span class="k">這一天</span><span>${ch(b.chg1, b.chg1_yi)}${stk ? `，<b>${stk}</b>` : ''}<span class="wv-dim">　借券賣出 ${fmt(b.sell, 0)} 張、還券 ${fmt(b.ret, 0)} 張</span></span>
+        <span class="k">5 天</span><span>${ch(b.chg5, b.chg5_yi)}</span>
+        <span class="k">20 天</span><span>${ch(b.chg20, b.chg20_yi)}</span>
+        <span class="k">ETF</span><span class="wv-dim">另有 ${fmt(b.etf_lots, 0)} 張（多半是避險、套利，沒算進上面）</span>
+      </div>
+      ${sblTop(b.up, '📈 這一天借券賣出增加最多')}
+      ${sblTop(b.down, '📉 這一天回補（減少）最多')}
+      ${spark(hist, { unit: '張', nd: 0, inv: true, label: '近 60 天借券賣出餘額每天增減' })}
+      <div class="wv-dim" style="font-size:.84rem">柱子＝近 60 天每天增減（綠＝增加、偏空；紅＝減少、回補；滑過看數字）；黃線＝餘額（張）走勢</div>
+      <div class="wv-what">借券賣出＝跟別人借股票來賣（放空），大多是外資、法人；<b>增加</b>＝放空加碼，<b>減少</b>＝買回來還（回補）。
+        跟融券不一樣：融券是散戶向券商借。資料是證交所、櫃買的「信用額度總量管制餘額表」，每天晚上公布；金額＝餘額 × 收盤價，增減的金額用最新收盤換算。
+        法人借券也可能是避險（例如手上有可轉債、權證要避險），不一定是看空。只當描述、沒有回測 △。</div>`);
   }
 
   function renderChips() {

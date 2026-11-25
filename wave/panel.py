@@ -471,6 +471,10 @@ def facts_b75(snap: dict) -> list:
     if cr.get("ok"):                                      # B115 證交所公布的整戶擔保維持率、追繳／處分
         L.append(f"【信用交易 {cr['date']}】整戶擔保維持率 {cr['keep']}%（近 60 天最低 {cr['low']}%）；低於 130% {cr['below']:.0f} 戶"
                  f"（前 20 天平均的 {cr.get('mult')} 倍）、補繳 {cr['call_yi']} 億、處分 {cr['exe']:.0f} 戶 {cr['exe_yi']} 億 △")
+    sb = snap.get("sbl") or {}
+    if sb.get("ok"):                                      # B128 借券賣出餘額（上市＋上櫃普通股）
+        L.append(f"【借券賣出 {sb['date']}】餘額 {sb['lots']} 張（約 {sb.get('amt_yi')} 億）；1 天 {sb.get('chg1')} 張、5 天 {sb.get('chg5')} 張、"
+                 f"20 天 {sb.get('chg20')} 張（增加＝法人放空加碼）△")
     return L
 
 
