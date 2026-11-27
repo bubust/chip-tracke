@@ -1078,7 +1078,7 @@ def _engine(snap: dict, h, l, c, dates: list, price: float) -> Optional[dict]:
         nxt = next((d for d in dates if d >= base), None)
         return idx.get(nxt, len(dates) - 1)
     d60 = [di(b["time"]) for b in b60]
-    out = SC.levels(np.asarray(h, float), np.asarray(l, float), np.asarray(c, float), float(price), b60 or None, d60 or None, b15=b15 or None, v=2)
+    out = SC.levels(np.asarray(h, float), np.asarray(l, float), np.asarray(c, float), float(price), b60 or None, d60 or None, b15=b15 or None, v=3)
     lv = out["levels"]
     st, alt = out["st"], out.get("alt")
     by_tf = {}

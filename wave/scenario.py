@@ -87,10 +87,11 @@ def _ma(c, n: int) -> Optional[float]:
 
 
 def levels(d_h, d_l, d_c, price: float, b60: Optional[list] = None, dates60: Optional[list] = None,
-           big: Optional[tuple] = None, b15: Optional[list] = None, v: int = 2) -> dict:
+           big: Optional[tuple] = None, b15: Optional[list] = None, v: int = 3) -> dict:
     """R0～R8 的價位。d_h／d_l／d_c＝日 K（最後一根可以是進行中的）；b60＝60 分 K [{time, high, low, close, volume}]（舊→新，只放收完的）；
     dates60＝每根 60 分 K 屬於哪一天日 K 的 index（跟 d_* 對齊，用來把日線轉折對到 60 分 K）；big＝(h, l, c) 算母級的長日 K（沒給就用 d_*）。
-    b15＝15 分 K（v＝2 才用）；v＝1：B131 原版（R0～R8）；v＝2：B132 加 R9 換組、R0 週線／母級／15 分轉折。
+    b15＝15 分 K（v≥2 才用）；v＝1：B131 原版（R0～R8）；v＝2：B132 加 R9 換組、R0 週線／母級／15 分轉折；
+    v＝3：B136 箱體的結構底線固定在出箱門之後第一個墊高的低點，之後刺得更深另外記「刺破最低」（跟舊版 B135 同步）。
     回 {levels:[{p, rule, note}], st: structure, alt: 換組的結構}"""
     out = []
 
@@ -209,7 +210,12 @@ def levels(d_h, d_l, d_c, price: float, b60: Optional[list] = None, dates60: Opt
                                     add(lo["p"], "R7", "箱底")
                                     add(hi["p"], "R7", "出箱門")
                                     fl = [q for q in seq if q["i"] > hi["i"] and q["t"] != top["t"]]
-                                    if fl:
+                                    if fl and v >= 3:                 # B136：底線＝出箱門之後第一個墊高的低點（固定）；之後刺得更深另外記
+                                        add(fl[0]["p"], "R7", "結構底線")
+                                        deep = min(fl, key=lambda q: y(q["p"]))
+                                        if y(deep["p"]) < y(fl[0]["p"]):
+                                            add(deep["p"], "R7", "刺破最低")
+                                    elif fl:
                                         add(min(fl, key=lambda q: y(q["p"]))["p"], "R7", "結構底線")
             if len(j_h2) and len(j_x):                               # R8 套牢區：H2→X 這段的 60 分成交分布
                 k0 = int(j_h2[0]) + int(np.argmax(h6[int(j_h2[0]):]) if st["d"] < 0 else np.argmin(l6[int(j_h2[0]):]))
@@ -292,6 +298,11 @@ def describe(st: Optional[dict], price: float, lv: Optional[list] = None) -> str
                 extra = f"；突破箱頂 {f(r7['箱頂'])}（要停留、回測不退回才算）" if u > 0 else f"；跌破箱底 {f(r7['箱頂'])}"
             else:
                 extra = f"；箱體 {f(r7['箱底'])}～{f(r7['箱頂'])}，出箱門 {f(r7['出箱門'])}" + (f"、底線 {f(r7['結構底線'])}" if r7.get("結構底線") else "")
+                fl_ = r7.get("結構底線")
+                if fl_ is not None and (price - fl_) * u < 0:
+                    extra += f"（現在跌破底線 {f(fl_)}，小箱體的急攻斜率斷了）"
+                elif r7.get("刺破最低") is not None:
+                    extra += f"（刺破底線到 {f(r7['刺破最低'])} 又站回）"
         elif r6:
             extra = f"；起推底座 {f(r6[-1])}"
     return head + f"；現在 {f(price)}，" + pos + extra
@@ -351,13 +362,17 @@ def plan(st: Optional[dict], price: float, lv: Optional[list] = None, name: str 
         lo, hi, top, fl = r7["箱底"], r7["出箱門"], r7["箱頂"], r7.get("結構底線")
         b = lambda p: (p - lo) * (1 if top > lo else -1)               # noqa: E731  箱子往上推為正
         inner = fl if fl is not None else lo
+        pc = r7.get("刺破最低")
         sc = [_sc("出箱", f"{cu}出箱門 {f(hi)}、停留守住，往箱頂 {f(top)}", b(price) >= b(hi),
                   [hi, "出箱門"], [inner, "結構底線" if fl else "箱底"], [top, "箱頂"],
                   [f"突破箱頂 {f(top)} 停留、回測不退回＝新的一段", f"再上去第二道牆 {f(W[0.5])}"]),
               _sc("箱內輪動", f"{f(inner)}～{f(hi)} 來回", b(inner) <= b(price) < b(hi), None, None, None,
-                  ["刺過出箱門留不住又滑回", "等出箱或跌破底線再說"]),
+                  ["刺過出箱門留不住又滑回", "等出箱或跌破底線再說", f"已經刺破底線到 {f(pc)} 又站回" if pc is not None else ""]),
+              _sc("底線斷裂", f"{cd}結構底線 {f(fl)}、反抽站不回，退回大箱體", fl is not None and b(lo) <= b(price) < b(inner), [fl, "結構底線"] if fl else None,
+                  [hi, "出箱門"], [lo, "箱底"], ["急攻的斜率斷了，但還在大箱體裡"]) if fl is not None else None,
               _sc("跌破箱底", f"{cd}箱底 {f(lo)}，箱體守不住", b(price) < b(lo), [lo, "箱底"], [hi, "出箱門"], [X, "前低" if d < 0 else "前高"],
                   [f"{cd} {f(inner)} 先警戒", f"回測 {f(X)}"])]
+        sc = [x for x in sc if x]
         return {"state": "箱體", "scen": sc, "common": common, "fork": f"真正分歧｜出箱門 {f(hi)} vs {'結構底線 ' + f(fl) if fl else '箱底 ' + f(lo)}"}
     if r6 and st["beyond"] and abs(rb - X) > 0 and y(price) < y(rb) - 0.382 * abs(rb - X) and y(price) > y(X):
         base = r6[-1]                                                 # 反向段第一大段推完、首次回測

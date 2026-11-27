@@ -1,5 +1,5 @@
 """B132 考卷（PLAN-B132.md，2026-11-27 寫死）：引擎 v2（加換組、週線／母級／15 分轉折）＋挑重點線
-python research/b131/run_b132.py（要先有 data/tx_d.csv、data/tx_5m.csv）"""
+python research/b131/run_b132.py [引擎版本，預設 2]（要先有 data/tx_d.csv、data/tx_5m.csv）"""
 import json
 import os
 import sys
@@ -13,6 +13,9 @@ import run as R  # noqa: E402
 
 rng = np.random.default_rng(132)
 R.rng = np.random.default_rng(1321)
+
+
+V = int(sys.argv[1]) if len(sys.argv) > 1 else 2                     # 引擎版本：2＝B132、3＝B136
 
 
 def main():
@@ -29,7 +32,7 @@ def main():
         if bars is None:
             continue
         q15 = [b for b in b15 if b["time"] + 900 <= cut.timestamp()]
-        out = R.SC.levels(h, l, c, price, bars, d60, b15=q15, v=2)
+        out = R.SC.levels(h, l, c, price, bars, d60, b15=q15, v=V)
         lv = out["levels"]
         K = [tuple(z) for z in p["levels"]]
         allp = np.array(sorted({x["p"] for x in lv}))
@@ -60,7 +63,7 @@ def main():
             ("recall", "same_dist", "prec_top", "prec_rand8", "prec_near8", "recall_top", "recall_near", "n_eng")}
     res = {"n": len(rows), "mean": mean, "tests": tests, "posts": rows}
     os.makedirs(os.path.join(HERE, "results"), exist_ok=True)
-    json.dump(res, open(os.path.join(HERE, "results", "b132.json"), "w"), ensure_ascii=False, indent=1, default=float)
+    json.dump(res, open(os.path.join(HERE, "results", "b132.json" if V == 2 else f"b132_v{V}.json"), "w"), ensure_ascii=False, indent=1, default=float)
     print(json.dumps({k: v for k, v in res.items() if k != "posts"}, ensure_ascii=False, indent=1, default=float))
     for r in rows:
         print(f"{r['label']:10s} 全部 {r['recall']*100:5.1f}%（同距離 {r['same_dist']*100:5.1f}%）｜重點線 8 條中 {sum(t['hit'] for t in r['top'])} 條是她的"
