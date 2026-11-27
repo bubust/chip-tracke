@@ -65,3 +65,6 @@
 
 ## 7. 產出
 `run.py` → `REPORT.md`、`results/b131.json`；網站先不改，看結果再決定要不要用引擎換掉 B123～B130 的樣板。
+
+---
+結果見 research/b131/REPORT.md（考卷 A ✅、考卷 B △）。
