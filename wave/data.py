@@ -547,6 +547,16 @@ def update_sbl(days: int = 60, max_fetch: int = SBL_MAX_FETCH, get=None, pause: 
     return got
 
 
+def load_sbl_one(sid: str, n: int = 61) -> list:
+    """B138 個股：[(date, sell, ret, bal)]（股，舊→新），最近 n 個有這檔資料的交易日"""
+    try:
+        with db() as c:
+            rs = c.execute("SELECT date, sell, ret, bal FROM sbl_stock WHERE sid=? ORDER BY date DESC LIMIT ?", (str(sid), int(n))).fetchall()
+        return [(r[0], r[1] or 0.0, r[2] or 0.0, r[3] or 0.0) for r in reversed(rs)]
+    except Exception:     # noqa: BLE001
+        return []
+
+
 def load_sbl(n: int = 61) -> dict:
     """{date: [{sid, mkt, name, sell, ret, bal}]}，最近 n 個交易日"""
     try:

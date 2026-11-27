@@ -397,7 +397,33 @@ def chip(sid: str, fresh: bool = False) -> dict:
                          "margin_chg_all": chg(last, first_all, 1), "short_chg_all": chg(last, first_all, 2),
                          "span_all": len(ms) - 1,
                          "series": [{"date": d, "margin": mg, "short": sh} for d, mg, sh in ms]}
+    try:                                                              # B138 借券賣出（證交所／櫃買逐檔，B128 存的 sbl_stock）
+        from wave import data as WD
+        sb = sbl_summary(WD.load_sbl_one(sid))
+        if sb:
+            mg = out.get("margin") or {}
+            if mg.get("short") is not None and sb["bal"] is not None:
+                sb["vs_short"] = round(sb["bal"] / mg["short"], 1) if mg["short"] else None
+            out["sbl"] = sb
+    except Exception as e:     # noqa: BLE001
+        log.info(f"[deep] 借券 {sid}：{e}")
     return out
+
+
+def sbl_summary(rows: list) -> Optional[dict]:
+    """B138 個股借券賣出摘要（純函式）。rows＝[(date, sell, ret, bal)]（股，舊→新）→ 張：
+    {date, bal, d1, d5, d20, sell, ret, streak, series:[{date, bal, sell, ret}]}；沒資料回 None"""
+    rows = [r for r in rows or [] if r[3] is not None]
+    if not rows:
+        return None
+    lot = lambda v: round(float(v) / 1000)                            # noqa: E731
+    bal = [lot(r[3]) for r in rows]
+    chg = lambda k: (bal[-1] - bal[-1 - k]) if len(bal) > k else None   # noqa: E731
+    diffs = [b - a for a, b in zip(bal[:-1], bal[1:])]
+    return {"date": rows[-1][0], "bal": bal[-1], "d1": chg(1), "d5": chg(5), "d20": chg(20), "span": len(bal) - 1,
+            "dall": bal[-1] - bal[0] if len(bal) > 1 else None,
+            "sell": lot(rows[-1][1]), "ret": lot(rows[-1][2]), "streak": _streak(diffs) if diffs else 0,
+            "series": [{"date": r[0], "bal": b, "sell": lot(r[1]), "ret": lot(r[2])} for r, b in zip(rows, bal)]}
 
 
 def clear_stock_cache(sid: str):
