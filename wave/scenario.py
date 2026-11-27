@@ -297,6 +297,99 @@ def describe(st: Optional[dict], price: float, lv: Optional[list] = None) -> str
     return head + f"；現在 {f(price)}，" + pos + extra
 
 
+# ── B134 引擎自己列劇本（不看她的貼文；只標價位現在站在哪一邊，不預測哪個會贏 △）──────────────
+def struct_of(h, l, c, price: float, kind: str = "small") -> tuple:
+    """任何週期的 K 線 → (結構, 併段後轉折)。kind：日 K 的 small／mid／big；分 K 的 intra／intra30／intra15（門檻跟網站同一套）"""
+    h, l, c = (np.asarray(x, dtype=float) for x in (h, l, c))
+    if len(c) < 30:
+        return None, []
+    if kind.startswith("intra"):
+        from . import intraday as I
+        th = I.theta(h, l, c, E.deg_cfg(kind))
+    else:
+        th = E.thresholds(h, l, c, kind)
+    piv = E.zigzag(h, l, th)
+    conf, tent = E.state_at(piv, h, l, len(c) - 1)
+    m = merge_all(conf + ([tent] if tent else []))
+    st = structure(m, h, l, price)
+    if st and (st["H2"]["p"] - st["T"]["p"]) * st["d"] < 0:          # 第 2 段越過起點＝不是合法的三段 → 改用另一個極端點當 X
+        tail = m[-TAIL:]
+        other = (min if st["d"] > 0 else max)(tail, key=lambda q: q["p"])
+        k = next((j for j in range(len(m)) if m[j]["i"] == other["i"] and m[j]["t"] == other["t"]), None)
+        if k is not None and k >= 3:
+            st2 = structure(m[:k + 1], h, l, price)
+            if st2 and (st2["H2"]["p"] - st2["T"]["p"]) * st2["d"] > 0:
+                return st2, m
+        return None, m
+    return st, m
+
+
+def _sc(title, tag, now, confirm=None, fail=None, target=None, notes=()):
+    return {"title": title, "tag": tag, "now": bool(now), "confirm": confirm, "fail": fail, "target": target, "notes": [n for n in notes if n]}
+
+
+def plan(st: Optional[dict], price: float, lv: Optional[list] = None, name: str = "日線") -> Optional[dict]:
+    """依引擎判的狀態列 2～3 種發展：每種的確認線、失效線、目標都從結構算（重疊線、第二道牆、前高、等幅、箱體、起推底座）。
+    now＝現價站在哪一種那邊（不是預測）。回 {state, scen:[{title, tag, now, confirm:[p, 說明], fail, target, notes}], common, fork}"""
+    if not st:
+        return None
+    f = lambda x: f"{x:,.0f}"                                         # noqa: E731
+    T, L1, H2, X, d, rb = st["T"]["p"], st["L1"]["p"], st["H2"]["p"], st["X"]["p"], st["d"], st["rb"]
+    u = -d                                                            # 反向段的方向
+    y = lambda p: u * p                                               # noqa: E731  反向段方向為正
+    cu, cd = ("站上", "跌破") if u > 0 else ("跌破", "站上")           # 往反向段方向越過／往原方向越過
+    nx, px = ("新低", "高") if d < 0 else ("新高", "低")
+    W = {r: X - r * (X - T) for r in (0.382, 0.5, 0.618)}
+    eq = H2 + d * abs(T - L1)
+    eq_n = "等幅"
+    if (eq - X) * d <= 0:                                              # 等幅目標已經落在後面 → 用延伸
+        eq, eq_n = X + d * 0.618 * abs(T - L1), "延伸 0.618 倍第 1 段"
+    common = f"共同事實｜{name} {f(T)}→{f(L1)}→{f(H2)}→{f(X)}" + (f"，之後反向走到 {f(rb)}" if abs(rb - X) > 0 else "")
+    r7 = {x["note"]: x["p"] for x in lv or [] if x["rule"] == "R7"}
+    r6 = [x["p"] for x in lv or [] if x["rule"] == "R6"]
+    if r7.get("箱底") and r7.get("出箱門") and r7.get("箱頂"):         # 箱體（只有日線有）
+        lo, hi, top, fl = r7["箱底"], r7["出箱門"], r7["箱頂"], r7.get("結構底線")
+        b = lambda p: (p - lo) * (1 if top > lo else -1)               # noqa: E731  箱子往上推為正
+        inner = fl if fl is not None else lo
+        sc = [_sc("出箱", f"{cu}出箱門 {f(hi)}、停留守住，往箱頂 {f(top)}", b(price) >= b(hi),
+                  [hi, "出箱門"], [inner, "結構底線" if fl else "箱底"], [top, "箱頂"],
+                  [f"突破箱頂 {f(top)} 停留、回測不退回＝新的一段", f"再上去第二道牆 {f(W[0.5])}"]),
+              _sc("箱內輪動", f"{f(inner)}～{f(hi)} 來回", b(inner) <= b(price) < b(hi), None, None, None,
+                  ["刺過出箱門留不住又滑回", "等出箱或跌破底線再說"]),
+              _sc("跌破箱底", f"{cd}箱底 {f(lo)}，箱體守不住", b(price) < b(lo), [lo, "箱底"], [hi, "出箱門"], [X, "前低" if d < 0 else "前高"],
+                  [f"{cd} {f(inner)} 先警戒", f"回測 {f(X)}"])]
+        return {"state": "箱體", "scen": sc, "common": common, "fork": f"真正分歧｜出箱門 {f(hi)} vs {'結構底線 ' + f(fl) if fl else '箱底 ' + f(lo)}"}
+    if r6 and st["beyond"] and abs(rb - X) > 0 and y(price) < y(rb) - 0.382 * abs(rb - X) and y(price) > y(X):
+        base = r6[-1]                                                 # 反向段第一大段推完、首次回測
+        sc = [_sc("健康回測", f"守住起推底座 {f(base)}，之後再攻 {f(rb)}", y(price) >= y(base), [rb, "反向段高點" if u > 0 else "反向段低點"],
+                  [base, "起推底座"], [W[0.5], "第二道牆 0.5"], [f"回測 {f(rb - u * 0.5 * abs(rb - X))}～{f(rb - u * 0.618 * abs(rb - X))}（0.5～0.618）收腳"]),
+              _sc("失速", f"{cd}起推底座 {f(base)}、反抽站不回", y(price) < y(base), [base, "起推底座"], [rb, "反向段高點" if u > 0 else "反向段低點"],
+                  [X, "前低" if d < 0 else "前高"], [f"回測 {f(X)}"])]
+        return {"state": "首次回測", "scen": sc, "common": common, "fork": f"真正分歧｜起推底座 {f(base)} 守不守"}
+    if not st["beyond"]:
+        sc = [_sc("第 3 段繼續", f"{cd} {f(X)} 再創{nx}，往第 1 段終點 {f(L1)} 外", False, [X, "這一段的極值"], [H2, "第 2 段終點"], [L1, "第 1 段終點"]),
+              _sc("第 3 段失敗", f"{cu} {f(H2)}", False, [H2, "第 2 段終點"], [X, "這一段的極值"], [T, "起點"])]
+        return {"state": "第 3 段還沒越過第 1 段", "scen": sc, "common": common, "fork": f"真正分歧｜{f(X)} vs {f(H2)}"}
+    if y(price) < y(L1):
+        sc = [_sc("延續（五段）", f"反向段壓在重疊線 {f(L1)} 下，再{cd} {f(X)}", True, [X, "前一個極值"], [L1, "重疊線"], [eq, eq_n],
+                  ["反向段只是第 4 段"]),
+              _sc("三段走完", f"帶量實體{cu}重疊線 {f(L1)}（打破 1、4 重疊）", False, [L1, "重疊線"], [X, "前一個極值"], [W[0.382], "第二道牆 0.382"])]
+        return {"state": "S1 還沒碰重疊線", "scen": sc, "common": common, "fork": f"真正分歧｜重疊線 {f(L1)}"}
+    if y(price) < y(W[0.382]):
+        sc = [_sc("反向續攻", f"往第二道牆 {f(W[0.382])}～{f(W[0.618])}", True, [W[0.382], "第二道牆 0.382"], [L1, "重疊線"], [W[0.5], "第二道牆 0.5"]),
+              _sc("回到延續", f"{cd}重疊線 {f(L1)} 站不回", False, [L1, "重疊線"], [W[0.382], "第二道牆 0.382"], [X, "前一個極值"])]
+        return {"state": "S2 過了重疊線", "scen": sc, "common": common, "fork": f"真正分歧｜重疊線 {f(L1)} 守不守"}
+    if y(price) < y(W[0.618]):
+        sc = [_sc("遇壓折返（大 B 波）" if u > 0 else "遇撐反彈（大 B 波）", f"在第二道牆 {f(W[0.382])}～{f(W[0.618])} 量縮" + ("折返" if u > 0 else "止跌"), False, [W[0.382], "第二道牆 0.382（" + ("跌回" if u > 0 else "站回") + "）"],
+                  [W[0.618], "第二道牆 0.618"], [L1, "重疊線"], ["走完再回原方向"]),
+              _sc("連過兩道（轉勢）", f"{cu} {f(W[0.618])}、再{cu}前{px} {f(H2)}", False, [W[0.618], "第二道牆 0.618"], [W[0.382], "第二道牆 0.382"], [H2, f"前{px}"])]
+        return {"state": "S3 第二道牆裡", "scen": sc, "common": common, "fork": f"真正分歧｜{f(W[0.382])}～{f(W[0.618])} 過不過"}
+    sc = [_sc("轉勢", f"守住 {f(W[0.618])}、{cu}前{px} {f(H2)}", True, [H2, f"前{px}"], [W[0.5], "第二道牆 0.5"], [T, "起點"]),
+          _sc("假突破", f"跌回第二道牆 {f(W[0.618])} 裡" if u > 0 else f"站回第二道牆 {f(W[0.618])} 裡", False, [W[0.618], "第二道牆 0.618（" + ("跌回" if u > 0 else "站回") + "）"],
+              [H2, f"前{px}"], [W[0.382], "第二道牆 0.382"])]
+    return {"state": "S4 過了第二道牆", "scen": sc, "common": common, "fork": f"真正分歧｜前{px} {f(H2)}"}
+
+
 # ── 考卷 B：每天收盤判一個方向 ────────────────────────────────────────────────
 def call(m: list, h, l, price: float) -> dict:
     """PLAN §5：S1 還沒碰到重疊線 → 判 d；S2 越過重疊線、還沒到 W0.382 → 判 −d；S3 W0.382～0.618 → 不判；S4 越過 W0.618 → 判 −d"""
