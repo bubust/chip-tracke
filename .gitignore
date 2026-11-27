@@ -59,3 +59,6 @@ research/b97/data/
 # B106 參考資料（網站快照存的台指期分 K）
 research/b106/data/
 research/b118/data/
+
+# B131 研究資料（GitHub Actions 抓，research/b131/fetch.py 可重抓）
+research/b131/data/
