@@ -284,7 +284,14 @@ def describe(st: Optional[dict], price: float, lv: Optional[list] = None) -> str
         r7 = {x["note"]: x["p"] for x in lv if x["rule"] == "R7"}
         r6 = [x["p"] for x in lv if x["rule"] == "R6"]
         if r7.get("箱底") and r7.get("出箱門"):
-            extra = f"；箱體 {f(r7['箱底'])}～{f(r7['箱頂'])}，出箱門 {f(r7['出箱門'])}" + (f"、底線 {f(r7['結構底線'])}" if r7.get("結構底線") else "")
+            u = 1 if r7["箱頂"] > r7["箱底"] else -1                   # 箱子往哪邊推
+            if (price - r7["箱底"]) * u < 0:                          # 現價已經在箱底外面＝箱體破了
+                extra = f"；跌破箱底 {f(r7['箱底'])}（{f(r7['箱底'])}～{f(r7['箱頂'])} 的箱體已經守不住）" if u > 0 else \
+                        f"；站上箱頂 {f(r7['箱底'])}（箱體被突破）"
+            elif (price - r7["箱頂"]) * u > 0:
+                extra = f"；突破箱頂 {f(r7['箱頂'])}（要停留、回測不退回才算）" if u > 0 else f"；跌破箱底 {f(r7['箱頂'])}"
+            else:
+                extra = f"；箱體 {f(r7['箱底'])}～{f(r7['箱頂'])}，出箱門 {f(r7['出箱門'])}" + (f"、底線 {f(r7['結構底線'])}" if r7.get("結構底線") else "")
         elif r6:
             extra = f"；起推底座 {f(r6[-1])}"
     return head + f"；現在 {f(price)}，" + pos + extra
