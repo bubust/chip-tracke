@@ -81,3 +81,13 @@ def test_clock_night_bar_is_next_day():
     bars = [{"time": d, "open": 1, "high": 1, "low": 1, "close": 1, "volume": 1} for d in ("2026-11-23", "2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27", "2026-11-30")]
     ck = W.frame_clock(bars, [], "2026-11-06", "2026-11-12", "2026-11-23", "2026-11-27")
     assert ck["wk_close"] == "2026-11-27" and ck["reb_days"] == 4
+
+
+def test_b135_floor_fixed_and_pierce():
+    """11/27 夜盤：刺破結構底線 39,003 到 38,801 又站回——底線固定、不跟著往下移；標「刺破又站回」，還沒算斜率斷裂"""
+    t = W.structure(W.merge_pause(X.DAILY), X.H60 + [{"p": 40900, "t": "H"}, {"p": 35933, "t": "L"}], 39365.0, 38079.0, 39000.0, X.LB, full=17015.0)
+    box = {"top": 40900.0, "lo": 35933.0, "hi": 39688.0, "floor": 39003.0, "pierce": 38801.0}
+    fr = W.big_frame(t, 39365.0, 17015.0, lows=[31740.0, 39442.0], leg=(35933.0, 39688.0), box=box)
+    assert fr["box"]["state"] == "pierce" and "刺破結構底線 39,003（最低 38,801）又站回" in fr["status"]
+    fr2 = W.big_frame(t, 38900.0, 17015.0, lows=[31740.0, 39442.0], leg=(35933.0, 39688.0), box=box)
+    assert fr2["box"]["state"] == "fall" and "跌破結構底線 39,003" in fr2["status"]
