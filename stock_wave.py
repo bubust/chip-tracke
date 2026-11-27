@@ -1333,7 +1333,7 @@ def frame_tfs(fr: dict, price: float, piv: dict, ma5: dict) -> dict:
         lk = (f"{nm} K 收破 5 均（{f(m5)}）" if m5 else "") + ("、或" if m5 and d236 else "") + (f"跌破 0.236 {f(d236['v'])}" if d236 else "")
         out[tf] = {"map": {"title": (f"{f(d236['lo'])}→{f(d236['hi'])}｜短線鎖利線" if d236 else f"{f(ext)} 起｜{nm}短線"),
                            "tag": f"T3 {tf.upper()} MOTHER MAP",
-                           "sub": f"{nm} K 轉折從 {f(ext)} 起；她 11/23：短線鎖利用 15 分 K 跌破 5T 或 0.236",
+                           "sub": f"{nm} K 轉折從 {f(pts[0]['p'])} 起；她 11/23：短線鎖利用 15 分 K 跌破 5T 或 0.236",
                            "path": pts, "lines": lines,
                            "versions": [{"title": "守住鎖利線", "tag": "短線多單續抱", "now": bool(below) and below[0][0] < price and (not d236 or price >= d236["v"]),
                                          "pts": [{"p": d236["lo"] if d236 else ext, "label": ""}, {"p": rb, "label": ""},
@@ -1449,7 +1449,7 @@ def frame_tfs(fr: dict, price: float, piv: dict, ma5: dict) -> dict:
                 o6["map"]["versions"][1]["notes"].append(f"刺破 {f(fl)} 到 {f(pc)} 又站回")
             o6["plays"] = [{"k": "long", "tag": "出箱才追", "t": f"帶量突破 {f(hi)}、箱外停留、回測守住才順勢做多，目標 {f(w382)}→{f(rb)}"},
                            {"k": "short", "tag": "底線", "t": f"60 分實體收破 {f(fl) if fl else '箱底'} 且反抽站不回＝急攻斜率斷裂，先下車"}]
-        o6["detail"] = pick("壓回", "箱體", "套牢區")
+        o6["detail"] = pick("壓回", "箱體")                           # 套牢區已經在圖下面那行（不重複）
     for tf in ("30m", "15m"):
         if tf not in out:
             continue
@@ -1458,9 +1458,13 @@ def frame_tfs(fr: dict, price: float, piv: dict, ma5: dict) -> dict:
         broke = bool(d236) and price < d236["v"]
         o["where"] = (f"{nm}：{f(d236['lo'])}→{f(d236['hi'])} 這段短線，現在 {f(price)}" if d236 else f"{nm}：現在 {f(price)}") + \
                      ("——已跌破鎖利線" if broke else "——還在鎖利線上面")
-        o["plays"] = ([{"k": "wait", "tag": "已鎖利", "t": "短線多單照她的方法已經該先下車；等壓回 0.382～0.5 止穩、或回到日 K 的支撐收腳再接"}] if broke else
-                      [{"k": "long", "tag": "續抱", "t": f"守住 {nm} 5 均／0.236 就續抱"}, {"k": "wait", "tag": "鎖利", "t": f"{nm} K 收破 5 均或跌破 0.236 先下車"}])
-        o["detail"] = pick("套牢區")
+        keep = ([f"{nm} 5 均 {f(m5)}"] if m5 else []) + ([f"0.236 {f(d236['v'])}"] if d236 else [])   # 用戶 11/27：要寫點位
+        back = (f"0.382 {f(d236['hi'] - 0.382 * (d236['hi'] - d236['lo']))}～0.5 {f(d236['hi'] - 0.5 * (d236['hi'] - d236['lo']))}" if d236 else "0.382～0.5")
+        o["plays"] = ([{"k": "wait", "tag": "已鎖利", "t": f"跌破 0.236 {f(d236['v']) if d236 else ''}，短線多單照她的方法先下車；等壓回 {back} 止穩再接"}] if broke else
+                      [{"k": "long", "tag": "續抱", "t": "守住 " + "、".join(keep) + " 就續抱" if keep else "守住短線支撐就續抱"},
+                       {"k": "wait", "tag": "鎖利", "t": ("、".join(([f"{nm} K 收盤跌破 5 均 {f(m5)}"] if m5 else []) + ([f"跌破 0.236 {f(d236['v'])}"] if d236 else []))
+                                                       + " 就先下車，等壓回 " + back + " 止穩再接") if keep else "跌破短線支撐先下車"}])
+        o["detail"] = []                                             # 套牢區已經在圖下面那行（不重複）
     return out
 
 
