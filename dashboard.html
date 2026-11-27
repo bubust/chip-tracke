@@ -2373,6 +2373,17 @@ function _dpChip(d) {
       ${mser.length >= 5 ? `<div class="dp-cap"><span>融資餘額走勢（近 ${mser.length} 天）</span></div>` +
         _dpLine(mser.map(x => ({ x: String(x.date).slice(5), v: x.margin, tip: `${x.date} 融資 ${_dpN(x.margin)} 張・融券 ${_dpN(x.short)} 張` })), { color: '#d29922', fmt: v => _dpN(v), label: '融資餘額' }) : ''}
       <div class="dp-note" style="margin-top:4px">融資大增＝散戶追價、融券大增＝有人放空（軋空題材）；只顯示、不計分。資料日期 ${_esc(mg.date)}</div></div>` : '';
+  const sb = c.sbl;                                                    // B138 借券賣出（證交所／櫃買逐檔）
+  const sser = (sb && sb.series) || [];
+  const sbChg = (v, n) => v != null ? `<span class="${_dpC(-v)}" style="font-size:.74rem">${n} ${_dpS(v)}</span>` : '';
+  const sbHtml = sb ? `<div class="dp-sec">🔻 借券賣出（張）</div><div class="dp-box">
+      ${_dpRow('借券賣出餘額', `<b>${_dpN(sb.bal)}</b>　${sbChg(sb.d1, '今天')}　${sbChg(sb.d5, '5 日')}　${sbChg(sb.dall, sb.span + ' 日')}`)}
+      ${_dpRow('今天', `借券賣出 ${_dpN(sb.sell)}・還券 ${_dpN(sb.ret)}　<span class="${_dpC(-(sb.streak || 0))}" style="font-size:.74rem">${sb.streak > 0 ? '連增 ' + sb.streak + ' 天' : sb.streak < 0 ? '連減 ' + (-sb.streak) + ' 天' : ''}</span>`)}
+      ${sb.vs_short != null ? _dpRow('跟融券比', `借券賣出是融券的 ${_esc(sb.vs_short)} 倍　<span class="dp-mu" style="font-size:.74rem">法人放空多半走借券、散戶走融券</span>`) : ''}
+      ${sser.length >= 5 ? `<div class="dp-cap"><span>借券賣出餘額走勢（近 ${sser.length} 天）</span></div>` +
+        _dpLine(sser.map(x => ({ x: String(x.date).slice(5), v: x.bal, tip: `${x.date} 餘額 ${_dpN(x.bal)} 張・借券賣出 ${_dpN(x.sell)}・還券 ${_dpN(x.ret)}` })),
+          { color: '#22c55e', fmt: v => _dpN(v), label: '借券賣出餘額' }) : ''}
+      <div class="dp-note" style="margin-top:4px">增加（綠）＝法人借股票來放空或避險、偏空；減少（紅）＝回補。只顯示、不計分。來源：證交所／櫃買信用額度總量管制餘額表，資料日期 ${_esc(sb.date)}</div></div>` : '';
   const ser = c.series || [];
   const flowHtml = ser.length >= 5 ? `<div class="dp-sec">近 ${ser.length} 個交易日買賣超（張，紅＝買超、綠＝賣超）</div><div class="dp-box">` +
     [['foreign', '外資'], ['trust', '投信'], ['main', '主力合計（外資＋投信＋自營）']].map(([k, lbl]) => {
@@ -2391,7 +2402,7 @@ function _dpChip(d) {
     ${flowHtml}
     <div class="dp-sec">近 10 個交易日（張）</div>
     <div class="dp-box"><table class="dp-t"><tr><th>日期</th><th>外資</th><th>投信</th><th>自營商</th></tr>${daily}</table></div>
-    ${big}${mgHtml}${mtHtml}`;
+    ${big}${mgHtml}${sbHtml}${mtHtml}`;
 }
 
 function _dpFund(d) {

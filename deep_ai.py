@@ -220,6 +220,12 @@ def _data_block(d: dict, rows: list) -> str:
     if mg:
         L.append(f"- 融資餘額 {_n(mg.get('margin'), 0)} 張（{mg.get('span_all')} 日 {_s(mg.get('margin_chg_all'), 0)}）、"
                  f"融券餘額 {_n(mg.get('short'), 0)} 張（{mg.get('span_all')} 日 {_s(mg.get('short_chg_all'), 0)}）")
+    sb = ch.get("sbl")
+    if sb:                                                            # B138 借券賣出
+        st_ = sb.get("streak") or 0
+        L.append(f"- 借券賣出餘額 {_n(sb.get('bal'), 0)} 張（今天 {_s(sb.get('d1'), 0)}、5 日 {_s(sb.get('d5'), 0)}、{sb.get('span')} 日 {_s(sb.get('dall'), 0)}；"
+                 f"今天借券賣出 {_n(sb.get('sell'), 0)} 張、還券 {_n(sb.get('ret'), 0)} 張；{'連增' if st_ > 0 else '連減' if st_ < 0 else '持平'}"
+                 f"{f' {abs(st_)} 天' if st_ else ''}）——借券賣出多半是法人放空或避險，增加偏空、減少＝回補")
     mt = ch.get("maint")
     if mt:
         L.append(f"- 融資維持率（估計）{_n(mt.get('maint'), 1)}%：融資平均成本約 {_n(mt.get('cost'))} 元（{mt.get('market')}融資 "
