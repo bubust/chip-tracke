@@ -1,0 +1,2641 @@
+{
+ "n": 26,
+ "mean": {
+  "recall": 0.7554,
+  "same_dist": 0.5775,
+  "prec_top": 0.1923,
+  "prec_rand8": 0.1706,
+  "prec_near8": 0.2644,
+  "recall_top": 0.1736,
+  "recall_near": 0.2162,
+  "n_eng": 73.9231
+ },
+ "tests": {
+  "v2 全部 vs 同樣距離隨便挑": {
+   "diff": 0.17784773212898217,
+   "ci": [
+    0.11861440166975883,
+    0.23316126984126984
+   ],
+   "p": 0.0,
+   "q": 0.0
+  },
+  "重點線精準 vs 隨便挑 8 條": {
+   "diff": 0.021667921362964394,
+   "ci": [
+    -0.04436399528402118,
+    0.12814315363082582
+   ],
+   "p": 0.2935,
+   "q": 0.44025
+  },
+  "重點線精準 vs 最近的 8 條": {
+   "diff": -0.07211538461538461,
+   "ci": [
+    -0.16025641025641027,
+    0.06944444444444445
+   ],
+   "p": 0.9165,
+   "q": 0.9165
+  }
+ },
+ "posts": [
+  {
+   "id": "p09",
+   "label": "11/1",
+   "week": "2026-44",
+   "price": 44433.0,
+   "n_key": 6,
+   "n_eng": 85,
+   "recall": 0.5,
+   "same_dist": 0.49816666666666665,
+   "prec_top": 0.0,
+   "prec_rand8": 0.02631578947368421,
+   "prec_near8": 0.0,
+   "recall_top": 0.0,
+   "recall_near": 0.0,
+   "top": [
+    {
+     "p": 45364.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45523.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45264.14,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 46219.0,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 46425.37,
+     "score": 4.0,
+     "rules": [
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 47607.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R6"
+     ],
+     "hit": false
+    },
+    {
+     "p": 48997.0,
+     "score": 4.0,
+     "rules": [
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 46617.58,
+     "score": 3.0,
+     "rules": [
+      "R3",
+      "R4",
+      "R5"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": true,
+   "missed": [
+    [
+     43855,
+     43855
+    ],
+    [
+     42555,
+     42555
+    ],
+    [
+     43449,
+     43449
+    ]
+   ]
+  },
+  {
+   "id": "p10",
+   "label": "11/2",
+   "week": "2026-45",
+   "price": 44433.0,
+   "n_key": 10,
+   "n_eng": 85,
+   "recall": 0.9,
+   "same_dist": 0.7637999999999999,
+   "prec_top": 0.125,
+   "prec_rand8": 0.3157894736842105,
+   "prec_near8": 0.625,
+   "recall_top": 0.2,
+   "recall_near": 0.3,
+   "top": [
+    {
+     "p": 45364.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R3"
+     ],
+     "hit": true
+    },
+    {
+     "p": 45523.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45264.14,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 46219.0,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 46425.37,
+     "score": 4.0,
+     "rules": [
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 47607.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R6"
+     ],
+     "hit": false
+    },
+    {
+     "p": 48997.0,
+     "score": 4.0,
+     "rules": [
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 46617.58,
+     "score": 3.0,
+     "rules": [
+      "R3",
+      "R4",
+      "R5"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": true,
+   "missed": [
+    [
+     43851,
+     43974
+    ]
+   ]
+  },
+  {
+   "id": "p11",
+   "label": "11/2 晚",
+   "week": "2026-45",
+   "price": 44921.0,
+   "n_key": 8,
+   "n_eng": 81,
+   "recall": 0.875,
+   "same_dist": 0.695625,
+   "prec_top": 0.375,
+   "prec_rand8": 0.16666666666666666,
+   "prec_near8": 0.5,
+   "recall_top": 0.375,
+   "recall_near": 0.5,
+   "top": [
+    {
+     "p": 45364.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R3"
+     ],
+     "hit": true
+    },
+    {
+     "p": 45523.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R3"
+     ],
+     "hit": true
+    },
+    {
+     "p": 45264.14,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 46219.0,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 46425.37,
+     "score": 4.0,
+     "rules": [
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 47607.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R6"
+     ],
+     "hit": false
+    },
+    {
+     "p": 48997.0,
+     "score": 4.0,
+     "rules": [
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 44769.5,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": true
+    }
+   ],
+   "alt": true,
+   "missed": [
+    [
+     45597,
+     45597
+    ]
+   ]
+  },
+  {
+   "id": "p12",
+   "label": "11/3",
+   "week": "2026-45",
+   "price": 43376.0,
+   "n_key": 5,
+   "n_eng": 89,
+   "recall": 0.4,
+   "same_dist": 0.6230999999999999,
+   "prec_top": 0.0,
+   "prec_rand8": 0.05555555555555555,
+   "prec_near8": 0.125,
+   "recall_top": 0.0,
+   "recall_near": 0.2,
+   "top": [
+    {
+     "p": 45364.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45523.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45975.46,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R3",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 47607.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R3",
+      "R6"
+     ],
+     "hit": false
+    },
+    {
+     "p": 46219.0,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 46794.5,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 46178.25,
+     "score": 3.5,
+     "rules": [
+      "R0",
+      "R3",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43324.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": true,
+   "missed": [
+    [
+     43432,
+     43432
+    ],
+    [
+     41285,
+     41285
+    ],
+    [
+     42925,
+     42925
+    ]
+   ]
+  },
+  {
+   "id": "p13",
+   "label": "11/4",
+   "week": "2026-45",
+   "price": 43854.0,
+   "n_key": 8,
+   "n_eng": 72,
+   "recall": 0.625,
+   "same_dist": 0.6554375,
+   "prec_top": 0.125,
+   "prec_rand8": 0.15,
+   "prec_near8": 0.25,
+   "recall_top": 0.125,
+   "recall_near": 0.125,
+   "top": [
+    {
+     "p": 45364.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R5"
+     ],
+     "hit": true
+    },
+    {
+     "p": 46219.0,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 47607.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R6"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43573.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43458.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45264.14,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 46456.0,
+     "score": 3.0,
+     "rules": [
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 47173.86,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     44154,
+     44154
+    ],
+    [
+     41670,
+     41670
+    ],
+    [
+     40800,
+     40800
+    ]
+   ]
+  },
+  {
+   "id": "p14",
+   "label": "11/5",
+   "week": "2026-45",
+   "price": 41915.0,
+   "n_key": 3,
+   "n_eng": 90,
+   "recall": 1.0,
+   "same_dist": 0.5506666666666667,
+   "prec_top": 0.125,
+   "prec_rand8": 0.07692307692307693,
+   "prec_near8": 0.0,
+   "recall_top": 0.3333333333333333,
+   "recall_near": 0.0,
+   "top": [
+    {
+     "p": 45364.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45264.14,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R4"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45523.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": true
+    },
+    {
+     "p": 45965.5,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 46219.0,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 41666.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 42270.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 42633.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3",
+      "R4"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": true,
+   "missed": []
+  },
+  {
+   "id": "p15",
+   "label": "11/6",
+   "week": "2026-45",
+   "price": 39786.0,
+   "n_key": 7,
+   "n_eng": 72,
+   "recall": 0.7142857142857143,
+   "same_dist": 0.45985714285714285,
+   "prec_top": 0.0,
+   "prec_rand8": 0.13513513513513514,
+   "prec_near8": 0.0,
+   "recall_top": 0.0,
+   "recall_near": 0.0,
+   "top": [
+    {
+     "p": 40690.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 37694.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R6"
+     ],
+     "hit": false
+    },
+    {
+     "p": 44052.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 42496.12,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43979.5,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 42707.4,
+     "score": 2.5,
+     "rules": [
+      "R3",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 39889.69,
+     "score": 2.0,
+     "rules": [
+      "R3",
+      "R4"
+     ],
+     "hit": false
+    },
+    {
+     "p": 39518.0,
+     "score": 2.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     36603,
+     36603
+    ],
+    [
+     35192,
+     35192
+    ]
+   ]
+  },
+  {
+   "id": "p16",
+   "label": "11/8",
+   "week": "2026-45",
+   "price": 40298.0,
+   "n_key": 11,
+   "n_eng": 72,
+   "recall": 0.7272727272727273,
+   "same_dist": 0.563090909090909,
+   "prec_top": 0.125,
+   "prec_rand8": 0.25,
+   "prec_near8": 0.625,
+   "recall_top": 0.09090909090909091,
+   "recall_near": 0.2727272727272727,
+   "top": [
+    {
+     "p": 40690.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": true
+    },
+    {
+     "p": 39129.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R6"
+     ],
+     "hit": false
+    },
+    {
+     "p": 44052.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 39269.5,
+     "score": 3.0,
+     "rules": [
+      "R3",
+      "R4"
+     ],
+     "hit": false
+    },
+    {
+     "p": 42496.12,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43904.0,
+     "score": 3.0,
+     "rules": [
+      "R5",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43979.5,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 44329.83,
+     "score": 2.5,
+     "rules": [
+      "R0",
+      "R5"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     40981,
+     40981
+    ],
+    [
+     42125,
+     42125
+    ],
+    [
+     38280,
+     38280
+    ]
+   ]
+  },
+  {
+   "id": "p17",
+   "label": "11/10 盤前",
+   "week": "2026-46",
+   "price": 42542.0,
+   "n_key": 5,
+   "n_eng": 71,
+   "recall": 0.6,
+   "same_dist": 0.6905999999999999,
+   "prec_top": 0.125,
+   "prec_rand8": 0.05,
+   "prec_near8": 0.0,
+   "recall_top": 0.2,
+   "recall_near": 0.0,
+   "top": [
+    {
+     "p": 44052.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 40690.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R3"
+     ],
+     "hit": true
+    },
+    {
+     "p": 45462.88,
+     "score": 5.0,
+     "rules": [
+      "R3",
+      "R5",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45523.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 39129.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R6"
+     ],
+     "hit": false
+    },
+    {
+     "p": 42496.12,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 42657.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 42173.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     43269,
+     43307
+    ],
+    [
+     43397,
+     43449
+    ]
+   ]
+  },
+  {
+   "id": "p18",
+   "label": "11/10 傍晚",
+   "week": "2026-46",
+   "price": 42630.0,
+   "n_key": 11,
+   "n_eng": 72,
+   "recall": 0.9090909090909091,
+   "same_dist": 0.6888636363636362,
+   "prec_top": 0.25,
+   "prec_rand8": 0.225,
+   "prec_near8": 0.0,
+   "recall_top": 0.2727272727272727,
+   "recall_near": 0.0,
+   "top": [
+    {
+     "p": 40690.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R3"
+     ],
+     "hit": true
+    },
+    {
+     "p": 42496.12,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 42173.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R3",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 44052.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45462.88,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45523.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": true
+    },
+    {
+     "p": 39129.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R6"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43184.0,
+     "score": 3.0,
+     "rules": [
+      "R5",
+      "R8"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     46107,
+     46107
+    ]
+   ]
+  },
+  {
+   "id": "p19",
+   "label": "11/10 夜盤",
+   "week": "2026-46",
+   "price": 42968.0,
+   "n_key": 4,
+   "n_eng": 74,
+   "recall": 0.75,
+   "same_dist": 0.5715,
+   "prec_top": 0.0,
+   "prec_rand8": 0.02564102564102564,
+   "prec_near8": 0.0,
+   "recall_top": 0.0,
+   "recall_near": 0.0,
+   "top": [
+    {
+     "p": 40690.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 42496.12,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 44052.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45462.88,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45523.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 39129.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R6"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43184.0,
+     "score": 3.0,
+     "rules": [
+      "R5",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 42173.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     41173,
+     41173
+    ]
+   ]
+  },
+  {
+   "id": "p20",
+   "label": "11/11",
+   "week": "2026-46",
+   "price": 44091.0,
+   "n_key": 9,
+   "n_eng": 74,
+   "recall": 0.8888888888888888,
+   "same_dist": 0.7633333333333335,
+   "prec_top": 0.75,
+   "prec_rand8": 0.4146341463414634,
+   "prec_near8": 0.5,
+   "recall_top": 0.5555555555555556,
+   "recall_near": 0.2222222222222222,
+   "top": [
+    {
+     "p": 40690.0,
+     "score": 6.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R3",
+      "R6"
+     ],
+     "hit": true
+    },
+    {
+     "p": 44052.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": true
+    },
+    {
+     "p": 45462.88,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": true
+    },
+    {
+     "p": 45523.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": true
+    },
+    {
+     "p": 43979.5,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43904.0,
+     "score": 3.0,
+     "rules": [
+      "R5",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43184.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R8"
+     ],
+     "hit": true
+    },
+    {
+     "p": 42824.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R4",
+      "R5"
+     ],
+     "hit": true
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     44680,
+     44680
+    ]
+   ]
+  },
+  {
+   "id": "p21",
+   "label": "11/12",
+   "week": "2026-46",
+   "price": 43405.0,
+   "n_key": 8,
+   "n_eng": 73,
+   "recall": 0.75,
+   "same_dist": 0.6895,
+   "prec_top": 0.375,
+   "prec_rand8": 0.24324324324324326,
+   "prec_near8": 0.25,
+   "recall_top": 0.25,
+   "recall_near": 0.25,
+   "top": [
+    {
+     "p": 43184.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R3",
+      "R5",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 40690.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R6"
+     ],
+     "hit": true
+    },
+    {
+     "p": 43904.0,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R5",
+      "R8"
+     ],
+     "hit": true
+    },
+    {
+     "p": 44052.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45462.88,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45523.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43979.5,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": true
+    },
+    {
+     "p": 42813.0,
+     "score": 3.0,
+     "rules": [
+      "R3",
+      "R4",
+      "R5"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     43580,
+     43580
+    ],
+    [
+     44203,
+     44203
+    ]
+   ]
+  },
+  {
+   "id": "p22",
+   "label": "11/15",
+   "week": "2026-46",
+   "price": 43706.0,
+   "n_key": 9,
+   "n_eng": 71,
+   "recall": 1.0,
+   "same_dist": 0.7155555555555555,
+   "prec_top": 0.125,
+   "prec_rand8": 0.2777777777777778,
+   "prec_near8": 0.25,
+   "recall_top": 0.1111111111111111,
+   "recall_near": 0.2222222222222222,
+   "top": [
+    {
+     "p": 45462.88,
+     "score": 5.0,
+     "rules": [
+      "R3",
+      "R4",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45523.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 40690.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R6"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43904.0,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R5",
+      "R8"
+     ],
+     "hit": true
+    },
+    {
+     "p": 44052.0,
+     "score": 4.0,
+     "rules": [
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43669.58,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43979.5,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43184.0,
+     "score": 3.0,
+     "rules": [
+      "R5",
+      "R8"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": false,
+   "missed": []
+  },
+  {
+   "id": "p23",
+   "label": "11/16 早",
+   "week": "2026-47",
+   "price": 43706.0,
+   "n_key": 10,
+   "n_eng": 71,
+   "recall": 0.9,
+   "same_dist": 0.7495,
+   "prec_top": 0.0,
+   "prec_rand8": 0.16666666666666666,
+   "prec_near8": 0.25,
+   "recall_top": 0.0,
+   "recall_near": 0.4,
+   "top": [
+    {
+     "p": 45462.88,
+     "score": 5.0,
+     "rules": [
+      "R3",
+      "R4",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45523.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 40690.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R6"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43904.0,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R5",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 44052.0,
+     "score": 4.0,
+     "rules": [
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43669.58,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43979.5,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43184.0,
+     "score": 3.0,
+     "rules": [
+      "R5",
+      "R8"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     42810,
+     42810
+    ]
+   ]
+  },
+  {
+   "id": "p24",
+   "label": "11/16 下午",
+   "week": "2026-47",
+   "price": 40885.0,
+   "n_key": 5,
+   "n_eng": 72,
+   "recall": 0.8,
+   "same_dist": 0.6073999999999999,
+   "prec_top": 0.125,
+   "prec_rand8": 0.10256410256410256,
+   "prec_near8": 0.375,
+   "recall_top": 0.2,
+   "recall_near": 0.6,
+   "top": [
+    {
+     "p": 40690.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R6"
+     ],
+     "hit": true
+    },
+    {
+     "p": 43184.0,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R4",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45462.88,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45523.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 42496.12,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43904.0,
+     "score": 3.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43979.5,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 44052.0,
+     "score": 3.0,
+     "rules": [
+      "R2"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     39977,
+     39977
+    ]
+   ]
+  },
+  {
+   "id": "p25",
+   "label": "11/16 夜盤",
+   "week": "2026-47",
+   "price": 41301.0,
+   "n_key": 3,
+   "n_eng": 72,
+   "recall": 0.6666666666666666,
+   "same_dist": 0.4888333333333334,
+   "prec_top": 0.0,
+   "prec_rand8": 0.025,
+   "prec_near8": 0.125,
+   "recall_top": 0.0,
+   "recall_near": 0.6666666666666666,
+   "top": [
+    {
+     "p": 40690.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R6"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43184.0,
+     "score": 5.0,
+     "rules": [
+      "R3",
+      "R4",
+      "R5",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 44052.0,
+     "score": 4.0,
+     "rules": [
+      "R2",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45462.88,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45523.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 42496.12,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43904.0,
+     "score": 3.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43979.5,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     41050,
+     41100
+    ]
+   ]
+  },
+  {
+   "id": "p26",
+   "label": "11/17",
+   "week": "2026-47",
+   "price": 41045.0,
+   "n_key": 8,
+   "n_eng": 72,
+   "recall": 0.75,
+   "same_dist": 0.587625,
+   "prec_top": 0.0,
+   "prec_rand8": 0.19444444444444445,
+   "prec_near8": 0.625,
+   "recall_top": 0.0,
+   "recall_near": 0.625,
+   "top": [
+    {
+     "p": 40690.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R6"
+     ],
+     "hit": false
+    },
+    {
+     "p": 42496.12,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43979.5,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R4"
+     ],
+     "hit": false
+    },
+    {
+     "p": 44052.0,
+     "score": 4.0,
+     "rules": [
+      "R2",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45462.88,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 45523.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 41302.5,
+     "score": 3.0,
+     "rules": [
+      "R3",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 40005.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     40875,
+     40875
+    ],
+    [
+     41745,
+     41745
+    ]
+   ]
+  },
+  {
+   "id": "p27",
+   "label": "11/17 晚",
+   "week": "2026-47",
+   "price": 40227.0,
+   "n_key": 7,
+   "n_eng": 72,
+   "recall": 1.0,
+   "same_dist": 0.5479285714285714,
+   "prec_top": 0.0,
+   "prec_rand8": 0.15789473684210525,
+   "prec_near8": 0.125,
+   "recall_top": 0.0,
+   "recall_near": 0.14285714285714285,
+   "top": [
+    {
+     "p": 40690.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R6"
+     ],
+     "hit": false
+    },
+    {
+     "p": 40450.89,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 42496.12,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43184.0,
+     "score": 3.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43904.0,
+     "score": 3.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43979.5,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 44052.0,
+     "score": 3.0,
+     "rules": [
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 44894.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R8"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": false,
+   "missed": []
+  },
+  {
+   "id": "p28",
+   "label": "11/18",
+   "week": "2026-47",
+   "price": 39792.0,
+   "n_key": 12,
+   "n_eng": 72,
+   "recall": 0.75,
+   "same_dist": 0.47195833333333337,
+   "prec_top": 0.125,
+   "prec_rand8": 0.15789473684210525,
+   "prec_near8": 0.25,
+   "recall_top": 0.08333333333333333,
+   "recall_near": 0.16666666666666666,
+   "top": [
+    {
+     "p": 40690.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R6"
+     ],
+     "hit": false
+    },
+    {
+     "p": 40450.89,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": true
+    },
+    {
+     "p": 42496.12,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43184.0,
+     "score": 3.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43904.0,
+     "score": 3.0,
+     "rules": [
+      "R3",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43979.5,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 44052.0,
+     "score": 3.0,
+     "rules": [
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 39934.44,
+     "score": 2.0,
+     "rules": [
+      "R4",
+      "R5"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     40616,
+     40616
+    ],
+    [
+     40580,
+     40580
+    ],
+    [
+     41961,
+     41961
+    ]
+   ]
+  },
+  {
+   "id": "p29",
+   "label": "11/20",
+   "week": "2026-47",
+   "price": 35875.0,
+   "n_key": 4,
+   "n_eng": 72,
+   "recall": 0.25,
+   "same_dist": 0.15525,
+   "prec_top": 0.0,
+   "prec_rand8": 0.037037037037037035,
+   "prec_near8": 0.0,
+   "recall_top": 0.0,
+   "recall_near": 0.0,
+   "top": [
+    {
+     "p": 39083.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R3",
+      "R5",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 37694.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 37563.5,
+     "score": 3.0,
+     "rules": [
+      "R3b",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 37624.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3",
+      "R4"
+     ],
+     "hit": false
+    },
+    {
+     "p": 35719.0,
+     "score": 2.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 35682.18,
+     "score": 2.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 35563.0,
+     "score": 2.0,
+     "rules": [
+      "R0"
+     ],
+     "hit": false
+    },
+    {
+     "p": 36862.89,
+     "score": 2.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     38386,
+     38386
+    ],
+    [
+     39506,
+     39506
+    ],
+    [
+     34444,
+     34444
+    ]
+   ]
+  },
+  {
+   "id": "p30",
+   "label": "11/22",
+   "week": "2026-47",
+   "price": 33919.0,
+   "n_key": 9,
+   "n_eng": 72,
+   "recall": 1.0,
+   "same_dist": 0.4712222222222222,
+   "prec_top": 0.375,
+   "prec_rand8": 0.17391304347826086,
+   "prec_near8": 0.125,
+   "recall_top": 0.3333333333333333,
+   "recall_near": 0.1111111111111111,
+   "top": [
+    {
+     "p": 37694.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R5"
+     ],
+     "hit": true
+    },
+    {
+     "p": 33719.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 33795.4,
+     "score": 2.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 33640.0,
+     "score": 2.0,
+     "rules": [
+      "R3b"
+     ],
+     "hit": true
+    },
+    {
+     "p": 34734.0,
+     "score": 2.0,
+     "rules": [
+      "R0"
+     ],
+     "hit": false
+    },
+    {
+     "p": 31740.0,
+     "score": 2.0,
+     "rules": [
+      "R0"
+     ],
+     "hit": true
+    },
+    {
+     "p": 36359.0,
+     "score": 2.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 37563.5,
+     "score": 2.0,
+     "rules": [
+      "R3b"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": false,
+   "missed": []
+  },
+  {
+   "id": "p31",
+   "label": "11/23",
+   "week": "2026-48",
+   "price": 36576.0,
+   "n_key": 20,
+   "n_eng": 71,
+   "recall": 0.7,
+   "same_dist": 0.5423499999999999,
+   "prec_top": 0.25,
+   "prec_rand8": 0.3333333333333333,
+   "prec_near8": 0.875,
+   "recall_top": 0.15,
+   "recall_near": 0.35,
+   "top": [
+    {
+     "p": 37119.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 37694.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": true
+    },
+    {
+     "p": 33719.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R6"
+     ],
+     "hit": false
+    },
+    {
+     "p": 39019.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 40039.57,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 38239.6,
+     "score": 2.5,
+     "rules": [
+      "R3",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 40584.83,
+     "score": 2.5,
+     "rules": [
+      "R3",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 35634.0,
+     "score": 2.0,
+     "rules": [
+      "R0",
+      "R5"
+     ],
+     "hit": true
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     37200,
+     37200
+    ],
+    [
+     35550,
+     35550
+    ],
+    [
+     35580,
+     35580
+    ],
+    [
+     36240,
+     36240
+    ],
+    [
+     36030,
+     36150
+    ],
+    [
+     35980,
+     35980
+    ]
+   ]
+  },
+  {
+   "id": "p32",
+   "label": "11/23 夜盤",
+   "week": "2026-48",
+   "price": 40307.0,
+   "n_key": 6,
+   "n_eng": 65,
+   "recall": 0.5,
+   "same_dist": 0.3909166666666667,
+   "prec_top": 0.375,
+   "prec_rand8": 0.07894736842105263,
+   "prec_near8": 0.125,
+   "recall_top": 0.5,
+   "recall_near": 0.16666666666666666,
+   "top": [
+    {
+     "p": 40324.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 41992.0,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R5"
+     ],
+     "hit": true
+    },
+    {
+     "p": 42371.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 37694.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 36242.11,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R3",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 40039.57,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": true
+    },
+    {
+     "p": 39019.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R8"
+     ],
+     "hit": false
+    },
+    {
+     "p": 43944.43,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": true
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     39370,
+     39370
+    ],
+    [
+     39500,
+     39500
+    ],
+    [
+     41500,
+     41500
+    ]
+   ]
+  },
+  {
+   "id": "p33",
+   "label": "11/25",
+   "week": "2026-48",
+   "price": 38482.0,
+   "n_key": 12,
+   "n_eng": 64,
+   "recall": 0.75,
+   "same_dist": 0.5515833333333334,
+   "prec_top": 0.5,
+   "prec_rand8": 0.3235294117647059,
+   "prec_near8": 0.5,
+   "recall_top": 0.3333333333333333,
+   "recall_near": 0.16666666666666666,
+   "top": [
+    {
+     "p": 37694.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": true
+    },
+    {
+     "p": 40900.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 42371.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 39019.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R8"
+     ],
+     "hit": true
+    },
+    {
+     "p": 39442.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R5"
+     ],
+     "hit": false
+    },
+    {
+     "p": 40039.57,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": true
+    },
+    {
+     "p": 41992.0,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": false
+    },
+    {
+     "p": 37981.2,
+     "score": 2.5,
+     "rules": [
+      "R3",
+      "R5"
+     ],
+     "hit": true
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     37195,
+     37195
+    ],
+    [
+     36280,
+     36280
+    ],
+    [
+     35712,
+     35712
+    ]
+   ]
+  },
+  {
+   "id": "p34",
+   "label": "11/26",
+   "week": "2026-48",
+   "price": 38397.0,
+   "n_key": 15,
+   "n_eng": 66,
+   "recall": 0.9333333333333333,
+   "same_dist": 0.5218333333333334,
+   "prec_top": 0.75,
+   "prec_rand8": 0.2727272727272727,
+   "prec_near8": 0.375,
+   "recall_top": 0.4,
+   "recall_near": 0.13333333333333333,
+   "top": [
+    {
+     "p": 37694.0,
+     "score": 5.0,
+     "rules": [
+      "R0",
+      "R2",
+      "R5"
+     ],
+     "hit": true
+    },
+    {
+     "p": 40039.57,
+     "score": 4.0,
+     "rules": [
+      "R3",
+      "R5"
+     ],
+     "hit": true
+    },
+    {
+     "p": 40900.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": true
+    },
+    {
+     "p": 42371.0,
+     "score": 4.0,
+     "rules": [
+      "R0",
+      "R2"
+     ],
+     "hit": false
+    },
+    {
+     "p": 39019.0,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R8"
+     ],
+     "hit": true
+    },
+    {
+     "p": 36462.14,
+     "score": 3.0,
+     "rules": [
+      "R0",
+      "R3"
+     ],
+     "hit": true
+    },
+    {
+     "p": 41992.0,
+     "score": 3.0,
+     "rules": [
+      "R3"
+     ],
+     "hit": true
+    },
+    {
+     "p": 37846.8,
+     "score": 2.5,
+     "rules": [
+      "R3",
+      "R5"
+     ],
+     "hit": false
+    }
+   ],
+   "alt": false,
+   "missed": [
+    [
+     39688,
+     39688
+    ]
+   ]
+  }
+ ]
+}

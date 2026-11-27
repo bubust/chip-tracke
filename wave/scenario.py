@@ -87,10 +87,11 @@ def _ma(c, n: int) -> Optional[float]:
 
 
 def levels(d_h, d_l, d_c, price: float, b60: Optional[list] = None, dates60: Optional[list] = None,
-           big: Optional[tuple] = None) -> dict:
+           big: Optional[tuple] = None, b15: Optional[list] = None, v: int = 2) -> dict:
     """R0～R8 的價位。d_h／d_l／d_c＝日 K（最後一根可以是進行中的）；b60＝60 分 K [{time, high, low, close, volume}]（舊→新，只放收完的）；
     dates60＝每根 60 分 K 屬於哪一天日 K 的 index（跟 d_* 對齊，用來把日線轉折對到 60 分 K）；big＝(h, l, c) 算母級的長日 K（沒給就用 d_*）。
-    回 {levels:[{p, rule, note}], st: structure}"""
+    b15＝15 分 K（v＝2 才用）；v＝1：B131 原版（R0～R8）；v＝2：B132 加 R9 換組、R0 週線／母級／15 分轉折。
+    回 {levels:[{p, rule, note}], st: structure, alt: 換組的結構}"""
     out = []
 
     def add(p, rule, note):
@@ -102,28 +103,47 @@ def levels(d_h, d_l, d_c, price: float, b60: Optional[list] = None, dates60: Opt
     for q in m[-8:]:
         add(q["p"], "R0", "日線轉折")
     st = structure(m, d_h, d_l, price)
-    if st:
-        T, L1, H2, X, d, rb = st["T"], st["L1"], st["H2"], st["X"], st["d"], st["rb"]
-        add(L1["p"], "R2", "重疊線（第 1 段終點）")
-        for v, r in _ret(H2["p"], X["p"]):
-            add(v, "R3", f"最後一段 {r:g}")
-        if st["beyond"]:
-            for v, r in _ret(T["p"], X["p"], RET3):
-                add(v, "R3", f"三段 {r:g}")
+    bh, bl, bc = big if big else (d_h, d_l, d_c)
+    bp = daily_pivots(bh, bl, bc, "big")
+    off = len(bh) - len(d_h)                                          # 長日 K 跟 d_* 的 index 差
+
+    def daily_rules(st_, tag):
+        T, L1, H2, X, d, rb = st_["T"], st_["L1"], st_["H2"], st_["X"], st_["d"], st_["rb"]
+        add(L1["p"], "R2", tag + "重疊線（第 1 段終點）")
+        for v_, r in _ret(H2["p"], X["p"]):
+            add(v_, "R3", tag + f"最後一段 {r:g}")
+        if st_["beyond"]:
+            for v_, r in _ret(T["p"], X["p"], RET3):
+                add(v_, "R3", tag + f"三段 {r:g}")
         if abs(rb - X["p"]) > 0:
-            for v, r in _ret(X["p"], rb):
-                add(v, "R3", f"反向段 {r:g}")
+            for v_, r in _ret(X["p"], rb):
+                add(v_, "R3", tag + f"反向段 {r:g}")
         L = abs(T["p"] - L1["p"])
         for k_ in (1.0, 1.618):
-            add(H2["p"] + d * k_ * L, "R4", f"等幅 {k_:g}")
-        bh, bl, bc = big if big else (d_h, d_l, d_c)
-        bp = daily_pivots(bh, bl, bc, "big")
-        off = len(bh) - len(d_h)                                      # 長日 K 跟 d_* 的 index 差
+            add(H2["p"] + d * k_ * L, "R4", tag + f"等幅 {k_:g}")
         prior = [q for q in bp if q["i"] < T["i"] + off and q["t"] != T["t"]]
         if prior:
-            full = prior[-1]["p"]
-            for v, r in _ret(full, T["p"], RET3):
-                add(v, "R3b", f"母級 {r:g}")
+            for v_, r in _ret(prior[-1]["p"], T["p"], RET3):
+                add(v_, "R3b", tag + f"母級 {r:g}")
+
+    alt = None
+    if st:
+        daily_rules(st, "")
+        if v >= 2 and len(m) >= 4:                                    # R9 換組：最後四點自己走出三段、又不是主結構
+            T2, L2, H22, X2 = m[-4:]
+            d2 = 1 if X2["t"] == "H" else -1
+            if X2["i"] != st["X"]["i"] and (X2["p"] - L2["p"]) * d2 > 0 and T2["t"] == H22["t"] != X2["t"]:
+                rb2 = float(price)
+                if X2["i"] + 1 < len(d_h):
+                    seg = slice(X2["i"] + 1, len(d_h))
+                    rb2 = float(np.min(d_l[seg])) if d2 > 0 else float(np.max(d_h[seg]))
+                alt = {"T": T2, "L1": L2, "H2": H22, "X": X2, "d": d2, "rb": rb2, "rb_i": None, "k": len(m) - 1, "beyond": True}
+                daily_rules(alt, "換組")
+    if v >= 2:                                                        # R0 多級：週線、母級轉折
+        for q in merge_all(daily_pivots(bh, bl, bc, "mid"))[-8:]:
+            add(q["p"], "R0", "週線轉折")
+        for q in bp[-6:]:
+            add(q["p"], "R0", "母級轉折")
     for n in (5, 10, 12, 20, 60):
         add(_ma(np.r_[d_c[:-1], price], n), "R5", f"日線 {n}T")
     if b60 and len(b60) >= 30:
@@ -145,6 +165,12 @@ def levels(d_h, d_l, d_c, price: float, b60: Optional[list] = None, dates60: Opt
                 add(cc + k_ * (b - a), "R4", f"60 分等幅 {k_:g}")
         for n in (5, 12, 20):
             add(_ma(c6, n), "R5", f"60 分 {n}T")
+        if v >= 2 and b15 and len(b15) >= 30:                         # R0 多級：15 分轉折
+            h5, l5, c5 = (np.array([b[k] for b in b15], dtype=float) for k in ("high", "low", "close"))
+            p5 = E.zigzag(h5, l5, I.theta(h5, l5, c5, E.deg_cfg("intra15")))
+            cf5, tn5 = E.state_at(p5, h5, l5, len(c5) - 1)
+            for q in (cf5 + ([tn5] if tn5 else []))[-8:]:
+                add(q["p"], "R0", "15 分轉折")
         if st and dates60 is not None:
             dd = np.asarray(dates60)
             i_h2, i_x = st["H2"]["i"], st["X"]["i"]
@@ -192,7 +218,76 @@ def levels(d_h, d_l, d_c, price: float, b60: Optional[list] = None, dates60: Opt
                 for z in VO.trapped(seg, price)[:2]:
                     add(z["lo"], "R8", "套牢區下緣")
                     add(z["hi"], "R8", "套牢區上緣")
-    return {"levels": out, "st": st, "m": m}
+    return {"levels": out, "st": st, "alt": alt, "m": m}
+
+
+# ── B132 挑重點線（PLAN-B132 §2，寫死）────────────────────────────────────────
+ROLE = (("R2", "", 2.0), ("R7", "", 2.0), ("R6", "", 2.0), ("R3", "三段", 2.0), ("R3", "反向段 0.5", 1.0), ("R3", "反向段 0.618", 1.0),
+        ("R3b", "", 1.0), ("R8", "", 1.0), ("R0", "日線轉折", 1.0), ("R0", "週線轉折", 1.0),
+        ("R5", "日線 5T", 0.5), ("R5", "日線 12T", 0.5), ("R5", "日線 20T", 0.5))
+
+
+def _bonus(x: dict) -> float:
+    n = x["note"].replace("換組", "")
+    return max([w for r, key, w in ROLE if x["rule"] == r and key in n] or [0.0])
+
+
+def clusters(lv: list, tol: float = 0.0015) -> list:
+    """差 0.15% 以內的價位併成一群：{p（群裡角色分最高的那個價位）, rules, notes, score}"""
+    xs = sorted(lv, key=lambda x: x["p"])
+    out, cur = [], []
+    for x in xs:
+        if cur and x["p"] > cur[0]["p"] * (1 + tol):
+            out.append(cur)
+            cur = []
+        cur.append(x)
+    if cur:
+        out.append(cur)
+    res = []
+    for g in out:
+        rules = sorted({x["rule"] for x in g})
+        best = max(g, key=lambda x: (_bonus(x), x["rule"] != "R5"))
+        bonus = max(_bonus(x) for x in g)
+        res.append({"p": best["p"], "rules": rules, "notes": [x["note"] for x in g], "score": len(rules) + bonus, "n": len(g)})
+    return res
+
+
+def rank(lv: list, price: float, k: int = 8, band: float = 0.12) -> list:
+    """重點線：±12% 以內、分數＝不同規則數＋角色加分，前 k 群；同分取離現價近的"""
+    cs = [c for c in clusters(lv) if abs(c["p"] / price - 1) <= band]
+    cs.sort(key=lambda c: (-c["score"], abs(c["p"] - price)))
+    return cs[:k]
+
+
+def describe(st: Optional[dict], price: float, lv: Optional[list] = None) -> str:
+    """引擎的白話判斷（給網站「引擎（新）」那一行）"""
+    if not st:
+        return "轉折不夠，還分不出結構"
+    f = lambda x: f"{x:,.0f}"                                         # noqa: E731
+    T, L1, H2, X, d = st["T"]["p"], st["L1"]["p"], st["H2"]["p"], st["X"]["p"], st["d"]
+    s_dn = "跌" if d < 0 else "漲"
+    head = f"{f(T)}→{f(L1)}→{f(H2)}→{f(X)}（三段{s_dn}{'，最後一段越過第 1 段' if st['beyond'] else ''}）"
+    y = lambda p: -d * p                                              # noqa: E731
+    if not st["beyond"]:
+        return head + f"；現在 {f(price)}，第 3 段還沒越過第 1 段終點 {f(L1)}"
+    w382, w618 = X - 0.382 * (X - T), X - 0.618 * (X - T)
+    if y(price) < y(L1):
+        pos = f"還沒碰到重疊線 {f(L1)}（S1：判延續，回測 △）"
+    elif y(price) < y(w382):
+        pos = f"過了重疊線 {f(L1)}、還沒到第二道牆 {f(w382)}（S2：判反向，回測 △）"
+    elif y(price) < y(w618):
+        pos = f"在第二道牆 {f(w382)}～{f(w618)} 裡（S3：兩種都可能，不判）"
+    else:
+        pos = f"過了第二道牆 {f(w618)}（S4：判轉勢，回測 △）"
+    extra = ""
+    if lv:
+        r7 = {x["note"]: x["p"] for x in lv if x["rule"] == "R7"}
+        r6 = [x["p"] for x in lv if x["rule"] == "R6"]
+        if r7.get("箱底") and r7.get("出箱門"):
+            extra = f"；箱體 {f(r7['箱底'])}～{f(r7['箱頂'])}，出箱門 {f(r7['出箱門'])}" + (f"、底線 {f(r7['結構底線'])}" if r7.get("結構底線") else "")
+        elif r6:
+            extra = f"；起推底座 {f(r6[-1])}"
+    return head + f"；現在 {f(price)}，" + pos + extra
 
 
 # ── 考卷 B：每天收盤判一個方向 ────────────────────────────────────────────────

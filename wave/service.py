@@ -1051,6 +1051,54 @@ def _full_from(waves: dict, sm: dict, big: list) -> Optional[float]:
     return next((float(q["p"]) for q in reversed(bp) if str(q.get("date")) < td and q["t"] != T["t"]), None)
 
 
+ENG_TF = {                                                            # B132 每個週期挑那個級數的引擎線（看 note）
+    "1wk": ("週線轉折", "母級", "三段", "重疊線（第 1 段終點）", "等幅"),
+    "1d": ("日線轉折", "重疊線（第 1 段終點）", "最後一段", "三段", "反向段 ", "等幅", "日線 ", "起推底座", "箱", "出箱門", "結構底線", "套牢區"),
+    "60m": ("60 分", "起推底座", "箱", "出箱門", "結構底線", "套牢區"),
+    "30m": ("15 分轉折", "60 分 5T", "60 分 12T", "60 分 0.236", "起推底座", "出箱門", "結構底線"),
+    "15m": ("15 分轉折", "60 分 5T", "60 分 12T", "60 分 0.236", "起推底座", "出箱門", "結構底線"),
+}
+
+
+ENG_ROLE = ("重疊線", "三段", "箱", "出箱門", "結構底線", "起推底座", "母級 0", "第 (1) 段終點")
+
+
+def _engine(snap: dict, h, l, c, dates: list, price: float) -> Optional[dict]:
+    """B132 用 wave/scenario.py 自己算（不看她的貼文）：白話判斷、換組、每個週期現價上下各 4 條最近的線（挑線還不會 △，只照遠近）"""
+    import stock_wave as SW  # noqa: F401
+    from . import scenario as SC
+    ch = snap.get("chart") or {}
+    b60 = [b for b in ch.get("i60") or [] if not b.get("partial")]
+    b15 = [b for b in ch.get("i15") or [] if not b.get("partial")]
+    idx = {d: i for i, d in enumerate(dates)}
+
+    def di(ts):                                                       # 60 分 K 屬於哪一天日 K（15:00 以後的夜盤算下一個交易日）
+        dt = FD.tw_dt(ts)
+        base = (dt + timedelta(days=1)).strftime("%Y-%m-%d") if dt.hour >= 15 else dt.strftime("%Y-%m-%d")
+        nxt = next((d for d in dates if d >= base), None)
+        return idx.get(nxt, len(dates) - 1)
+    d60 = [di(b["time"]) for b in b60]
+    out = SC.levels(np.asarray(h, float), np.asarray(l, float), np.asarray(c, float), float(price), b60 or None, d60 or None, b15=b15 or None, v=2)
+    lv = out["levels"]
+    st, alt = out["st"], out.get("alt")
+    by_tf = {}
+    for tf, keys in ENG_TF.items():
+        sub = [x for x in lv if any(k in x["note"] for k in keys)
+               and not (tf in ("1wk", "1d") and ("60 分" in x["note"] or "15 分" in x["note"]))]
+        cs = [g for g in SC.clusters(sub) if abs(g["p"] / price - 1) <= 0.12]
+        role = [g for g in cs if any(k in n for n in g["notes"] for k in ENG_ROLE)]   # 結構線（重疊線、牆、箱體、底座、母級）
+        up = sorted([g for g in cs if g["p"] > price and g not in role], key=lambda g: g["p"])[:3]
+        dn = sorted([g for g in cs if g["p"] <= price and g not in role], key=lambda g: -g["p"])[:3]
+        by_tf[tf] = [{"p": g["p"], "notes": sorted(g["notes"], key=lambda n: not any(k in n for k in ENG_ROLE))[:3], "rules": g["rules"],
+                      "role": g in role} for g in sorted(role + up + dn, key=lambda g: -g["p"])]
+    txt = SC.describe(st, float(price), lv)
+    if alt:
+        txt += f"；換組：{alt['T']['p']:,.0f}→{alt['L1']['p']:,.0f}→{alt['H2']['p']:,.0f}→{alt['X']['p']:,.0f} 也自己走出三段，另外算一份"
+    return {"text": txt, "by_tf": by_tf, "n": len(lv),
+            "st": None if not st else {k: st[k]["p"] for k in ("T", "L1", "H2", "X")} | {"d": st["d"], "rb": st["rb"]},
+            "note": "引擎只看轉折自己算（R0～R9）。列的是它算出的結構線（重疊線、牆、箱體、底座、母級）＋現價上下各 3 條最近的；挑哪幾條最重要還不會（B132 △）；判方向回測跟亂猜差不多 △"}
+
+
 def _frame_for(t: dict, waves: dict, sm: dict, price: float, snap: Optional[dict] = None) -> Optional[dict]:
     """B123：big_frame 要的東西——全波段起點（17,015）、日線前面的大低點（31,740）、月線級低點（8,268、12,652）、最近一段 15 分上漲"""
     import stock_wave as SW
@@ -1597,6 +1645,11 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
         _tiers(snap, waves, lv_c, price, (intra.get("_tf") or {}).get("60m_long") or (intra.get("_tf") or {}).get("60m"))
     except Exception as e:     # noqa: BLE001
         log.warning(f"[wave] 兩道關卡失敗：{e}")
+    if sym == "TX":
+        try:                                               # B132 推演引擎（只看轉折）：跟她的樣板並排對照
+            snap["engine"] = _engine(snap, lv_h, lv_l, lv_c, [str(x) for x in lv_dates], price)
+        except Exception as e:     # noqa: BLE001
+            log.warning(f"[wave] 推演引擎失敗：{e}")
     # B80 價位梯＋如果…就…＋三條路（每個週期一份）
     vres = _vol_research(st)
     snap["research"] = {**(snap.get("research") or {}), "volume": vres}

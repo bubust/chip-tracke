@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 溝通
 - 用戶用繁體中文；回覆、程式註解、文件、commit 訊息都用**繁體中文白話**（少用術語，數字講清楚是點數還是 %）。
-- 用戶追蹤 Threads 上的 @fanny55520（台指期波浪數法）。「跟進」＝把她貼文（截圖）的方法做進網站；這類工作的測試叫 `tests/test_bxx_nest.py` 之類。
+- 用戶追蹤 Threads 上的 @fanny55520（台指期波浪數法）。「跟進」＝**拿她的貼文核對推演引擎** `wave/scenario.py`（引擎只看轉折自己算），不要把她的數字照抄進程式（用戶 11/27：「我是要你找出規則，不是要你照抄」）；考卷在 `research/b131/key.json`，流程見 `follow-fanny` skill。
 
 ## 常用指令
 ```bash
@@ -40,6 +40,7 @@ node --check regime-frontend/wave.js          # 改前端 JS 後的語法檢查
   - `engine.py` 純函式：ZigZag（θ＝max(下限, m×ATR%)），只用收完的 K 棒確認轉折（記在 `ci`），`state_at(t)` 保證不偷看；`count_waves` → 主要／替代劇本（浪名、失效價、目標）；`analyze(deg)`。級數：日 K `small/mid/big`，分 K `intra/intra30/intra15`。
   - `levels.py`（支撐壓力區：`build` 日 K、`build_ultra` 分 K）、`intraday.py`（5 分 K → 15／30／60 分 K 各自數浪）、`futdata.py`（台指期連續月，日盤＋夜盤）、`nest.py`（多層浪名＝她的數法：兩種、三種細微脈動、大中小）、`levelmap.py`（價位梯）、`service.py`（組成一份快照 JSON）、`panel.py`（AI 圓桌：Gemini、Groq、Claude，有金鑰才參加）、`stats.json`（研究結果）。
   - `stock_wave.py`：同一套方法用在個股深度分析；`deep_ai.py` 用 Gemini 寫白話，價位只准用系統算好的。
+  - `scenario.py`（B131／B132 推演引擎）：R0～R9 只看轉折算價位（併段、重疊線、整段回撤、母級、等幅、均線、起推底座、箱體、套牢區、換組）＋白話判斷；`snapshot.engine` 給結論卡的「🤖 引擎（新）」和新舊對照價位梯。`stock_wave.py` 裡 B123～B130 的「她 M/D」樣板＝舊版，只並排顯示、不再加。
 - 選股與回測：`scanner.py`（S1、S2 W底、S_FBD 假跌破…）、`backtest_engine.py`（純函式）／`backtest_service.py`、`best_strategy.py`（研究選出的方法，`tests/test_best.py` 跟 `research/best` 逐日比對）、`fbd_live.py`（盤中假跌破、13:15 尾盤 Telegram）、`course_live.py`。
 - 資料來源：Yahoo（`yahoo_price.py`、`price_cache.py`）、證交所／櫃買 openapi、FinMind（台指期，免費額度會用完）、鉅亨即時報價；Supabase 選配（`supabase_store.py`）。
 
