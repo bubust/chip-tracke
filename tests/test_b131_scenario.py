@@ -83,3 +83,13 @@ def test_b132_engine_by_tf():
     d1 = {round(x["p"]): x for x in e["by_tf"]["1d"]}
     assert d1[37694]["role"] and d1[40040]["role"] and "S2" in e["text"]
     assert all("60 分" not in n for x in e["by_tf"]["1wk"] for n in x["notes"])
+
+
+def test_b132_describe_box_broken():
+    """價格跌出箱底，白話不能還說「箱體 35,933～40,900」"""
+    lv = [{"p": 40900.0, "rule": "R7", "note": "箱頂"}, {"p": 35933.0, "rule": "R7", "note": "箱底"}, {"p": 39688.0, "rule": "R7", "note": "出箱門"}]
+    h, l, c = _daily(tail=list(np.linspace(33719, 39286, 5)[1:]))
+    st = SC.levels(h, l, c, 39286.0, v=2)["st"]
+    assert "箱體 35,933～40,900" in SC.describe(st, 39286.0, lv)
+    assert "跌破箱底 35,933" in SC.describe(st, 35500.0, lv)
+    assert "突破箱頂 40,900" in SC.describe(st, 41200.0, lv)
