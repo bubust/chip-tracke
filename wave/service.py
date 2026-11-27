@@ -586,6 +586,135 @@ def credit_out(rows: list) -> dict:
             "series": tail}
 
 
+# ── B128 借券賣出餘額（上市＋上櫃）───────────────────────────────────────────────
+def is_stock(sid: str) -> bool:
+    """普通股＝4 碼數字、不是 0 開頭（0 開頭＝ETF；6 碼＝ETF／債券 ETF）"""
+    return len(sid) == 4 and sid.isdigit() and sid[0] != "0"
+
+
+def sbl_out(days: dict, px=None, top_n: int = 8) -> dict:
+    """days＝{YYYY-MM-DD: [{sid, mkt, name, sell, ret, bal}]}（股），px(sid, date)→收盤價或 None。
+    只算普通股（ETF 借券大多是避險、套利，另外列一個總數）。金額＝餘額 × 當天收盤（億）；增減的金額用最新一天的收盤換算"""
+    px = px or (lambda s, d: None)
+    ds = sorted(d for d, rs in (days or {}).items() if rs)
+    if not ds:
+        return {"ok": False, "note": "借券資料還沒抓到（每天 16:30、21:40 跟著籌碼一起抓）"}
+    last = ds[-1]
+    bal = {d: {r["sid"]: r for r in days[d] if is_stock(r["sid"])} for d in ds}
+    cur = bal[last]
+    close = {s: px(s, last) for s in cur}
+
+    def yi(shares: dict) -> Optional[float]:
+        v = [(n, close.get(s)) for s, n in shares.items()]
+        tot = sum(n * c for n, c in v if c)
+        return round(tot / 1e8, 1) if any(c for _, c in v) else None
+
+    def lots(rs) -> float:
+        return round(sum(r["bal"] for r in rs.values()) / 1000)
+
+    def chg(k: int):
+        """跟 k 個交易日前比：張數、金額（億，用最新收盤換算）"""
+        if len(ds) <= k:
+            return None, None
+        old = bal[ds[-1 - k]]
+        dlt = {s: cur.get(s, {}).get("bal", 0) - old.get(s, {}).get("bal", 0) for s in set(cur) | set(old)}
+        for s in dlt:
+            close.setdefault(s, px(s, last))
+        return round(sum(dlt.values()) / 1000), yi(dlt)
+
+    series = []
+    for d in ds[-60:]:
+        rs = bal[d]
+        amt = sum(r["bal"] * (px(s, d) or 0) for s, r in rs.items())
+        series.append({"date": d, "lots": lots(rs), "amt_yi": round(amt / 1e8, 1) if amt else None,
+                       "sell": round(sum(r["sell"] for r in rs.values()) / 1000), "ret": round(sum(r["ret"] for r in rs.values()) / 1000)})
+    for i in range(1, len(series)):
+        series[i]["chg"] = series[i]["lots"] - series[i - 1]["lots"]
+    streak = 0
+    for r in reversed(series[1:]):
+        c = r.get("chg") or 0
+        if c == 0 or (streak and (c > 0) != (streak > 0)):
+            break
+        streak += 1 if c > 0 else -1
+    c1, c1y = chg(1)
+    c5, c5y = chg(5)
+    c20, c20y = chg(20)
+    amt = yi({s: r["bal"] for s, r in cur.items()})
+    cover = sum(r["bal"] for s, r in cur.items() if close.get(s)) / (sum(r["bal"] for r in cur.values()) or 1)
+    top = []
+    if len(ds) >= 2:
+        prev = bal[ds[-2]]
+        for s in set(cur) | set(prev):
+            n = cur.get(s, {}).get("bal", 0) - prev.get(s, {}).get("bal", 0)
+            if n:
+                r = cur.get(s) or prev.get(s)
+                c = close.get(s) or px(s, last)
+                top.append({"sid": s, "name": r["name"], "mkt": r["mkt"], "chg": round(n / 1000), "chg_yi": round(n * c / 1e8, 2) if c else None,
+                            "bal": round(cur.get(s, {}).get("bal", 0) / 1000), "close": c})
+    key = lambda t: t["chg_yi"] if t["chg_yi"] is not None else t["chg"] * 1e-4      # noqa: E731
+    etf = sum(r["bal"] for r in days[last] if not is_stock(r["sid"]))
+    by_mkt = {m: yi({s: r["bal"] for s, r in cur.items() if r["mkt"] == m}) for m in ("twse", "tpex")}
+    return {"ok": True, "date": last, "lots": lots(cur), "amt_yi": amt, "twse_yi": by_mkt["twse"], "tpex_yi": by_mkt["tpex"],
+            "chg1": c1, "chg1_yi": c1y, "chg5": c5, "chg5_yi": c5y, "chg20": c20, "chg20_yi": c20y, "streak": streak,
+            "sell": series[-1]["sell"], "ret": series[-1]["ret"], "etf_lots": round(etf / 1000), "cover": round(cover, 3),
+            "up": sorted([t for t in top if t["chg"] > 0], key=key, reverse=True)[:top_n],
+            "down": sorted([t for t in top if t["chg"] < 0], key=key)[:top_n], "series": series}
+
+
+_sbl_cache: dict = {}
+_sbl_tried: list = []
+
+
+def _closes(since: str):
+    """price_daily（官方日行情，不還原）→ px(sid, YYYY-MM-DD)：那天或之前最近一天的收盤"""
+    import bisect
+    import sqlite3
+    from contextlib import closing
+    import price_cache as PC
+    m: dict = {}
+    try:
+        with closing(sqlite3.connect(str(PC.DB_PATH), timeout=10.0)) as c:
+            for sid, d, cl in c.execute("SELECT stock_id, date, close FROM price_daily WHERE date>=? AND close>0 ORDER BY date",
+                                        (since.replace("-", ""),)):
+                m.setdefault(sid, ([], []))
+                m[sid][0].append(d)
+                m[sid][1].append(cl)
+    except Exception as e:     # noqa: BLE001
+        log.warning(f"[wave] 借券用的收盤價讀取失敗：{e}")
+
+    def px(sid, d):
+        v = m.get(sid)
+        if not v:
+            return None
+        i = bisect.bisect_right(v[0], d.replace("-", "")) - 1
+        return v[1][i] if i >= 0 else None
+    return px
+
+
+def _sbl_block() -> dict:
+    try:
+        days = D.load_sbl()
+        if len(days) < 21 and not _sbl_tried:             # 剛上線：先抓最新 1 天，其他的在背景補到 60 天（約 4 分鐘，只是網路請求）
+            _sbl_tried.append(1)
+            if not days:
+                D.update_sbl(max_fetch=1)
+                days = D.load_sbl()
+            threading.Thread(target=D.update_sbl, kwargs={"max_fetch": 60}, daemon=True, name="sbl-backfill").start()
+        if not days:
+            return sbl_out({})
+        ds = sorted(days)
+        key = (ds[-1], len(ds), sum(len(v) for v in days.values()), datetime.now(TW).strftime("%Y-%m-%d %H"))
+        if _sbl_cache.get("k") == key:
+            return _sbl_cache["v"]
+        since = (datetime.strptime(ds[0], "%Y-%m-%d") - timedelta(days=10)).strftime("%Y-%m-%d")
+        v = sbl_out(days, _closes(since))
+        _sbl_cache.update(k=key, v=v)
+        return v
+    except Exception as e:     # noqa: BLE001
+        log.warning(f"[wave] 借券失敗：{e}")
+        return {"ok": False, "note": "借券資料讀取失敗"}
+
+
 def _margin_out(chips_df, now) -> dict:
     """融資餘額＋大盤融資維持率（官方融資金額 ÷ 融資股票市值，margin_maint.market_maint）"""
     out = CP.margin_block(chips_df, now.strftime("%Y-%m-%d"))
@@ -1422,6 +1551,7 @@ def compute(sym: str = "TWII", live: Optional[dict] = None, live_rows: Optional[
         "waves": waves, "levels": lv, "key": key, "forecast": fc,
         "chips": b["chips"], "global": b["global"], "context": b["context"], "research": b["research"],
         "fut_chips": _fut_chips_out(b["fchips"]), "margin": _margin_out(b["chips_df"], now),
+        "sbl": _sbl_block(),
         "night": None if not night else {k: (_f(v * 100, 2) if k == "ret" else v) for k, v in night.items()},
         "open_ref": _open_ref(b, st, night),          # 夜盤 → 加權開盤參考（B76：台指期頁的操作建議也用）
         "composite": _composite(b, st, night),
@@ -1643,6 +1773,7 @@ def refresh_all(chips: bool = True) -> dict:
     if chips:
         D.update_chips()
         D.update_credit_keep()                              # B115：全市場整戶擔保維持率、追繳／處分
+        D.update_sbl()                                      # B128：借券賣出餘額（逐檔，一次最多補 15 天）
         FD.update_fut_chips()
         FD.backfill_taifex(max_files=5)
         fill_twii_today()
