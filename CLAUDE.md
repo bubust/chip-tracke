@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 溝通
 - 用戶用繁體中文；回覆、程式註解、文件、commit 訊息都用**繁體中文白話**（少用術語，數字講清楚是點數還是 %）。
-- 用戶追蹤 Threads 上的 @fanny55520（台指期波浪數法）。「跟進」＝兩件事：①**拿她的貼文核對推演引擎** `wave/scenario.py`（引擎只看轉折自己算，不要把她的數字照抄進引擎；用戶 11/27：「我是要你找出規則，不是要你照抄」；考卷在 `research/b131/key.json`）②**舊版也要更新**成她最新的看法（用戶 11/27），網站結論卡新舊並排。流程見 `follow-fanny` skill。
+- 用戶追蹤 Threads 上的 @fanny55520（台指期波浪數法）。「跟進」＝兩件事：①**拿她的貼文核對推演引擎** `wave/scenario.py`（引擎只看轉折自己算，不要把她的數字照抄進引擎；用戶 11/27：「我是要你找出規則，不是要你照抄」；考卷在 `research/b131/key.json`）②**舊版也要更新**成她最新的看法；**新舊同時進行**（用戶 11/27）：同一次也要把她透露的通用規則補進引擎（新版本參數 v、整份考卷重考），網站結論卡新舊並排。流程見 `follow-fanny` skill。
 
 ## 常用指令
 ```bash

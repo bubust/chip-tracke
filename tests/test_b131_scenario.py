@@ -131,3 +131,15 @@ def test_b134_struct_of_rejects_bad_three_legs():
     h, l, c = _daily(piv, tail=[39500.0, 39286.0])
     st, _ = SC.struct_of(h, l, c, 39286.0, "small")
     assert st is None or (st["H2"]["p"] - st["T"]["p"]) * st["d"] > 0
+
+
+def test_b136_engine_floor_fixed_and_pierce():
+    """B136（跟舊版 B135 同步）：引擎的箱體底線也固定在出箱門之後第一個墊高的低點；刺破又站回、跌破底線各有說法和劇本"""
+    st = {"T": {"p": 50265.0}, "L1": {"p": 37694.0}, "H2": {"p": 44911.0}, "X": {"p": 33719.0}, "d": -1, "rb": 40900.0, "beyond": True}
+    lv = [{"p": 40900.0, "rule": "R7", "note": "箱頂"}, {"p": 35933.0, "rule": "R7", "note": "箱底"}, {"p": 39688.0, "rule": "R7", "note": "出箱門"},
+          {"p": 39008.0, "rule": "R7", "note": "結構底線"}, {"p": 38801.0, "rule": "R7", "note": "刺破最低"}]
+    assert "刺破底線到 38,801 又站回" in SC.describe(st, 39365.0, lv)
+    assert "現在跌破底線 39,008" in SC.describe(st, 38500.0, lv)
+    p = SC.plan(st, 38500.0, lv)
+    assert [x["title"] for x in p["scen"]] == ["出箱", "箱內輪動", "底線斷裂", "跌破箱底"] and p["scen"][2]["now"]
+    assert SC.plan(st, 39365.0, lv)["scen"][1]["now"]
