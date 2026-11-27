@@ -167,6 +167,22 @@
   .mm-vn { color: var(--muted); font-size: .84rem; line-height: 1.45; }
   .mm-foot { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin-top: 10px; padding: 8px 0; text-align: center; }
   .mm-common { color: #f59e0b; font-weight: 800; }
+  /* B137 精簡價位表 */
+  .hv-who { font-size: .98rem; line-height: 1.55; margin: 2px 0 6px; }
+  .hv-who.eng { font-size: .9rem; color: var(--muted); }
+  .hv-new { display: inline-block; font-size: .72rem; font-weight: 700; border: 1px solid #a78bfa; color: #a78bfa; border-radius: 6px; padding: 0 5px; margin-right: 6px; vertical-align: 2px; }
+  .cmp-tbl td.p .tg { display: inline-block; margin-left: 6px; font-size: .72rem; font-weight: 700; border-radius: 5px; padding: 0 5px; vertical-align: 1px; }
+  .cmp-tbl .tg.up { background: rgba(240,72,72,.18); color: var(--up); } .cmp-tbl .tg.dn { background: rgba(34,197,94,.18); color: var(--down); }
+  .cmp-tbl .tg.st { background: rgba(245,158,11,.18); color: #f59e0b; }
+  .cmp-tbl td.d { white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .cmp-tbl td.d small { display: block; font-size: .75rem; opacity: .8; }
+  .cmp-tbl td.o small { display: block; font-size: .75rem; color: var(--muted); }
+  .cmp-tbl.slim td.p { width: 38%; } .cmp-tbl.slim .dd { font-size: .78rem; font-weight: 400; color: var(--muted); margin-top: 2px; }
+  .cmp-tbl.slim td.on .o, .cmp-tbl.slim td.on .n { line-height: 1.45; } .cmp-tbl.slim td.on .n { margin-top: 2px; }
+  .cmp-tbl.slim td.on .o { color: #f59e0b; } .cmp-tbl.slim td.on .n { color: #a78bfa; }
+  .cmp-tbl.slim td.on i { font-style: normal; font-size: .7rem; border: 1px solid currentColor; border-radius: 4px; padding: 0 3px; margin-right: 5px; opacity: .85; }
+  .cmp-tbl.slim td.on small { display: block; font-size: .74rem; color: var(--muted); margin-left: 1.9em; }
+  .cmp-foot { font-size: .76rem; color: var(--muted); margin: 4px 0 8px; }
   /* B134 引擎劇本 */
   .hv-sub-h { font-weight: 700; font-size: .9rem; margin: 2px 0 6px; }
   .hv-sub-h.eng { margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--border); color: #a78bfa; }
@@ -1237,6 +1253,6 @@ setInterval(() => { if (_regimeVisible() && Date.now() - _lastLoad >= 300000) { 
 // 視窗 resize 時重繪圖表
 window.addEventListener('resize', () => { window.__regimeRedraw(); });
 </script>
-<script src="/regime/static/wave.js?v=20261127b134"></script>
+<script src="/regime/static/wave.js?v=20261127b137"></script>
 </body>
 </html>

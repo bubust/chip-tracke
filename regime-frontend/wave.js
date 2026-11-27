@@ -499,7 +499,6 @@
   function threeParts(V, T, hc, lines, sysBox) {
     const lab = t => { const k = String(t).indexOf('：'); return k > 0 && k <= 12 ? `<b class="lab">${esc(t.slice(0, k))}</b>：${esc(t.slice(k + 1))}` : esc(t); };
     const tl = V.tiles || {};
-    const tiles = `<div class="wv-tiles${tl.stop ? '' : ' two'}">${tileHtml('⬆ 上方', tl.up, 'var(--up)')}${tileHtml('⬇ 下方', tl.down, 'var(--down)')}${tl.stop ? tileHtml('🔁 改判線', tl.stop, 'var(--warn)') : ''}</div>`;
     const sg = hc.signal;
     const sig = sg ? `<div class="wv-sig on">✅ <b>訊號</b>（${esc(sg.label || '')} 15 分 K）：刺過 <b>${fmt(sg.line)}</b>（${esc(sg.name)}）又收回 ${fmt(sg.close)} → 試${sg.side > 0 ? '多' : '空'}，停損 <b>${fmt(sg.stop)}</b>、先出一口 <b>${fmt(sg.t1)}</b></div>` : '';
     const sc = (V.scen || []).map(v => `<div class="hv-sc${v.now ? ' now' : ''}">
@@ -508,32 +507,57 @@
     const G = S.engine || null;                                        // B132 引擎（新）
     const gl = G && G.by_tf ? (G.by_tf[st.tf] || G.by_tf['1d'] || []) : [];
     const engLabel = g => (g.notes || [])[0] || '';
-    // 對照價位梯：舊版（三格＋母圖上的線）和新版（引擎）每個價位一列，差 0.15% 以內算同一條
-    const olds = [];
-    const pushOld = (p, nm) => { if (num(p) != null) olds.push({ p: +p, nm: String(nm || '') }); };
-    if (tl.up) pushOld(tl.up.price, tl.up.name); if (tl.down) pushOld(tl.down.price, tl.down.name); if (tl.stop) pushOld(tl.stop.price, tl.stop.name);
-    ((V.map || {}).lines || []).forEach(x => pushOld(x.p, String(x.label || '').replace(/\s*[\d,]+$/, '')));
-    const rowsCmp = [];
-    const near = (a, b) => Math.abs(a / b - 1) <= 0.0015;
-    olds.forEach(o => { const r = rowsCmp.find(x => near(x.p, o.p)); if (r) { if (!r.o.includes(o.nm)) r.o.push(o.nm); } else rowsCmp.push({ p: o.p, o: [o.nm], n: [] }); });
-    gl.forEach(g => { const r = rowsCmp.find(x => near(x.p, g.p)); if (r) r.n.push(engLabel(g)); else rowsCmp.push({ p: g.p, o: [], n: [engLabel(g)] }); });
-    rowsCmp.sort((a, b) => b.p - a.p);
+    // B137 用戶 11/27「表格要更簡潔直觀、不要一堆 %、重複的資訊不要太多」：一張表＝價位｜距離｜舊（她）｜新（引擎）；
+    // 上方／下方／改判直接標在那一列（不另外放三格）；只列這個週期附近的價位，最多 10 列
+    const WIN = { '15m': 0.03, '30m': 0.04, '60m': 0.06, '1d': 0.12, '1wk': 0.25 }[st.tf] || 0.12;
     const price = S.price;
+    const near = (a, b) => Math.abs(a / b - 1) <= 0.0015;
+    const rowsCmp = [];
+    const rowAt = p => { let r = rowsCmp.find(x => near(x.p, p)); if (!r) { r = { p, o: [], n: [], tag: '', act: '' }; rowsCmp.push(r); } return r; };
+    [['up', '上方'], ['down', '下方'], ['stop', '改判']].forEach(([k, t]) => {
+      const it = tl[k];
+      if (!it || num(it.price) == null) return;
+      const r = rowAt(+it.price);
+      if (!r.tag) { r.tag = t; r.act = it.act || ''; }
+      if (it.name && !r.o.includes(it.name)) r.o.push(it.name);
+    });
+    ((V.map || {}).lines || []).forEach(x => {
+      if (num(x.p) == null || Math.abs(x.p / price - 1) > WIN) return;
+      const nm = String(x.label || '').replace(/\s*[\d,]+$/, '');
+      const r = rowAt(+x.p);
+      if (nm && !r.o.includes(nm) && r.o.length < 2) r.o.push(nm);
+    });
+    gl.forEach(g => {
+      if (Math.abs(g.p / price - 1) > WIN) return;
+      const r = rowAt(g.p);
+      const nm = engLabel(g);
+      if (nm && !r.n.includes(nm) && r.n.length < 2) r.n.push(nm);
+    });
+    let keep = rowsCmp.filter(r => r.tag).concat(rowsCmp.filter(r => !r.tag).sort((a, b) => Math.abs(a.p - price) - Math.abs(b.p - price)));
+    keep = keep.slice(0, 10).sort((a, b) => b.p - a.p);
+    const dist = p => { const d = p - price; return `${d > 0 ? '+' : '−'}${fmt(Math.abs(d), 0)} 點・${(Math.abs(d) / price * 100).toFixed(1)}%`; };
+    const TAGC = { '上方': 'up', '下方': 'dn', '改判': 'st' };
     let nowDone = false;
-    const cmpRows = rowsCmp.map(r => {
+    const nowRow = `<tr class="cmp-now"><td colspan="4">▶ 現在 ${fmt(price, 0)}</td></tr>`;
+    const slim = window.innerWidth < 720;                              // 手機：兩欄（價位＋距離｜舊／新上下排）
+    const nowRow2 = slim ? nowRow.replace('colspan="4"', 'colspan="2"') : nowRow;
+    const cmpRows = keep.map(r => {
       let pre = '';
-      if (!nowDone && r.p < price) { nowDone = true; pre = `<tr class="cmp-now"><td colspan="3">▶ 現在 ${fmt(price, 0)}</td></tr>`; }
-      const both = r.o.length && r.n.length;
-      return pre + `<tr class="${both ? 'both' : ''}"><td class="p">${fmt(r.p, 0)}</td>
-        <td class="o">${r.o.length ? '● ' + esc(r.o.join('、')) : '<span class="wv-dim">—</span>'}</td>
-        <td class="n">${r.n.length ? '● ' + esc(r.n.join('、')) : '<span class="wv-dim">—</span>'}</td></tr>`;
-    }).join('') + (nowDone ? '' : `<tr class="cmp-now"><td colspan="3">▶ 現在 ${fmt(price, 0)}</td></tr>`);
-    const nBoth = rowsCmp.filter(r => r.o.length && r.n.length).length;
+      if (!nowDone && r.p < price) { nowDone = true; pre = nowRow2; }
+      const tg = r.tag ? `<span class="tg ${TAGC[r.tag]}">${r.tag}</span>` : '';
+      const oTxt = r.o.length ? esc(r.o.join('、')) + (r.act ? `<small>${esc(r.act)}</small>` : '') : '';
+      const nTxt = r.n.length ? esc(r.n.join('、')) : '';
+      if (slim) return pre + `<tr class="${r.o.length && r.n.length ? 'both' : ''}"><td class="p">${fmt(r.p, 0)}${tg}<div class="dd">${dist(r.p)}</div></td>
+        <td class="on">${oTxt ? `<div class="o"><i>舊</i>${oTxt}</div>` : ''}${nTxt ? `<div class="n"><i>新</i>${nTxt}</div>` : ''}</td></tr>`;
+      return pre + `<tr class="${r.o.length && r.n.length ? 'both' : ''}"><td class="p">${fmt(r.p, 0)}${tg}</td>
+        <td class="d">${dist(r.p)}</td>
+        <td class="o">${oTxt || '<span class="wv-dim">—</span>'}</td>
+        <td class="n">${nTxt || '<span class="wv-dim">—</span>'}</td></tr>`;
+    }).join('') + (nowDone ? '' : nowRow2);
     const gtxt = G ? ((G.texts || {})[st.tf] || G.text || '') : '';
-    const cmp = !G ? '' : `<div class="hv-eng">🤖 <b>引擎（新）</b>：${esc(gtxt)}</div>
-      <details class="hv-cmp" open><summary>🆚 新舊對照價位梯（舊＝照她貼文寫的；新＝引擎只看轉折自己算）　兩邊都有 ${nBoth} 條</summary>
-        <table class="cmp-tbl"><tr><th>價位</th><th>舊版</th><th>新版（引擎）</th></tr>${cmpRows}</table>
-        <div class="wv-dim" style="font-size:.8rem;margin-top:4px">${esc(G.note || '')}</div></details>`;
+    const cmp = `<table class="cmp-tbl${slim ? ' slim' : ''}">${slim ? '<tr><th>價位</th><th>舊（照她寫的）／新（引擎自己算）</th></tr>'
+      : '<tr><th>價位</th><th>距離</th><th>舊（照她寫的）</th><th>新（引擎自己算）</th></tr>'}${cmpRows}</table>
+      ${G ? '<div class="cmp-foot">綠底＝新舊都有這條；新＝引擎只看轉折自己算，判方向回測跟亂猜差不多 △</div>' : ''}`;
     const gp = G && G.plans ? G.plans[st.tf] : null;                  // B134 引擎自己列的劇本（這個週期的轉折）
     const lineTxt = (x, nm) => x ? `<div class="hv-scl"><span>${nm}</span><b>${fmt(x[0], 0)}</b> ${esc(x[1] || '')}</div>` : '';
     const engPlan = !gp ? '' : `<div class="hv-sub-h eng">🤖 引擎（新）：${esc(gp.state || '')}<span class="wv-dim">　只看轉折自己列；「現在」＝價位站在哪一邊，不是預測 △</span></div>
@@ -544,7 +568,7 @@
         ${(v.notes || []).map(t => `<div class="hv-scn">${esc(t)}</div>`).join('')}</div>`).join('')}</div>
       <div class="hv-cf">${gp.common ? `<div class="mm-common eng">${esc(gp.common)}</div>` : ''}${gp.fork ? `<div class="mm-fork">${esc(gp.fork)}</div>` : ''}</div>`;
     const m0 = V.map || {};
-    const m = gl.length ? { ...m0, lines: (m0.lines || []).concat(gl.filter(g => !(m0.lines || []).some(x => near(x.p, g.p))).slice(0, 6)
+    const m = gl.length ? { ...m0, lines: (m0.lines || []).concat(gl.filter(g => g.role && Math.abs(g.p / price - 1) <= WIN && !(m0.lines || []).some(x => near(x.p, g.p))).slice(0, 3)
       .map(g => ({ p: g.p, label: `引擎 ${engLabel(g)} ${fmt(g.p, 0)}`, kind: 'eng' }))) } : m0;
     const narrow = window.innerWidth < 720;
     const chart = !(m.path || []).length ? '' : narrow
@@ -554,7 +578,8 @@
     const other = lines.filter(x => !/試單/.test(x[0]));
     return `
       <section class="hv"><div class="hv-h"><b>①</b> 現在位置・怎麼進出場 <span class="hv-tf">${esc(T.name)}</span></div>
-        <div class="hv-where"><span class="hv-old">舊</span>${esc(V.where || '')}</div>${cmp}${tiles}
+        <div class="hv-who"><span class="hv-old">舊</span>${esc(V.where || '')}</div>
+        ${G ? `<div class="hv-who eng"><span class="hv-new">新</span>${esc(gtxt)}</div>` : ''}${cmp}
         <ul class="wv-plays">${(V.plays || []).map(x => `<li><span class="wv-pt ${esc(x.k)}">${esc(x.tag)}</span>${esc(x.t)}</li>`).join('')}</ul>
         ${sig}${V.flip ? `<div class="wv-sub hv-flip">${esc(V.flip)}</div>` : ''}</section>
       <section class="hv"><div class="hv-h"><b>②</b> 可能劇本 <span class="hv-tf">${esc(T.name)}</span></div>
@@ -755,12 +780,18 @@
     const X = i => left + (pts.length > 1 ? i * (W - left - right) / (pts.length - 1) : (W - left - right) / 2);
     const Y = v => top + (hi - v) / (hi - lo) * (H - top - bot);
     let out = '';
-    (lines || []).forEach(l => {
+    const ty = {};                                                     // B137 右邊的文字錯開（不疊在一起）
+    (lines || []).map((l, k) => [k, Y(l.p)]).sort((a, b) => a[1] - b[1]).reduce((prev, [k, yy]) => {
+      const v = Math.max(yy, prev + fs * 1.05);
+      ty[k] = Math.min(v, H - fs * 0.3);
+      return v;
+    }, -1e9);
+    (lines || []).forEach((l, k) => {
       const c = l.kind === 'eng' ? 'var(--mm-eng, #a78bfa)' : l.kind === 'up' || l.kind === 'up2' ? 'var(--mm-up)' : 'var(--mm-dn)';
       const y = Y(l.p).toFixed(1);
       out += `<line x1="${left}" x2="${W - right + fs * 0.4}" y1="${y}" y2="${y}" stroke="${c}" stroke-width="${l.kind === 'eng' ? 1 : 1.2}" stroke-dasharray="${l.kind === 'eng' ? '1 3' : l.kind.endsWith('2') ? '2 4' : '6 4'}" opacity="${l.kind === 'eng' ? '.9' : '.75'}"/>`
         + (opt.inline ? ''
-                      : `<text x="${W - right + fs * 0.7}" y="${(+y + fs * 0.35).toFixed(1)}" font-size="${fs * 0.82}" fill="${c}">${esc(l.label)}</text>`);
+                      : `<text x="${W - right + fs * 0.7}" y="${(ty[k] + fs * 0.35).toFixed(1)}" font-size="${fs * 0.82}" fill="${c}">${esc(l.label)}</text>`);
     });
     for (let i = 1; i < pts.length; i++) {
       const up = pts[i].p > pts[i - 1].p;
