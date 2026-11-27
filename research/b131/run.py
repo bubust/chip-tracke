@@ -81,7 +81,7 @@ def exam_a(d, b60):
     for p in key:
         cut = datetime.fromisoformat(p["cut"]).replace(tzinfo=TW)
         h, l, c, price, bars, d60, nd = view_at(d, b60, tdays, cut)
-        out = SC.levels(h, l, c, price, bars, d60)
+        out = SC.levels(h, l, c, price, bars, d60, v=1)
         lv = out["levels"]
         K = [tuple(z) for z in p["levels"]]
         allp = np.array(sorted({x["p"] for x in lv}))

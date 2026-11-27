@@ -505,16 +505,46 @@
     const sc = (V.scen || []).map(v => `<div class="hv-sc${v.now ? ' now' : ''}">
         <div class="hv-sct">${esc(v.title)}${v.now ? ' <span class="mm-nowtag">現在</span>' : ''}</div>
         ${v.tag ? `<div class="hv-sctag">${esc(v.tag)}</div>` : ''}${(v.notes || []).map(t => `<div class="hv-scn">${esc(t)}</div>`).join('')}</div>`).join('');
-    const m = V.map || {};
+    const G = S.engine || null;                                        // B132 引擎（新）
+    const gl = G && G.by_tf ? (G.by_tf[st.tf] || G.by_tf['1d'] || []) : [];
+    const engLabel = g => (g.notes || [])[0] || '';
+    // 對照價位梯：舊版（三格＋母圖上的線）和新版（引擎）每個價位一列，差 0.15% 以內算同一條
+    const olds = [];
+    const pushOld = (p, nm) => { if (num(p) != null) olds.push({ p: +p, nm: String(nm || '') }); };
+    if (tl.up) pushOld(tl.up.price, tl.up.name); if (tl.down) pushOld(tl.down.price, tl.down.name); if (tl.stop) pushOld(tl.stop.price, tl.stop.name);
+    ((V.map || {}).lines || []).forEach(x => pushOld(x.p, String(x.label || '').replace(/\s*[\d,]+$/, '')));
+    const rowsCmp = [];
+    const near = (a, b) => Math.abs(a / b - 1) <= 0.0015;
+    olds.forEach(o => { const r = rowsCmp.find(x => near(x.p, o.p)); if (r) { if (!r.o.includes(o.nm)) r.o.push(o.nm); } else rowsCmp.push({ p: o.p, o: [o.nm], n: [] }); });
+    gl.forEach(g => { const r = rowsCmp.find(x => near(x.p, g.p)); if (r) r.n.push(engLabel(g)); else rowsCmp.push({ p: g.p, o: [], n: [engLabel(g)] }); });
+    rowsCmp.sort((a, b) => b.p - a.p);
+    const price = S.price;
+    let nowDone = false;
+    const cmpRows = rowsCmp.map(r => {
+      let pre = '';
+      if (!nowDone && r.p < price) { nowDone = true; pre = `<tr class="cmp-now"><td colspan="3">▶ 現在 ${fmt(price, 0)}</td></tr>`; }
+      const both = r.o.length && r.n.length;
+      return pre + `<tr class="${both ? 'both' : ''}"><td class="p">${fmt(r.p, 0)}</td>
+        <td class="o">${r.o.length ? '● ' + esc(r.o.join('、')) : '<span class="wv-dim">—</span>'}</td>
+        <td class="n">${r.n.length ? '● ' + esc(r.n.join('、')) : '<span class="wv-dim">—</span>'}</td></tr>`;
+    }).join('') + (nowDone ? '' : `<tr class="cmp-now"><td colspan="3">▶ 現在 ${fmt(price, 0)}</td></tr>`);
+    const nBoth = rowsCmp.filter(r => r.o.length && r.n.length).length;
+    const cmp = !G ? '' : `<div class="hv-eng">🤖 <b>引擎（新）</b>：${esc(G.text || '')}</div>
+      <details class="hv-cmp" open><summary>🆚 新舊對照價位梯（舊＝照她貼文寫的；新＝引擎只看轉折自己算）　兩邊都有 ${nBoth} 條</summary>
+        <table class="cmp-tbl"><tr><th>價位</th><th>舊版</th><th>新版（引擎）</th></tr>${cmpRows}</table>
+        <div class="wv-dim" style="font-size:.8rem;margin-top:4px">${esc(G.note || '')}</div></details>`;
+    const m0 = V.map || {};
+    const m = gl.length ? { ...m0, lines: (m0.lines || []).concat(gl.filter(g => !(m0.lines || []).some(x => near(x.p, g.p))).slice(0, 6)
+      .map(g => ({ p: g.p, label: `引擎 ${engLabel(g)} ${fmt(g.p, 0)}`, kind: 'eng' }))) } : m0;
     const narrow = window.innerWidth < 720;
     const chart = !(m.path || []).length ? '' : narrow
       ? zigSvg(m.path, m.lines, 440, 360, 15, { right: 6, inline: true })
-        + `<div class="mm-leg">${(m.lines || []).map(l => `<span class="${l.kind.startsWith('up') ? 'u' : 'd'}${l.kind.endsWith('2') ? ' dot' : ''}">${esc(l.label)}</span>`).join('')}</div>`
+        + `<div class="mm-leg">${(m.lines || []).map(l => `<span class="${l.kind === 'eng' ? 'e' : l.kind.startsWith('up') ? 'u' : 'd'}${l.kind.endsWith('2') ? ' dot' : ''}">${esc(l.label)}</span>`).join('')}</div>`
       : zigSvg(m.path, m.lines, 760, 300, 15, { right: 175 });
     const other = lines.filter(x => !/試單/.test(x[0]));
     return `
       <section class="hv"><div class="hv-h"><b>①</b> 現在位置・怎麼進出場 <span class="hv-tf">${esc(T.name)}</span></div>
-        <div class="hv-where">${esc(V.where || '')}</div>${tiles}
+        <div class="hv-where"><span class="hv-old">舊</span>${esc(V.where || '')}</div>${cmp}${tiles}
         <ul class="wv-plays">${(V.plays || []).map(x => `<li><span class="wv-pt ${esc(x.k)}">${esc(x.tag)}</span>${esc(x.t)}</li>`).join('')}</ul>
         ${sig}${V.flip ? `<div class="wv-sub hv-flip">${esc(V.flip)}</div>` : ''}</section>
       <section class="hv"><div class="hv-h"><b>②</b> 可能劇本 <span class="hv-tf">${esc(T.name)}</span></div>
@@ -714,9 +744,9 @@
     const Y = v => top + (hi - v) / (hi - lo) * (H - top - bot);
     let out = '';
     (lines || []).forEach(l => {
-      const c = l.kind === 'up' || l.kind === 'up2' ? 'var(--mm-up)' : 'var(--mm-dn)';
+      const c = l.kind === 'eng' ? 'var(--mm-eng, #a78bfa)' : l.kind === 'up' || l.kind === 'up2' ? 'var(--mm-up)' : 'var(--mm-dn)';
       const y = Y(l.p).toFixed(1);
-      out += `<line x1="${left}" x2="${W - right + fs * 0.4}" y1="${y}" y2="${y}" stroke="${c}" stroke-width="1.2" stroke-dasharray="${l.kind.endsWith('2') ? '2 4' : '6 4'}" opacity=".75"/>`
+      out += `<line x1="${left}" x2="${W - right + fs * 0.4}" y1="${y}" y2="${y}" stroke="${c}" stroke-width="${l.kind === 'eng' ? 1 : 1.2}" stroke-dasharray="${l.kind === 'eng' ? '1 3' : l.kind.endsWith('2') ? '2 4' : '6 4'}" opacity="${l.kind === 'eng' ? '.9' : '.75'}"/>`
         + (opt.inline ? ''
                       : `<text x="${W - right + fs * 0.7}" y="${(+y + fs * 0.35).toFixed(1)}" font-size="${fs * 0.82}" fill="${c}">${esc(l.label)}</text>`);
     });
