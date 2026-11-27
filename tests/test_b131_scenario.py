@@ -93,3 +93,41 @@ def test_b132_describe_box_broken():
     assert "箱體 35,933～40,900" in SC.describe(st, 39286.0, lv)
     assert "跌破箱底 35,933" in SC.describe(st, 35500.0, lv)
     assert "突破箱頂 40,900" in SC.describe(st, 41200.0, lv)
+
+
+def test_b134_plan_states():
+    """B134 引擎自己列劇本：狀態跟著價位換，確認線／失效線／目標從結構算"""
+    h, l, c = _daily(tail=list(np.linspace(33719, 36000, 4)[1:]))
+    st = SC.levels(h, l, c, 36000.0, v=2)["st"]
+    p1 = SC.plan(st, 36000.0)
+    assert p1["state"].startswith("S1") and [x["title"] for x in p1["scen"]] == ["延續（五段）", "三段走完"] and p1["scen"][0]["now"]
+    assert p1["scen"][1]["confirm"][0] == 37694 and round(p1["scen"][1]["target"][0]) == 40040
+    assert round(p1["scen"][0]["target"][0]) == 32340                         # 等幅（44,911 往下量 50,265→37,694）
+    p2 = SC.plan(st, 39000.0)
+    assert p2["state"].startswith("S2") and p2["scen"][0]["fail"][0] == 37694
+    p3 = SC.plan(st, 41000.0)
+    assert p3["state"].startswith("S3") and not any(x["now"] for x in p3["scen"]) and p3["scen"][0]["title"] == "遇壓折返（大 B 波）"
+    p4 = SC.plan(st, 44500.0)
+    assert p4["state"].startswith("S4") and p4["scen"][0]["confirm"][0] == 44911
+
+
+def test_b134_plan_box_and_base():
+    h, l, c = _daily(tail=list(np.linspace(33719, 39286, 5)[1:]))
+    st = SC.levels(h, l, c, 39286.0, v=2)["st"]
+    box = [{"p": 40900.0, "rule": "R7", "note": "箱頂"}, {"p": 35933.0, "rule": "R7", "note": "箱底"}, {"p": 39688.0, "rule": "R7", "note": "出箱門"}]
+    pb = SC.plan(st, 39286.0, box)
+    assert pb["state"] == "箱體" and [x["title"] for x in pb["scen"]] == ["出箱", "箱內輪動", "跌破箱底"] and pb["scen"][1]["now"]
+    assert SC.plan(st, 39800.0, box)["scen"][0]["now"] and SC.plan(st, 35500.0, box)["scen"][2]["now"]
+    st2 = dict(st, rb=40900.0)
+    base = [{"p": 36280.0, "rule": "R6", "note": "起推底座"}]
+    pp = SC.plan(st2, 37807.0, base)
+    assert pp["state"] == "首次回測" and pp["scen"][0]["now"] and pp["scen"][1]["confirm"][0] == 36280
+    assert SC.plan(st2, 36000.0, base)["scen"][1]["now"]
+
+
+def test_b134_struct_of_rejects_bad_three_legs():
+    """60 分選到「第 2 段越過起點」的三段（39,010→41,071→33,719→40,900）→ 改用另一個極端點（往下那組）"""
+    piv = [44824, 39010, 41071, 33719, 40900]
+    h, l, c = _daily(piv, tail=[39500.0, 39286.0])
+    st, _ = SC.struct_of(h, l, c, 39286.0, "small")
+    assert st is None or (st["H2"]["p"] - st["T"]["p"]) * st["d"] > 0

@@ -1091,10 +1091,29 @@ def _engine(snap: dict, h, l, c, dates: list, price: float) -> Optional[dict]:
         dn = sorted([g for g in cs if g["p"] <= price and g not in role], key=lambda g: -g["p"])[:3]
         by_tf[tf] = [{"p": g["p"], "notes": sorted(g["notes"], key=lambda n: not any(k in n for k in ENG_ROLE))[:3], "rules": g["rules"],
                       "role": g in role} for g in sorted(role + up + dn, key=lambda g: -g["p"])]
+    # B134 每個週期用自己的轉折列劇本（週 K＝週線級、日 K＝日線＋箱體／底座、60／30／15 分＝各自的 K 線）
+    b30 = [b for b in ch.get("i30") or [] if not b.get("partial")]
+    arr = lambda bs: tuple(np.array([b[k] for b in bs], dtype=float) for k in ("high", "low", "close"))   # noqa: E731
+    plans, texts = {}, {}
+    for tf, src, kind in (("1wk", None, "mid"), ("1d", None, None), ("60m", b60, "intra"), ("30m", b30, "intra30"), ("15m", b15, "intra15")):
+        try:
+            if tf == "1d":
+                st_, lv_ = st, lv
+            elif src is None:
+                st_, _ = SC.struct_of(h, l, c, float(price), kind)
+                lv_ = None
+            else:
+                st_ = SC.struct_of(*arr(src), float(price), kind)[0] if len(src) >= 30 else None
+                lv_ = None
+            nm = {"1wk": "週線", "1d": "日線", "60m": "60 分", "30m": "30 分", "15m": "15 分"}[tf]
+            plans[tf] = SC.plan(st_, float(price), lv_, nm)
+            texts[tf] = f"{nm}：" + SC.describe(st_, float(price), lv_)
+        except Exception as e:     # noqa: BLE001
+            log.info(f"[wave] 引擎劇本 {tf}：{e}")
     txt = SC.describe(st, float(price), lv)
     if alt:
         txt += f"；換組：{alt['T']['p']:,.0f}→{alt['L1']['p']:,.0f}→{alt['H2']['p']:,.0f}→{alt['X']['p']:,.0f} 也自己走出三段，另外算一份"
-    return {"text": txt, "by_tf": by_tf, "n": len(lv),
+    return {"text": txt, "by_tf": by_tf, "n": len(lv), "plans": plans, "texts": texts,
             "st": None if not st else {k: st[k]["p"] for k in ("T", "L1", "H2", "X")} | {"d": st["d"], "rb": st["rb"]},
             "note": "引擎只看轉折自己算（R0～R9）。列的是它算出的結構線（重疊線、牆、箱體、底座、母級）＋現價上下各 3 條最近的；挑哪幾條最重要還不會（B132 △）；判方向回測跟亂猜差不多 △"}
 

@@ -529,10 +529,20 @@
         <td class="n">${r.n.length ? '● ' + esc(r.n.join('、')) : '<span class="wv-dim">—</span>'}</td></tr>`;
     }).join('') + (nowDone ? '' : `<tr class="cmp-now"><td colspan="3">▶ 現在 ${fmt(price, 0)}</td></tr>`);
     const nBoth = rowsCmp.filter(r => r.o.length && r.n.length).length;
-    const cmp = !G ? '' : `<div class="hv-eng">🤖 <b>引擎（新）</b>：${esc(G.text || '')}</div>
+    const gtxt = G ? ((G.texts || {})[st.tf] || G.text || '') : '';
+    const cmp = !G ? '' : `<div class="hv-eng">🤖 <b>引擎（新）</b>：${esc(gtxt)}</div>
       <details class="hv-cmp" open><summary>🆚 新舊對照價位梯（舊＝照她貼文寫的；新＝引擎只看轉折自己算）　兩邊都有 ${nBoth} 條</summary>
         <table class="cmp-tbl"><tr><th>價位</th><th>舊版</th><th>新版（引擎）</th></tr>${cmpRows}</table>
         <div class="wv-dim" style="font-size:.8rem;margin-top:4px">${esc(G.note || '')}</div></details>`;
+    const gp = G && G.plans ? G.plans[st.tf] : null;                  // B134 引擎自己列的劇本（這個週期的轉折）
+    const lineTxt = (x, nm) => x ? `<div class="hv-scl"><span>${nm}</span><b>${fmt(x[0], 0)}</b> ${esc(x[1] || '')}</div>` : '';
+    const engPlan = !gp ? '' : `<div class="hv-sub-h eng">🤖 引擎（新）：${esc(gp.state || '')}<span class="wv-dim">　只看轉折自己列；「現在」＝價位站在哪一邊，不是預測 △</span></div>
+      <div class="hv-scs eng n${(gp.scen || []).length}">${(gp.scen || []).map(v => `<div class="hv-sc eng${v.now ? ' now' : ''}">
+        <div class="hv-sct">${esc(v.title)}${v.now ? ' <span class="mm-nowtag">現在</span>' : ''}</div>
+        <div class="hv-sctag">${esc(v.tag || '')}</div>
+        ${lineTxt(v.confirm, '確認')}${lineTxt(v.fail, '失效')}${lineTxt(v.target, '目標')}
+        ${(v.notes || []).map(t => `<div class="hv-scn">${esc(t)}</div>`).join('')}</div>`).join('')}</div>
+      <div class="hv-cf">${gp.common ? `<div class="mm-common eng">${esc(gp.common)}</div>` : ''}${gp.fork ? `<div class="mm-fork">${esc(gp.fork)}</div>` : ''}</div>`;
     const m0 = V.map || {};
     const m = gl.length ? { ...m0, lines: (m0.lines || []).concat(gl.filter(g => !(m0.lines || []).some(x => near(x.p, g.p))).slice(0, 6)
       .map(g => ({ p: g.p, label: `引擎 ${engLabel(g)} ${fmt(g.p, 0)}`, kind: 'eng' }))) } : m0;
@@ -548,8 +558,10 @@
         <ul class="wv-plays">${(V.plays || []).map(x => `<li><span class="wv-pt ${esc(x.k)}">${esc(x.tag)}</span>${esc(x.t)}</li>`).join('')}</ul>
         ${sig}${V.flip ? `<div class="wv-sub hv-flip">${esc(V.flip)}</div>` : ''}</section>
       <section class="hv"><div class="hv-h"><b>②</b> 可能劇本 <span class="hv-tf">${esc(T.name)}</span></div>
+        ${G ? '<div class="hv-sub-h"><span class="hv-old">舊</span>照她貼文寫的</div>' : ''}
         <div class="hv-scs n${(V.scen || []).length}">${sc}</div>
-        ${V.common || V.fork ? `<div class="hv-cf">${V.common ? `<div class="mm-common">${esc(V.common)}</div>` : ''}${V.fork ? `<div class="mm-fork">${esc(V.fork)}</div>` : ''}</div>` : ''}</section>
+        ${V.common || V.fork ? `<div class="hv-cf">${V.common ? `<div class="mm-common">${esc(V.common)}</div>` : ''}${V.fork ? `<div class="mm-fork">${esc(V.fork)}</div>` : ''}</div>` : ''}
+        ${engPlan}</section>
       <section class="hv"><div class="hv-h"><b>③</b> 圖與詳細解說 <span class="hv-tf">${esc(T.name)}</span></div>
         <div class="mm"><div class="mm-tag">${esc(m.tag || 'T3 DAILY MOTHER MAP')} <span>她的數法・網站照價位算</span></div>
           <div class="mm-title">${esc(m.title || '')}</div><div class="mm-sub">${esc(m.sub || '')}</div>${chart}
