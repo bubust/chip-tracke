@@ -639,3 +639,33 @@ def ensure_history(background: bool = True) -> bool:
     else:
         _run()
     return True
+
+
+def fill_from_bars5(fb: pd.DataFrame, rows: list, now_ts: float) -> pd.DataFrame:
+    """B130 用戶 11/27「更新」：盤後到晚上 FinMind 更新以前，日 K 最後一天還是前一天，即時那根又是夜盤（算下一個交易日）
+    → 今天的日盤整根不見（11/27 日盤結算 39,350，日 K 只到 11/26）。用 5 分 K 把「日盤已經收完、日 K 還沒有」的交易日拼出來：
+    那天＝前一個交易日 15:00 起的夜盤＋當天 08:45～13:45 的日盤；日盤不到 50 根（假日、資料缺）就不補。
+    fb＝full_bars 的結果（date, o, h, l, c, v）；rows＝bars5 [(ts, o, h, l, c, v)]；now_ts＝現在 epoch。回補好的 DataFrame"""
+    if fb is None or fb.empty or not rows:
+        return fb
+    last = pd.Timestamp(str(fb.date.iloc[-1])[:10])
+    prev, d = last, last + pd.offsets.BDay(1)
+    add = []
+    while True:
+        y, m, dd = d.year, d.month, d.day
+        d0, d1 = datetime(y, m, dd, 8, 45, tzinfo=TW).timestamp(), datetime(y, m, dd, 13, 45, tzinfo=TW).timestamp()
+        if d1 + 600 > now_ts:                                 # 日盤還沒收完（收盤後 10 分鐘才算）
+            break
+        n0 = datetime(prev.year, prev.month, prev.day, 15, 0, tzinfo=TW).timestamp()
+        day = [r for r in rows if d0 <= r[0] < d1 and r[4] is not None]
+        if len(day) >= 50:
+            seg = [r for r in rows if n0 <= r[0] < d1 and r[4] is not None]
+            add.append({"date": d.strftime("%Y-%m-%d"), "o": float(seg[0][1]), "h": float(max(r[2] for r in seg)), "l": float(min(r[3] for r in seg)),
+                        "c": float(seg[-1][4]), "v": float(sum(r[5] or 0 for r in seg))})
+            prev = d
+        d = d + pd.offsets.BDay(1)
+        if len(add) > 5 or (d - last).days > 14:
+            break
+    if not add:
+        return fb
+    return pd.concat([fb, pd.DataFrame(add)[[c_ for c_ in fb.columns if c_ in ("date", "o", "h", "l", "c", "v")]]], ignore_index=True)

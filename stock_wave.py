@@ -1012,7 +1012,7 @@ def merge_pause(big: list) -> list:
 
 def big_frame(t: dict, price: float, full: Optional[float] = None, lows: Optional[list] = None,
               cyc: Optional[list] = None, leg: Optional[tuple] = None, clock: Optional[dict] = None,
-              supply: Optional[list] = None) -> Optional[dict]:
+              supply: Optional[list] = None, box: Optional[dict] = None) -> Optional[dict]:
     """B123 她 11/22～11/23（T3 MONTHLY／DAILY MOTHER MAP 四張）：日線 T→L1→H2→ext 三筆跌完（ext 破 L1）之後的反彈怎麼看。
     - 第一道牆＝L1（37,694，1、4 重疊魔咒）；第二道牆＝T→ext 的 0.382／0.5／0.618（40,040／41,992／43,944）；再上去前高 H2（44,911）
     - 尋底帶＝full→T 的 0.5（33,640）～H2 往下等幅 T−L1（32,340）；破了看延伸區＝前一個日線大低點（31,740）～full→T 的 0.618（29,717）
@@ -1046,7 +1046,7 @@ def big_frame(t: dict, price: float, full: Optional[float] = None, lows: Optiona
         d236 = {"lo": float(leg[0]), "hi": float(leg[1]), "v": round(leg[1] - 0.236 * (leg[1] - leg[0]), 2)}
     mo = None
     if cyc and len(cyc) >= 2:
-        mo = {"a": float(cyc[0]), "b": float(cyc[1])}
+        mo = {"a": float(cyc[0]), "b": float(cyc[1]), **({"c": float(cyc[2])} if len(cyc) > 2 else {})}
     f = _fmt
     w2t = f"{f(w382)}～{f(w618)}"
     st = {"w0": f"反彈還在第一道牆 {f(L1)} 下面：五波下跌的第 4 浪（頂過不了 {f(L1)}、之後再殺第 5 浪），還是三波末端已經跌完（要帶量實體站穩 {f(L1)} 才算），還分不出來",
@@ -1092,7 +1092,28 @@ def big_frame(t: dict, price: float, full: Optional[float] = None, lows: Optiona
         st = (f"{f(ext)}→{f(rb)} 完成第一大段推進，現在壓回到 {f(price)}"
               + ("：還在健康壓回的範圍（守住起推底座 " + f(base) + "）" if price >= base else f"：跌破起推底座 {f(base)}＝失速，回測" + (f(p_["prev_low"]) + "、" if p_["prev_low"] else "") + f(ext)))
         lines[ki] = f"現在 {f(price)}：{st}"
-    return {"T": T, "L1": L1, "H2": H2, "ext": ext, "rb": rb, "w2": [(r, round(v, 2)) for r, v in w2], "clock": clock, "supply": supply or [], "pull": pull,
+    bx = None
+    if box and not pull and stage != "top" and box["lo"] > ext and price > box["lo"]:
+        # B130 她 11/26：33,719→40,900＝5-1-1（暫定）、40,900→35,933＝5-1-2 收腳（爆量長下影、低點墊高、收回 37,694）
+        # → 「5-1-3 起推」還是「35,933～40,900 大箱體震盪築底」；60 分三道門：出箱 39,688、結構底線 39,003、升級 40,900
+        wk382 = T - 0.382 * (T - full) if full else None
+        bx = {**box, "wk382": round(wk382, 2) if wk382 else None,
+              "state": "up" if price >= rb else "gate" if price >= box["hi"] else "in" if (box.get("floor") is None or price >= box["floor"]) else "fall"}
+        ki = next(i for i, x in enumerate(lines) if x.startswith("現在 "))
+        b_ = bx
+        lines.insert(ki + 1, f"箱體（她 11/26）：{f(ext)}→{f(rb)} 先按 5-1-1 追蹤，{f(rb)}→{f(b_['lo'])} 刺穿 0.618 後收腳（低點從 {f(ext)} 墊高）＝5-1-2；"
+                             f"接下來分辨「直接走 5-1-3 主推」還是「留在 {f(b_['lo'])}～{f(rb)} 大箱體震盪築底」——"
+                             f"站穩 {f(w382)}、突破 {f(rb)} 停留接受、回測不退回 {f(rb)} 下＝5-1-3，往 {f(w5)}、{f(w618)}；"
+                             f"{f(w382)}～{f(rb)} 推進減速、來回重疊、突破留不住＝大箱體。"
+                             + (f"週線 0.382 {f(b_['wk382'])} 與 {f(L1)} 是拉回不可再失守的結構" if b_["wk382"] else ""))
+        s_ = bx["state"]
+        stt = (f"站上 {f(rb)}：要停留接受、回測不退回才算 5-1-3" if s_ == "up" else
+               f"過了出箱驗證門 {f(b_['hi'])}，往 {f(w382)}→{f(rb)}" if s_ == "gate" else
+               f"在 {f(b_['floor'] or b_['lo'])}～{f(b_['hi'])} 的小箱體裡輪動" if s_ == "in" else
+               f"跌破結構底線 {f(b_['floor'])}，急攻斜率斷裂、退回大箱體")
+        st = f"{f(rb)}→{f(b_['lo'])} 收腳（5-1-2）；{stt}"
+        lines[ki] = f"現在 {f(price)}：{st}"
+    return {"T": T, "L1": L1, "H2": H2, "ext": ext, "rb": rb, "w2": [(r, round(v, 2)) for r, v in w2], "clock": clock, "supply": supply or [], "pull": pull, "box": bx,
             "band": [round(v, 2) for v in band] if band else None, "ext_band": [round(v, 2) for v in ext_band] if ext_band else None,
             "full": full, "mo": mo, "stage": stage, "dev": dev, "d236": d236, "status": st, "lines": lines}
 
@@ -1288,7 +1309,8 @@ def frame_tfs(fr: dict, price: float, piv: dict, ma5: dict) -> dict:
         pv = piv.get(tf) or []
         if not pv:
             continue
-        pts = path_of(pv, ext, 9, {round(ext): "低點"} | ({round(d236["lo"]): "起漲點"} if d236 else {}))
+        st0 = ext if any(abs(q["p"] - ext) <= 0.0005 * ext for q in pv) else (d236["lo"] if d236 else ext)   # B130：15 分窗口看不到 33,719 就從這一腳的起點畫
+        pts = path_of(pv, st0, 9, {round(ext): "低點"} | ({round(d236["lo"]): "起漲點"} if d236 else {}), fb=True)
         if not pts:
             continue
         m5 = ma5.get(tf)
@@ -1301,7 +1323,8 @@ def frame_tfs(fr: dict, price: float, piv: dict, ma5: dict) -> dict:
             dn = [(d236["v"], "短線 0.236"), (l382, "0.382"), (lo, "起漲點")]
         if m5:
             lines.insert(0, {"p": m5, "label": f"{nm} 5 均 {f(m5)}", "kind": "down"})
-        ups = sorted([(v, n_) for v, n_ in ((rb, "反彈高點"), (w382, "第二道牆 0.382"), (w5, "第二道牆 0.5")) if v > price + 1])
+        bxh = (fr.get("box") or {}).get("hi")
+        ups = sorted([(v, n_) for v, n_ in ((rb, "反彈高點"), (w382, "第二道牆 0.382"), (w5, "第二道牆 0.5")) + (((bxh, "出箱驗證門"),) if bxh else ()) if v > price + 1])
         sup = [z for z in fr.get("supply") or [] if z["side"] == "at"]
         below = [x for x in ([(m5, f"{nm} 5 均")] if m5 else []) + dn if x[0] < price]
         below.sort(key=lambda x: -x[0])
@@ -1341,6 +1364,31 @@ def frame_tfs(fr: dict, price: float, piv: dict, ma5: dict) -> dict:
             {"k": "long", "tag": "波段分批", "t": "大四浪成立的話，日線拉回到支撐分批（進出場看日 K 那張）"},
             {"k": "short", "tag": "不接", "t": f"{f(eb[1]) if eb else '極限'} 灌破、日線反彈又壓在 {f(L1)} 下＝六年大頂，不要接"}]
         out["1wk"]["detail"] = pick("月線", "尋底帶", "時間")
+        bx = fr.get("box")
+        if bx and full:                                               # B130 她 11/26「33,719 起｜月、週、日線總結構」：週線前沿兩條路
+            wk382, wk5 = T - 0.382 * (T - full), T - 0.5 * (T - full)
+            om = out["1wk"]["map"]
+            om["title"] = f"週線前沿｜{f(ext)} 起接第 5 浪，還是大 B？"
+            om["sub"] = f"{f(full)}→{f(T)} 的 0.5＝{f(wk5)}，最低 {f(ext)} 只高出 {f(ext - wk5)} 點；0.382＝{f(wk382)}"
+            om["lines"] = [{"p": fr["w2"][0][1], "label": f"日線壓力 {f(fr['w2'][0][1])}～{f(fr['w2'][2][1])}", "kind": "up"},
+                           {"p": wk382, "label": f"週線 0.382 {f(wk382)}", "kind": "down"}, {"p": wk5, "label": f"週線半分位 {f(wk5)}", "kind": "down2"}]
+            om["versions"] = [
+                {"title": "主追蹤｜週線第 4 浪收尾", "tag": f"{f(ext)} 起推升週線第 5 浪", "now": price >= wk382,
+                 "pts": [{"p": full, "label": ""}, {"p": T, "label": ""}, {"p": ext, "label": ""}, {"p": T + 0.05 * (T - full), "label": "第 5 浪"}],
+                 "notes": ["日線第一腿拉回守住底座", "再攻能守住突破的位置"]},
+                {"title": "威脅路徑｜週線 A 浪收尾", "tag": f"{f(ext)} 起只是週線大 B 強彈", "now": False,
+                 "pts": [{"p": T, "label": ""}, {"p": ext, "label": "A"}, {"p": ext + 0.55 * (T - ext), "label": "B"}, {"p": ext - 0.05 * (T - ext), "label": "C"}],
+                 "notes": ["日線回升走成三折", "在壓力帶量縮鈍化，最後跌破底座"]}]
+            om["common"] = f"共同事實｜{f(ext)} 起第一段日線回升，兩條路都先往上"
+            om["fork"] = "週線分歧｜看日線拉回能否守住，再攻能否站穩"
+            out["1wk"]["where"] = (f"週線：{f(ext)} 只比 {f(full)}→{f(T)} 的 0.5（{f(wk5)}）高 {f(ext - wk5)} 點出現結構反應，現在 {f(price)} 站回週線 0.382 {f(wk382)}"
+                                   f" 與 {f(L1)} 上方——這一帶是接下來拉回不可再失守的結構")
+            out["1wk"]["plays"] = [{"k": "long", "tag": "拉回守", "t": f"日線拉回守住 {f(wk382)}～{f(L1)}＝週線第 5 浪的機會留著"},
+                                   {"k": "wait", "tag": "再攻", "t": f"站穩 {f(rb)}、推到 {f(fr['w2'][1][1])}～{f(fr['w2'][2][1])} 與 {f(H2)}：繼續延伸並保留突破成果＝第 5 浪；壓力帶內三折鈍化＝大 B"},
+                                   {"k": "short", "tag": "月線底線", "t": f"{f(eb[1]) if eb else '極限'} 灌破＝六年大頂" + (f"；{f(mo['c'])} 是 {f(mo['b'])} 起算的不重疊底線" if mo.get("c") else "")}]
+            out["1wk"]["tiles"] = {"up": tile(rb, "日線升級門", "站穩＝第 5 浪機率升") if rb > price else tile(H2, "前高", "站穩＝第 5 浪"),
+                                   "down": tile(max(wk382, L1), "週線 0.382／37,694".replace("37,694", f(L1)), "拉回不可再失守") if max(wk382, L1) < price else tile(wk5, "週線半分位", "守住＝結構還在"),
+                                   "stop": tile(eb[1], "大四浪極限", "灌破＝六年大頂") if eb else None}
     if "60m" in out:
         o6 = out["60m"]
         if pull:
@@ -1367,7 +1415,34 @@ def frame_tfs(fr: dict, price: float, piv: dict, ma5: dict) -> dict:
             o6["where"] = f"60 分：{f(ext)} 起反彈到 {f(rb)}，現在 {f(price)}"
             o6["plays"] = [{"k": "long", "tag": "等第二隻腳", "t": o6["map"]["versions"][0]["notes"][0] + "，出現收腳再進"},
                            {"k": "short", "tag": "失敗", "t": o6["map"]["versions"][1]["notes"][0]}]
-        o6["detail"] = pick("壓回", "套牢區")
+        bx = fr.get("box")
+        if bx and not pull:                                           # B130 她 11/26 補充 60 分：三道邊界
+            lo, hi, fl = bx["lo"], bx["hi"], bx.get("floor")
+            o6["map"]["title"] = f"{f(lo)} 起急攻｜60 分三道邊界"
+            o6["map"]["sub"] = f"出箱驗證門 {f(hi)}；結構底線 {f(fl) if fl else '—'}；波段升級門 {f(rb)}"
+            o6["map"]["lines"] = ([{"p": rb, "label": f"升級門 {f(rb)}", "kind": "up2"}, {"p": hi, "label": f"出箱門 {f(hi)}", "kind": "up"}]
+                                  + ([{"p": fl, "label": f"結構底線 {f(fl)}", "kind": "down"}] if fl else []))
+            o6["map"]["versions"] = [
+                {"title": "出箱", "tag": "橫台成為中繼底座", "now": price >= hi,
+                 "pts": [{"p": fl or lo, "label": ""}, {"p": hi, "label": ""}, {"p": hi + 0.3 * (rb - hi), "label": "突破"}, {"p": hi + 0.1 * (rb - hi), "label": "回測"},
+                         {"p": rb, "label": f(rb)}],
+                 "notes": [f"帶量突破 {f(hi)} 並在箱外停留", f"回測守住，往 {f(w382)}→{f(rb)}"]},
+                {"title": "箱內輪動", "tag": "刺過留不住", "now": price < hi and (fl is None or price >= fl),
+                 "pts": [{"p": fl or lo, "label": ""}, {"p": hi, "label": ""}, {"p": (hi + (fl or lo)) / 2, "label": ""}, {"p": hi, "label": ""},
+                         {"p": (hi + (fl or lo)) / 2, "label": "箱內"}],
+                 "notes": [f"刺過 {f(hi)} 留不住又滑回箱內", "等出箱或跌破底線再說"]},
+                {"title": "斜率斷裂", "tag": "日線退回大箱體", "now": fl is not None and price < fl,
+                 "pts": [{"p": hi, "label": ""}, {"p": fl or lo, "label": ""}, {"p": (fl or lo) - 0.2 * (hi - lo), "label": "破底線"}, {"p": lo, "label": f(lo)}],
+                 "notes": [f"60 分實體收破 {f(fl) if fl else '底線'}、反抽站不回", f"日線退回 {f(lo)}～{f(rb)} 大箱體"]}]
+            o6["map"]["common"] = f"共同事實｜{f(lo)} 起急攻到 {f(hi)}"
+            o6["map"]["fork"] = f"真正分歧｜出箱（{f(hi)}）還是斷裂（{f(fl) if fl else '底線'}）"
+            o6["tiles"] = {"up": tile(hi, "出箱驗證門", "帶量突破、回測守住＝出箱") if hi > price else tile(rb, "波段升級門", "站穩不重疊＝5-1-3"),
+                           "down": tile(fl, "結構底線", "60 分實體收破＝斜率斷裂") if fl and fl < price else tile(lo, "5-1-2 低點", "跌破＝看法作廢"),
+                           "stop": tile(rb, "波段升級門", "站穩、回測不重疊＝5-1-3")}
+            o6["where"] = f"60 分：{f(lo)} 起急攻到 {f(hi)}，現在 {f(price)}" + ("——在小箱體裡" if price < hi and (fl is None or price >= fl) else "")
+            o6["plays"] = [{"k": "long", "tag": "出箱才追", "t": f"帶量突破 {f(hi)}、箱外停留、回測守住才順勢做多，目標 {f(w382)}→{f(rb)}"},
+                           {"k": "short", "tag": "底線", "t": f"60 分實體收破 {f(fl) if fl else '箱底'} 且反抽站不回＝急攻斜率斷裂，先下車"}]
+        o6["detail"] = pick("壓回", "箱體", "套牢區")
     for tf in ("30m", "15m"):
         if tf not in out:
             continue
@@ -1430,6 +1505,39 @@ def frame_views(card: dict, fr: dict, price: float) -> dict:
                      "lines": [x for x in ([{"p": m12, "label": f"日線 12T {f(m12)}", "kind": "up2"}] if m12 else [])
                                + [{"p": w382, "label": f"第二道牆 {f(w382)}", "kind": "up"}, {"p": L1, "label": f"頸線 {f(L1)}", "kind": "down"},
                                   {"p": base, "label": f"起推底座 {f(base)}", "kind": "down2"}]]}
+    bx = fr.get("box")
+    if bx and not pull:                                               # B130 她 11/26：5-1-3 起推 vs 大箱體震盪築底
+        w5, w618 = fr["w2"][1][1], fr["w2"][2][1]
+        lo, hi, fl, wk = bx["lo"], bx["hi"], bx.get("floor"), bx.get("wk382")
+        guard = sorted([v for v in (wk, L1) if v], reverse=True)
+        gtxt = "～".join(f(v) for v in sorted(guard)) if guard else f(lo)
+        v1["where"] = (f"日線：{f(ext)}→{f(rb)}（5-1-1 暫定）→{f(lo)}（5-1-2 收腳：低點墊高、收回 {f(L1)}），現在 {f(price)}——"
+                       f"接下來是「5-1-3 起推」還是「{f(lo)}～{f(rb)} 大箱體震盪築底」")
+        v1["plays"] = [
+            {"k": "long", "tag": "拉回做多", "t": f"拉回守住 {gtxt}（週線 0.382＋結構邊界，不可再失守）出現收腳才接；停損放 {f(lo)} 下面"},
+            {"k": "wait", "tag": "升級門", "t": f"站穩 {f(w382)}、突破 {f(rb)} 停留接受、回測不退回 {f(rb)} 下＝5-1-3，波段往 {f(w5)}、{f(w618)}"},
+            {"k": "short", "tag": "箱頂不追", "t": f"{f(w382)}～{f(rb)} 推進減速、來回重疊、突破留不住＝大箱體，箱頂不追"}]
+        v1["tiles"] = {"up": tile(rb, "波段升級門", "站穩、回測不破＝5-1-3") if rb > price else tile(w5, "第二道牆 0.5", "下一個目標"),
+                       "down": tile(guard[0], "結構邊界", "拉回不可再失守") if guard and guard[0] < price else tile(lo, "5-1-2 低點", "跌破＝看法作廢"),
+                       "stop": tile(lo, "5-1-2 低點", "跌破＝箱體也守不住")}
+        v1["scen"] = [
+            {"title": "① 5-1-3 起推", "tag": "35,933 的爆量長下影已把 5-1-2 洗完".replace("35,933", f(lo)), "now": price >= rb,
+             "pts": [{"p": lo, "label": ""}, {"p": rb, "label": "突破"}, {"p": rb - 0.1 * (rb - lo), "label": "回測"}, {"p": w618, "label": "5-1-3"}],
+             "notes": [f"站穩 {f(w382)}、突破 {f(rb)} 停留接受", f"回測不退回 {f(rb)} 下（推進乾淨、60 分不重疊）", f"波段往 {f(w5)}→{f(w618)}"]},
+            {"title": "② 大箱體震盪築底", "tag": f"{f(lo)}～{f(rb)} 來回換手", "now": price < rb,
+             "pts": [{"p": lo, "label": ""}, {"p": rb - 0.05 * (rb - lo), "label": ""}, {"p": lo + 0.3 * (rb - lo), "label": ""}, {"p": rb - 0.1 * (rb - lo), "label": ""},
+                     {"p": lo + 0.4 * (rb - lo), "label": "箱內"}],
+             "notes": [f"萬點下跌的套牢賣壓還要時間消化", f"{f(w382)}～{f(rb)} 減速、重疊、突破留不住", "退回原交換區來回"]}]
+        v1["common"] = f"共同事實｜{f(ext)} 起第一段日線回升，{f(lo)} 收腳、低點墊高"
+        v1["fork"] = f"真正分歧｜{f(rb)} 能不能站穩（5-1-3）還是在 {f(w382)}～{f(rb)} 鈍化（箱體）"
+        v1["flip"] = f"改判：突破 {f(rb)} 停留、回測不破＝5-1-3；跌破 {gtxt}＝結構失守；跌破 {f(lo)}＝連箱體都守不住"
+        v1["map"] = {**mp, "title": f"{f(ext)} 起｜5-1-3 起推，還是大箱體震盪？", "sub": f"箱體 {f(lo)}～{f(rb)}；升級門 {f(rb)}；結構邊界 {gtxt}",
+                     "path": [x for x in mp.get("path") or [] if not x.get("now") and x["p"] != rb and x.get("label") != "反彈高"]
+                             + [{"p": rb, "label": "5-1-1？"}, {"p": lo, "label": "5-1-2？"}] + ([{"p": hi, "label": ""}] if abs(hi - price) > 0.002 * price else [])
+                             + [{"p": price, "label": "現在", "now": True}],
+                     "lines": [{"p": w5, "label": f"0.5 {f(w5)}", "kind": "up2"}, {"p": rb, "label": f"升級門 {f(rb)}", "kind": "up"}]
+                              + ([{"p": guard[0], "label": f"結構邊界 {f(guard[0])}", "kind": "down"}] if guard else [])
+                              + [{"p": lo, "label": f"箱底 {f(lo)}", "kind": "down2"}]}
     views = {"1d": v1}
     for tf, tv in (card.get("tfs") or {}).items():
         m = tv["map"]

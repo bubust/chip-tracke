@@ -55,7 +55,7 @@ def test_frame_numbers():
     assert [W._fmt(v) for _, v in fr["w2"]] == ["40,040", "41,992", "43,944"]               # 她：40,040／41,992／43,944
     assert [W._fmt(v) for v in fr["band"]] == ["33,640", "32,340"]                          # 她：33,640～32,340
     assert [W._fmt(v) for v in fr["ext_band"]] == ["31,740", "29,717"]                      # 她：31,740～29,717
-    assert fr["mo"] == {"a": 8268, "b": 12652}                                              # 她：從 8,268／12,652 起算
+    assert fr["mo"] == {"a": 8268, "b": 12652, "c": 24449}                                  # 她：從 8,268／12,652 起算；B130：24,449 不重疊底線
     assert W._fmt(fr["d236"]["v"]) == "39,370" and fr["d236"]["lo"] == 36280                # 她：0.236 39,370
     assert fr["stage"] == "w2" and fr["dev"] == 2 and "正式結束" in fr["status"] and "大 B 波" in fr["status"]
 
