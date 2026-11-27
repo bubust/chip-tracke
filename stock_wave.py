@@ -1098,7 +1098,8 @@ def big_frame(t: dict, price: float, full: Optional[float] = None, lows: Optiona
         # → 「5-1-3 起推」還是「35,933～40,900 大箱體震盪築底」；60 分三道門：出箱 39,688、結構底線 39,003、升級 40,900
         wk382 = T - 0.382 * (T - full) if full else None
         bx = {**box, "wk382": round(wk382, 2) if wk382 else None,
-              "state": "up" if price >= rb else "gate" if price >= box["hi"] else "in" if (box.get("floor") is None or price >= box["floor"]) else "fall"}
+              "state": "up" if price >= rb else "gate" if price >= box["hi"] else "fall" if (box.get("floor") is not None and price < box["floor"])
+              else "pierce" if box.get("pierce") else "in"}
         ki = next(i for i, x in enumerate(lines) if x.startswith("現在 "))
         b_ = bx
         lines.insert(ki + 1, f"箱體（她 11/26）：{f(ext)}→{f(rb)} 先按 5-1-1 追蹤，{f(rb)}→{f(b_['lo'])} 刺穿 0.618 後收腳（低點從 {f(ext)} 墊高）＝5-1-2；"
@@ -1110,6 +1111,7 @@ def big_frame(t: dict, price: float, full: Optional[float] = None, lows: Optiona
         stt = (f"站上 {f(rb)}：要停留接受、回測不退回才算 5-1-3" if s_ == "up" else
                f"過了出箱驗證門 {f(b_['hi'])}，往 {f(w382)}→{f(rb)}" if s_ == "gate" else
                f"在 {f(b_['floor'] or b_['lo'])}～{f(b_['hi'])} 的小箱體裡輪動" if s_ == "in" else
+               f"刺破結構底線 {f(b_['floor'])}（最低 {f(b_['pierce'])}）又站回，還在小箱體——60 分實體收破、反抽站不回才算斜率斷裂" if s_ == "pierce" else
                f"跌破結構底線 {f(b_['floor'])}，急攻斜率斷裂、退回大箱體")
         st = f"{f(rb)}→{f(b_['lo'])} 收腳（5-1-2）；{stt}"
         lines[ki] = f"現在 {f(price)}：{st}"
@@ -1439,7 +1441,12 @@ def frame_tfs(fr: dict, price: float, piv: dict, ma5: dict) -> dict:
             o6["tiles"] = {"up": tile(hi, "出箱驗證門", "帶量突破、回測守住＝出箱") if hi > price else tile(rb, "波段升級門", "站穩不重疊＝5-1-3"),
                            "down": tile(fl, "結構底線", "60 分實體收破＝斜率斷裂") if fl and fl < price else tile(lo, "5-1-2 低點", "跌破＝看法作廢"),
                            "stop": tile(rb, "波段升級門", "站穩、回測不重疊＝5-1-3")}
-            o6["where"] = f"60 分：{f(lo)} 起急攻到 {f(hi)}，現在 {f(price)}" + ("——在小箱體裡" if price < hi and (fl is None or price >= fl) else "")
+            pc = bx.get("pierce")
+            o6["where"] = (f"60 分：{f(lo)} 起急攻到 {f(hi)}，現在 {f(price)}"
+                           + ((f"——刺破結構底線 {f(fl)}（最低 {f(pc)}）又站回，還在小箱體" if pc else "——在小箱體裡") if price < hi and (fl is None or price >= fl)
+                              else f"——跌破結構底線 {f(fl)}" if fl is not None and price < fl else ""))
+            if pc:
+                o6["map"]["versions"][1]["notes"].append(f"刺破 {f(fl)} 到 {f(pc)} 又站回")
             o6["plays"] = [{"k": "long", "tag": "出箱才追", "t": f"帶量突破 {f(hi)}、箱外停留、回測守住才順勢做多，目標 {f(w382)}→{f(rb)}"},
                            {"k": "short", "tag": "底線", "t": f"60 分實體收破 {f(fl) if fl else '箱底'} 且反抽站不回＝急攻斜率斷裂，先下車"}]
         o6["detail"] = pick("壓回", "箱體", "套牢區")

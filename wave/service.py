@@ -1157,14 +1157,16 @@ def _frame_for(t: dict, waves: dict, sm: dict, price: float, snap: Optional[dict
             ha = [j for j in range(jl + 1, len(p60)) if p60[j]["t"] == "H"]
             if ha:
                 jh2 = max(ha, key=lambda j: (p60[j]["p"], -j))
-                hi2_ = p60[jh2]["p"]                                 # 結構底線＝15 分轉折裡，39,688 之後的最低點（她 39,003）
+                hi2_ = p60[jh2]["p"]                                 # 結構底線＝15 分轉折裡，39,688 之後第一個墊高的低點（她 39,003；固定不跟著往下移）
                 k15 = max((k for k, q in enumerate(pv) if q["t"] == "H" and abs(q["p"] - hi2_) <= 0.0005 * hi2_), default=None)
                 lb_ = [q["p"] for q in pv[k15 + 1:] if q["t"] == "L"] if k15 is not None else []
                 tp, lo_, hi2 = p60[jt]["p"], p60[jl]["p"], p60[jh2]["p"]
                 ext_ = float(t["big"]["ext"])
                 if (hi2 < tp and hi2 - lo_ >= 0.5 * (tp - lo_) and tp - lo_ >= 0.382 * (tp - ext_) and price > lo_ and lo_ > ext_
                         and abs(tp - float(t.get("rebound") or 0)) <= 0.002 * tp):
-                    box = {"top": tp, "lo": lo_, "hi": hi2, "floor": min(lb_) if lb_ else None}
+                    fl_ = lb_[0] if lb_ else None
+                    box = {"top": tp, "lo": lo_, "hi": hi2, "floor": fl_,
+                           "pierce": min(lb_) if lb_ and min(lb_) < fl_ else None}   # 之後刺破底線最低到哪（11/27 夜盤 38,801）
     ls = [j for j, q in enumerate(pv) if q["t"] == "L"]
     j0 = min(ls, key=lambda j: pv[j]["p"]) if ls else 0                # 從最低點之後算
     hs = [j for j, q in enumerate(pv) if q["t"] == "H" and j > j0]
