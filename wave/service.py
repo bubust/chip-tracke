@@ -413,7 +413,15 @@ def wave_states(h, l, c, deg: str = "mid", start: int = 260) -> list:
 def _daily(sym: str) -> pd.DataFrame:
     if sym == "TX":
         fb = FD.full_bars(FD.load_fut_daily())
-        return fb[["date", "o", "h", "l", "c", "v"]] if not fb.empty else fb
+        fb = fb[["date", "o", "h", "l", "c", "v"]] if not fb.empty else fb
+        try:                                                  # B130：日盤收完、FinMind 還沒進來的那天用 5 分 K 拼
+            if not fb.empty:
+                y, m, d = (int(x) for x in str(fb.date.iloc[-1])[:10].split("-"))
+                rows = FD.load_bars5("TX", int(datetime(y, m, d, 14, 0, tzinfo=TW).timestamp()))
+                fb = FD.fill_from_bars5(fb, rows, time.time())
+        except Exception as e:     # noqa: BLE001
+            log.info(f"[wave] 用 5 分 K 補日 K 失敗：{e}")
+        return fb
     return D.load_idx("TWII")
 
 
@@ -1058,15 +1066,44 @@ def _frame_for(t: dict, waves: dict, sm: dict, price: float, snap: Optional[dict
         rest = [float(q["p"]) for q in bp[ja + 2:] if q["t"] == "L"]
         if rest:
             cyc = [float(bp[ja]["p"]), min(rest)]
+            jb = next((k for k in range(ja + 2, len(bp)) if bp[k]["t"] == "L" and float(bp[k]["p"]) == cyc[1]), None)
+            hb = next((float(bp[k]["p"]) for k in range((jb or len(bp)) + 1, len(bp)) if bp[k]["t"] == "H"), None)
+            if hb:                                                    # B130 她：24,449＝12,652 起算的不重疊底線（12,652 之後第一個高點）
+                cyc.append(hb)
     w15 = waves.get("intra15") or {}
     pv = [{"p": float(q["p"]), "t": q["t"]} for q in w15.get("pivots") or []]
     if w15.get("tentative"):
         pv.append({"p": float(w15["tentative"]["p"]), "t": w15["tentative"]["t"]})
-    leg = None
+    leg = box = None
+    w60 = waves.get("intra") or {}                                    # B130：箱體用 60 分轉折找（15 分窗口只有約 5 天，看不到 40,900）
+    p60 = [{"p": float(q["p"]), "t": q["t"]} for q in w60.get("pivots") or []]
+    if w60.get("tentative"):
+        p60.append({"p": float(w60["tentative"]["p"]), "t": w60["tentative"]["t"]})
+    ls60 = [j for j, q in enumerate(p60) if q["t"] == "L"]
+    je = min(ls60, key=lambda j: p60[j]["p"]) if ls60 else 0          # 只看最低點（33,719）之後
+    hs_ = [j for j, q in enumerate(p60) if q["t"] == "H" and j > je]
+    if hs_:                                                           # B130 她 11/26：40,900 之後 35,933 收腳、再拉到 39,688 → 最新這一腳＋箱體
+        jt = max(hs_, key=lambda j: (p60[j]["p"], -j))
+        la = [j for j in range(jt + 1, len(p60)) if p60[j]["t"] == "L"]
+        if la:
+            jl = min(la, key=lambda j: p60[j]["p"])
+            ha = [j for j in range(jl + 1, len(p60)) if p60[j]["t"] == "H"]
+            if ha:
+                jh2 = max(ha, key=lambda j: (p60[j]["p"], -j))
+                hi2_ = p60[jh2]["p"]                                 # 結構底線＝15 分轉折裡，39,688 之後的最低點（她 39,003）
+                k15 = max((k for k, q in enumerate(pv) if q["t"] == "H" and abs(q["p"] - hi2_) <= 0.0005 * hi2_), default=None)
+                lb_ = [q["p"] for q in pv[k15 + 1:] if q["t"] == "L"] if k15 is not None else []
+                tp, lo_, hi2 = p60[jt]["p"], p60[jl]["p"], p60[jh2]["p"]
+                ext_ = float(t["big"]["ext"])
+                if (hi2 < tp and hi2 - lo_ >= 0.5 * (tp - lo_) and tp - lo_ >= 0.382 * (tp - ext_) and price > lo_ and lo_ > ext_
+                        and abs(tp - float(t.get("rebound") or 0)) <= 0.002 * tp):
+                    box = {"top": tp, "lo": lo_, "hi": hi2, "floor": min(lb_) if lb_ else None}
     ls = [j for j, q in enumerate(pv) if q["t"] == "L"]
     j0 = min(ls, key=lambda j: pv[j]["p"]) if ls else 0                # 從最低點之後算
     hs = [j for j, q in enumerate(pv) if q["t"] == "H" and j > j0]
-    if hs:
+    if box:
+        leg = (box["lo"], box["hi"])
+    elif hs:
         jh = max(hs, key=lambda j: (pv[j]["p"], -j))
         hi_, lo0 = pv[jh]["p"], pv[j0]["p"]
         # B127：起推底座＝最高點之前、拉到最高點至少走了這段反彈一半的那個低點（她：36,280→40,900，不是途中 40,330 那種小回檔）
@@ -1082,7 +1119,9 @@ def _frame_for(t: dict, waves: dict, sm: dict, price: float, snap: Optional[dict
             dts.setdefault((round(float(q["p"]), 2), q["t"]), str(q.get("date") or "")[:10])
         dd = lambda k, tt: dts.get((round(float(t["big"][k]), 2), tt)) or ""   # noqa: E731
         if bars:
-            clock = SW.frame_clock(bars, ch.get("weekly") or [], dd("L1", "L"), dd("H2", "H"), dd("ext", "L"), str(bars[-1]["time"])[:10])
+            # B130：「今天」用台灣時間的日期——夜盤那根日 K 標的是下一個交易日（11/27 夜盤標 11/30），拿它當今天，週線收盤會算成下週
+            today = min(str(bars[-1]["time"])[:10], D.tw_now().strftime("%Y-%m-%d"))
+            clock = SW.frame_clock(bars, ch.get("weekly") or [], dd("L1", "L"), dd("H2", "H"), dd("ext", "L"), today)
             cl_ = [float(b["close"]) for b in bars if b.get("close") is not None]
             if len(cl_) >= 12:                                        # B127 她 11/25：日線 5T、12T
                 clock["ma5"], clock["ma12"] = round(sum(cl_[-5:]) / 5, 2), round(sum(cl_[-12:]) / 12, 2)
@@ -1106,7 +1145,7 @@ def _frame_for(t: dict, waves: dict, sm: dict, price: float, snap: Optional[dict
         log.warning(f"[wave] 套牢區失敗：{e}")
     if clock is not None and leg:                                     # B127 底座下面、低點上面的前低（她：回測 35,712 甚至 33,719）
         clock["mid_lows"] = [q["p"] for q in pv[j0 + 1:] if q["t"] == "L" and q["p"] < leg[0]]
-    return SW.big_frame(t, price, full=t.get("full"), lows=lows, cyc=cyc, leg=leg, clock=clock, supply=supply)
+    return SW.big_frame(t, price, full=t.get("full"), lows=lows, cyc=cyc, leg=leg, clock=clock, supply=supply, box=box)
 
 
 def _tiers_inputs(big: list, n60: dict, P: dict, sm: dict, a60: Optional[dict]):
